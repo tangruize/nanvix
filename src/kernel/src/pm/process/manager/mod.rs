@@ -646,6 +646,7 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        trace!("schedule(): entry, ready.len()={}", self.ready.len());
         // Reschedule running process.
         let previous_process: RunningProcess = self.take_running();
 
@@ -660,6 +661,7 @@ impl ProcessManagerInner {
             self.ready.push_back(ready_process);
         }
 
+        trace!("schedule(): selecting next process");
         // Select next process to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
 
@@ -672,6 +674,13 @@ impl ProcessManagerInner {
 
         let next_pid: ProcessIdentifier = next_process.state().pid();
         let next_tid: ThreadIdentifier = next_process.get_tid();
+        trace!(
+            "schedule(): selected pid={:?} tid={:?}, context={:p}, user_tda={:?}",
+            next_pid,
+            next_tid,
+            next_context,
+            user_tda
+        );
         self.interrupt_reason = reason;
         self.running = Some(next_process);
         (next_pid, next_tid, previous_context, next_context, user_tda)

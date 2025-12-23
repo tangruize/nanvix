@@ -492,8 +492,10 @@ impl ProcessManager {
     /// - The processor is running in privileged mode.
     ///
     pub unsafe fn giveup() -> Result<(), Error> {
+        trace!("giveup(): entry");
         // Check the remaining quantum for the current thread to decide whether to perform a context switch.
         let remaining_ticks: usize = REMAINING_QUANTUM.load(ORDER);
+        trace!("giveup(): remaining_ticks={}", remaining_ticks);
         if remaining_ticks > 1 {
             // The current thread still has remaining quantum, no context switch is required.
             REMAINING_QUANTUM.store(remaining_ticks - 1, ORDER);
@@ -511,6 +513,11 @@ impl ProcessManager {
                 Option<VirtualAddress>,
             ) = Self::get_mut().try_borrow_mut()?.schedule();
 
+            trace!(
+                "giveup(): about to switch from kernel to pid={:?} tid={:?}",
+                next_pid,
+                next_tid
+            );
             // Switch to the next thread and updating the remaining quantum accordingly.
             // SAFETY: `from` and `to` point to valid context information structures, and the
             // processor is running with interrupts disabled.
@@ -765,6 +772,13 @@ impl ProcessManager {
         let previous_pid: ProcessIdentifier = ProcessIdentifier::from(CURRENT_PID.load(ORDER));
         let previous_tid: ThreadIdentifier = ThreadIdentifier::from(CURRENT_TID.load(ORDER));
 
+        trace!(
+            "switch(): from pid={:?} tid={:?} to pid={:?} tid={:?}",
+            previous_pid,
+            previous_tid,
+            next_pid,
+            next_tid
+        );
         // Check if we need to perform a context switch.
         if next_tid != previous_tid {
             // We need to perform a context switch.
@@ -777,7 +791,9 @@ impl ProcessManager {
             }
             CURRENT_TID.store(next_tid.into(), ORDER);
 
+            trace!("switch(): calling ContextInformation::switch");
             ContextInformation::switch(from, to, user_tda);
+            trace!("switch(): returned from ContextInformation::switch");
         } else {
             // We do not need to perform a context switch, the same thread will continue running.
             PERF_SCHED_SOFT_CONTEXT_SWITCHES.fetch_add(1, ORDER);

@@ -53,7 +53,9 @@ pub fn kcall_handler(
         panic!("failed to initialize event manager: {:?}", e);
     }
 
+    trace!("kcall_handler(): entering main loop");
     let status: ExitStatus = loop {
+        trace!("kcall_handler(): loop iteration start");
         // Attempt to handle a kernel call.
         let mut kcall_handled: bool = false;
         match ScoreBoard::get_mut() {
@@ -121,6 +123,7 @@ pub fn kcall_handler(
         };
 
         // Check if inter-kernel communication messages are available.
+        trace!("kcall_handler(): checking for IKC messages");
         cfg_if::cfg_if! {
             if #[cfg(feature = "stdio")] {
                 let mut message_received: bool = false;
@@ -184,7 +187,14 @@ pub fn kcall_handler(
         }
 
         // No work to do, so yield the CPU.
+        trace!(
+            "kcall_handler(): kcall_handled={}, message_received={}, harvested_process={}",
+            kcall_handled,
+            message_received,
+            harvested_process
+        );
         if !kcall_handled && !message_received && !harvested_process {
+            trace!("kcall_handler(): calling giveup()");
             // SAFETY: the kernel process does not hold any resources.
             if let Err(error) = unsafe { ProcessManager::giveup() } {
                 error!("context switch failed (error={:?})", error);
