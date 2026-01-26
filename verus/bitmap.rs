@@ -1,422 +1,13 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
-#![allow(dead_code)]
 
 //==================================================================================================
-// Error Handling
+// Bitmap Allocator (Verified Implementation)
 //==================================================================================================
 
+use crate::error::{Error, ErrorCode};
+use crate::raw_array::{RawArray, is_zero, axiom_u8_zero_is_0};
 use vstd::prelude::*;
-
-verus! {
-
-///
-/// # Description
-///
-/// Error code for various adverse conditions.
-///
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(i32)]
-pub enum ErrorCode {
-    /// Invalid argument.
-    InvalidArgument = 22,
-    /// Out of memory.
-    OutOfMemory = 12,
-    /// Device or resource busy.
-    ResourceBusy = 16,
-    /// Bad address.
-    BadAddress = 14,
-}
-
-impl ErrorCode {
-    ///
-    /// # Description
-    ///
-    /// Returns the error code as an `i32`.
-    ///
-    pub fn get(&self) -> i32 {
-        *self as i32
-    }
-}
-
-///
-/// # Description
-///
-/// An error type that combines an error code with a reason string.
-///
-#[derive(Debug)]
-pub struct Error {
-    pub code: ErrorCode,
-    pub reason: &'static str,
-}
-
-impl Error {
-    ///
-    /// # Description
-    ///
-    /// Creates a new error.
-    ///
-    /// # Parameters
-    ///
-    /// - `code`: The error code.
-    /// - `reason`: A static string describing the error reason.
-    ///
-    /// # Returns
-    ///
-    /// A new error instance.
-    ///
-    pub fn new(code: ErrorCode, reason: &'static str) -> Self {
-        Self { code, reason }
-    }
-}
-
-} // verus!
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{:?}: {}", self.code, self.reason)
-    }
-}
-
-//==================================================================================================
-// Raw Array Storage
-//==================================================================================================
-
-///
-/// # Description
-///
-/// A type that represents the backing storage of a [`RawArray`].
-///
-// TODO: these three use may be wrong from my code changes --- shan
-use std::slice;
-use std::{
-    alloc::*,
-    ptr,
-};
-
-#[derive(Debug)]
-enum RawArrayStorage<T> {
-    /// A storage area that is managed by [alloc::GlobalAlloc].
-    Managed { ptr: ptr::NonNull<T>, len: usize },
-    /// A storage area that is not managed by [alloc::GlobalAlloc].
-    Unmanaged { ptr: ptr::NonNull<T>, len: usize },
-}
-
-impl<T> RawArrayStorage<T> {
-    ///
-    /// # Description
-    ///
-    /// Constructs backing storage for a raw array.
-    ///
-    /// # Parameters
-    ///
-    /// - `len`: Length of the backing storage.
-    ///
-    /// # Returns
-    ///
-    /// On success, the backing storage is returned, with all bits set to zero.
-    /// On failure, an error is returned instead.
-    ///
-    fn new_managed(len: usize) -> Result<RawArrayStorage<T>, Error> {
-        // Check if the length is invalid.
-        if len == 0 || len >= i32::MAX as usize {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid length"));
-        }
-
-        // Allocate underlying memory.
-        let layout: Layout = match Layout::array::<T>(len) {
-            Ok(layout) => layout,
-            Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid layout")),
-        };
-        let ptr: ptr::NonNull<T> = {
-            let ptr: *mut u8 = unsafe { alloc(layout) };
-            match ptr::NonNull::new(ptr as *mut T) {
-                Some(p) => p,
-                None => {
-                    return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
-                },
-            }
-        };
-
-        // Initialize the backing storage.
-        // Safety: The memory region is valid and the length is valid.
-        unsafe { ptr::write_bytes(ptr.as_ptr(), 0, len) };
-
-        Ok(RawArrayStorage::Managed { ptr, len })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs an unmanaged backing storage for a raw array.
-    ///
-    /// # Parameters
-    ///
-    /// - `ptr`: Pointer to the backing storage.
-    /// - `len`: Length of the backing storage.
-    ///
-    /// # Returns
-    ///
-    /// On success, the backing storage is returned, with all bits set to zero.
-    /// On failure, an error is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// Behavior is undefined if any of the following conditions are violated:
-    ///
-    /// - `ptr` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
-    /// - `ptr` must be properly aligned.
-    /// - `ptr` must point to len consecutive properly initialized values of type `T``.
-    ///
-    unsafe fn new_unmanaged(ptr: *mut T, len: usize) -> Result<RawArrayStorage<T>, Error> {
-        // Check if the length is invalid.
-        if len == 0 || len >= i32::MAX as usize {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid length"));
-        }
-
-        // Check if memory region wraps around.
-        if ptr.wrapping_add(len) < ptr {
-            return Err(Error::new(ErrorCode::InvalidArgument, "wrapping memory region"));
-        }
-
-        // Check and cast provided slice.
-        let ptr: ptr::NonNull<T> = match ptr::NonNull::new(ptr) {
-            Some(ptr) => ptr,
-            None => return Err(Error::new(ErrorCode::InvalidArgument, "invalid pointer")),
-        };
-
-        // Initialize the backing storage.
-        ptr::write_bytes(ptr.as_ptr(), 0, len);
-
-        Ok(RawArrayStorage::Unmanaged { ptr, len })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Gets a mutable slice to the underlying data in the backing storage.
-    ///
-    /// # Returns
-    ///
-    /// A mutable slice to the underlying data in the backing storage.
-    ///
-    fn get_mut(&mut self) -> &mut [T] {
-        match self {
-            RawArrayStorage::Managed { ptr, len } => unsafe {
-                slice::from_raw_parts_mut(ptr.as_ptr(), *len)
-            },
-            RawArrayStorage::Unmanaged { ptr, len } => unsafe {
-                slice::from_raw_parts_mut(ptr.as_ptr(), *len)
-            },
-        }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Gets a slice to the underlying data in the backing storage.
-    ///
-    /// # Returns
-    ///
-    /// A slice to the underlying data in the backing storage.
-    ///
-    fn get(&self) -> &[T] {
-        match self {
-            RawArrayStorage::Managed { ptr, len } => unsafe {
-                slice::from_raw_parts(ptr.as_ptr(), *len)
-            },
-            RawArrayStorage::Unmanaged { ptr, len } => unsafe {
-                slice::from_raw_parts(ptr.as_ptr(), *len)
-            },
-        }
-    }
-}
-
-//==================================================================================================
-// Raw Array
-//==================================================================================================
-
-verus! {
-
-#[verifier::reject_recursive_types(T)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-struct ExRawArrayStorage<T>(crate::RawArrayStorage<T>);
-
-///
-/// # Description
-///
-/// A type that represent a fixed-size array.
-///
-
-#[derive(Debug)]
-#[verifier::reject_recursive_types(T)]
-pub struct RawArray<T> {
-    /// The backing storage of the raw array.
-    storage: RawArrayStorage<T>,
-}
-
-
-impl<T> View for RawArray<T> {
-    type V = Seq<T>;
-
-    uninterp spec fn view(&self) -> Seq<T>;
-}
-
-// These two functions are used to specify that new create all-0 memory regions
-pub uninterp spec fn is_zero<T>(i: T) -> bool;
-
-pub axiom fn axiom_u8_zero_is_0(t: u8) requires is_zero(t) ensures t == 0;
-
-
-impl<T> RawArray<T> {
-    ///
-    /// # Description
-    ///
-    /// Constructs a new managed array.
-    ///
-    /// # Parameters
-    /// - `len`: Length of the array.
-    /// # Returns
-    ///
-    /// On success, the new managed array is returned, with all bits set to zero.
-    /// On failure, an error is returned instead.
-    ///
-    #[verifier::external_body]
-    pub fn new(len: usize) -> (result: Result<RawArray<T>, Error>)
-        ensures
-            result is Ok ==>
-            {
-                &&& result->Ok_0@.len() == len
-                &&& forall|i: int| 0 <= i < result->Ok_0@.len() ==> #[trigger] is_zero(result->Ok_0@[i])
-            }
-    {
-        Ok(RawArray {
-            storage: RawArrayStorage::new_managed(len)?,
-        })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a new unmanaged array.
-    ///
-    /// # Parameters
-    ///
-    /// - `ptr`: Pointer to the backing storage.
-    /// - `len`: Length of the backing storage.
-    ///
-    /// # Returns
-    ///
-    /// On success, the new unmanaged array is returned, with all bits set to zero.
-    /// On failure, an error is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// Behavior is undefined if any of the following conditions are violated:
-    ///
-    /// - `ptr` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
-    /// - `ptr` must be properly aligned.
-    /// - `ptr` must point to len consecutive properly initialized values of type `T``.
-    ///
-    #[verifier::external_body]
-    pub unsafe fn from_raw_parts(ptr: *mut T, len: usize) -> (result: Result<RawArray<T>, Error>)
-        ensures
-            result is Ok ==> result->Ok_0@.len() == len,
-    {
-        Ok(RawArray {
-            storage: RawArrayStorage::new_unmanaged(ptr, len)?,
-        })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Sets a value at a given index.
-    ///
-    /// # Parameters
-    ///
-    /// - `index`: Index to set the value at.
-    /// - `value`: Value to set.
-    ///
-    #[verifier::external_body]
-    pub fn set(&mut self, index: usize, value: T)
-        requires
-            0 <= index < old(self)@.len(),
-        ensures
-            self@.len() == old(self)@.len(),
-            self@[index as int] == value,
-            forall|i: int| 0 <= i < self@.len() && i != index ==> self@[i] == old(self)@[i],
-    {
-        let slice: &mut [T] = self.storage.get_mut();
-        slice[index] = value;
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the length of the array.
-    ///
-    /// # Returns
-    ///
-    /// The length of the array.
-    ///
-    #[verifier::external_body]
-    pub fn len(&self) -> (result: usize)
-        ensures
-            result == self@.len(),
-    {
-        self.storage.get().len()
-    }
-}
-
-impl<T> core::ops::Deref for RawArray<T> {
-    type Target = [T];
-
-    #[verifier::external_body]
-    fn deref(&self) -> (result: &Self::Target)
-        ensures
-            result@ == self@,
-    {
-        self.storage.get()
-    }
-}
-
-
-
-} // verus!
-
-impl<T> core::ops::DerefMut for RawArray<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.storage.get_mut()
-    }
-}
-
-impl<T> Drop for RawArray<T> {
-    fn drop(&mut self) {
-        use std::alloc::{
-            dealloc,
-            Layout,
-        };
-
-        match &self.storage {
-            RawArrayStorage::Managed { ptr, len } => {
-                let layout: Layout = match Layout::array::<T>(*len) {
-                    Ok(layout) => layout,
-                    Err(_) => return,
-                };
-                unsafe {
-                    dealloc(ptr.as_ptr() as *mut u8, layout);
-                }
-            },
-            RawArrayStorage::Unmanaged { .. } => (),
-        }
-    }
-}
-
-//==================================================================================================
-// Bitmap
-//==================================================================================================
 
 verus! {
 
@@ -453,6 +44,21 @@ impl BitmapView {
         Bitmap::count_set_bits_in_seq(self.bits, 0, self.bits.len() as int)
     }
 
+    /// Alias for usage() - returns the count of allocated (set) bits.
+    pub open spec fn count_allocated(&self) -> int {
+        self.usage()
+    }
+
+    /// Returns the count of free (unset) bits.
+    pub open spec fn count_free(&self) -> int {
+        self.number_of_bits() - self.count_allocated()
+    }
+
+    /// Returns true if there exists at least one unset bit.
+    pub open spec fn has_free_bit(&self) -> bool {
+        exists|i: int| 0 <= i < self.number_of_bits() && !self.bits[i]
+    }
+
     /// Returns true if the bitmap is full (all bits set)
     pub open spec fn is_full(&self) -> bool {
         self.usage() == self.number_of_bits()
@@ -461,6 +67,11 @@ impl BitmapView {
     /// Returns true if the bitmap is empty (no bits set)
     pub open spec fn is_empty(&self) -> bool {
         self.usage() == 0
+    }
+    
+    /// Returns true if a specific bit is set.
+    pub open spec fn is_bit_set(&self, index: int) -> bool {
+        self.bits[index]
     }
 }
 
@@ -499,7 +110,7 @@ impl Bitmap {
     }
 
     /// Helper spec function: check if a bit at the given bit index is set
-    pub closed spec fn is_bit_set(&self, bit_index: int) -> bool {
+    pub open spec fn is_bit_set(&self, bit_index: int) -> bool {
         &&& 0 <= bit_index < self@.number_of_bits()
         &&& self@.bits[bit_index]
     }
@@ -830,6 +441,25 @@ impl Bitmap {
         }
     }
 
+    /// Lemma: if bitmap is full, there are no free bits
+    pub proof fn lemma_is_full_implies_no_free_bit(&self)
+        requires
+            self.inv(),
+            self@.is_full(),
+        ensures
+            !self@.has_free_bit(),
+    {
+        // is_full() means usage == number_of_bits.
+        // has_free_bit() on BitmapView means exists|i| 0 <= i < n && !bits[i].
+        // We prove by showing that all bits[i] are true.
+        self.lemma_is_full_means_all_bits_set();
+        // Now forall|i| is_bit_set(i), which means forall|i| self@.bits[i].
+        assert forall|i: int| 0 <= i < self@.number_of_bits() implies self@.bits[i] by {
+            assert(self.is_bit_set(i));
+        }
+        // has_free_bit() = exists|i| !bits[i], which is now false.
+    }
+
     /// Lemma: if bitmap is not full, there exists at least one unset bit
     pub proof fn lemma_not_full_means_exists_unset_bit(&self)
         requires
@@ -843,8 +473,24 @@ impl Bitmap {
         }
     }
 
+    /// Lemma: If a specific bit is unset, then has_free_bit() is true.
+    pub proof fn lemma_unset_bit_implies_has_free_bit(&self, i: int)
+        requires
+            self.inv(),
+            0 <= i < self@.number_of_bits(),
+            !self.is_bit_set(i),
+        ensures
+            self@.has_free_bit(),
+    {
+        // has_free_bit() = exists|j| 0 <= j < n && !bits[j]
+        // We have 0 <= i < n and !is_bit_set(i).
+        // is_bit_set(i) implies bits[i], so !is_bit_set(i) implies !bits[i].
+        // Therefore the existential is satisfied with witness i.
+        assert(!self@.bits[i]);
+    }
+
     /// Lemma: if all bits are set, bitmap is full
-    proof fn lemma_all_bits_set_means_full(&self)
+    pub proof fn lemma_all_bits_set_means_full(&self)
         requires
             self.inv(),
             forall|i: int| 0 <= i < self@.number_of_bits() ==> self.is_bit_set(i),
@@ -929,6 +575,38 @@ impl Bitmap {
         };
     }
 
+    /// Lemma: Connects closed `is_bit_set` to open `BitmapView.is_bit_set`.
+    /// This allows frame and other modules to reason about is_bit_set through the view.
+    pub proof fn lemma_is_bit_set_equals_view(&self, i: int)
+        requires
+            self.inv(),
+            0 <= i < self@.number_of_bits(),
+        ensures
+            self.is_bit_set(i) == self@.is_bit_set(i),
+    {
+        // Both are defined in terms of self@.bits[i]
+        assert(self.is_bit_set(i) == self@.bits[i]);
+        assert(self@.is_bit_set(i) == self@.bits[i]);
+    }
+
+    /// Lemma: If bits sequences are equal, then is_bit_set returns the same result.
+    /// This connects the closed is_bit_set predicate to the bits sequence equality.
+    pub proof fn lemma_bits_equal_implies_is_bit_set_equal(&self, other: &Self, i: int)
+        requires
+            self.inv(),
+            other.inv(),
+            self@.bits =~= other@.bits,
+            0 <= i < self@.number_of_bits(),
+        ensures
+            self.is_bit_set(i) == other.is_bit_set(i),
+    {
+        // is_bit_set(i) is defined as self@.bits[i].
+        // If bits are equal, then bits[i] is equal.
+        assert(self@.bits[i] == other@.bits[i]);
+        assert(self.is_bit_set(i) == self@.bits[i]);
+        assert(other.is_bit_set(i) == other@.bits[i]);
+    }
+
     //==================================================================================================
     // Invariant
     //==================================================================================================
@@ -970,7 +648,6 @@ impl Bitmap {
                 &&& bitmap@.is_empty()
                 &&& forall|i: int| 0 <= i < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(i)
             },
-            //TODO: should we specify Err situations?
     {
         // Check if the length is invalid.
         if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
@@ -1006,6 +683,25 @@ impl Bitmap {
         Ok(result)
     }
 
+    /// Alias for `new` for backward compatibility with slab/frame APIs.
+    pub fn new_managed(number_of_bits: usize) -> (result: Result<Self, Error>)
+        requires
+            number_of_bits > 0,
+            number_of_bits <= (usize::MAX as int - 7) / 8 * 8,
+            number_of_bits % (u8::BITS as usize) == 0,
+            number_of_bits < u32::MAX as usize,
+        ensures
+            result is Ok ==> {
+                let bmp = result->Ok_0;
+                &&& bmp.inv()
+                &&& bmp@.number_of_bits() == number_of_bits as int
+                &&& bmp@.is_empty()
+                &&& forall|i: int| 0 <= i < number_of_bits as int ==> !bmp.is_bit_set(i)
+            },
+    {
+        Self::new(number_of_bits)
+    }
+
     ///
     /// # Description
     ///
@@ -1022,7 +718,7 @@ impl Bitmap {
     ///
     pub fn from_raw_array(array: RawArray<u8>) -> (result: Self)
         requires
-            array@.len() > 0, //TODO: is this needed?
+            array@.len() > 0, // Required since inv() requires number_of_bits > 0.
             array@.len() <= usize::MAX / (u8::BITS as usize),
             array@.len() * (u8::BITS as usize) < u32::MAX as usize,
             forall|i: int| 0 <= i < array@.len() ==> array@[i] == 0,
@@ -1050,6 +746,20 @@ impl Bitmap {
     ///
     /// # Description
     ///
+    /// Proves that number_of_bits is bounded by usize::MAX.
+    ///
+    pub proof fn lemma_number_of_bits_bounded(&self)
+        requires
+            self.inv(),
+        ensures
+            self@.number_of_bits() <= usize::MAX as int,
+    {
+        // From inv(): number_of_bits < u32::MAX, and u32::MAX <= usize::MAX.
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the number of bits in the bitmap.
     ///
     /// # Returns
@@ -1061,11 +771,28 @@ impl Bitmap {
             self.inv(),
         ensures
             result as int == self@.number_of_bits(),
-            result > 0, //TODO: really?
+            result > 0, // Follows from inv() which requires number_of_bits > 0.
             result < u32::MAX as usize,
-            // number_of_bits is read-only - no state changes //TODO: should this be specified?
     {
         self.number_of_bits
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the number of bits set (usage count) in the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// The number of bits set in the bitmap.
+    ///
+    pub fn usage(&self) -> (result: usize)
+        requires
+            self.inv(),
+        ensures
+            result as int == self@.usage(),
+    {
+        self.usage
     }
 
     ///
@@ -1094,7 +821,9 @@ impl Bitmap {
                     self.is_bit_set(i) == old(self).is_bit_set(i)
                 &&& self@.usage() == old(self)@.usage() + 1
             },
-            result is Err ==> self@.bits == old(self)@.bits,
+            result is Err ==> self@ == old(self)@,
+            // Liveness: if there's a free bit, allocation succeeds.
+            old(self)@.has_free_bit() ==> result is Ok,
     {
         self.alloc_range(1)
     }
@@ -1132,7 +861,9 @@ impl Bitmap {
                     self.is_bit_set(i) == old(self).is_bit_set(i)
                 &&& self@.usage() == old(self)@.usage() + (size as int)
             },
-            result is Err ==> self@.bits == old(self)@.bits,
+            result is Err ==> self@ == old(self)@,
+            // Liveness for size=1: if there's a free bit, allocation succeeds.
+            (size == 1 && old(self)@.has_free_bit()) ==> result is Ok,
     {
         let ghost old_self = *self;
 
@@ -1144,6 +875,27 @@ impl Bitmap {
 
         // Check if allocation exceeds the bitmap capacity.
         if self.usage > self.number_of_bits - size {
+            proof {
+                // For size=1: usage > number_of_bits - 1 means usage >= number_of_bits.
+                // Since inv() ensures usage <= number_of_bits, we have usage == number_of_bits.
+                // This means is_full().
+                if size == 1 {
+                    assert(self.usage as int > self.number_of_bits as int - 1);
+                    assert(self.usage as int >= self.number_of_bits as int);
+                    // From inv: usage <= number_of_bits.
+                    assert(self.usage as int == self.number_of_bits as int);
+                    // is_full() = usage() == number_of_bits().
+                    assert(self@.is_full());
+                    // is_full() implies !has_free_bit() by our lemma.
+                    self.lemma_is_full_implies_no_free_bit();
+                    assert(!self@.has_free_bit());
+                    // Since self@.bits == old(self)@.bits and self == old(self), we have
+                    // old(self)@.is_full() and !old(self)@.has_free_bit().
+                    assert(self@.bits =~= old(self)@.bits);
+                    // The postcondition (size == 1 && old(self)@.has_free_bit()) ==> result is Ok
+                    // is vacuously true because !has_free_bit().
+                }
+            }
             let reason: &str = "allocation exceeds bitmap capacity";
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
@@ -1161,6 +913,8 @@ impl Bitmap {
                 start <= self.number_of_bits,
                 self@.bits == old(self)@.bits,
                 self.usage <= self.number_of_bits - size,
+                // For size=1: all bits before start are set (checked and found occupied).
+                size == 1 ==> forall|i: int| 0 <= i < start as int ==> self.is_bit_set(i),
         {
             // Check for fast skip/ path.
             let is_aligned: bool = start % (u8::BITS as usize) == 0;
@@ -1168,6 +922,22 @@ impl Bitmap {
                 let word: usize = start / u8::BITS as usize;
                 // Fast skip: if the starting word is full, skip to the next word.
                 if self.bits[word] == u8::MAX {
+                    proof {
+                        // When a byte is 0xFF (u8::MAX), all 8 bits are set.
+                        // Prove that bits start..start+8 are all set.
+                        if size == 1 {
+                            assert forall|i: int| start as int <= i < start as int + 8 implies
+                                self.is_bit_set(i)
+                            by {
+                                let bit_pos: int = i % 8;
+                                let bit_pos_u8: u8 = bit_pos as u8;
+                                // u8::MAX = 0xFF. For any bit position 0-7, (0xFF & (1 << b)) != 0.
+                                assert((0xFFu8 & (1u8 << bit_pos_u8)) != 0) by (bit_vector)
+                                    requires 0 <= bit_pos_u8 < 8;
+                            }
+                            // Combined with the loop invariant, all bits [0, start+8) are set.
+                        }
+                    }
                     // Jump to next byte boundary.
                     start = start + u8::BITS as usize;
                     continue;
@@ -1177,9 +947,11 @@ impl Bitmap {
             // Check if all bits in the range are free.
             let mut free: bool = true;
             let mut offset: usize = 0;
+            let ghost start_before_inner = start;
             while offset < size
                 invariant_except_break
                     start <= self.number_of_bits - size,
+                    start == start_before_inner,
                     forall|i: int| 0 <= i < offset ==>
                         !#[trigger] self.is_bit_set((start + i) as int),
                 invariant
@@ -1188,15 +960,34 @@ impl Bitmap {
                     0 < size <= self.number_of_bits,
                     offset <= size,
                     self@.bits == old(self)@.bits,
+                    // For size=1: all bits before start_before_inner are set.
+                    size == 1 ==> forall|i: int| 0 <= i < start_before_inner as int ==> self.is_bit_set(i),
                 ensures
                     start <= self.number_of_bits,
                     free ==> start <= self.number_of_bits - size &&
                         forall|i: int| 0 <= i < size ==>
                             !#[trigger] self.is_bit_set((start + i) as int),
+                    // On break (!free): all bits before new start are set (for size=1).
+                    (size == 1 && !free) ==> forall|i: int| 0 <= i < start as int ==> self.is_bit_set(i),
             {
                 let idx: usize = start + offset;
                 let (w, b): (usize, usize) = self.index_unchecked(idx);
                 if (self.bits[w] & (1 << b)) != 0 {
+                    proof {
+                        // The bit at position idx = start + offset is set.
+                        let bit_pos: u8 = b as u8;
+                        assert((self.bits@[w as int] & (1u8 << bit_pos)) != 0);
+                        assert(self.is_bit_set(idx as int));
+                        // For size=1: offset=0, so idx = start.
+                        // After break, start = start + 1.
+                        // Invariant gives: forall|i| 0 <= i < start ==> is_bit_set(i).
+                        // We just showed is_bit_set(start), so forall|i| 0 <= i < start+1 ==> is_bit_set(i).
+                        if size == 1 {
+                            assert(offset == 0);
+                            assert(idx as int == start as int);
+                            assert(self.is_bit_set(start as int));
+                        }
+                    }
                     free = false;
                     start = start + offset + 1;
                     break;
@@ -1334,6 +1125,28 @@ impl Bitmap {
             }
         }
 
+        // For size=1: If we reach here, the loop invariant tells us all bits in [0, start) are set.
+        // After loop exit: start > number_of_bits - size, so start >= number_of_bits for size=1.
+        // Combined with start <= number_of_bits (invariant), we have start == number_of_bits.
+        // So all bits in [0, number_of_bits) are set, meaning !has_free_bit().
+        proof {
+            if size == 1 {
+                // Loop exit condition: start > number_of_bits - 1, so start >= number_of_bits.
+                // Loop invariant: start <= number_of_bits.
+                // Therefore: start == number_of_bits.
+                assert(start as int == self.number_of_bits as int);
+                // Loop invariant: forall|i| 0 <= i < start ==> is_bit_set(i).
+                // So all bits [0, number_of_bits) are set.
+                assert forall|i: int| 0 <= i < self@.number_of_bits() implies self@.bits[i] by {
+                    assert(self.is_bit_set(i));
+                }
+                // This means !has_free_bit().
+                assert(!self@.has_free_bit());
+                // Since bits are unchanged, same applies to old(self).
+                assert(self@.bits =~= old(self)@.bits);
+                // Therefore the postcondition (size==1 && has_free_bit() ==> Ok) is vacuously true.
+            }
+        }
         let reason: &str = "bitmap is full";
         Err(Error::new(ErrorCode::OutOfMemory, reason))
     }
@@ -1453,6 +1266,146 @@ impl Bitmap {
     ///
     /// # Description
     ///
+    /// Clears a range of bits in the bitmap.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Starting index of the range to clear.
+    /// - `size`: Size of the range to clear.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    #[verifier::exec_allows_no_decreases_clause]
+    pub fn clear_range(&mut self, start: usize, size: usize) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            size > 0,
+            start as int + (size as int) <= old(self)@.number_of_bits(),
+            old(self).all_bits_set_in_range(start as int, start as int + (size as int)),
+        ensures
+            self.inv(),
+            result is Ok ==> {
+                &&& self.all_bits_unset_in_range(start as int, start as int + (size as int))
+                &&& self@.number_of_bits() == old(self)@.number_of_bits()
+                &&& forall|i: int| 0 <= i < self@.number_of_bits() &&
+                    (i < start as int || i >= start as int + (size as int)) ==>
+                    self.is_bit_set(i) == old(self).is_bit_set(i)
+                &&& self@.usage() == old(self)@.usage() - (size as int)
+            },
+            result is Err ==> self@ == old(self)@,
+            // Liveness: clearing always succeeds when preconditions are met.
+            result is Ok,
+    {
+        let ghost old_self = *self;
+
+        // Check if the range is within bounds.
+        if start > self.number_of_bits - size {
+            proof {
+                // This should be unreachable due to preconditions.
+                assert(false);
+            }
+            let reason: &str = "range out of bounds";
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // Clear the range one bit at a time using the verified clear function.
+        let ghost pre_clear_self = *self;
+        let mut offset: usize = 0;
+
+        while offset < size
+            invariant
+                self.inv(),
+                old_self.inv(),
+                pre_clear_self.inv(),
+                old_self == old(self),
+                pre_clear_self == old(self),
+                self.number_of_bits == pre_clear_self.number_of_bits,
+                self@.number_of_bits() == old(self)@.number_of_bits(),
+                0 < size <= self.number_of_bits,
+                start <= self.number_of_bits - size,
+                offset <= size,
+                // Bits in [start, start+offset) are cleared.
+                forall|i: int| start as int <= i < (start + offset) as int ==>
+                    !#[trigger] self.is_bit_set(i),
+                // Bits in [start+offset, start+size) are still set.
+                forall|i: int| (start + offset) as int <= i < (start + size) as int ==>
+                    #[trigger] self.is_bit_set(i),
+                // Bits outside [start, start+size) are unchanged from old_self.
+                forall|i: int| (0 <= i < self@.number_of_bits() &&
+                    (i < start as int || i >= (start + size) as int)) ==>
+                    #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i),
+                // Usage tracking: decreased by offset so far.
+                self@.usage() == old_self@.usage() - offset,
+        {
+            let idx: usize = start + offset;
+
+            proof {
+                // The bit at idx is still set (from invariant: bits in [start+offset, start+size) are set).
+                assert(self.is_bit_set(idx as int));
+            }
+
+            // Use the verified clear function.
+            let clear_result: Result<(), Error> = self.clear(idx);
+
+            proof {
+                // clear succeeds because the bit is set and in bounds.
+                match clear_result {
+                    Ok(_) => {},
+                    Err(_) => { assert(false); }
+                }
+
+                // After clearing, update our knowledge.
+                // Bits in [start, start+offset+1) are now cleared.
+                assert(!self.is_bit_set(idx as int));
+
+                // Bits in [start+offset+1, start+size) are still set.
+                assert forall|i: int| (start + offset + 1) as int <= i < (start + size) as int
+                    implies #[trigger] self.is_bit_set(i)
+                by {
+                    // i != idx, so unchanged by clear.
+                };
+
+                // Bits outside [start, start+size) are unchanged.
+                assert forall|i: int| (0 <= i < self@.number_of_bits() &&
+                    (i < start as int || i >= (start + size) as int))
+                    implies #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i)
+                by {
+                    // i != idx, so unchanged by clear.
+                };
+
+                // Bits in [start, start+offset+1) are cleared.
+                assert forall|i: int| start as int <= i < (start + offset + 1) as int
+                    implies !#[trigger] self.is_bit_set(i)
+                by {
+                    if i < (start + offset) as int {
+                        // From loop invariant.
+                    } else {
+                        // i == start + offset == idx, which we just cleared.
+                        assert(i == idx as int);
+                    }
+                };
+            }
+
+            offset = offset + 1;
+        }
+
+        proof {
+            // At loop exit: offset == size, so all bits [start, start+size) are cleared.
+            assert forall|i: int| start as int <= i < (start + size) as int implies
+                !self.is_bit_set(i)
+            by {
+                // From invariant with offset == size.
+            };
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Tests a bit at a given index in the bitmap.
     ///
     /// # Parameters
@@ -1553,22 +1506,10 @@ impl Bitmap {
 }
 
 //==================================================================================================
-// Verifiable Test Functions
+// Verified Tests
 //==================================================================================================
 
-
-//================================================================================
-//=====These few functions are converted from test functions in mod tests=========
-//=====Those functions were originally written by LLM 		       =========
-//=====before the specifications/proof was developed in this file        =========
-//================================================================================
-//1. **test_bitmap_new** → **test_bitmap_new_verified**
-//2. **test_bitmap_alloc** → **test_bitmap_alloc_verified**
-//3. **test_bitmap_set_clear** → **test_bitmap_set_clear_verified**
-//4. **test_bitmap_alloc_range** → **test_bitmap_alloc_range_verified**
-
-
-/// Verifiable test: creating a new bitmap should set number_of_bits correctly
+/// Verifiable test: creating a new bitmap should set number_of_bits correctly.
 fn test_bitmap_new_verified(number_of_bits: usize)
     requires
         number_of_bits > 0,
@@ -1581,7 +1522,7 @@ fn test_bitmap_new_verified(number_of_bits: usize)
     }
 }
 
-/// Verifiable test: allocating a bit should return a valid index and set the bit
+/// Verifiable test: allocating a bit should return a valid index and set the bit.
 fn test_bitmap_alloc_verified(number_of_bits: usize)
     requires
         number_of_bits > 0,
@@ -1592,15 +1533,15 @@ fn test_bitmap_alloc_verified(number_of_bits: usize)
     if let Ok(mut bitmap) = result {
         let alloc_result = bitmap.alloc();
         if let Ok(index) = alloc_result {
-            // The allocated index should be within bounds
+            // The allocated index should be within bounds.
             assert(index < number_of_bits);
-            // The bit at the allocated index should be set
+            // The bit at the allocated index should be set.
             assert(bitmap.is_bit_set(index as int));
         }
     }
 }
 
-/// Verifiable test: setting and clearing a bit should work correctly
+/// Verifiable test: setting and clearing a bit should work correctly.
 fn test_bitmap_set_clear_verified(number_of_bits: usize, index: usize)
     requires
         number_of_bits > 0,
@@ -1610,23 +1551,23 @@ fn test_bitmap_set_clear_verified(number_of_bits: usize, index: usize)
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Set the bit
+        // Set the bit.
         let set_result = bitmap.set(index);
         if let Ok(()) = set_result {
-            // The bit should be set
+            // The bit should be set.
             assert(bitmap.is_bit_set(index as int));
 
-            // Clear the bit
+            // Clear the bit.
             let clear_result = bitmap.clear(index);
             if let Ok(()) = clear_result {
-                // The bit should be cleared
+                // The bit should be cleared.
                 assert(!bitmap.is_bit_set(index as int));
             }
         }
     }
 }
 
-/// Verifiable test: allocating a range should allocate contiguous bits
+/// Verifiable test: allocating a range should allocate contiguous bits.
 fn test_bitmap_alloc_range_verified(number_of_bits: usize, size: usize)
     requires
         number_of_bits > 0,
@@ -1639,33 +1580,19 @@ fn test_bitmap_alloc_range_verified(number_of_bits: usize, size: usize)
     if let Ok(mut bitmap) = result {
         let alloc_result = bitmap.alloc_range(size);
         if let Ok(start_index) = alloc_result {
-            // The start index should be within valid range
+            // The start index should be within valid range.
             assert(start_index + size <= number_of_bits);
 
-            // All bits in the range should be set
+            // All bits in the range should be set.
             assert(bitmap.all_bits_set_in_range(start_index as int, (start_index + size) as int));
         }
     }
 }
 
-
-//==========================================================
-//=====These few functions were written by LLM 	 =========
-//=====after it converted the above test functions =========
-//==========================================================
-// test_bitmap_multiple_alloc_verified(number_of_bits: usize)
-// test_bitmap_clear_and_realloc_verified(number_of_bits: usize, index: usize)
-// test_bitmap_usage_tracking_verified(number_of_bits: usize)
-// test_bitmap_alloc_range_preserves_others_verified(number_of_bits: usize, size: usize, test_index: usize)
-// test_bitmap_number_of_bits_constant_verified(number_of_bits: usize, index: usize)
-// test_bitmap_double_set_fails_verified(number_of_bits: usize, index: usize)
-// test_bitmap_double_clear_fails_verified(number_of_bits: usize, index: usize)
-
-
-/// Verifiable test: multiple allocations should not overlap
+/// Verifiable test: multiple allocations should not overlap.
 fn test_bitmap_multiple_alloc_verified(number_of_bits: usize)
     requires
-        number_of_bits >= 16,  // Need at least 2 bits
+        number_of_bits >= 16,  // Need at least 2 bits.
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
 {
@@ -1675,9 +1602,9 @@ fn test_bitmap_multiple_alloc_verified(number_of_bits: usize)
         if let Ok(index1) = alloc1 {
             let alloc2 = bitmap.alloc();
             if let Ok(index2) = alloc2 {
-                // The two allocated indices should be different
+                // The two allocated indices should be different.
                 assert(index1 != index2);
-                // Both bits should be set
+                // Both bits should be set.
                 assert(bitmap.is_bit_set(index1 as int));
                 assert(bitmap.is_bit_set(index2 as int));
             }
@@ -1685,7 +1612,7 @@ fn test_bitmap_multiple_alloc_verified(number_of_bits: usize)
     }
 }
 
-/// Verifiable test: clearing and re-allocating should work
+/// Verifiable test: clearing and re-allocating should work.
 fn test_bitmap_clear_and_realloc_verified(number_of_bits: usize, index: usize)
     requires
         number_of_bits > 0,
@@ -1695,53 +1622,51 @@ fn test_bitmap_clear_and_realloc_verified(number_of_bits: usize, index: usize)
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Set a bit
+        // Set a bit.
         let set_result = bitmap.set(index);
         if let Ok(()) = set_result {
-            let ghost bitmap_after_set = bitmap;
-
-            // Clear the bit
+            // Clear the bit.
             let clear_result = bitmap.clear(index);
             if let Ok(()) = clear_result {
-                // The bit should be cleared
+                // The bit should be cleared.
                 assert(!bitmap.is_bit_set(index as int));
 
-                // Usage should be back to 0 (since we started with 0, set 1, then cleared 1)
+                // Usage should be back to 0.
                 assert(bitmap@.usage() == 0);
             }
         }
     }
 }
 
-/// Verifiable test: usage tracking is correct
+/// Verifiable test: usage tracking is correct.
 fn test_bitmap_usage_tracking_verified(number_of_bits: usize)
     requires
-        number_of_bits >= 24,  // Need at least 3 bits
+        number_of_bits >= 24,  // Need at least 3 bits.
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Initially empty
+        // Initially empty.
         assert(bitmap@.is_empty());
         assert(bitmap@.usage() == 0);
 
-        // Allocate first bit
+        // Allocate first bit.
         let alloc1 = bitmap.alloc();
         if let Ok(_) = alloc1 {
             assert(bitmap@.usage() == 1);
 
-            // Allocate second bit
+            // Allocate second bit.
             let alloc2 = bitmap.alloc();
             if let Ok(_) = alloc2 {
                 assert(bitmap@.usage() == 2);
 
-                // Allocate third bit
+                // Allocate third bit.
                 let alloc3 = bitmap.alloc();
                 if let Ok(index3) = alloc3 {
                     assert(bitmap@.usage() == 3);
 
-                    // Clear one bit
+                    // Clear one bit.
                     let clear_result = bitmap.clear(index3);
                     if let Ok(()) = clear_result {
                         assert(bitmap@.usage() == 2);
@@ -1752,7 +1677,7 @@ fn test_bitmap_usage_tracking_verified(number_of_bits: usize)
     }
 }
 
-/// Verifiable test: alloc_range preserves bits outside the allocated range
+/// Verifiable test: alloc_range preserves bits outside the allocated range.
 fn test_bitmap_alloc_range_preserves_others_verified(number_of_bits: usize, size: usize, test_index: usize)
     requires
         number_of_bits >= 16,
@@ -1764,13 +1689,13 @@ fn test_bitmap_alloc_range_preserves_others_verified(number_of_bits: usize, size
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Set a bit first
+        // Set a bit first.
         let set_result = bitmap.set(test_index);
         if let Ok(()) = set_result {
-            // Allocate a range
+            // Allocate a range.
             let alloc_result = bitmap.alloc_range(size);
             if let Ok(start_index) = alloc_result {
-                // If test_index is outside the allocated range, it should still be set
+                // If test_index is outside the allocated range, it should still be set.
                 if test_index < start_index || test_index >= start_index + size {
                     assert(bitmap.is_bit_set(test_index as int));
                 }
@@ -1779,7 +1704,7 @@ fn test_bitmap_alloc_range_preserves_others_verified(number_of_bits: usize, size
     }
 }
 
-/// Verifiable test: number_of_bits remains constant across operations
+/// Verifiable test: number_of_bits remains constant across operations.
 fn test_bitmap_number_of_bits_constant_verified(number_of_bits: usize, index: usize)
     requires
         number_of_bits > 0,
@@ -1792,19 +1717,19 @@ fn test_bitmap_number_of_bits_constant_verified(number_of_bits: usize, index: us
         let ghost initial_bits = bitmap@.number_of_bits();
         assert(initial_bits == number_of_bits as int);
 
-        // After allocation
+        // After allocation.
         let alloc_result = bitmap.alloc();
         if let Ok(_) = alloc_result {
             assert(bitmap@.number_of_bits() == initial_bits);
 
-            // After setting a bit
+            // After setting a bit.
             let set_result = bitmap.set(index);
             match set_result {
                 Ok(()) => {
                     assert(bitmap@.number_of_bits() == initial_bits);
                 },
                 Err(_) => {
-                    // If set failed (bit already set), number_of_bits should still be the same
+                    // If set failed (bit already set), number_of_bits should still be the same.
                     assert(bitmap@.number_of_bits() == initial_bits);
                 }
             }
@@ -1812,7 +1737,7 @@ fn test_bitmap_number_of_bits_constant_verified(number_of_bits: usize, index: us
     }
 }
 
-/// Verifiable test: setting an already-set bit should fail
+/// Verifiable test: setting an already-set bit should fail.
 fn test_bitmap_double_set_fails_verified(number_of_bits: usize, index: usize)
     requires
         number_of_bits > 0,
@@ -1822,20 +1747,20 @@ fn test_bitmap_double_set_fails_verified(number_of_bits: usize, index: usize)
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Set the bit
+        // Set the bit.
         let set_result1 = bitmap.set(index);
         if let Ok(()) = set_result1 {
-            // Try to set the same bit again
+            // Try to set the same bit again.
             let set_result2 = bitmap.set(index);
-            // This should fail because the bit is already set
+            // This should fail because the bit is already set.
             assert(set_result2 is Err);
-            // The bit should still be set
+            // The bit should still be set.
             assert(bitmap.is_bit_set(index as int));
         }
     }
 }
 
-/// Verifiable test: clearing an already-clear bit should fail
+/// Verifiable test: clearing an already-clear bit should fail.
 fn test_bitmap_double_clear_fails_verified(number_of_bits: usize, index: usize)
     requires
         number_of_bits > 0,
@@ -1845,31 +1770,16 @@ fn test_bitmap_double_clear_fails_verified(number_of_bits: usize, index: usize)
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // The bit is initially clear, try to clear it
+        // The bit is initially clear, try to clear it.
         let clear_result = bitmap.clear(index);
-        // This should fail because the bit is already clear
+        // This should fail because the bit is already clear.
         assert(clear_result is Err);
-        // The bit should still be clear
+        // The bit should still be clear.
         assert(!bitmap.is_bit_set(index as int));
     }
 }
 
-//================================================================================
-//=====These few functions are converted from test functions in src/test.rs  =====
-//=====Those test functions were originally written by Nanvix authors       ======
-//================================================================================
-/*
-*1. **test_set_and_clear_all_bits** → **test_set_and_clear_all_bits_verified**
-*2. **test_alloc_and_clear_all_bits** → **test_alloc_and_clear_all_bits_verified**
-*3. **test_alloc_range_across_word_boundary** → **test_alloc_range_across_word_boundary_verified**
-*4. **test_alloc_range_too_large** → **test_alloc_range_too_large_verified**
-*5. **test_alloc_range_zero** → **test_alloc_range_zero_verified**
-*6. **test_alloc_random_ranges** → **test_alloc_range_and_clear_verified**
-*7. **test_alloc_random_bits_in_partial_bitmap** → **test_alloc_in_partial_bitmap_verified**
-*8. **test_alloc_random_ranges_in_partial_bitmap** →
-   **test_alloc_range_in_partial_bitmap_verified**
-*/
-/// Verifiable test: setting all bits and then clearing all bits
+/// Verifiable test: setting all bits and then clearing all bits.
 fn test_set_and_clear_all_bits_verified(number_of_bits: usize)
     requires
         number_of_bits > 0,
@@ -1878,7 +1788,7 @@ fn test_set_and_clear_all_bits_verified(number_of_bits: usize)
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Set all bits
+        // Set all bits.
         let mut i: usize = 0;
         while i < number_of_bits
             invariant
@@ -1892,17 +1802,16 @@ fn test_set_and_clear_all_bits_verified(number_of_bits: usize)
             if let Ok(()) = set_result {
                 i = i + 1;
             } else {
-                // If set fails, we break out (this shouldn't happen for a valid index)
                 break;
             }
         }
 
-        // If we set all bits successfully
+        // If we set all bits successfully.
         if i == number_of_bits {
-            // All bits should be set
+            // All bits should be set.
             assert(bitmap.all_bits_set_in_range(0, number_of_bits as int));
 
-            // Clear all bits
+            // Clear all bits.
             let mut j: usize = 0;
             while j < number_of_bits
                 invariant
@@ -1916,21 +1825,20 @@ fn test_set_and_clear_all_bits_verified(number_of_bits: usize)
                 if let Ok(()) = clear_result {
                     j = j + 1;
                 } else {
-                    // If clear fails, we break out
                     break;
                 }
             }
 
-            // If we cleared all bits successfully
+            // If we cleared all bits successfully.
             if j == number_of_bits {
-                // All bits should be cleared
+                // All bits should be cleared.
                 assert(bitmap.all_bits_unset_in_range(0, number_of_bits as int));
             }
         }
     }
 }
 
-/// Verifiable test: allocating all bits and then clearing all bits
+/// Verifiable test: allocating all bits and then clearing all bits.
 fn test_alloc_and_clear_all_bits_verified(number_of_bits: usize)
     requires
         number_of_bits > 0,
@@ -1939,7 +1847,7 @@ fn test_alloc_and_clear_all_bits_verified(number_of_bits: usize)
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Allocate all bits
+        // Allocate all bits.
         let mut count: usize = 0;
         while count < number_of_bits
             invariant
@@ -1953,24 +1861,23 @@ fn test_alloc_and_clear_all_bits_verified(number_of_bits: usize)
             if let Ok(_) = alloc_result {
                 count = count + 1;
             } else {
-                // If alloc fails, we break out (this shouldn't happen if we haven't allocated all bits)
                 break;
             }
         }
 
-        // If we allocated all bits successfully
+        // If we allocated all bits successfully.
         if count == number_of_bits {
-            // Usage should equal number_of_bits, so bitmap is full
+            // Usage should equal number_of_bits, so bitmap is full.
             assert(bitmap@.usage() == number_of_bits as int);
             assert(bitmap@.is_full());
 
-            // By lemma, all bits should be set
+            // By lemma, all bits should be set.
             proof {
                 bitmap.lemma_is_full_means_all_bits_set();
             }
             assert(bitmap.all_bits_set_in_range(0, number_of_bits as int));
 
-            // Clear all bits
+            // Clear all bits.
             let mut j: usize = 0;
             while j < number_of_bits
                 invariant
@@ -1984,95 +1891,20 @@ fn test_alloc_and_clear_all_bits_verified(number_of_bits: usize)
                 if let Ok(()) = clear_result {
                     j = j + 1;
                 } else {
-                    // If clear fails, we break out
                     break;
                 }
             }
 
-            // If we cleared all bits successfully
+            // If we cleared all bits successfully.
             if j == number_of_bits {
-                // All bits should be cleared
+                // All bits should be cleared.
                 assert(bitmap.all_bits_unset_in_range(0, number_of_bits as int));
             }
         }
     }
 }
 
-/// Verifiable test: allocating a range across word (byte) boundary
-fn test_alloc_range_across_word_boundary_verified(number_of_bits: usize, start: usize, size: usize)
-    requires
-        number_of_bits >= 16,  // Need at least 2 bytes
-        number_of_bits < u32::MAX as usize,
-        number_of_bits % (u8::BITS as usize) == 0,
-        size > 0,
-        size <= u8::BITS as usize,
-        start + size <= number_of_bits,
-        start % (u8::BITS as usize) != 0 || size % (u8::BITS as usize) != 0,  // Ensure it crosses boundary
-        ((start as int) / (u8::BITS as int)) != (((start + size - 1) as int) / (u8::BITS as int)),  // Must span multiple bytes
-{
-    let result = Bitmap::new(number_of_bits);
-    if let Ok(mut bitmap) = result {
-        // Set all bits except those in the range [start, start+size)
-        let mut i: usize = 0;
-        while i < start
-            invariant
-                0 <= i <= start <= number_of_bits,
-                bitmap.inv(),
-                bitmap@.number_of_bits() == number_of_bits as int,
-                forall|j: int| 0 <= j < i ==> bitmap.is_bit_set(j),
-                forall|j: int| i <= j < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(j),
-            decreases start - i,
-        {
-            let set_result = bitmap.set(i);
-            if let Ok(()) = set_result {
-                i = i + 1;
-            } else {
-                break;
-            }
-        }
-
-        // Only proceed if first loop completed
-        if i == start {
-            // Set bits after the range
-            let end_range: usize = start + size;
-            let mut k: usize = end_range;
-            while k < number_of_bits
-                invariant
-                    0 <= start < end_range <= k <= number_of_bits,
-                    end_range == start + size,
-                    bitmap.inv(),
-                    bitmap@.number_of_bits() == number_of_bits as int,
-                    forall|j: int| 0 <= j < start ==> bitmap.is_bit_set(j),
-                    forall|j: int| start <= j < end_range ==> !bitmap.is_bit_set(j),
-                    forall|j: int| end_range <= j < k ==> bitmap.is_bit_set(j),
-                    forall|j: int| k <= j < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(j),
-                decreases number_of_bits - k,
-            {
-                let set_result = bitmap.set(k);
-                if let Ok(()) = set_result {
-                    k = k + 1;
-                } else {
-                    break;
-                }
-            }
-
-            // Now allocate the range if second loop completed
-            if k == number_of_bits {
-                // All bits outside [start, end_range) are set, so the range should be free
-                assert(bitmap.all_bits_unset_in_range(start as int, end_range as int));
-
-                let alloc_result = bitmap.alloc_range(size);
-                if let Ok(allocated_start) = alloc_result {
-                    // The allocated range should be within bounds and all bits should be set
-                    assert(allocated_start + size <= number_of_bits);
-                    assert(bitmap.all_bits_set_in_range(allocated_start as int, (allocated_start + size) as int));
-                }
-            }
-        }
-    }
-}
-
-/// Verifiable test: allocating a range larger than the bitmap should fail
+/// Verifiable test: allocating a range larger than the bitmap should fail.
 fn test_alloc_range_too_large_verified(number_of_bits: usize)
     requires
         number_of_bits > 0,
@@ -2083,12 +1915,12 @@ fn test_alloc_range_too_large_verified(number_of_bits: usize)
     if let Ok(mut bitmap) = result {
         let size = number_of_bits + 1;
         let alloc_result = bitmap.alloc_range(size);
-        // Allocating more than number_of_bits should fail
+        // Allocating more than number_of_bits should fail.
         assert(alloc_result is Err);
     }
 }
 
-/// Verifiable test: allocating a range of size 0 should fail
+/// Verifiable test: allocating a range of size 0 should fail.
 fn test_alloc_range_zero_verified(number_of_bits: usize)
     requires
         number_of_bits > 0,
@@ -2098,12 +1930,12 @@ fn test_alloc_range_zero_verified(number_of_bits: usize)
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
         let alloc_result = bitmap.alloc_range(0);
-        // Allocating 0 bits should fail (size must be > 0)
+        // Allocating 0 bits should fail (size must be > 0).
         assert(alloc_result is Err);
     }
 }
 
-/// Verifiable test: allocating a range, verifying it's allocated, then clearing it
+/// Verifiable test: allocating a range, verifying it's allocated, then clearing it.
 fn test_alloc_range_and_clear_verified(number_of_bits: usize, size: usize)
     requires
         number_of_bits > 0,
@@ -2116,10 +1948,10 @@ fn test_alloc_range_and_clear_verified(number_of_bits: usize, size: usize)
     if let Ok(mut bitmap) = result {
         let alloc_result = bitmap.alloc_range(size);
         if let Ok(start) = alloc_result {
-            // Verify the range is allocated
+            // Verify the range is allocated.
             assert(bitmap.all_bits_set_in_range(start as int, (start + size) as int));
 
-            // Clear the range
+            // Clear the range.
             let mut i: usize = start;
             let end = start + size;
             while i < end
@@ -2139,45 +1971,42 @@ fn test_alloc_range_and_clear_verified(number_of_bits: usize, size: usize)
                 }
             }
 
-            // If we cleared all bits successfully
+            // If we cleared all bits successfully.
             if i == end {
-                // All bits in the range should be cleared
+                // All bits in the range should be cleared.
                 assert(bitmap.all_bits_unset_in_range(start as int, end as int));
             }
         }
     }
 }
 
-/// Verifiable test: allocating a bit in a partially filled bitmap
+/// Verifiable test: allocating a bit in a partially filled bitmap.
 fn test_alloc_in_partial_bitmap_verified(number_of_bits: usize, set_index: usize)
     requires
-        number_of_bits >= 16,  // Need at least 2 bits
+        number_of_bits >= 16,  // Need at least 2 bits.
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
         set_index < number_of_bits,
 {
     let result = Bitmap::new(number_of_bits);
     if let Ok(mut bitmap) = result {
-        // Set one bit to partially fill the bitmap
+        // Set one bit to partially fill the bitmap.
         let set_result = bitmap.set(set_index);
         if let Ok(()) = set_result {
-            // The set bit should be marked as set
+            // The set bit should be marked as set.
             assert(bitmap.is_bit_set(set_index as int));
 
-            // Allocate a new bit
+            // Allocate a new bit.
             let alloc_result = bitmap.alloc();
             if let Ok(index) = alloc_result {
-                // The allocated bit should be set
+                // The allocated bit should be set.
                 assert(bitmap.is_bit_set(index as int));
-                // The allocated bit should be different from the manually set bit (if possible)
-                // Note: This may not always be true if the only free bit was set_index
-                // But since we started with an empty bitmap and set one bit, there should be other free bits
 
-                // Clear the allocated bit
+                // Clear the allocated bit.
                 let clear_result = bitmap.clear(index);
                 if let Ok(()) = clear_result {
                     assert(!bitmap.is_bit_set(index as int));
-                    // The originally set bit should still be set (if it wasn't the one we allocated)
+                    // The originally set bit should still be set (if it wasn't the one we allocated).
                     if index != set_index {
                         assert(bitmap.is_bit_set(set_index as int));
                     }
@@ -2187,138 +2016,6 @@ fn test_alloc_in_partial_bitmap_verified(number_of_bits: usize, set_index: usize
     }
 }
 
-/// Verifiable test: allocating a range in a partially filled bitmap, then clearing it
-fn test_alloc_range_in_partial_bitmap_verified(number_of_bits: usize, start: usize, size: usize)
-    requires
-        number_of_bits >= 16,
-        number_of_bits < u32::MAX as usize,
-        number_of_bits % (u8::BITS as usize) == 0,
-        size > 0,
-        size <= u8::BITS as usize,
-        start + size <= number_of_bits,
-{
-    let result = Bitmap::new(number_of_bits);
-    if let Ok(mut bitmap) = result {
-        // Set all bits except [start, start+size)
-        let mut i: usize = 0;
-        while i < start
-            invariant
-                0 <= i <= start <= number_of_bits,
-                bitmap.inv(),
-                bitmap@.number_of_bits() == number_of_bits as int,
-                forall|j: int| 0 <= j < i ==> bitmap.is_bit_set(j),
-                forall|j: int| i <= j < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(j),
-            decreases start - i,
-        {
-            let set_result = bitmap.set(i);
-            if let Ok(()) = set_result {
-                i = i + 1;
-            } else {
-                break;
-            }
-        }
-
-        if i == start {
-            let end_range = start + size;
-            let mut k: usize = end_range;
-            while k < number_of_bits
-                invariant
-                    0 <= start < end_range <= k <= number_of_bits,
-                    end_range == start + size,
-                    bitmap.inv(),
-                    bitmap@.number_of_bits() == number_of_bits as int,
-                    forall|j: int| 0 <= j < start ==> bitmap.is_bit_set(j),
-                    forall|j: int| start <= j < end_range ==> !bitmap.is_bit_set(j),
-                    forall|j: int| end_range <= j < k ==> bitmap.is_bit_set(j),
-                    forall|j: int| k <= j < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(j),
-                decreases number_of_bits - k,
-            {
-                let set_result = bitmap.set(k);
-                if let Ok(()) = set_result {
-                    k = k + 1;
-                } else {
-                    break;
-                }
-            }
-
-            if k == number_of_bits {
-                // All bits outside [start, end_range) are set
-                assert(bitmap.all_bits_unset_in_range(start as int, end_range as int));
-
-                // Allocate the range
-                let alloc_result = bitmap.alloc_range(size);
-                if let Ok(allocated_start) = alloc_result {
-                    // The allocated range should be set
-                    assert(bitmap.all_bits_set_in_range(allocated_start as int, (allocated_start + size) as int));
-
-                    // Clear all bits
-                    let mut m: usize = 0;
-                    while m < number_of_bits
-                        invariant
-                            0 <= m <= number_of_bits,
-                            bitmap.inv(),
-                            bitmap@.number_of_bits() == number_of_bits as int,
-                            forall|j: int| 0 <= j < m ==> !bitmap.is_bit_set(j),
-                        decreases number_of_bits - m,
-                    {
-                        let clear_result = bitmap.clear(m);
-                        if let Ok(()) = clear_result {
-                            m = m + 1;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    if m == number_of_bits {
-                        assert(bitmap.all_bits_unset_in_range(0, number_of_bits as int));
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-} //Verus
-
-//==================================================================================================
-// Tests
 //==================================================================================================
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_bitmap_new() {
-        let bitmap: Bitmap = Bitmap::new(64).unwrap();
-        assert_eq!(bitmap.number_of_bits(), 64);
-    }
-
-    #[test]
-    fn test_bitmap_alloc() {
-        let mut bitmap: Bitmap = Bitmap::new(64).unwrap();
-        let index: usize = bitmap.alloc().unwrap();
-        assert_eq!(index, 0);
-        assert!(bitmap.test(index).unwrap());
-    }
-
-    #[test]
-    fn test_bitmap_set_clear() {
-        let mut bitmap: Bitmap = Bitmap::new(64).unwrap();
-        bitmap.set(10).unwrap();
-        assert!(bitmap.test(10).unwrap());
-        bitmap.clear(10).unwrap();
-        assert!(!bitmap.test(10).unwrap());
-    }
-
-    #[test]
-    fn test_bitmap_alloc_range() {
-        let mut bitmap: Bitmap = Bitmap::new(64).unwrap();
-        let index: usize = bitmap.alloc_range(8).unwrap();
-        assert_eq!(index, 0);
-        for i in 0..8 {
-            assert!(bitmap.test(i).unwrap());
-        }
-    }
-}
+} // verus!

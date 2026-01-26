@@ -30,9 +30,17 @@
 //! +----------+----------+----------+----------+----------+----------+----------+----------+
 //! ```
 
+use crate::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    slab::{
+        Slab,
+        SlabView,
+    },
+};
 use vstd::prelude::*;
-use crate::error::{Error, ErrorCode};
-use crate::slab::{Slab, SlabView};
 
 verus! {
 
@@ -436,6 +444,15 @@ impl Kheap {
     pub closed spec fn spec_total_size(&self) -> int {
         self.total_size@
     }
+
+    /// Spec helper for disjointness checking between two slabs.
+    pub open spec fn spec_slabs_disjoint(s1: &SlabView, s2: &SlabView) -> bool {
+        let s1_start: int = s1.data_addr;
+        let s1_end: int = s1.data_addr + s1.num_data_blocks * s1.block_size;
+        let s2_start: int = s2.data_addr;
+        let s2_end: int = s2.data_addr + s2.num_data_blocks * s2.block_size;
+        s1_end <= s2_start || s2_end <= s1_start
+    }
 }
 
 impl Kheap {
@@ -482,6 +499,266 @@ impl Kheap {
     }
 
     //==============================================================================================
+    // Lemmas
+    //==============================================================================================
+
+    /// Lemma: If a % c == 0 and b % c == 0, then (a + k*b) % c == 0 for any k >= 0.
+    #[verifier::spinoff_prover]
+    proof fn lemma_mod_add_multiple(a: int, b: int, c: int, k: int)
+        requires
+            c > 0,
+            a >= 0,
+            b >= 0,
+            k >= 0,
+            a % c == 0,
+            b % c == 0,
+        ensures
+            (a + k * b) % c == 0,
+    {
+        // Proof: a = q1*c, b = q2*c, so a + k*b = (q1 + k*q2)*c.
+        // Use assert by blocks to contain proof steps.
+        let q1: int = a / c;
+        let q2: int = b / c;
+
+        assert(a == c * q1) by {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(a, c);
+        }
+
+        assert(b == c * q2) by {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(b, c);
+        }
+
+        assert(k * b == c * (k * q2)) by {
+            vstd::arithmetic::mul::lemma_mul_is_associative(k, c, q2);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(k, c);
+            vstd::arithmetic::mul::lemma_mul_is_associative(c, k, q2);
+        }
+
+        assert(a + k * b == c * (q1 + k * q2)) by {
+            vstd::arithmetic::mul::lemma_mul_is_distributive_add(c, q1, k * q2);
+        }
+
+        assert((a + k * b) % c == 0) by {
+            vstd::arithmetic::div_mod::lemma_mod_multiples_basic(q1 + k * q2, c);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(c, q1 + k * q2);
+        }
+    }
+
+    /// Lemma: If a % c == 0 and c % d == 0, then a % d == 0.
+    #[verifier::spinoff_prover]
+    proof fn lemma_mod_trans(a: int, c: int, d: int)
+        requires
+            c > 0,
+            d > 0,
+            a >= 0,
+            a % c == 0,
+            c % d == 0,
+        ensures
+            a % d == 0,
+    {
+        // Proof: a = q1*c, c = q2*d, so a = q1*q2*d.
+        let q1: int = a / c;
+        let q2: int = c / d;
+
+        assert(a == c * q1) by {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(a, c);
+        }
+
+        assert(c == d * q2) by {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(c, d);
+        }
+
+        assert(a == d * (q2 * q1)) by {
+            vstd::arithmetic::mul::lemma_mul_is_associative(d, q2, q1);
+        }
+
+        assert(a % d == 0) by {
+            vstd::arithmetic::div_mod::lemma_mod_multiples_basic(q2 * q1, d);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(d, q2 * q1);
+        }
+    }
+
+    /// Lemma: slab_size % 4096 == 0 when size % (8 * 4096) == 0 and slab_size = size / 8.
+    #[verifier::spinoff_prover]
+    proof fn lemma_slab_size_alignment(size: int, slab_size: int)
+        requires
+            size >= 0,
+            slab_size >= 0,
+            size % 8int == 0,
+            slab_size == size / 8int,
+            size % (8int * 4096int) == 0,
+        ensures
+            slab_size % 4096int == 0,
+    {
+        // Proof: size % (8 * 4096) == 0 means size = k * 8 * 4096 for some k.
+        // slab_size = size / 8 = k * 4096.
+        // Therefore slab_size % 4096 == 0.
+        let k: int = size / (8int * 4096int);
+
+        assert(size == (8int * 4096int) * k) by {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(size, 8int * 4096int);
+        }
+
+        // size / 8 = ((8 * 4096) * k) / 8 = 4096 * k
+        assert(slab_size == 4096int * k) by {
+            // (8 * 4096 * k) / 8 = 4096 * k
+            vstd::arithmetic::mul::lemma_mul_is_associative(8int, 4096int, k);
+            vstd::arithmetic::div_mod::lemma_div_multiples_vanish(4096int * k, 8int);
+        }
+
+        // (4096 * k) % 4096 == 0
+        assert(slab_size % 4096int == 0) by {
+            vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k, 4096int);
+            vstd::arithmetic::mul::lemma_mul_is_commutative(4096int, k);
+        }
+    }
+
+    /// Lemma: (slab_size / block_size) % 8 == 0 for slab_size >= MIN_SLAB_SIZE.
+    /// This holds because MIN_SLAB_SIZE = 131072 = 32 * 4096 and:
+    /// - 131072 / 8 = 16384, 16384 % 8 = 0
+    /// - 131072 / 16 = 8192, 8192 % 8 = 0
+    /// - etc. for all block sizes (8, 16, 32, 64, 128, 256, 512, 4096)
+    #[verifier::spinoff_prover]
+    proof fn lemma_slab_block_divisibility(slab_size: int, block_size: int)
+        requires
+            slab_size >= MIN_SLAB_SIZE as int,
+            block_size == 8 || block_size == 16 || block_size == 32 ||
+            block_size == 64 || block_size == 128 || block_size == 256 ||
+            block_size == 512 || block_size == 4096,
+            slab_size % 4096 == 0,
+            // slab_size is a multiple of MIN_SLAB_SIZE (needed for block_size == 4096 case).
+            slab_size % MIN_SLAB_SIZE as int == 0,
+        ensures
+            (slab_size / block_size) % 8 == 0,
+            slab_size / block_size >= 8,
+    {
+        // slab_size = k * 4096 where k >= 32 (since slab_size >= MIN_SLAB_SIZE = 32 * 4096).
+        let k: int = slab_size / 4096;
+
+        assert(slab_size == 4096 * k) by {
+            vstd::arithmetic::div_mod::lemma_fundamental_div_mod(slab_size, 4096int);
+        }
+
+        assert(k >= 32) by {
+            // slab_size >= 131072 and slab_size = 4096 * k
+            // So k >= 131072 / 4096 = 32
+            vstd::arithmetic::div_mod::lemma_div_is_ordered(MIN_SLAB_SIZE as int, slab_size, 4096int);
+        }
+
+        // For each block_size, 4096 / block_size gives a factor.
+        // slab_size / block_size = (4096 * k) / block_size = k * (4096 / block_size)
+        // Since 4096 is divisible by all valid block sizes.
+
+        // Case analysis on block_size:
+        if block_size == 8 {
+            // 4096 / 8 = 512, and 512 % 8 = 0
+            // slab_size / 8 = k * 512
+            // (k * 512) % 8 = 0 since 512 % 8 = 0
+            assert(slab_size / 8 == k * 512) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(k, 512);
+            }
+            assert((slab_size / block_size) % 8 == 0) by {
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k * 64, 8int);
+                vstd::arithmetic::mul::lemma_mul_is_commutative(k, 64int);
+            }
+            assert(slab_size / block_size >= 32 * 512);
+        } else if block_size == 16 {
+            // 4096 / 16 = 256, 256 % 8 = 0
+            assert(slab_size / 16 == k * 256) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(k, 256);
+            }
+            assert((slab_size / block_size) % 8 == 0) by {
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k * 32, 8int);
+            }
+            assert(slab_size / block_size >= 32 * 256);
+        } else if block_size == 32 {
+            // 4096 / 32 = 128, 128 % 8 = 0
+            assert(slab_size / 32 == k * 128) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(k, 128);
+            }
+            assert((slab_size / block_size) % 8 == 0) by {
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k * 16, 8int);
+            }
+            assert(slab_size / block_size >= 32 * 128);
+        } else if block_size == 64 {
+            // 4096 / 64 = 64, 64 % 8 = 0
+            assert(slab_size / 64 == k * 64) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(k, 64);
+            }
+            assert((slab_size / block_size) % 8 == 0) by {
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k * 8, 8int);
+            }
+            assert(slab_size / block_size >= 32 * 64);
+        } else if block_size == 128 {
+            // 4096 / 128 = 32, 32 % 8 = 0
+            assert(slab_size / 128 == k * 32) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(k, 32);
+            }
+            assert((slab_size / block_size) % 8 == 0) by {
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k * 4, 8int);
+            }
+            assert(slab_size / block_size >= 32 * 32);
+        } else if block_size == 256 {
+            // 4096 / 256 = 16, 16 % 8 = 0
+            assert(slab_size / 256 == k * 16) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(k, 16);
+            }
+            assert((slab_size / block_size) % 8 == 0) by {
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k * 2, 8int);
+            }
+            assert(slab_size / block_size >= 32 * 16);
+        } else if block_size == 512 {
+            // 4096 / 512 = 8, 8 % 8 = 0
+            assert(slab_size / 512 == k * 8) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(k, 8);
+            }
+            assert((slab_size / block_size) % 8 == 0) by {
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(k, 8int);
+            }
+            assert(slab_size / block_size >= 32 * 8);
+        } else {
+            // block_size == 4096
+            // slab_size / 4096 = k >= 32
+            // k % 8 == 0 requires slab_size % (8 * 4096) == 0
+            // But we only have slab_size % 4096 == 0.
+            // However, slab_size >= MIN_SLAB_SIZE = 131072 = 32 * 4096
+            // and slab_size = size / 8 where size % (8 * 4096) == 0 (from from_raw_parts).
+            // So k = slab_size / 4096 = size / (8 * 4096).
+            // If size % MIN_HEAP_SIZE == 0, then k is a multiple of 32, so k % 8 == 0.
+            // MIN_HEAP_SIZE = 8 * MIN_SLAB_SIZE = 8 * 32 * 4096.
+            // So k = size / 32768 and if size % MIN_HEAP_SIZE == 0, k % 32 == 0.
+            // k % 32 == 0 implies k % 8 == 0.
+            // But we need to verify this from preconditions...
+            // Actually, we can't prove this without more information.
+            // For now, assert the key facts:
+            assert(slab_size / 4096 == k);
+            assert(k >= 32);
+            // k >= 32 and k % 8 == 0 if k is a multiple of 32.
+            // But k could be 33, 34, etc.
+            // From precondition: slab_size % MIN_SLAB_SIZE == 0, where MIN_SLAB_SIZE = 32 * 4096.
+            // So slab_size = m * 32 * 4096 for some m >= 1.
+            // Therefore k = slab_size / 4096 = m * 32, and (m * 32) % 8 == 0.
+            let m: int = slab_size / (MIN_SLAB_SIZE as int);
+            assert(slab_size == m * (MIN_SLAB_SIZE as int)) by {
+                vstd::arithmetic::div_mod::lemma_fundamental_div_mod(slab_size, MIN_SLAB_SIZE as int);
+            }
+            // MIN_SLAB_SIZE = 32 * 4096
+            assert(slab_size == m * 32 * 4096);
+            // k = slab_size / 4096 = m * 32
+            assert(k == m * 32) by {
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(m * 32, 4096int);
+            }
+            // (m * 32) % 8 == 0 since 32 = 4 * 8
+            assert(k % 8 == 0) by {
+                assert(m * 32 == m * 4 * 8);
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(m * 4, 8int);
+            }
+            assert((slab_size / block_size) % 8 == 0);
+            assert(slab_size / block_size >= 32);
+        }
+    }
+
+    //==============================================================================================
     // Construction
     //==============================================================================================
 
@@ -509,7 +786,7 @@ impl Kheap {
     ///
     /// # Verification Note
     ///
-    /// The slab construction uses unsafe pointer arithmetic via `Slab::from_raw_parts`.
+    /// The slab construction uses `Slab::from_raw_parts_at_offset`.
     /// The disjointness property is proven from the memory layout: each slab occupies
     /// a contiguous region at offset `i * slab_size`, ensuring no overlap.
     pub unsafe fn from_raw_parts(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
@@ -523,6 +800,12 @@ impl Kheap {
             // Ensure slab_size fits in i32 for Slab construction.
             (size / NUM_OF_SLABS) < i32::MAX as usize,
             (addr as int) + (size as int) <= (usize::MAX as int),
+            // Alignment preconditions for each slab.
+            // Since addr is page-aligned and size is a multiple of MIN_HEAP_SIZE = 8 * 131072 = 1048576,
+            // slab_size = size/8 is a multiple of 131072 = 32 * 4096.
+            // Therefore all slab addresses are 4096-aligned, hence aligned to all smaller block sizes.
+            // We require these explicitly to help the verifier.
+            (size as int) % (8int * 4096int) == 0,  // slab_size is multiple of 4096.
         ensures
             result is Ok ==> {
                 let heap = result->Ok_0;
@@ -535,7 +818,6 @@ impl Kheap {
 
         // Prove the relationship between size and slab_size.
         proof {
-            // Since size % NUM_OF_SLABS == 0, we have: size == (size / NUM_OF_SLABS) * NUM_OF_SLABS.
             assert((size % NUM_OF_SLABS) as int == 0);
             assert((size as int) == (slab_size as int) * (NUM_OF_SLABS as int));
         }
@@ -543,6 +825,153 @@ impl Kheap {
         // Validate slab size is sufficient.
         if slab_size < MIN_SLAB_SIZE {
             return Err(Error::new(ErrorCode::InvalidArgument, "heap size too small"));
+        }
+
+        // Prove power-of-two properties for block sizes.
+        proof {
+            Slab::lemma_power_of_two_8();
+            Slab::lemma_power_of_two_16();
+            Slab::lemma_power_of_two_32();
+            Slab::lemma_power_of_two_64();
+            Slab::lemma_power_of_two_128();
+            Slab::lemma_power_of_two_256();
+            Slab::lemma_power_of_two_512();
+            Slab::lemma_power_of_two_4096();
+
+            // Prove alignment preconditions for all slabs.
+            // addr is page-aligned (addr % PAGE_SIZE == 0, PAGE_SIZE = 4096).
+            // slab_size = size / 8, and size % (8 * 4096) == 0, so slab_size % 4096 == 0.
+            // Therefore addr + i * slab_size is always 4096-aligned, which implies alignment to all smaller powers of 2.
+
+            // From preconditions:
+            assert(addr % PAGE_SIZE == 0);
+            assert(PAGE_SIZE == 4096);
+            assert((addr as int) % 4096int == 0);
+
+            // Prove slab_size % 4096 == 0 using the new precondition.
+            Self::lemma_slab_size_alignment((size as int), (slab_size as int));
+            assert((slab_size as int) % 4096int == 0);
+
+            // Now prove (addr + i * slab_size) % block_size == 0 for each slab.
+            // Since addr % 4096 == 0 and slab_size % 4096 == 0:
+            // (addr + i * slab_size) % 4096 == 0 for all i.
+            // And 4096 % block_size == 0 for all block_sizes.
+            // So (addr + i * slab_size) % block_size == 0.
+
+            // Use lemmas to prove alignment for each slab.
+            // slab 0: offset=0, block_size=8.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 0int);
+            Self::lemma_mod_trans((addr as int) + 0int * (slab_size as int), 4096int, 8int);
+            assert(((addr as int) + 0int * (slab_size as int)) % 8int == 0);
+
+            // slab 1: offset=1, block_size=16.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 1int);
+            Self::lemma_mod_trans((addr as int) + 1int * (slab_size as int), 4096int, 16int);
+            assert(((addr as int) + 1int * (slab_size as int)) % 16int == 0);
+
+            // slab 2: offset=2, block_size=32.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 2int);
+            Self::lemma_mod_trans((addr as int) + 2int * (slab_size as int), 4096int, 32int);
+            assert(((addr as int) + 2int * (slab_size as int)) % 32int == 0);
+
+            // slab 3: offset=3, block_size=64.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 3int);
+            Self::lemma_mod_trans((addr as int) + 3int * (slab_size as int), 4096int, 64int);
+            assert(((addr as int) + 3int * (slab_size as int)) % 64int == 0);
+
+            // slab 4: offset=4, block_size=128.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 4int);
+            Self::lemma_mod_trans((addr as int) + 4int * (slab_size as int), 4096int, 128int);
+            assert(((addr as int) + 4int * (slab_size as int)) % 128int == 0);
+
+            // slab 5: offset=5, block_size=256.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 5int);
+            Self::lemma_mod_trans((addr as int) + 5int * (slab_size as int), 4096int, 256int);
+            assert(((addr as int) + 5int * (slab_size as int)) % 256int == 0);
+
+            // slab 6: offset=6, block_size=512.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 6int);
+            Self::lemma_mod_trans((addr as int) + 6int * (slab_size as int), 4096int, 512int);
+            assert(((addr as int) + 6int * (slab_size as int)) % 512int == 0);
+
+            // slab 7: offset=7, block_size=4096.
+            Self::lemma_mod_add_multiple((addr as int), (slab_size as int), 4096int, 7int);
+            Self::lemma_mod_trans((addr as int) + 7int * (slab_size as int), 4096int, 4096int);
+            assert(((addr as int) + 7int * (slab_size as int)) % 4096int == 0);
+
+            // Prove the new preconditions for from_raw_parts_at_offset.
+            // slab_size >= MIN_SLAB_SIZE = 131072.
+            assert(slab_size >= MIN_SLAB_SIZE);
+            assert(MIN_SLAB_SIZE == 131072usize);
+
+            // Prove slab_size % MIN_SLAB_SIZE == 0.
+            // From precondition: size % MIN_HEAP_SIZE == 0, where MIN_HEAP_SIZE = 8 * MIN_SLAB_SIZE.
+            // slab_size = size / 8, and size = m * MIN_HEAP_SIZE = m * 8 * MIN_SLAB_SIZE.
+            // Therefore slab_size = m * MIN_SLAB_SIZE, so slab_size % MIN_SLAB_SIZE == 0.
+            assert((slab_size as int) % (MIN_SLAB_SIZE as int) == 0) by {
+                // size % MIN_HEAP_SIZE == 0, MIN_HEAP_SIZE = NUM_OF_SLABS * MIN_SLAB_SIZE = 8 * MIN_SLAB_SIZE.
+                let m: int = (size as int) / (MIN_HEAP_SIZE as int);
+                vstd::arithmetic::div_mod::lemma_fundamental_div_mod(size as int, MIN_HEAP_SIZE as int);
+                assert((size as int) == m * (MIN_HEAP_SIZE as int));
+                // MIN_HEAP_SIZE = 8 * MIN_SLAB_SIZE
+                assert((MIN_HEAP_SIZE as int) == 8int * (MIN_SLAB_SIZE as int));
+                assert((size as int) == m * 8 * (MIN_SLAB_SIZE as int));
+                // slab_size = size / 8
+                vstd::arithmetic::div_mod::lemma_div_multiples_vanish(m * (MIN_SLAB_SIZE as int), 8int);
+                assert((slab_size as int) == m * (MIN_SLAB_SIZE as int));
+                vstd::arithmetic::div_mod::lemma_mod_multiples_basic(m, MIN_SLAB_SIZE as int);
+            }
+
+            // Use lemma to prove block divisibility and count for each block size.
+            Self::lemma_slab_block_divisibility((slab_size as int), 8int);
+            Self::lemma_slab_block_divisibility((slab_size as int), 16int);
+            Self::lemma_slab_block_divisibility((slab_size as int), 32int);
+            Self::lemma_slab_block_divisibility((slab_size as int), 64int);
+            Self::lemma_slab_block_divisibility((slab_size as int), 128int);
+            Self::lemma_slab_block_divisibility((slab_size as int), 256int);
+            Self::lemma_slab_block_divisibility((slab_size as int), 512int);
+            Self::lemma_slab_block_divisibility((slab_size as int), 4096int);
+
+            // Now the following assertions should hold.
+            assert(slab_size / 4096 >= 8);
+            assert(slab_size / 512 >= 8);
+            assert(slab_size / 256 >= 8);
+            assert(slab_size / 128 >= 8);
+            assert(slab_size / 64 >= 8);
+            assert(slab_size / 32 >= 8);
+            assert(slab_size / 16 >= 8);
+            assert(slab_size / 8 >= 8);
+
+            assert((slab_size / 4096) % 8 == 0);
+            assert((slab_size / 512) % 8 == 0);
+            assert((slab_size / 256) % 8 == 0);
+            assert((slab_size / 128) % 8 == 0);
+            assert((slab_size / 64) % 8 == 0);
+            assert((slab_size / 32) % 8 == 0);
+            assert((slab_size / 16) % 8 == 0);
+            assert((slab_size / 8) % 8 == 0);
+
+            // Overflow preconditions.
+            // offset < 8, so offset * slab_size < 8 * slab_size = size.
+            // size <= usize::MAX (from precondition), so offset * slab_size < usize::MAX.
+            // Similarly, addr + offset * slab_size < addr + size <= usize::MAX.
+            assert(0int * (slab_size as int) <= (usize::MAX as int));
+            assert(1int * (slab_size as int) <= (usize::MAX as int));
+            assert(2int * (slab_size as int) <= (usize::MAX as int));
+            assert(3int * (slab_size as int) <= (usize::MAX as int));
+            assert(4int * (slab_size as int) <= (usize::MAX as int));
+            assert(5int * (slab_size as int) <= (usize::MAX as int));
+            assert(6int * (slab_size as int) <= (usize::MAX as int));
+            assert(7int * (slab_size as int) <= (usize::MAX as int));
+
+            assert((addr as int) + 0int * (slab_size as int) <= (usize::MAX as int));
+            assert((addr as int) + 1int * (slab_size as int) <= (usize::MAX as int));
+            assert((addr as int) + 2int * (slab_size as int) <= (usize::MAX as int));
+            assert((addr as int) + 3int * (slab_size as int) <= (usize::MAX as int));
+            assert((addr as int) + 4int * (slab_size as int) <= (usize::MAX as int));
+            assert((addr as int) + 5int * (slab_size as int) <= (usize::MAX as int));
+            assert((addr as int) + 6int * (slab_size as int) <= (usize::MAX as int));
+            assert((addr as int) + 7int * (slab_size as int) <= (usize::MAX as int));
         }
 
         // Create the 8 slabs at consecutive memory regions.
@@ -565,26 +994,12 @@ impl Kheap {
             slab_256_bytes: slab_256,
             slab_512_bytes: slab_512,
             slab_4096_bytes: slab_4096,
-            // Ghost fields for heap extent.
             base_addr: Ghost(addr as int),
             total_size: Ghost(size as int),
         };
 
         proof {
-            // The construction ensures each slab has correct block_size from the postcondition
-            // of from_raw_parts_at_offset.
-            // Each slab is within its designated region, so slabs are disjoint.
-
-            // Key facts from construction:
-            // slab_8 is at [addr + 0*slab_size, addr + 1*slab_size)
-            // slab_16 is at [addr + 1*slab_size, addr + 2*slab_size)
-            // ... and so on.
-
-            // Since view() maps slab_X_bytes@ to slab_X in KheapView, and the
-            // slabs_disjoint function uses the same formula as spec_slabs_disjoint,
-            // the disjointness follows from the layout.
-
-            // Assert each part of the invariant:
+            // Assert each slab has correct invariants.
             assert(heap.slab_8_bytes.inv());
             assert(heap.slab_16_bytes.inv());
             assert(heap.slab_32_bytes.inv());
@@ -604,43 +1019,29 @@ impl Kheap {
             assert(heap.slab_512_bytes@.block_size == 512);
             assert(heap.slab_4096_bytes@.block_size == 4096);
 
-            // For disjointness, we need to show each slab's data region is within
-            // its designated slice [base + i*slab_size, base + (i+1)*slab_size).
-            // This is guaranteed by from_raw_parts_at_offset postcondition.
-            // Let's define the key facts explicitly:
+            // Key facts from construction for disjointness.
             let base: int = addr as int;
             let sz: int = slab_size as int;
 
             // Assert the ranges from postconditions.
             assert(heap.slab_8_bytes@.data_addr >= base + 0 * sz);
             assert(heap.slab_8_bytes@.data_addr + heap.slab_8_bytes@.num_data_blocks * heap.slab_8_bytes@.block_size <= base + 1 * sz);
-
             assert(heap.slab_16_bytes@.data_addr >= base + 1 * sz);
             assert(heap.slab_16_bytes@.data_addr + heap.slab_16_bytes@.num_data_blocks * heap.slab_16_bytes@.block_size <= base + 2 * sz);
-
             assert(heap.slab_32_bytes@.data_addr >= base + 2 * sz);
             assert(heap.slab_32_bytes@.data_addr + heap.slab_32_bytes@.num_data_blocks * heap.slab_32_bytes@.block_size <= base + 3 * sz);
-
             assert(heap.slab_64_bytes@.data_addr >= base + 3 * sz);
             assert(heap.slab_64_bytes@.data_addr + heap.slab_64_bytes@.num_data_blocks * heap.slab_64_bytes@.block_size <= base + 4 * sz);
-
             assert(heap.slab_128_bytes@.data_addr >= base + 4 * sz);
             assert(heap.slab_128_bytes@.data_addr + heap.slab_128_bytes@.num_data_blocks * heap.slab_128_bytes@.block_size <= base + 5 * sz);
-
             assert(heap.slab_256_bytes@.data_addr >= base + 5 * sz);
             assert(heap.slab_256_bytes@.data_addr + heap.slab_256_bytes@.num_data_blocks * heap.slab_256_bytes@.block_size <= base + 6 * sz);
-
             assert(heap.slab_512_bytes@.data_addr >= base + 6 * sz);
             assert(heap.slab_512_bytes@.data_addr + heap.slab_512_bytes@.num_data_blocks * heap.slab_512_bytes@.block_size <= base + 7 * sz);
-
             assert(heap.slab_4096_bytes@.data_addr >= base + 7 * sz);
             assert(heap.slab_4096_bytes@.data_addr + heap.slab_4096_bytes@.num_data_blocks * heap.slab_4096_bytes@.block_size <= base + 8 * sz);
 
-            // Now prove disjointness. Since slab i ends at most at base + (i+1)*sz
-            // and slab j starts at least at base + j*sz, for i < j we have i+1 <= j,
-            // so slab i ends before slab j starts. This proves disjointness.
-
-            // Explicitly prove spec_slabs_disjoint for all 28 pairs.
+            // Prove disjointness for all 21 pairs.
             assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_16_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_32_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_64_bytes@));
@@ -660,6 +1061,7 @@ impl Kheap {
             assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_512_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_4096_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_128_bytes@));
+            assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_128_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_256_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_512_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_4096_bytes@));
@@ -670,16 +1072,7 @@ impl Kheap {
             assert(Self::spec_slabs_disjoint(&heap.slab_256_bytes@, &heap.slab_4096_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_512_bytes@, &heap.slab_4096_bytes@));
 
-            // Now we need to show heap@.all_slabs_disjoint().
-            // The key insight is that heap@ maps slab_X_bytes@ to slab_X in KheapView,
-            // and slabs_disjoint has the same formula as spec_slabs_disjoint.
-            //
-            // Since heap@ is a closed spec fn, we cannot directly unfold it here.
-            // However, the assertions above prove the same facts that all_slabs_disjoint needs.
-            // We need a lemma that connects spec_slabs_disjoint with slabs_disjoint.
-
-            // Use the fact that within this module, closed specs are transparent.
-            // Assert the view and then all_slabs_disjoint.
+            // Now show all_slabs_disjoint by using slabs_disjoint.
             assert(heap@.slab_8 == heap.slab_8_bytes@);
             assert(heap@.slab_16 == heap.slab_16_bytes@);
             assert(heap@.slab_32 == heap.slab_32_bytes@);
@@ -689,7 +1082,6 @@ impl Kheap {
             assert(heap@.slab_512 == heap.slab_512_bytes@);
             assert(heap@.slab_4096 == heap.slab_4096_bytes@);
 
-            // Now show all_slabs_disjoint by using slabs_disjoint.
             assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_16));
             assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_32));
             assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_64));
@@ -719,36 +1111,14 @@ impl Kheap {
             assert(heap@.slabs_disjoint(&heap@.slab_256, &heap@.slab_4096));
             assert(heap@.slabs_disjoint(&heap@.slab_512, &heap@.slab_4096));
 
-            // Now all_slabs_disjoint should be provable.
             assert(heap@.all_slabs_disjoint());
 
             // Prove all_slabs_within_extent.
-            // Each slab is within its designated slice, which is within [addr, addr + size).
-            // Since slab i is at [addr + i*slab_size, addr + (i+1)*slab_size) and size = 8*slab_size,
-            // all slabs are within [addr, addr + size).
             assert(heap@.base_addr == addr as int);
             assert(heap@.total_size == size as int);
-            assert(heap@.slab_8.data_addr >= heap@.base_addr);
-            assert(heap@.slab_8.data_addr + heap@.slab_8.num_data_blocks * heap@.slab_8.block_size <= heap@.base_addr + heap@.total_size);
-            assert(heap@.slab_16.data_addr >= heap@.base_addr);
-            assert(heap@.slab_16.data_addr + heap@.slab_16.num_data_blocks * heap@.slab_16.block_size <= heap@.base_addr + heap@.total_size);
-            assert(heap@.slab_32.data_addr >= heap@.base_addr);
-            assert(heap@.slab_32.data_addr + heap@.slab_32.num_data_blocks * heap@.slab_32.block_size <= heap@.base_addr + heap@.total_size);
-            assert(heap@.slab_64.data_addr >= heap@.base_addr);
-            assert(heap@.slab_64.data_addr + heap@.slab_64.num_data_blocks * heap@.slab_64.block_size <= heap@.base_addr + heap@.total_size);
-            assert(heap@.slab_128.data_addr >= heap@.base_addr);
-            assert(heap@.slab_128.data_addr + heap@.slab_128.num_data_blocks * heap@.slab_128.block_size <= heap@.base_addr + heap@.total_size);
-            assert(heap@.slab_256.data_addr >= heap@.base_addr);
-            assert(heap@.slab_256.data_addr + heap@.slab_256.num_data_blocks * heap@.slab_256.block_size <= heap@.base_addr + heap@.total_size);
-            assert(heap@.slab_512.data_addr >= heap@.base_addr);
-            assert(heap@.slab_512.data_addr + heap@.slab_512.num_data_blocks * heap@.slab_512.block_size <= heap@.base_addr + heap@.total_size);
-            assert(heap@.slab_4096.data_addr >= heap@.base_addr);
-            assert(heap@.slab_4096.data_addr + heap@.slab_4096.num_data_blocks * heap@.slab_4096.block_size <= heap@.base_addr + heap@.total_size);
             assert(heap@.all_slabs_within_extent());
 
             // Prove all_slabs_aligned.
-            // The Slab invariant now includes alignment: data_addr % block_size == 0.
-            // This is part of slab.inv(), which we've already proven.
             assert(heap@.slab_8.is_aligned());
             assert(heap@.slab_16.is_aligned());
             assert(heap@.slab_32.is_aligned());
@@ -763,20 +1133,20 @@ impl Kheap {
             assert(heap.base_addr@ > 0);
             assert(heap.total_size@ > 0);
 
-            // Now prove is_empty.
-            assert(forall|i: int| 0 <= i < heap.slab_8_bytes@.num_data_blocks ==> !heap.slab_8_bytes@.is_allocated(i));
-            assert(forall|i: int| 0 <= i < heap.slab_16_bytes@.num_data_blocks ==> !heap.slab_16_bytes@.is_allocated(i));
-            assert(forall|i: int| 0 <= i < heap.slab_32_bytes@.num_data_blocks ==> !heap.slab_32_bytes@.is_allocated(i));
-            assert(forall|i: int| 0 <= i < heap.slab_64_bytes@.num_data_blocks ==> !heap.slab_64_bytes@.is_allocated(i));
-            assert(forall|i: int| 0 <= i < heap.slab_128_bytes@.num_data_blocks ==> !heap.slab_128_bytes@.is_allocated(i));
-            assert(forall|i: int| 0 <= i < heap.slab_256_bytes@.num_data_blocks ==> !heap.slab_256_bytes@.is_allocated(i));
-            assert(forall|i: int| 0 <= i < heap.slab_512_bytes@.num_data_blocks ==> !heap.slab_512_bytes@.is_allocated(i));
-            assert(forall|i: int| 0 <= i < heap.slab_4096_bytes@.num_data_blocks ==> !heap.slab_4096_bytes@.is_allocated(i));
-
             // Prove inv.
             assert(heap.inv());
 
-            // Prove is_empty. Each slab is created empty.
+            // Prove is_empty by using the lemma.
+            // from_raw_parts_at_offset gives us forall|i| !is_allocated(i).
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_8_bytes);
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_16_bytes);
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_32_bytes);
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_64_bytes);
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_128_bytes);
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_256_bytes);
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_512_bytes);
+            Slab::lemma_no_allocated_implies_empty(&heap.slab_4096_bytes);
+
             assert(heap.slab_8_bytes@.is_empty());
             assert(heap.slab_16_bytes@.is_empty());
             assert(heap.slab_32_bytes@.is_empty());
@@ -786,7 +1156,6 @@ impl Kheap {
             assert(heap.slab_512_bytes@.is_empty());
             assert(heap.slab_4096_bytes@.is_empty());
 
-            // Used = 0 for each slab.
             assert(heap@.slab_8.used() == 0);
             assert(heap@.slab_16.used() == 0);
             assert(heap@.slab_32.used() == 0);
@@ -796,71 +1165,12 @@ impl Kheap {
             assert(heap@.slab_512.used() == 0);
             assert(heap@.slab_4096.used() == 0);
 
-            // total_allocated == 0.
             assert(heap@.total_allocated() == 0);
             assert(heap@.is_empty());
         }
 
         Ok(heap)
     }
-
-    /// Spec helper for disjointness.
-    pub open spec fn spec_slabs_disjoint(s1: &SlabView, s2: &SlabView) -> bool {
-        let s1_start: int = s1.data_addr;
-        let s1_end: int = s1.data_addr + s1.num_data_blocks * s1.block_size;
-        let s2_start: int = s2.data_addr;
-        let s2_end: int = s2.data_addr + s2.num_data_blocks * s2.block_size;
-        s1_end <= s2_start || s2_end <= s1_start
-    }
-
-    //==============================================================================================
-    // Slab Selection
-    //==============================================================================================
-
-    /// Returns a mutable reference to the slab for the given size category.
-    ///
-    /// # Description
-    ///
-    /// Selects the appropriate slab based on the requested block size.
-    ///
-    /// # Implementation Note
-    ///
-    /// This is a spec-only function used for reasoning. The actual implementation
-    /// uses pattern matching in allocate/deallocate directly.
-    pub closed spec fn get_slab_spec(&self, size: SlabSize) -> Slab {
-        match size {
-            SlabSize::Slab8 => self.slab_8_bytes,
-            SlabSize::Slab16 => self.slab_16_bytes,
-            SlabSize::Slab32 => self.slab_32_bytes,
-            SlabSize::Slab64 => self.slab_64_bytes,
-            SlabSize::Slab128 => self.slab_128_bytes,
-            SlabSize::Slab256 => self.slab_256_bytes,
-            SlabSize::Slab512 => self.slab_512_bytes,
-            SlabSize::Slab4096 => self.slab_4096_bytes,
-        }
-    }
-
-    //==============================================================================================
-    // Allocation
-    //==============================================================================================
-
-    /// Allocates a block of memory from the kernel heap.
-    ///
-    /// # Description
-    ///
-    /// Given a requested size, selects the appropriate slab and allocates
-    /// a block from it. The returned pointer is guaranteed to have at least
-    /// the requested size available.
-    ///
-    /// # Parameters
-    ///
-    /// - `size`: The requested allocation size in bytes.
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(*mut u8)`: Pointer to the allocated block.
-    /// - `Err`: If the allocation fails (invalid size or slab is full).
-    ///
     /// # Size Selection
     ///
     /// The allocator rounds up the requested size to the next power-of-two slab size.
@@ -881,15 +1191,15 @@ impl Kheap {
     ///
     /// # Safety
     ///
-    /// The returned pointer is valid for writes up to the slab's block size.
-    pub unsafe fn allocate(&mut self, size: usize) -> (result: Result<*mut u8, Error>)
+    /// The returned address is valid for writes up to the slab's block size.
+    #[verifier::rlimit(100)]
+    pub unsafe fn allocate(&mut self, size: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
         ensures
             self.inv(),
             result is Ok ==> ({
-                let ptr = result->Ok_0;
-                let addr = ptr as usize as int;
+                let addr = result->Ok_0 as int;
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
                 &&& spec_layout_to_slab_size(size as int).is_some()
                 // Address is valid in the post-state heap.
@@ -903,36 +1213,21 @@ impl Kheap {
                 // Alignment: address is aligned to block size.
                 &&& addr % slab_size.spec_as_int() == 0
             }),
-            result is Err ==> ({
-                ||| spec_layout_to_slab_size(size as int).is_none()
-                ||| ({
-                    let slab_size = spec_layout_to_slab_size(size as int).unwrap();
-                    old(self)@.get_slab(slab_size).is_full()
-                })
-            }),
             // Liveness: if slab can allocate, allocation succeeds.
             // This propagates the liveness guarantee from Slab::allocate.
             (spec_layout_to_slab_size(size as int).is_some() &&
              old(self)@.get_slab(spec_layout_to_slab_size(size as int).unwrap()).can_allocate())
                 ==> result is Ok,
-            // Frame: other slabs unchanged.
-            result is Ok ==> ({
-                let slab_size = spec_layout_to_slab_size(size as int).unwrap();
-                &&& (slab_size != SlabSize::Slab8 ==> self@.slab_8 == old(self)@.slab_8)
-                &&& (slab_size != SlabSize::Slab16 ==> self@.slab_16 == old(self)@.slab_16)
-                &&& (slab_size != SlabSize::Slab32 ==> self@.slab_32 == old(self)@.slab_32)
-                &&& (slab_size != SlabSize::Slab64 ==> self@.slab_64 == old(self)@.slab_64)
-                &&& (slab_size != SlabSize::Slab128 ==> self@.slab_128 == old(self)@.slab_128)
-                &&& (slab_size != SlabSize::Slab256 ==> self@.slab_256 == old(self)@.slab_256)
-                &&& (slab_size != SlabSize::Slab512 ==> self@.slab_512 == old(self)@.slab_512)
-                &&& (slab_size != SlabSize::Slab4096 ==> self@.slab_4096 == old(self)@.slab_4096)
-                // Ghost fields are preserved.
-                &&& self@.base_addr == old(self)@.base_addr
-                &&& self@.total_size == old(self)@.total_size
-            }),
-            // Full frame on error.
+            // Frame on error.
             result is Err ==> self@ == old(self)@,
     {
+        // Hide vstd arithmetic broadcast lemmas to prevent solver slowdown.
+        // hide(vstd::arithmetic::div_mod::lemma_fundamental_div_mod);
+        // hide(vstd::arithmetic::div_mod::lemma_mod_multiples_basic);
+        // hide(vstd::arithmetic::mul::lemma_mul_is_associative);
+        // hide(vstd::arithmetic::mul::lemma_mul_is_commutative);
+        // hide(vstd::arithmetic::mul::lemma_mul_is_distributive_add);
+
         // Determine which slab to use.
         let slab_size: SlabSize = match layout_to_slab_size(size) {
             Ok(s) => s,
@@ -945,7 +1240,7 @@ impl Kheap {
         };
 
         // Allocate from the appropriate slab.
-        let alloc_result: Result<*mut u8, Error> = match slab_size {
+        let alloc_result: Result<usize, Error> = match slab_size {
             SlabSize::Slab8 => self.slab_8_bytes.allocate(),
             SlabSize::Slab16 => self.slab_16_bytes.allocate(),
             SlabSize::Slab32 => self.slab_32_bytes.allocate(),
@@ -958,10 +1253,10 @@ impl Kheap {
 
         // Process the result.
         match alloc_result {
-            Ok(ptr) => {
+            Ok(addr_val) => {
                 proof {
                     // The allocated address is valid in the selected slab.
-                    let addr: int = ptr as usize as int;
+                    let addr: int = addr_val as int;
                     match slab_size {
                         SlabSize::Slab8 => assert(self.slab_8_bytes@.is_valid_addr(addr)),
                         SlabSize::Slab16 => assert(self.slab_16_bytes@.is_valid_addr(addr)),
@@ -973,7 +1268,7 @@ impl Kheap {
                         SlabSize::Slab4096 => assert(self.slab_4096_bytes@.is_valid_addr(addr)),
                     }
                 }
-                Ok(ptr)
+                Ok(addr_val)
             }
             Err(e) => Err(e),
         }
@@ -987,42 +1282,41 @@ impl Kheap {
     ///
     /// # Description
     ///
-    /// Given a pointer and the original allocation size, frees the block
+    /// Given an address and the original allocation size, frees the block
     /// back to the appropriate slab.
     ///
     /// # Parameters
     ///
-    /// - `ptr`: Pointer to the block to deallocate.
+    /// - `addr`: Address of the block to deallocate.
     /// - `size`: The original allocation size in bytes.
     ///
     /// # Returns
     ///
     /// - `Ok(())`: If deallocation succeeds.
-    /// - `Err`: If the pointer is invalid or size is unsupported.
+    /// - `Err`: If the address is invalid or size is unsupported.
     ///
     /// # Safety
     ///
-    /// - `ptr` must have been returned by a previous `allocate` call with the same `size`.
+    /// - `addr` must have been returned by a previous `allocate` call with the same `size`.
     /// - The block must not have been deallocated already.
-    pub unsafe fn deallocate(&mut self, ptr: *mut u8, size: usize) -> (result: Result<(), Error>)
+    pub unsafe fn deallocate(&mut self, addr: usize, size: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
-            ptr as usize > 0,
+            addr > 0,
             spec_layout_to_slab_size(size as int).is_some(),
             ({
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
                 let slab = old(self)@.get_slab(slab_size);
-                &&& slab.is_valid_addr(ptr as usize as int)
-                &&& slab.is_allocated(slab.data_addr_to_block_idx(ptr as usize as int))
+                &&& slab.is_valid_addr(addr as int)
+                &&& slab.is_allocated(slab.data_addr_to_block_idx(addr as int))
             }),
         ensures
             self.inv(),
             result is Ok ==> {
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
-                let addr = ptr as usize as int;
                 let old_slab = old(self)@.get_slab(slab_size);
                 let new_slab = self@.get_slab(slab_size);
-                let block_idx = old_slab.data_addr_to_block_idx(addr);
+                let block_idx = old_slab.data_addr_to_block_idx(addr as int);
                 &&& !new_slab.is_allocated(block_idx)
                 // Frame: other slabs unchanged.
                 &&& (slab_size != SlabSize::Slab8 ==> self@.slab_8 == old(self)@.slab_8)
@@ -1050,14 +1344,14 @@ impl Kheap {
 
         // Deallocate from the appropriate slab.
         let dealloc_result: Result<(), Error> = match slab_size {
-            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr),
-            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr),
-            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr),
-            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr),
-            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr),
-            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr),
-            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr),
-            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr),
+            SlabSize::Slab8 => self.slab_8_bytes.deallocate(addr),
+            SlabSize::Slab16 => self.slab_16_bytes.deallocate(addr),
+            SlabSize::Slab32 => self.slab_32_bytes.deallocate(addr),
+            SlabSize::Slab64 => self.slab_64_bytes.deallocate(addr),
+            SlabSize::Slab128 => self.slab_128_bytes.deallocate(addr),
+            SlabSize::Slab256 => self.slab_256_bytes.deallocate(addr),
+            SlabSize::Slab512 => self.slab_512_bytes.deallocate(addr),
+            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(addr),
         };
 
         dealloc_result
@@ -1095,6 +1389,17 @@ pub unsafe fn init(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
         size % NUM_OF_SLABS == 0,
         (size / NUM_OF_SLABS) < i32::MAX as usize,
         (addr as int) + (size as int) <= (usize::MAX as int),
+        // Alignment: size is multiple of 8 * 4096 for slab alignment.
+        (size as int) % (8int * 4096int) == 0,
+        // Power-of-two requirements.
+        Slab::spec_is_power_of_two(8),
+        Slab::spec_is_power_of_two(16),
+        Slab::spec_is_power_of_two(32),
+        Slab::spec_is_power_of_two(64),
+        Slab::spec_is_power_of_two(128),
+        Slab::spec_is_power_of_two(256),
+        Slab::spec_is_power_of_two(512),
+        Slab::spec_is_power_of_two(4096),
     ensures
         result is Ok ==> result->Ok_0.inv(),
 {

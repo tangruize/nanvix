@@ -1,6 +1,5 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
-#![allow(dead_code)]
 
 //==================================================================================================
 // Error Handling
@@ -71,3 +70,9 @@ impl Error {
 }
 
 } // verus!
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:?}: {}", self.code, self.reason)
+    }
+}
