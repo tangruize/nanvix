@@ -507,7 +507,8 @@ impl KernelStack {
             self@.contains_addr(addr as int),
         ensures
             0 <= result < self.num_pages,
-            self@.page_start(result as int) <= addr as int < self@.page_end(result as int),
+            self@.page_start(result as int) <= addr as int,
+            addr as int < self@.page_end(result as int),
     {
         (addr - self.base_addr) / PAGE_SIZE
     }
