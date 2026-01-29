@@ -1,6 +1,6 @@
 {
   "module_name": "vmem",
-  "outer_iteration": 2,
+  "outer_iteration": 3,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "da8fb87f-dc6e-4b95-99b6-35ea995619fa",
