@@ -485,7 +485,8 @@ impl Vmem {
             assert(self.mappings[slot as int].valid);
             assert(self.mappings[slot as int].vaddr as int == vaddr as int);
             assert(self.mappings[slot as int].spec_is_for_vaddr(vaddr as int));
-            assert(0 <= slot as int && slot as int < self.mapping_count as int);
+            assert(slot as int >= 0);
+            assert(slot as int < self.mapping_count as int);
         }
 
         Ok(())
