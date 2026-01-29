@@ -1,0 +1,7 @@
+
+Execution failed: Error: Failed to get response from the AI model; retried 5 times (total retry wait time: 93.06527142481444 seconds) (Request-ID E850:12E062:11959:13B8E:697B26AD) Last error: CAPIError: 400 tool call must have a tool call ID and function name
+
+Total usage est:        0 Premium requests
+API time spent:         0s
+Total session time:     1m 42.058s
+Total code changes:     +0 -0

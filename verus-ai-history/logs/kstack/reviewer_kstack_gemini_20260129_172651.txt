@@ -1,0 +1,7 @@
+
+Execution failed: Error: Failed to get response from the AI model; retried 5 times (total retry wait time: 87.44063797870982 seconds) (Request-ID A650:2CC035:5F531:691EA:697B27B6) Last error: CAPIError: 500 "An internal server error occurred."
+
+Total usage est:        0 Premium requests
+API time spent:         0s
+Total session time:     3m 21.811s
+Total code changes:     +0 -0

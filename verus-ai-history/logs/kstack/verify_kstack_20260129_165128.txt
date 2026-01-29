@@ -1,0 +1,40 @@
+=== Verus Verification ===
+Timestamp: Thu Jan 29 16:51:28 CST 2026
+Module: kstack
+Command: verus --crate-type lib lib.rs --verify-module kstack
+
+note: verifying module kstack
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kstack.rs:557:5
+    |
+557 |     pub fn has_room(&self, current_sp: usize, growth: usize) -> (result: bool)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kstack.rs:562:13
+    |
+562 |             result == (current_sp as int - growth as int >= self.spec_base()),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+563 |     {
+564 |         current_sp >= self.base_addr + growth
+    |         ------------------------------------- at the end of the function body
+
+error: possible arithmetic underflow/overflow
+   --> kstack.rs:564:23
+    |
+564 |         current_sp >= self.base_addr + growth
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 17 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 17
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kstack (verified:17, errors:1)

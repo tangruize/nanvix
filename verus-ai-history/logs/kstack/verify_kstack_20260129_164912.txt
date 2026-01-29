@@ -1,0 +1,22 @@
+=== Verus Verification ===
+Timestamp: Thu Jan 29 16:49:12 CST 2026
+Module: kstack
+Command: verus --crate-type lib lib.rs --verify-module kstack
+
+error: expected `,`
+   --> kstack.rs:510:66
+    |
+510 |             self@.page_start(result as int) <= addr as int < self@.page_end(result as int),
+    |                                                                  ^
+
+error: aborting due to 1 previous error
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kstack (verified:0, errors:0)
