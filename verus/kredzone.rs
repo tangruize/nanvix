@@ -97,13 +97,25 @@
 //!
 //! | Function | Description | Trust Level |
 //! |----------|-------------|-------------|
-//! | `store(index, value)` | Store a value at the given index | Trusted (external_body) |
-//! | `load(index)` | Load a value from the given index | Trusted (external_body) |
+//! | `store(index, value)` | Store a value at the given index | **Bounds verified**, volatile trusted |
+//! | `load(index)` | Load a value from the given index | **Bounds verified**, volatile trusted |
+//! | `raw_store(index, value)` | Raw volatile write | Trusted (external_body) |
+//! | `raw_load(index)` | Raw volatile read | Trusted (external_body) |
 //! | `store_with_ghost(...)` | Verified wrapper managing ghost state | Verified |
 //! | `load_with_ghost(...)` | Verified wrapper using ghost state | Verified |
 //! | `create_initial_ghost()` | Create initial ghost state | Verified |
 //!
-//! ### Verified Wrapper Layer
+//! ### Verification Architecture
+//!
+//! The `store`/`load` functions are structured to maximize verified code:
+//!
+//! 1. **Verified bounds check**: The `if index >= NUM_ENTRIES` check is verified by Verus.
+//! 2. **Trusted volatile access**: Only `raw_store`/`raw_load` are `external_body`.
+//!
+//! This ensures that bounds safety is machine-checked, while only the minimal
+//! volatile memory operations remain trusted.
+//!
+//! ### Ghost State Wrappers
 //!
 //! For callers who wish to use the proven algebraic properties, verified wrappers
 //! are provided that manage ghost state:
@@ -425,7 +437,11 @@ impl KernelRedZoneGhost {
 /// and uses `extern "C" { static mut kredzone: usize; }` with volatile pointer operations.
 /// Do not compile this file as a replacement for the kernel module.
 ///
-#[verifier::external_body]
+/// # Verified Bounds Check
+///
+/// The bounds check is **verified** by Verus. Only the raw volatile memory access
+/// is trusted via `raw_store()`.
+///
 pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
     ensures
         // Success case: index was valid.
@@ -433,21 +449,43 @@ pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
         // Failure case: index was out of bounds.
         result.is_err() ==> !spec_is_valid_index(index as int),
 {
-    // VERIFICATION STUB: This body is ignored by Verus due to external_body.
-    // The actual implementation uses:
+    // Verified bounds check.
+    if index >= NUM_ENTRIES {
+        return Err(Error::new(ErrorCode::InvalidArgument, "index out of bounds"));
+    }
+    
+    // Trusted raw memory access.
+    raw_store(index, value);
+    Ok(())
+}
+
+/// Raw store operation (trusted).
+///
+/// This function performs the actual volatile write to the kredzone memory.
+/// It is marked `external_body` because volatile operations are opaque to Verus.
+///
+/// # Safety
+///
+/// Caller must ensure `index < NUM_ENTRIES`. This is enforced by the verified
+/// `store()` function which is the only intended caller.
+///
+/// # Warning
+///
+/// This file is for **verification only**. The body below is a stub that Verus ignores.
+/// The actual implementation uses `ptr.write_volatile(value)`.
+/// See: src/kernel/src/mm/kredzone.rs
+#[verifier::external_body]
+fn raw_store(index: usize, value: usize)
+    requires
+        spec_is_valid_index(index as int),
+{
+    // VERIFICATION STUB: Verus ignores this body.
+    // Actual implementation:
     //   unsafe {
     //       let ptr: *mut usize = core::ptr::addr_of_mut!(kredzone);
     //       let ptr: *mut usize = ptr.add(index);
     //       ptr.write_volatile(value);
     //   }
-    // See: src/kernel/src/mm/kredzone.rs
-
-    // Check if the index is out of bounds.
-    if index >= NUM_ENTRIES {
-        return Err(Error::new(ErrorCode::InvalidArgument, "index out of bounds"));
-    }
-
-    Ok(())
 }
 
 /// Loads a value from the kernel red zone.
@@ -476,20 +514,16 @@ pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
 /// - **Postcondition on success**: The index was valid.
 /// - **Postcondition on failure**: The index was out of bounds.
 ///
-/// The actual value returned is trusted, not verified. The return value `Ok(0)` in
-/// the body is a placeholder; the real implementation performs a volatile read.
+/// The actual value returned is trusted, not verified.
 /// **For functional correctness verification, use `load_with_ghost()` instead.**
 /// Callers reasoning about returned values should use `spec_load_result()` with
 /// their ghost state to determine the expected value.
 ///
-/// # Warning
+/// # Verified Bounds Check
 ///
-/// This file is for **verification only**. The body below is a stub that Verus ignores
-/// due to `external_body`. The actual implementation is in `src/kernel/src/mm/kredzone.rs`
-/// and uses `extern "C" { static mut kredzone: usize; }` with volatile pointer operations.
-/// Do not compile this file as a replacement for the kernel module.
+/// The bounds check is **verified** by Verus. Only the raw volatile memory access
+/// is trusted via `raw_load()`.
 ///
-#[verifier::external_body]
 pub fn load(index: usize) -> (result: Result<usize, Error>)
     ensures
         // Success case: index was valid.
@@ -497,21 +531,44 @@ pub fn load(index: usize) -> (result: Result<usize, Error>)
         // Failure case: index was out of bounds.
         result.is_err() ==> !spec_is_valid_index(index as int),
 {
-    // VERIFICATION STUB: This body is ignored by Verus due to external_body.
-    // The actual implementation uses:
-    //   unsafe {
-    //       let ptr: *const usize = core::ptr::addr_of!(kredzone);
-    //       let ptr: *const usize = ptr.add(index);
-    //       Ok(ptr.read_volatile())
-    //   }
-    // See: src/kernel/src/mm/kredzone.rs
-
-    // Check if the index is out of bounds.
+    // Verified bounds check.
     if index >= NUM_ENTRIES {
         return Err(Error::new(ErrorCode::InvalidArgument, "index out of bounds"));
     }
+    
+    // Trusted raw memory access.
+    let value = raw_load(index);
+    Ok(value)
+}
 
-    Ok(0) // Placeholder return; actual value comes from volatile read.
+/// Raw load operation (trusted).
+///
+/// This function performs the actual volatile read from the kredzone memory.
+/// It is marked `external_body` because volatile operations are opaque to Verus.
+///
+/// # Safety
+///
+/// Caller must ensure `index < NUM_ENTRIES`. This is enforced by the verified
+/// `load()` function which is the only intended caller.
+///
+/// # Warning
+///
+/// This file is for **verification only**. The body below is a stub that Verus ignores.
+/// The actual implementation uses `ptr.read_volatile()`.
+/// See: src/kernel/src/mm/kredzone.rs
+#[verifier::external_body]
+fn raw_load(index: usize) -> (value: usize)
+    requires
+        spec_is_valid_index(index as int),
+{
+    // VERIFICATION STUB: Verus ignores this body.
+    // Actual implementation:
+    //   unsafe {
+    //       let ptr: *const usize = core::ptr::addr_of!(kredzone);
+    //       let ptr: *const usize = ptr.add(index);
+    //       ptr.read_volatile()
+    //   }
+    0  // Placeholder; actual value comes from volatile read.
 }
 
 //==================================================================================================
