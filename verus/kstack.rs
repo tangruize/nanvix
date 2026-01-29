@@ -33,16 +33,63 @@
 //! 2. **Accessor Availability**: base(), top(), size() always return valid values for
 //!    a well-formed stack.
 //!
-//! ## Abstraction Decisions
+//! ## Verification Scope and Abstraction Decisions
 //!
-//! The original implementation uses `Vec<KernelPage>` where each `KernelPage` represents
-//! a page allocated from the virtual memory manager. For verification purposes, we
-//! abstract this to track:
-//! - The base virtual address of the stack
-//! - The number of pages allocated
+//! This verification focuses on the **address arithmetic and invariant safety** of the
+//! kernel stack, not on resource lifecycle management. The following are explicitly
+//! **out of scope**:
 //!
-//! This allows us to verify the core invariants without modeling the full complexity
-//! of the virtual memory manager.
+//! ### Out of Scope: Allocator Interaction
+//!
+//! The original implementation takes `&mut VirtMemoryManager` and calls `mm.alloc_kpages()`
+//! to allocate pages. This verified version abstracts the allocator by taking
+//! `(base_addr, num_pages)` directly. The rationale:
+//!
+//! - **Separation of concerns**: The allocator (`VirtMemoryManager`) should be verified
+//!   separately with its own invariants (contiguity, alignment, no double-allocation).
+//! - **Preconditions**: The `new()` preconditions encode what a correct allocator must
+//!   provide: page-aligned base, valid page count, no overflow.
+//! - **Composability**: When both modules are verified, their guarantees compose.
+//!
+//! ### Out of Scope: Drop / Resource Cleanup
+//!
+//! The original implementation has a `Drop` trait that pops and drops each `KernelPage`.
+//! This verified version does not model `Drop` because:
+//!
+//! - **Verus limitations**: Verus does not yet fully support verifying `Drop` traits.
+//! - **Linear types**: Proper deallocation verification requires linear/affine types
+//!   which would track page ownership through the type system.
+//! - **Focus**: This verification targets the data structure invariants, not RAII.
+//!
+//! ### Out of Scope: Fixed Stack Size Configuration
+//!
+//! The original uses `config::kernel::KSTACK_SIZE` (typically 32768 bytes = 8 pages).
+//! This verified version parameterizes by `num_pages` for generality:
+//!
+//! - **Flexibility**: Verifies the general case; any specific size is a specialization.
+//! - **Configuration binding**: To verify config-specific behavior, instantiate with
+//!   `num_pages = KSTACK_SIZE / PAGE_SIZE` and the proofs apply.
+//!
+//! ### Return Type Abstraction
+//!
+//! The original returns `PageAligned<VirtualAddress>` from `base()` and `top()`.
+//! This verified version returns raw `usize` with alignment proven in postconditions:
+//!
+//! - **Type-level vs proof-level**: The original enforces alignment via the type system;
+//!   the verification proves the same property via postconditions.
+//! - **Equivalent guarantees**: Both approaches ensure callers receive aligned addresses.
+//!
+//! ### Verification Helper Methods
+//!
+//! The methods `contains()`, `page_index()`, `initial_sp()`, and `has_room()` are
+//! added for verification purposes. They enable reasoning about:
+//!
+//! - Stack bounds checking (for stack overflow protection)
+//! - Page membership (for page fault handling)
+//! - Stack pointer validity
+//!
+//! These could be added to the original implementation if useful, or kept as
+//! verification-only helpers.
 //!
 //! ## API Summary
 //!
@@ -74,8 +121,8 @@ pub const PAGE_ALIGNMENT: usize = 4096;
 /// Maximum stack size in pages (to prevent overflow).
 pub const MAX_STACK_PAGES: usize = 256;
 
-/// Default kernel stack size in pages.
-pub const DEFAULT_KSTACK_PAGES: usize = 4;
+/// Default kernel stack size in pages (matches config::kernel::KSTACK_SIZE / PAGE_SIZE = 32768 / 4096 = 8).
+pub const DEFAULT_KSTACK_PAGES: usize = 8;
 
 //==================================================================================================
 // Specification Helper Functions
