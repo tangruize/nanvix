@@ -464,6 +464,7 @@ impl Vmem {
                 self.inv(),
                 forall|j: int| 0 <= j < i as int ==>
                     !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
+            decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 return Err(Error::new(ErrorCode::ResourceBusy, "page already mapped"));
@@ -536,6 +537,7 @@ impl Vmem {
                 found_idx < MAX_USER_PAGES ==>
                     self.mappings[found_idx as int].valid &&
                     self.mappings[found_idx as int].vaddr == vaddr,
+            decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 found_idx = i;
@@ -600,6 +602,7 @@ impl Vmem {
                 0 <= i <= self.mapping_count,
                 self.mapping_count <= MAX_USER_PAGES,
                 self.inv(),
+            decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 return Ok(self.mappings[i].frame_addr);
@@ -649,6 +652,7 @@ impl Vmem {
                 0 <= i <= self.mapping_count,
                 self.mapping_count <= MAX_USER_PAGES,
                 self.inv(),
+            decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 found = true;
@@ -833,6 +837,7 @@ impl Vmem {
                 0 <= i <= self.mapping_count,
                 self.mapping_count <= MAX_USER_PAGES,
                 self.inv(),
+            decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 found = true;
