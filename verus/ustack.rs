@@ -89,8 +89,9 @@
 //!
 //! To mirror the original `PageAligned<VirtualAddress>` return types, this module provides:
 //! - `PageAlignedAddr`: A newtype wrapper with an alignment invariant
-//! - `base_aligned()`: Returns base as PageAlignedAddr (mirrors original `base()`)
-//! - `top_aligned()`: Returns top as PageAlignedAddr (mirrors original `top()`)
+//! - `base()`: Returns base as PageAlignedAddr (mirrors original `base()`)
+//! - `top()`: Returns top as PageAlignedAddr (mirrors original `top()`)
+//! - `from_aligned()`: Infallible constructor taking PageAlignedAddr (mirrors original `new()`)
 //!
 //! These preserve the type-level alignment guarantees from the original API.
 //!
@@ -98,12 +99,13 @@
 //!
 //! | Function | Description |
 //! |----------|-------------|
-//! | `new(base_addr)` | Create a new user stack with the given base address |
+//! | `new(base_addr)` | Create a new user stack (fallible, takes raw usize) |
+//! | `from_aligned(base)` | Create a new user stack (infallible, takes PageAlignedAddr) |
 //! | `size()` | Returns the size in bytes (constant USER_STACK_SIZE) |
-//! | `base()` | Returns the base address (raw usize) |
-//! | `top()` | Returns the top address (raw usize) |
-//! | `base_aligned()` | Returns base as PageAlignedAddr |
-//! | `top_aligned()` | Returns top as PageAlignedAddr |
+//! | `base()` | Returns the base address as PageAlignedAddr |
+//! | `top()` | Returns the top address as PageAlignedAddr |
+//! | `base_raw()` | Returns the base address as raw usize |
+//! | `top_raw()` | Returns the top address as raw usize |
 //!
 //==================================================================================================
 
@@ -443,6 +445,13 @@ impl UserStackView {
 ///
 /// The user stack is a contiguous region of virtual memory used for user-mode
 /// execution. It has a fixed size of USER_STACK_SIZE bytes.
+///
+/// # Debug Formatting Note
+///
+/// This type uses `#[derive(Debug)]` for simplicity. The original kernel implementation
+/// has a custom `fmt::Debug` that formats as `UserStack { base: ..., top: ..., size=... }`.
+/// The derived Debug produces a different format: `UserStack { base_addr: ... }`.
+/// This difference is cosmetic and does not affect correctness properties.
 #[derive(Debug)]
 pub struct UserStack {
     /// Base virtual address of the stack.
@@ -600,6 +609,65 @@ impl UserStack {
         Ok(stack)
     }
 
+    /// Instantiates a new user stack from a PageAlignedAddr (infallible).
+    ///
+    /// # Description
+    ///
+    /// This constructor mirrors the original `new(base: PageAligned<VirtualAddress>) -> Self`
+    /// which is infallible because alignment is guaranteed by the type.
+    ///
+    /// # Parameters
+    ///
+    /// - `base`: The page-aligned base address of the stack.
+    ///
+    /// # Returns
+    ///
+    /// A new user stack.
+    ///
+    pub fn from_aligned(base: PageAlignedAddr) -> (result: Self)
+        requires
+            base.inv(),
+            base.spec_addr() + (USER_STACK_SIZE as int) <= usize::MAX as int,
+        ensures
+            result.inv(),
+            result.spec_base() == base.spec_addr(),
+            result.spec_size() == USER_STACK_SIZE as int,
+            result.spec_top() == base.spec_addr() + (USER_STACK_SIZE as int),
+    {
+        let base_addr = base.into_raw();
+
+        // Prove that USER_STACK_SIZE is page-aligned.
+        proof {
+            assert(USER_STACK_SIZE as int == USER_STACK_PAGES as int * (PAGE_SIZE as int));
+            assert(spec_is_size_aligned(USER_STACK_SIZE as int));
+        }
+
+        let stack = UserStack { base_addr };
+
+        // Prove the invariant holds.
+        proof {
+            // Prove size alignment.
+            assert(spec_is_size_aligned(stack@.size())) by {
+                assert(stack@.size() == USER_STACK_SIZE as int);
+            }
+
+            // Prove top alignment.
+            assert(spec_is_page_aligned(stack@.top())) by {
+                assert(stack@.top() == base_addr as int + (USER_STACK_SIZE as int));
+            }
+
+            // Prove top > base.
+            assert(stack@.top_greater_than_base()) by {
+                assert(stack@.size() > 0);
+            }
+
+            // Prove pages are contiguous.
+            assert(stack@.pages_are_contiguous());
+        }
+
+        stack
+    }
+
     //==============================================================================================
     // Accessors
     //==============================================================================================
@@ -625,7 +693,7 @@ impl UserStack {
         USER_STACK_SIZE
     }
 
-    /// Returns the base address of the user stack.
+    /// Returns the base address of the user stack as raw usize.
     ///
     /// # Description
     ///
@@ -639,8 +707,9 @@ impl UserStack {
     /// # Notes
     ///
     /// As stacks grow downwards, the base address is the lowest address of the stack.
+    /// For type-safe access, use `base()` which returns `PageAlignedAddr`.
     ///
-    pub fn base(&self) -> (result: usize)
+    pub fn base_raw(&self) -> (result: usize)
         requires
             self.inv(),
         ensures
@@ -650,7 +719,7 @@ impl UserStack {
         self.base_addr
     }
 
-    /// Returns the top address of the user stack.
+    /// Returns the top address of the user stack as raw usize.
     ///
     /// # Description
     ///
@@ -665,8 +734,9 @@ impl UserStack {
     /// # Notes
     ///
     /// As stacks grow downwards, the top address is the highest address of the stack.
+    /// For type-safe access, use `top()` which returns `PageAlignedAddr`.
     ///
-    pub fn top(&self) -> (result: usize)
+    pub fn top_raw(&self) -> (result: usize)
         requires
             self.inv(),
         ensures
@@ -685,7 +755,8 @@ impl UserStack {
     /// Returns the base address as a PageAlignedAddr.
     ///
     /// This method mirrors the original API that returns `PageAligned<VirtualAddress>`.
-    pub fn base_aligned(&self) -> (result: PageAlignedAddr)
+    /// It is the primary accessor for base address, providing type-level alignment guarantees.
+    pub fn base(&self) -> (result: PageAlignedAddr)
         requires
             self.inv(),
         ensures
@@ -698,7 +769,8 @@ impl UserStack {
     /// Returns the top address as a PageAlignedAddr.
     ///
     /// This method mirrors the original API that returns `PageAligned<VirtualAddress>`.
-    pub fn top_aligned(&self) -> (result: PageAlignedAddr)
+    /// It is the primary accessor for top address, providing type-level alignment guarantees.
+    pub fn top(&self) -> (result: PageAlignedAddr)
         requires
             self.inv(),
         ensures
@@ -775,7 +847,7 @@ impl UserStack {
             result as int == self.spec_top(),
             result as int > self.spec_base(),
     {
-        self.top()
+        self.top_raw()
     }
 
     /// Checks if the stack has room to grow by the given amount.
