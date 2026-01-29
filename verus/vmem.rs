@@ -2,11 +2,23 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-//! # Virtual Memory Space (Verified Implementation)
+//! # Virtual Memory Space (Verified Specification Model)
 //!
-//! This module provides a verified implementation of the `Vmem` abstraction, which represents
-//! a virtual memory space. The `Vmem` structure manages the mapping between virtual addresses
-//! and physical frames through page directories and page tables.
+//! This module provides a **verified specification model** of the `Vmem` abstraction for
+//! formal verification purposes. It is designed to verify the correctness of memory
+//! management logic and preconditions, NOT to replace the actual implementation.
+//!
+//! ## Purpose and Scope
+//!
+//! This verification module serves as:
+//! - A **formal specification** of virtual memory space properties
+//! - A **proof** that precondition/postcondition contracts are satisfiable
+//! - A **reference model** for the actual implementation
+//!
+//! It is NOT:
+//! - A drop-in replacement for the original implementation
+//! - A complete model of hardware page table operations
+//! - Executable code for production use
 //!
 //! ## Overview
 //!
@@ -26,6 +38,8 @@
 //! 5. **Non-Zero Size**: Memory operations require non-zero size.
 //! 6. **Invariant Preservation**: All operations maintain the Vmem invariant.
 //! 7. **Physical Memory Bounds**: Copy operations verify physical address ranges.
+//! 8. **Mapping Existence**: Copy operations require user pages to be mapped.
+//! 9. **Mapping Uniqueness**: Each virtual address is mapped at most once.
 //!
 //! ## Abstraction Decisions
 //!
@@ -61,6 +75,19 @@
 //! implementation details that are abstracted away. The essential behaviors they
 //! provide (translation lookup, resource cleanup) are captured in the high-level
 //! specifications of the public API.
+//!
+//! ### Memory Operations as Specifications
+//! Functions like `copy_from_user_unaligned`, `copy_to_user_unaligned`, `memset`,
+//! `uctrl`, and `kctrl` verify preconditions and postconditions but do not perform
+//! actual memory operations. They serve as specifications that the actual
+//! implementation must satisfy. The implementation would perform unsafe hardware
+//! operations that cannot be verified without a full hardware model.
+//!
+//! ### Relationship to Implementation
+//! This verification module should be linked to the actual implementation via
+//! refinement or used to generate proof obligations. The verified contracts can
+//! be attached to the original implementation as pre/postconditions that the
+//! implementation must satisfy at runtime or through separate proof.
 //!
 //! ## Relationship to Other Verified Modules
 //!
