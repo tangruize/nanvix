@@ -60,8 +60,14 @@
 //! 2. Verification of shared ownership would require linear types or separation logic
 //! 3. The core safety properties (user/kernel separation) are captured without modeling kernel internals
 //!
+//! **Private vs Shared Kernel Pages**: The original has `private_kernel_pages` distinct
+//! from shared kernel pages. Private kernel pages belong to a single address space while
+//! shared pages are reference-counted across all address spaces. This distinction is not
+//! modeled because: (a) both are kernel mappings which are out of scope, and (b) the
+//! ownership model would require linear types for proper verification.
+//!
 //! ### Capacity Simplification
-//! The verified model uses a fixed-size array (MAX_USER_PAGES=1024) while the original
+//! The verified model uses a fixed-size array (MAX_USER_PAGES=65536) while the original
 //! uses unbounded linked lists. This is sufficient for verification of core properties
 //! and typical workloads. Production systems should validate this bound.
 //!
@@ -135,8 +141,6 @@
 //! | `unmap()` | Unmap a page from the virtual address space |
 //! | `is_user_addr()` | Check if address is in user space |
 //! | `is_user_region()` | Check if region is entirely in user space |
-//! | `is_kernel_addr()` | Check if address is in kernel space |
-//! | `is_kernel_region()` | Check if region is entirely in kernel space |
 //! | `is_physical_region()` | Check if region is within physical memory |
 //! | `copy_from_user_unaligned()` | Copy from user space to kernel space |
 //! | `copy_to_user_unaligned()` | Copy from kernel space to user space |
@@ -144,6 +148,11 @@
 //! | `memset()` | Fill a page with a value |
 //! | `uctrl()` | Change access permissions on a user page |
 //! | `kctrl()` | Change access permissions on a kernel page |
+//!
+//! Private helper functions (not exposed):
+//! - `is_kernel_addr()` - Check if address is in kernel space
+//! - `is_kernel_region()` - Check if region is entirely in kernel space
+//! - `find_user_frame()` - Look up physical frame for user address
 //==================================================================================================
 
 use crate::{
@@ -453,6 +462,21 @@ impl Vmem {
     ///
     /// - The returned Vmem satisfies its invariant.
     /// - The returned Vmem has no user pages mapped.
+    ///
+    /// # Signature Difference
+    ///
+    /// The original signature is:
+    /// ```ignore
+    /// fn new(kernel_pages: LinkedList<KernelPage>,
+    ///        kernel_page_tables: LinkedList<(PageTableAddress, PageTable<...>)>)
+    ///        -> Result<Self, Error>
+    /// ```
+    /// This verified version takes no parameters because:
+    /// 1. Kernel mappings are abstracted (shared state not tracked in verified model)
+    /// 2. The original's error path (from pgdir.map) is not modeled
+    ///
+    /// For refinement proofs, this would need to be wrapped with an external_body
+    /// function matching the original signature.
     pub fn new() -> (result: Self)
         ensures
             result.inv(),
@@ -497,6 +521,14 @@ impl Vmem {
     /// - Kernel mappings are shared (via reference counting in the original)
     /// - User mappings start empty in the child and are populated via copy-on-write
     ///   at page fault time, NOT via deep copy at clone time
+    ///
+    /// # Signature Difference
+    ///
+    /// The original returns `Result<Vmem, Error>` because `physical_address()`
+    /// can fail during page directory setup. This verified version returns `Self`
+    /// (infallible) because the error path requires modeling PageDirectory
+    /// internals which is out of scope. For refinement proofs, this would need
+    /// an external_body wrapper with the original signature.
     ///
     /// This is why `result.mapping_count == 0` - the cloned Vmem has no user
     /// mappings initially. The actual user page data is copied lazily when
@@ -657,7 +689,7 @@ impl Vmem {
     /// # Returns
     ///
     /// True if the address is in kernel space (not in user space).
-    pub fn is_kernel_addr(vaddr: usize) -> (result: bool)
+    fn is_kernel_addr(vaddr: usize) -> (result: bool)
         ensures
             result == spec_is_kernel_addr(vaddr as int),
     {
@@ -705,7 +737,7 @@ impl Vmem {
     ///
     /// True if the entire region lies in kernel space, false otherwise.
     /// Returns false for zero-length regions.
-    pub fn is_kernel_region(start: usize, size: usize) -> (result: bool)
+    fn is_kernel_region(start: usize, size: usize) -> (result: bool)
         ensures
             result ==> spec_is_kernel_region(start as int, size as int),
             result ==> size > 0,
@@ -880,7 +912,14 @@ impl Vmem {
     /// The original returns `Result<UserFrame, Error>`. This verified version returns
     /// `Result<usize, Error>` where the `usize` is the raw physical frame address.
     /// The correspondence is: `UserFrame.frame_address().into_raw_value() -> usize`.
-    /// Note that `UserFrame` carries ownership semantics that `usize` cannot capture.
+    ///
+    /// # Ownership Semantics
+    ///
+    /// The original `UserFrame` type carries RAII ownership semantics: when dropped,
+    /// it deallocates the underlying physical frame. This ownership transfer is NOT
+    /// captured in this verified model. Resource leak prevention and double-free
+    /// safety would require ghost resource tracking which is out of scope. The verified
+    /// model only ensures the mapping is correctly removed from the address space.
     pub fn unmap(&mut self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
@@ -1131,6 +1170,14 @@ impl Vmem {
     /// the copy loop. The destination is a kernel virtual address that is
     /// identity-mapped to physical memory, so no separate physical bounds
     /// check is performed on it.
+    ///
+    /// # Physical Bounds
+    ///
+    /// Physical frame addresses are looked up internally via `find_user_frame`
+    /// but not returned by this function. The physical bounds are implicitly
+    /// satisfied because frames come from the physical memory allocator which
+    /// only allocates within MEMORY_SIZE. This constraint is established at
+    /// map() time where frame_addr must come from a valid FrameAddress.
     pub fn copy_from_user_unaligned(
         &self,
         dst: usize,
