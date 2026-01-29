@@ -482,11 +482,13 @@ impl Vmem {
 
         // Help Verus see that the new mapping satisfies spec_is_mapped.
         proof {
-            assert(self.mappings[slot as int].valid);
-            assert(self.mappings[slot as int].vaddr as int == vaddr as int);
-            assert(self.mappings[slot as int].spec_is_for_vaddr(vaddr as int));
-            assert(slot as int >= 0);
-            assert(slot as int < self.mapping_count as int);
+            let idx: int = slot as int;
+            let count: int = self.mapping_count as int;
+            assert(self.mappings[idx].valid);
+            assert(self.mappings[idx].vaddr as int == vaddr as int);
+            assert(self.mappings[idx].spec_is_for_vaddr(vaddr as int));
+            assert(idx >= 0);
+            assert(idx < count);
         }
 
         Ok(())
