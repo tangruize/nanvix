@@ -1196,10 +1196,9 @@ impl Vmem {
     /// # Note
     ///
     /// The original implementation performs a dry-run first to check for errors
-    /// before the actual copy. It also checks that destination user frames exist
-    /// and that physical addresses are within bounds. This verified version
-    /// requires mapping existence as a precondition and checks source physical
-    /// bounds upfront.
+    /// before the actual copy. This verified version matches that control flow
+    /// by calling `copy_to_user_unaligned_unchecked` twice: once for dry-run
+    /// validation and once for the actual copy.
     pub fn copy_to_user_unaligned(
         &self,
         dst: usize,
@@ -1218,31 +1217,10 @@ impl Vmem {
                 &&& spec_is_physical_region(src as int, size as int)
             },
     {
-        // Check if size is zero.
-        if size == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "zero-length copy"));
-        }
-
-        // Check if source is in kernel space.
-        if !Self::is_kernel_region(src, size) {
-            return Err(Error::new(ErrorCode::BadAddress, "source not in kernel space"));
-        }
-
-        // Check if destination is in user space.
-        if !Self::is_user_region(dst, size) {
-            return Err(Error::new(ErrorCode::BadAddress, "destination not in user space"));
-        }
-
-        // Check if source is within physical memory bounds.
-        // The original implementation checks this during the copy loop.
-        if !Self::is_physical_region(src, size) {
-            return Err(Error::new(ErrorCode::BadAddress, "source not within physical memory"));
-        }
-
-        // In a real implementation, we would perform the physical memory copy.
-        // This includes looking up user frames and copying page-by-page.
-        // The precondition ensures all destination pages are mapped.
-        Ok(())
+        // Perform a dry run first to check for errors (matches original control flow).
+        self.copy_to_user_unaligned_unchecked(dst, src, size, true)?;
+        // Perform the actual copy (this will panic on irrecoverable errors).
+        self.copy_to_user_unaligned_unchecked(dst, src, size, false)
     }
 
     /// Copies data from kernel space to user space without dry-run validation.
