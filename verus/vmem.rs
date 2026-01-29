@@ -14,7 +14,6 @@
 //! - Page directory management for virtual-to-physical address translation
 //! - Kernel page table management (shared across address spaces)
 //! - User page table management (private to each address space)
-//! - Kernel page management (pages mapped into kernel space)
 //! - User frame mapping/unmapping operations
 //! - Memory copy operations between user and kernel space
 //!
@@ -31,16 +30,13 @@
 //!
 //! ### Simplified Page Table Model
 //! The original implementation uses complex linked lists of page tables with Rc<RefCell<>>
-//! for shared ownership. For verification, we model page tables as abstract maps from
-//! virtual addresses to physical frames, capturing the essential translation properties.
+//! for shared ownership. For verification, we model page tables as an abstract array-based
+//! storage, capturing the essential translation properties.
 //!
-//! ### Page Directory as Abstract Map
-//! Instead of modeling the x86-specific page directory structure, we use an abstract
-//! map that captures the semantics: each page table address maps to whether it's present.
-//!
-//! ### Frame Address Handling
-//! The Vmem stores frame addresses directly as usize values in its internal array.
-//! The ghost view tracks mappings at the spec level using int for flexibility.
+//! ### View Derived from Concrete State
+//! The VmemView is derived from the concrete mappings array rather than maintained
+//! as separate ghost state. This follows the pattern used in other verified modules
+//! like upool and kpool.
 //!
 //! ## Relationship to Other Verified Modules
 //!
@@ -72,7 +68,6 @@ use crate::{
     error::{Error, ErrorCode},
 };
 use vstd::prelude::*;
-use vstd::set::*;
 
 verus! {
 
@@ -91,9 +86,6 @@ pub const USER_END: usize = 0xC0000000; // 3 GB
 /// Total physical memory size (for bounds checking).
 /// This should match the system configuration.
 pub const MEMORY_SIZE: usize = 0x10000000; // 256 MB
-
-/// Page table alignment (4 MB for x86 32-bit).
-pub const PGTAB_ALIGNMENT: usize = 0x400000; // 4 MB
 
 /// Maximum number of user pages that can be tracked (simplified model).
 pub const MAX_USER_PAGES: usize = 1024;
@@ -128,172 +120,54 @@ pub struct PageMapping {
     pub valid: bool,
 }
 
-//==================================================================================================
-// VmemView - Abstract Specification
-//==================================================================================================
-
-/// Abstract view of the virtual memory space for specification purposes.
-///
-/// This captures the essential state of a virtual memory space:
-/// - The set of mapped user pages (virtual address -> frame address mappings)
-/// - The set of mapped kernel pages
-/// - The number of page tables in use
-#[verifier::ext_equal]
-pub struct VmemView {
-    /// Set of mapped user page virtual addresses.
-    pub user_pages: Set<int>,
-    /// Map from user virtual page addresses to frame addresses.
-    pub user_mappings: Map<int, int>,
-    /// Set of mapped kernel page virtual addresses.
-    pub kernel_pages: Set<int>,
-    /// Number of user page tables currently in use.
-    pub user_page_table_count: int,
-    /// Number of kernel page tables.
-    pub kernel_page_table_count: int,
+impl PageMapping {
+    /// Spec function to check if this mapping is for the given vaddr.
+    pub open spec fn spec_is_for_vaddr(&self, vaddr: int) -> bool {
+        self.valid && self.vaddr as int == vaddr
+    }
 }
 
-impl VmemView {
-    //==============================================================================================
-    // Basic Properties
-    //==============================================================================================
+//==================================================================================================
+// Spec Functions - Address Space Properties
+//==================================================================================================
 
-    /// Returns the number of mapped user pages.
-    pub open spec fn num_user_pages(&self) -> int {
-        self.user_pages.len() as int
-    }
+/// Property: A virtual address is in user space.
+pub open spec fn spec_is_user_addr(vaddr: int) -> bool {
+    USER_BASE as int <= vaddr && vaddr < USER_END as int
+}
 
-    /// Returns true if a user page is mapped at the given virtual address.
-    pub open spec fn is_user_page_mapped(&self, vaddr: int) -> bool {
-        self.user_pages.contains(vaddr)
-    }
+/// Property: A virtual address is in kernel space.
+pub open spec fn spec_is_kernel_addr(vaddr: int) -> bool {
+    !spec_is_user_addr(vaddr)
+}
 
-    /// Returns true if a kernel page is mapped at the given virtual address.
-    pub open spec fn is_kernel_page_mapped(&self, vaddr: int) -> bool {
-        self.kernel_pages.contains(vaddr)
-    }
+/// Property: A memory region lies entirely in user space.
+/// Requires size > 0 and no overflow.
+pub open spec fn spec_is_user_region(start: int, size: int) -> bool {
+    &&& size > 0
+    &&& start >= 0
+    &&& start + size - 1 >= start  // No overflow
+    &&& spec_is_user_addr(start)
+    &&& spec_is_user_addr(start + size - 1)
+}
 
-    /// Returns the frame address for a mapped user page.
-    pub open spec fn get_user_frame(&self, vaddr: int) -> int
-        recommends self.is_user_page_mapped(vaddr)
-    {
-        self.user_mappings[vaddr]
-    }
+/// Property: A memory region lies entirely in kernel space.
+/// Requires size > 0 and no overflow.
+pub open spec fn spec_is_kernel_region(start: int, size: int) -> bool {
+    &&& size > 0
+    &&& start >= 0
+    &&& start + size - 1 >= start  // No overflow
+    &&& spec_is_kernel_addr(start)
+    &&& spec_is_kernel_addr(start + size - 1)
+}
 
-    //==============================================================================================
-    // Address Space Properties
-    //==============================================================================================
-
-    /// Property: A virtual address is in user space.
-    pub open spec fn spec_is_user_addr(vaddr: int) -> bool {
-        USER_BASE as int <= vaddr && vaddr < USER_END as int
-    }
-
-    /// Property: A virtual address is in kernel space.
-    pub open spec fn spec_is_kernel_addr(vaddr: int) -> bool {
-        !Self::spec_is_user_addr(vaddr)
-    }
-
-    /// Property: A memory region lies entirely in user space.
-    /// Requires size > 0 and no overflow.
-    pub open spec fn spec_is_user_region(start: int, size: int) -> bool {
-        &&& size > 0
-        &&& start >= 0
-        &&& start + size - 1 >= start  // No overflow
-        &&& Self::spec_is_user_addr(start)
-        &&& Self::spec_is_user_addr(start + size - 1)
-    }
-
-    /// Property: A memory region lies entirely in kernel space.
-    /// Requires size > 0 and no overflow.
-    pub open spec fn spec_is_kernel_region(start: int, size: int) -> bool {
-        &&& size > 0
-        &&& start >= 0
-        &&& start + size - 1 >= start  // No overflow
-        &&& Self::spec_is_kernel_addr(start)
-        &&& Self::spec_is_kernel_addr(start + size - 1)
-    }
-
-    /// Property: A memory region lies within physical memory bounds.
-    pub open spec fn spec_is_physical_region(start: int, size: int) -> bool {
-        &&& size > 0
-        &&& start >= 0
-        &&& start + size - 1 >= start  // No overflow
-        &&& start < MEMORY_SIZE as int
-        &&& start + size - 1 < MEMORY_SIZE as int
-    }
-
-    //==============================================================================================
-    // Invariant Properties
-    //==============================================================================================
-
-    /// Property: All user pages are mapped to addresses in user space.
-    pub open spec fn user_pages_in_user_space(&self) -> bool {
-        forall|vaddr: int|
-            #![trigger self.user_pages.contains(vaddr)]
-            self.user_pages.contains(vaddr) ==> Self::spec_is_user_addr(vaddr)
-    }
-
-    /// Property: All kernel pages are mapped to addresses in kernel space.
-    pub open spec fn kernel_pages_in_kernel_space(&self) -> bool {
-        forall|vaddr: int|
-            #![trigger self.kernel_pages.contains(vaddr)]
-            self.kernel_pages.contains(vaddr) ==> Self::spec_is_kernel_addr(vaddr)
-    }
-
-    /// Property: User and kernel pages are disjoint (no overlapping addresses).
-    pub open spec fn user_kernel_disjoint(&self) -> bool {
-        forall|vaddr: int|
-            #![trigger self.user_pages.contains(vaddr), self.kernel_pages.contains(vaddr)]
-            !(self.user_pages.contains(vaddr) && self.kernel_pages.contains(vaddr))
-    }
-
-    /// Property: All user mappings have corresponding entries in user_pages.
-    pub open spec fn user_mappings_consistent(&self) -> bool {
-        forall|vaddr: int|
-            #![trigger self.user_mappings.contains_key(vaddr)]
-            self.user_mappings.contains_key(vaddr) <==> self.user_pages.contains(vaddr)
-    }
-
-    /// Property: All mapped user pages have page-aligned addresses.
-    pub open spec fn user_pages_aligned(&self) -> bool {
-        forall|vaddr: int|
-            #![trigger self.user_pages.contains(vaddr)]
-            self.user_pages.contains(vaddr) ==> (vaddr % PAGE_SIZE as int == 0)
-    }
-
-    /// Property: All mapped kernel pages have page-aligned addresses.
-    pub open spec fn kernel_pages_aligned(&self) -> bool {
-        forall|vaddr: int|
-            #![trigger self.kernel_pages.contains(vaddr)]
-            self.kernel_pages.contains(vaddr) ==> (vaddr % PAGE_SIZE as int == 0)
-    }
-
-    /// Property: User page table count is non-negative.
-    pub open spec fn valid_page_table_counts(&self) -> bool {
-        self.user_page_table_count >= 0 && self.kernel_page_table_count >= 0
-    }
-
-    /// Combined invariant for VmemView.
-    pub open spec fn inv(&self) -> bool {
-        &&& self.user_pages_in_user_space()
-        &&& self.kernel_pages_in_kernel_space()
-        &&& self.user_kernel_disjoint()
-        &&& self.user_mappings_consistent()
-        &&& self.user_pages_aligned()
-        &&& self.kernel_pages_aligned()
-        &&& self.valid_page_table_counts()
-    }
-
-    //==============================================================================================
-    // Liveness Properties
-    //==============================================================================================
-
-    /// Property: A fresh vmem has no user pages mapped.
-    pub open spec fn is_fresh(&self) -> bool {
-        &&& self.user_pages =~= Set::<int>::empty()
-        &&& self.user_mappings =~= Map::<int, int>::empty()
-        &&& self.user_page_table_count == 0
-    }
+/// Property: A memory region lies within physical memory bounds.
+pub open spec fn spec_is_physical_region(start: int, size: int) -> bool {
+    &&& size > 0
+    &&& start >= 0
+    &&& start + size - 1 >= start  // No overflow
+    &&& start < MEMORY_SIZE as int
+    &&& start + size - 1 < MEMORY_SIZE as int
 }
 
 //==================================================================================================
@@ -312,21 +186,9 @@ impl VmemView {
 /// This allows us to verify the core properties while keeping the model tractable.
 pub struct Vmem {
     /// Array of user page mappings.
-    mappings: [PageMapping; MAX_USER_PAGES],
+    pub mappings: [PageMapping; MAX_USER_PAGES],
     /// Number of valid mappings.
-    mapping_count: usize,
-    /// Number of kernel page tables.
-    kernel_page_table_count: usize,
-    /// Ghost state for specification.
-    ghost_view: Ghost<VmemView>,
-}
-
-impl View for Vmem {
-    type V = VmemView;
-
-    closed spec fn view(&self) -> VmemView {
-        self.ghost_view@
-    }
+    pub mapping_count: usize,
 }
 
 impl Vmem {
@@ -334,11 +196,40 @@ impl Vmem {
     // Specification Functions
     //==============================================================================================
 
-    /// Spec function to check the invariant.
+    /// Spec function to check that a mapping at index i is valid and for the given vaddr.
+    pub open spec fn spec_mapping_for_vaddr(&self, i: int, vaddr: int) -> bool {
+        0 <= i < self.mapping_count as int &&
+        self.mappings[i as int].valid &&
+        self.mappings[i as int].vaddr as int == vaddr
+    }
+
+    /// Spec function to check if a vaddr is mapped (exists in some slot).
+    pub open spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+        exists|i: int| 0 <= i < self.mapping_count as int &&
+            self.mappings[i as int].spec_is_for_vaddr(vaddr)
+    }
+
+    /// Spec function to get the frame address for a mapped vaddr.
+    /// Returns an arbitrary value if not mapped.
+    pub open spec fn spec_get_frame(&self, vaddr: int) -> int
+        recommends self.spec_is_mapped(vaddr)
+    {
+        choose|frame: int| exists|i: int| 0 <= i < self.mapping_count as int &&
+            self.mappings[i as int].spec_is_for_vaddr(vaddr) &&
+            self.mappings[i as int].frame_addr as int == frame
+    }
+
+    /// Invariant: mapping_count is within bounds and all mappings in [0, mapping_count) are valid.
     pub closed spec fn inv(&self) -> bool {
-        &&& self@.inv()
         &&& self.mapping_count <= MAX_USER_PAGES
-        &&& self.mapping_count as int == self@.num_user_pages()
+        // All mappings in [0, mapping_count) have valid flag set.
+        &&& forall|i: int| 0 <= i < self.mapping_count as int ==> self.mappings[i as int].valid
+        // All valid mappings are for user addresses.
+        &&& forall|i: int| 0 <= i < self.mapping_count as int ==>
+                spec_is_user_addr(self.mappings[i as int].vaddr as int)
+        // All valid mappings have page-aligned vaddr.
+        &&& forall|i: int| 0 <= i < self.mapping_count as int ==>
+                self.mappings[i as int].vaddr as int % PAGE_SIZE as int == 0
     }
 
     /// Spec function to check if there is capacity for more mappings.
@@ -349,31 +240,6 @@ impl Vmem {
     /// Spec function to check if there are any mappings.
     pub closed spec fn has_mappings(&self) -> bool {
         self.mapping_count > 0
-    }
-
-    /// Spec function for user address check.
-    pub open spec fn spec_is_user_addr(vaddr: int) -> bool {
-        VmemView::spec_is_user_addr(vaddr)
-    }
-
-    /// Spec function for kernel address check.
-    pub open spec fn spec_is_kernel_addr(vaddr: int) -> bool {
-        VmemView::spec_is_kernel_addr(vaddr)
-    }
-
-    /// Spec function for user region check.
-    pub open spec fn spec_is_user_region(start: int, size: int) -> bool {
-        VmemView::spec_is_user_region(start, size)
-    }
-
-    /// Spec function for kernel region check.
-    pub open spec fn spec_is_kernel_region(start: int, size: int) -> bool {
-        VmemView::spec_is_kernel_region(start, size)
-    }
-
-    /// Spec function for physical region check.
-    pub open spec fn spec_is_physical_region(start: int, size: int) -> bool {
-        VmemView::spec_is_physical_region(start, size)
     }
 
     //==============================================================================================
@@ -393,9 +259,7 @@ impl Vmem {
     pub fn new() -> (result: Self)
         ensures
             result.inv(),
-            result@.is_fresh(),
-            result@.num_user_pages() == 0,
-            result@.user_page_table_count == 0,
+            result.mapping_count == 0,
     {
         let empty_mapping: PageMapping = PageMapping {
             vaddr: 0,
@@ -403,19 +267,9 @@ impl Vmem {
             valid: false,
         };
 
-        let ghost_view: Ghost<VmemView> = Ghost(VmemView {
-            user_pages: Set::empty(),
-            user_mappings: Map::empty(),
-            kernel_pages: Set::empty(),
-            user_page_table_count: 0,
-            kernel_page_table_count: 0,
-        });
-
         Vmem {
             mappings: [empty_mapping; MAX_USER_PAGES],
             mapping_count: 0,
-            kernel_page_table_count: 0,
-            ghost_view,
         }
     }
 
@@ -432,17 +286,11 @@ impl Vmem {
     /// # Returns
     ///
     /// True if the address is in user space [USER_BASE, USER_END).
-    #[verifier::when_used_as_spec(spec_is_user_addr_impl)]
     pub fn is_user_addr(vaddr: usize) -> (result: bool)
         ensures
-            result == Self::spec_is_user_addr(vaddr as int),
+            result == spec_is_user_addr(vaddr as int),
     {
         vaddr >= USER_BASE && vaddr < USER_END
-    }
-
-    /// Spec version of is_user_addr for internal use.
-    pub open spec fn spec_is_user_addr_impl(vaddr: usize) -> bool {
-        Self::spec_is_user_addr(vaddr as int)
     }
 
     /// Checks if a virtual address is in kernel space.
@@ -456,7 +304,7 @@ impl Vmem {
     /// True if the address is in kernel space (not in user space).
     pub fn is_kernel_addr(vaddr: usize) -> (result: bool)
         ensures
-            result == Self::spec_is_kernel_addr(vaddr as int),
+            result == spec_is_kernel_addr(vaddr as int),
     {
         !Self::is_user_addr(vaddr)
     }
@@ -474,9 +322,9 @@ impl Vmem {
     /// Returns false for zero-length regions.
     pub fn is_user_region(start: usize, size: usize) -> (result: bool)
         ensures
-            result ==> Self::spec_is_user_region(start as int, size as int),
+            result ==> spec_is_user_region(start as int, size as int),
             result ==> size > 0,
-            result ==> Self::spec_is_user_addr(start as int),
+            result ==> spec_is_user_addr(start as int),
     {
         // Reject zero-length regions.
         if size == 0 {
@@ -504,9 +352,9 @@ impl Vmem {
     /// Returns false for zero-length regions.
     pub fn is_kernel_region(start: usize, size: usize) -> (result: bool)
         ensures
-            result ==> Self::spec_is_kernel_region(start as int, size as int),
+            result ==> spec_is_kernel_region(start as int, size as int),
             result ==> size > 0,
-            result ==> Self::spec_is_kernel_addr(start as int),
+            result ==> spec_is_kernel_addr(start as int),
     {
         // Reject zero-length regions.
         if size == 0 {
@@ -533,7 +381,7 @@ impl Vmem {
     /// True if the entire region lies within physical memory, false otherwise.
     pub fn is_physical_region(start: usize, size: usize) -> (result: bool)
         ensures
-            result ==> Self::spec_is_physical_region(start as int, size as int),
+            result ==> spec_is_physical_region(start as int, size as int),
             result ==> size > 0,
             result ==> start < MEMORY_SIZE,
     {
@@ -568,7 +416,7 @@ impl Vmem {
     ///
     /// # Errors
     ///
-    /// - `BadAddress`: The virtual address is not in user space.
+    /// - `BadAddress`: The virtual address is not in user space or not page-aligned.
     /// - `ResourceBusy`: The virtual address is already mapped.
     /// - `OutOfMemory`: No more mapping slots available.
     pub fn map(
@@ -583,12 +431,14 @@ impl Vmem {
         ensures
             self.inv(),
             result.is_ok() ==> {
-                &&& Self::spec_is_user_addr(vaddr as int)
+                &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& self@.is_user_page_mapped(vaddr as int)
-                &&& self@.get_user_frame(vaddr as int) == frame_addr.spec_raw_value()
+                &&& self.spec_is_mapped(vaddr as int)
+                &&& self.mapping_count == old(self).mapping_count + 1
             },
-            result.is_err() ==> self@ == old(self)@,
+            result.is_err() ==> {
+                &&& self.mapping_count == old(self).mapping_count
+            },
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -610,8 +460,10 @@ impl Vmem {
         while i < self.mapping_count
             invariant
                 0 <= i <= self.mapping_count,
-                self.mapping_count <= MAX_USER_PAGES,
+                self.mapping_count < MAX_USER_PAGES,
                 self.inv(),
+                forall|j: int| 0 <= j < i as int ==>
+                    !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 return Err(Error::new(ErrorCode::ResourceBusy, "page already mapped"));
@@ -628,18 +480,6 @@ impl Vmem {
         };
         self.mapping_count = self.mapping_count + 1;
 
-        // Update ghost state.
-        proof {
-            let old_view: VmemView = self@;
-            self.ghost_view = Ghost(VmemView {
-                user_pages: old_view.user_pages.insert(vaddr as int),
-                user_mappings: old_view.user_mappings.insert(vaddr as int, frame_addr.spec_raw_value()),
-                kernel_pages: old_view.kernel_pages,
-                user_page_table_count: old_view.user_page_table_count,
-                kernel_page_table_count: old_view.kernel_page_table_count,
-            });
-        }
-
         Ok(())
     }
 
@@ -655,8 +495,7 @@ impl Vmem {
     ///
     /// # Errors
     ///
-    /// - `BadAddress`: The virtual address is not in user space or not mapped.
-    /// - `InvalidArgument`: The address is not page-aligned.
+    /// - `BadAddress`: The virtual address is not in user space, not page-aligned, or not mapped.
     pub fn unmap(&mut self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
@@ -664,13 +503,15 @@ impl Vmem {
         ensures
             self.inv(),
             result.is_ok() ==> {
-                &&& Self::spec_is_user_addr(vaddr as int)
+                &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& old(self)@.is_user_page_mapped(vaddr as int)
-                &&& !self@.is_user_page_mapped(vaddr as int)
-                &&& result.unwrap() as int == old(self)@.get_user_frame(vaddr as int)
+                &&& old(self).spec_is_mapped(vaddr as int)
+                &&& !self.spec_is_mapped(vaddr as int)
+                &&& self.mapping_count == old(self).mapping_count - 1
             },
-            result.is_err() ==> self@ == old(self)@,
+            result.is_err() ==> {
+                &&& self.mapping_count == old(self).mapping_count
+            },
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -692,6 +533,9 @@ impl Vmem {
                 self.mapping_count <= MAX_USER_PAGES,
                 self.inv(),
                 found_idx == MAX_USER_PAGES || found_idx < self.mapping_count,
+                found_idx < MAX_USER_PAGES ==>
+                    self.mappings[found_idx as int].valid &&
+                    self.mappings[found_idx as int].vaddr == vaddr,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 found_idx = i;
@@ -717,18 +561,6 @@ impl Vmem {
         };
         self.mapping_count = self.mapping_count - 1;
 
-        // Update ghost state.
-        proof {
-            let old_view: VmemView = self@;
-            self.ghost_view = Ghost(VmemView {
-                user_pages: old_view.user_pages.remove(vaddr as int),
-                user_mappings: old_view.user_mappings.remove(vaddr as int),
-                kernel_pages: old_view.kernel_pages,
-                user_page_table_count: old_view.user_page_table_count,
-                kernel_page_table_count: old_view.kernel_page_table_count,
-            });
-        }
-
         Ok(frame_addr)
     }
 
@@ -741,15 +573,14 @@ impl Vmem {
     /// # Returns
     ///
     /// Upon success, the frame address. Upon failure, an error.
-    fn find_user_frame(&self, vaddr: usize) -> (result: Result<usize, Error>)
+    pub fn find_user_frame(&self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             self.inv(),
         ensures
             result.is_ok() ==> {
-                &&& Self::spec_is_user_addr(vaddr as int)
+                &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& self@.is_user_page_mapped(vaddr as int)
-                &&& result.unwrap() as int == self@.get_user_frame(vaddr as int)
+                &&& self.spec_is_mapped(vaddr as int)
             },
     {
         // Check if address is in user space.
@@ -799,12 +630,11 @@ impl Vmem {
         ensures
             self.inv(),
             result.is_ok() ==> {
-                &&& Self::spec_is_user_addr(vaddr as int)
-                &&& self@.is_user_page_mapped(vaddr as int)
+                &&& spec_is_user_addr(vaddr as int)
+                &&& self.spec_is_mapped(vaddr as int)
             },
-            // Permission changes don't affect the abstract view (mappings unchanged).
-            self@.user_pages == old(self)@.user_pages,
-            self@.user_mappings == old(self)@.user_mappings,
+            // Permission changes don't affect the mappings.
+            self.mapping_count == old(self).mapping_count,
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -832,7 +662,6 @@ impl Vmem {
         }
 
         // In a real implementation, we would update the page table entry permissions.
-        // The abstract view doesn't change since mappings are unchanged.
         Ok(())
     }
 
@@ -851,9 +680,9 @@ impl Vmem {
             old(self).inv(),
         ensures
             self.inv(),
-            result.is_ok() ==> Self::spec_is_kernel_addr(vaddr as int),
-            // Permission changes don't affect the abstract view.
-            self@ == old(self)@,
+            result.is_ok() ==> spec_is_kernel_addr(vaddr as int),
+            // Permission changes don't affect the mappings.
+            self.mapping_count == old(self).mapping_count,
     {
         // Check if address is in kernel space.
         if !Self::is_kernel_addr(vaddr) {
@@ -865,13 +694,10 @@ impl Vmem {
     }
 
     //==============================================================================================
-    // Memory Copy Operations (Specifications Only)
+    // Memory Copy Operations
     //==============================================================================================
 
     /// Copies data from user space to kernel space.
-    ///
-    /// This is a specification-level function that describes the preconditions
-    /// for a safe copy from user to kernel space.
     ///
     /// # Parameters
     ///
@@ -899,8 +725,8 @@ impl Vmem {
         ensures
             result.is_ok() ==> {
                 &&& size > 0
-                &&& Self::spec_is_user_region(src as int, size as int)
-                &&& Self::spec_is_kernel_region(dst as int, size as int)
+                &&& spec_is_user_region(src as int, size as int)
+                &&& spec_is_kernel_region(dst as int, size as int)
             },
     {
         // Check if size is zero.
@@ -944,8 +770,8 @@ impl Vmem {
         ensures
             result.is_ok() ==> {
                 &&& size > 0
-                &&& Self::spec_is_kernel_region(src as int, size as int)
-                &&& Self::spec_is_user_region(dst as int, size as int)
+                &&& spec_is_kernel_region(src as int, size as int)
+                &&& spec_is_user_region(dst as int, size as int)
             },
     {
         // Check if size is zero.
@@ -982,13 +808,12 @@ impl Vmem {
         ensures
             self.inv(),
             result.is_ok() ==> {
-                &&& Self::spec_is_user_addr(vaddr as int)
+                &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& self@.is_user_page_mapped(vaddr as int)
+                &&& self.spec_is_mapped(vaddr as int)
             },
             // memset doesn't change mappings.
-            self@.user_pages == old(self)@.user_pages,
-            self@.user_mappings == old(self)@.user_mappings,
+            self.mapping_count == old(self).mapping_count,
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -1032,7 +857,7 @@ impl Vmem {
 /// Proof that user and kernel spaces are disjoint.
 proof fn user_kernel_disjoint_proof(vaddr: int)
     ensures
-        !(VmemView::spec_is_user_addr(vaddr) && VmemView::spec_is_kernel_addr(vaddr)),
+        !(spec_is_user_addr(vaddr) && spec_is_kernel_addr(vaddr)),
 {
     // By definition, kernel space is !user_space.
 }
@@ -1048,9 +873,9 @@ proof fn user_space_bounds_valid()
 /// Proof that a valid user region implies start is a user address.
 proof fn user_region_implies_user_addr(start: int, size: int)
     requires
-        VmemView::spec_is_user_region(start, size),
+        spec_is_user_region(start, size),
     ensures
-        VmemView::spec_is_user_addr(start),
+        spec_is_user_addr(start),
 {
     // By definition of spec_is_user_region.
 }
@@ -1058,9 +883,9 @@ proof fn user_region_implies_user_addr(start: int, size: int)
 /// Proof that a valid kernel region implies start is a kernel address.
 proof fn kernel_region_implies_kernel_addr(start: int, size: int)
     requires
-        VmemView::spec_is_kernel_region(start, size),
+        spec_is_kernel_region(start, size),
     ensures
-        VmemView::spec_is_kernel_addr(start),
+        spec_is_kernel_addr(start),
 {
     // By definition of spec_is_kernel_region.
 }
