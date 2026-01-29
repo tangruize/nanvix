@@ -48,8 +48,13 @@
 //! | Function | Description |
 //! |----------|-------------|
 //! | `new()` | Create a new virtual memory space |
+//! | `clone()` | Clone a virtual memory space for process forking |
+//! | `load()` | Load the page directory into CR3 register |
+//! | `pgdir()` | Get the page directory physical address |
 //! | `map()` | Map a user frame to a virtual address |
+//! | `map_kpage()` | Map a kernel page to a virtual address |
 //! | `unmap()` | Unmap a page from the virtual address space |
+//! | `find_user_frame()` | Find the physical frame for a user page |
 //! | `is_user_addr()` | Check if address is in user space |
 //! | `is_user_region()` | Check if region is entirely in user space |
 //! | `is_kernel_addr()` | Check if address is in kernel space |
@@ -316,7 +321,10 @@ impl Vmem {
     ///
     /// # Parameters
     ///
-    /// - `from`: The source virtual memory space to clone from.
+    /// - `from`: The source virtual memory space to clone from. The source must
+    ///   satisfy its invariant. Kernel mappings sharing is not explicitly modeled
+    ///   in the verified abstraction - the `from` parameter is used to require
+    ///   source validity and to match the original API signature.
     ///
     /// # Returns
     ///
@@ -330,7 +338,11 @@ impl Vmem {
     /// # Note
     ///
     /// In the verified model, we only track user mappings. Kernel mappings are
-    /// abstracted as shared state that is not explicitly modeled.
+    /// abstracted as shared state that is not explicitly modeled. The original
+    /// implementation copies kernel_page_tables and kernel_pages via Rc::clone(),
+    /// establishing shared ownership. This is sound because:
+    /// 1. Kernel mappings are read-only from user process perspective.
+    /// 2. User mappings start empty in both original and verified versions.
     pub fn clone(from: &Self) -> (result: Self)
         requires
             from.inv(),
@@ -338,6 +350,12 @@ impl Vmem {
             result.inv(),
             result.mapping_count == 0,
     {
+        // Use from in a proof block to document that we require source validity.
+        // Kernel mappings sharing is abstracted - we only verify user mapping properties.
+        proof {
+            assert(from.inv());
+        }
+
         let empty_mapping: PageMapping = PageMapping {
             vaddr: 0,
             frame_addr: 0,
@@ -354,27 +372,38 @@ impl Vmem {
     ///
     /// This activates the virtual memory space for the current CPU.
     ///
+    /// # Returns
+    ///
+    /// Upon success, Ok(()). Upon failure, an error if the page directory
+    /// physical address cannot be obtained.
+    ///
     /// # Note
     ///
-    /// This is modeled as a no-op in verification since we don't model
-    /// hardware state (CR3 register). The specification captures that
-    /// loading is only valid for a Vmem that satisfies its invariant.
+    /// This is modeled as external_body since we don't model hardware state
+    /// (CR3 register). The original implementation can fail if
+    /// `self.pgdir.physical_address()` fails, so we don't guarantee success.
     #[verifier::external_body]
     pub fn load(&self) -> (result: Result<(), Error>)
         requires
             self.inv(),
-        ensures
-            result.is_ok(),
     {
         unimplemented!()
     }
 
-    /// Returns the page directory physical address.
+    /// Returns the page directory physical address as a raw value.
+    ///
+    /// # Returns
+    ///
+    /// The physical address of the page directory as a usize.
     ///
     /// # Note
     ///
-    /// This is modeled as external since the page directory is not
-    /// explicitly modeled in the verified abstraction.
+    /// This is modeled as external_body since the page directory is not
+    /// explicitly modeled in the verified abstraction. The return type
+    /// differs from the original (which returns `&PageDirectory`) - this
+    /// simplification returns the raw physical address instead of a
+    /// reference to the complex PageDirectory structure. For verification
+    /// purposes, we only need to know that a valid Vmem has a page directory.
     #[verifier::external_body]
     pub fn pgdir(&self) -> (result: usize)
         requires
