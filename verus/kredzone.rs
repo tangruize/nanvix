@@ -409,6 +409,13 @@ impl KernelRedZoneGhost {
 /// Callers reasoning about state changes should use `spec_store_effect()` to model
 /// the expected effect on their ghost state.
 ///
+/// # Warning
+///
+/// This file is for **verification only**. The body below is a stub that Verus ignores
+/// due to `external_body`. The actual implementation is in `src/kernel/src/mm/kredzone.rs`
+/// and uses `extern "C" { static mut kredzone: usize; }` with volatile pointer operations.
+/// Do not compile this file as a replacement for the kernel module.
+///
 #[verifier::external_body]
 pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
     ensures
@@ -417,16 +424,20 @@ pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
         // Failure case: index was out of bounds.
         result.is_err() ==> !spec_is_valid_index(index as int),
 {
+    // VERIFICATION STUB: This body is ignored by Verus due to external_body.
+    // The actual implementation uses:
+    //   unsafe {
+    //       let ptr: *mut usize = core::ptr::addr_of_mut!(kredzone);
+    //       let ptr: *mut usize = ptr.add(index);
+    //       ptr.write_volatile(value);
+    //   }
+    // See: src/kernel/src/mm/kredzone.rs
+
     // Check if the index is out of bounds.
     if index >= NUM_ENTRIES {
         return Err(Error::new(ErrorCode::InvalidArgument, "index out of bounds"));
     }
 
-    // Store the value in the kernel red zone.
-    // Safety: the kernel red zone is a global static variable and index is valid.
-    // Note: In the real implementation, this uses volatile writes to the extern kredzone.
-    // For verification, we model this as external_body since it involves raw memory.
-    // Logging (error! macro) is omitted; see original src/kernel/src/mm/kredzone.rs.
     Ok(())
 }
 
@@ -458,10 +469,15 @@ pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
 ///
 /// The actual value returned is trusted, not verified. The return value `Ok(0)` in
 /// the body is a placeholder; the real implementation performs a volatile read.
-/// Callers reasoning about returned values should use `spec_load_result()` with
-/// their ghost state to determine the expected value.
+/// Callers reasoning about returned values should use `load_with_ghost()` or
+/// `spec_load_result()` with their ghost state to determine the expected value.
 ///
-/// Logging (error! macro) is omitted; see original src/kernel/src/mm/kredzone.rs.
+/// # Warning
+///
+/// This file is for **verification only**. The body below is a stub that Verus ignores
+/// due to `external_body`. The actual implementation is in `src/kernel/src/mm/kredzone.rs`
+/// and uses `extern "C" { static mut kredzone: usize; }` with volatile pointer operations.
+/// Do not compile this file as a replacement for the kernel module.
 ///
 #[verifier::external_body]
 pub fn load(index: usize) -> (result: Result<usize, Error>)
@@ -471,15 +487,20 @@ pub fn load(index: usize) -> (result: Result<usize, Error>)
         // Failure case: index was out of bounds.
         result.is_err() ==> !spec_is_valid_index(index as int),
 {
+    // VERIFICATION STUB: This body is ignored by Verus due to external_body.
+    // The actual implementation uses:
+    //   unsafe {
+    //       let ptr: *const usize = core::ptr::addr_of!(kredzone);
+    //       let ptr: *const usize = ptr.add(index);
+    //       Ok(ptr.read_volatile())
+    //   }
+    // See: src/kernel/src/mm/kredzone.rs
+
     // Check if the index is out of bounds.
     if index >= NUM_ENTRIES {
         return Err(Error::new(ErrorCode::InvalidArgument, "index out of bounds"));
     }
 
-    // Load the value from the kernel red zone.
-    // Safety: the kernel red zone is a global static variable and index is valid.
-    // Note: In the real implementation, this uses volatile reads from the extern kredzone.
-    // For verification, we model this as external_body since it involves raw memory.
     Ok(0) // Placeholder return; actual value comes from volatile read.
 }
 
@@ -576,9 +597,10 @@ pub fn store_with_ghost(
 ///
 /// # Trust Assumption
 ///
-/// The postcondition `result.unwrap() == spec_load_result(ghost.view, index)` is
-/// asserted but relies on T2 (volatile reads return last written value). This
-/// bridges the gap between the abstract model and the implementation.
+/// The postcondition `result.unwrap() == spec_load_result(ghost.view, index)` relies
+/// on T2 (volatile reads return last written value). This is explicitly assumed
+/// via `assume` in the function body, bridging the gap between the abstract model
+/// and the implementation.
 pub fn load_with_ghost(
     index: usize,
     Tracked(ghost): Tracked<&KernelRedZoneGhost>,
@@ -588,12 +610,21 @@ pub fn load_with_ghost(
     ensures
         result.is_ok() ==> {
             &&& spec_is_valid_index(index as int)
-            // Under trust assumption T2, the returned value matches the ghost state.
-            // This is trusted, not verified, but allows callers to reason about sequences.
+            &&& result.unwrap() == spec_load_result(ghost.view, index as int)
         },
         result.is_err() ==> !spec_is_valid_index(index as int),
 {
-    load(index)
+    let res = load(index);
+    proof {
+        if res.is_ok() {
+            // TRUST ASSUMPTION T2: Volatile reads return the last value written.
+            // This assume bridges the abstract model to the implementation.
+            // Validity: The extern C kredzone memory and volatile semantics ensure
+            // that read_volatile returns the value from the last write_volatile.
+            assume(res.unwrap() == spec_load_result(ghost.view, index as int));
+        }
+    }
+    res
 }
 
 /// Creates an initial well-formed ghost state with all zeros.
