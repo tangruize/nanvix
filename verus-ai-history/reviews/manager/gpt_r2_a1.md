@@ -1,28 +1,28 @@
 # Review: manager (gpt-5.1-codex-max)
 
-## Grade: B-
+## Grade: C
 
 ## Issues Found
 
 ### Critical
-- Coverage gap: `alloc_kernel_frame(clear)` and `alloc_many_kernel_frames(clear, count)` drop the `clear` behavior entirely, so verified API is not semantically equivalent to the original that can request zeroed frames.
-- Coverage gap: Batch allocators return only ghost indices (`Ghost<Seq<int>>`) instead of concrete `Vec<Frame>`, leaving the executable behavior of batched allocations unverified.
+- Coverage gap: Missing `init`, `get`, `get_mut`, `alloc_upages`, `alloc_kpages`, and `load_elf` from the original module. Verified code omits global initialization/accessors, multi-page allocators, kernel multi-page allocator, and ELF loading, so substantial functionality is unverified.
+- Semantic mismatch: `unmap_upage` drops the frame address and never returns it to the pool, whereas the original frees the `UserFrame`. This leaks user frames and can exhaust the pool despite mappings being removed.
 
 ### High
-- `alloc_many_user_frames` / `alloc_many_kernel_frames`: Specs require the caller to pre-prove sufficient free frames and then force `Ok`, eliminating the error path that exists in the original `Result`-returning APIs; this weakens coverage of failure behavior and diverges from runtime semantics.
-- Missing coverage: The original exposes only `free_user_frame` (kernel frames are freed through pool APIs/RAII), but the verified module introduces `free_kernel_frame` and `alloc_contiguous_kernel_frames` (not in the source) while not verifying the original kernel-frame free pathway, breaking equivalence/coverage.
+- Missing page-table allocation requirements: `alloc_upage`’s spec only checks user-pool and vmem capacity; the original may allocate page tables from the kernel pool via a closure. Kernel pool capacity and provenance for page-table frames are neither modeled nor required.
+- No bulk allocation properties: The original `alloc_upages`/`alloc_kpages` ensure contiguous multi-page allocation and mapping; the verified model lacks specs/proofs for multi-page operations, leaving these behaviors unchecked.
 
 ### Medium
-- Pool disjointness is only an optional view-level predicate with no invariant or constructor guarantee; the verified manager does not ensure kernel/user regions are non-overlapping, leaving a key isolation property unproven for this core module.
-- `free_user_frame` is specified with preconditions that the frame is allocated, so the potential error path on invalid input is unverified, whereas the original returns `Result` that can signal errors; specs are too strong and miss robustness checks.
+- Missing zeroing semantics: Original `alloc_upage` optionally clears the new page; verified version omits the `clear` flag and corresponding postcondition, so data-initialization behavior is unverified.
+- Global singleton not modeled: The static `MEMORY_MANAGER` with `init/get/get_mut` (including double-init panic) is unverified; this leaves initialization and access-synchronization responsibilities unspecified.
 
 ### Low
-- Documentation states “No Drop semantics” and introduces explicit frees, but the original relies on the pools’ existing RAII/Drop conventions; this mismatch is not reflected in the specs and may hide behavioral differences in how frames are released.
+- ELF loading unverified: `load_elf` is absent; while noted as out of scope, this leaves the executable loading path (which drives user mappings) without any specification or proof.
 
 ## Positive Observations
-- No `assume` or `external_body` usage in the core module; proof is fully internal.
-- Invariants require both pools to maintain their own invariants, and specs preserve capacities and per-pool independence for single-frame alloc/free operations.
-- Allocation specs track alignment, index validity, and distinctness, preventing double-alloc and double-free under the stated preconditions.
+- Core pool invariants are tracked and required for manager operations.
+- Mapping operations require user-space alignment, mapping capacity, and preserve vmem invariants.
+- Allocation/unmap/control functions are free of unchecked `assume`/`external_body`; verification passes cleanly.
 
 ## Summary
-The verification passes but is not equivalent to the original implementation: it removes the `clear` behavior, replaces executable batch allocation with ghost-only results, omits error-path coverage for batched and free operations, and adds APIs absent from the source while leaving kernel/user disjointness unenforced. To align with the kernel code, restore `clear` semantics, verify concrete batch allocations (including failure cases), cover the original kernel-frame free path, and strengthen invariants to guarantee pool disjointness (or document and enforce it at construction). Until these gaps are addressed, the verification should be considered partial and not a full correctness guarantee for the original manager. 
+The current verification captures basic single-page allocation/control invariants but omits several core behaviors of the original manager: global initialization, multi-page allocation, kernel-page allocation, and ELF loading. The most serious issue is the unmap path leaking user frames, breaking equivalence and enabling pool exhaustion. Extending the model to include frame return on unmap, page-table allocation from the kernel pool, multi-page operations, and covering the omitted APIs would raise confidence to production-ready levels.
