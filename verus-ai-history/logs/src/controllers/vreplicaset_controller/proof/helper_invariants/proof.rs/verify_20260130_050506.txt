@@ -1,0 +1,40 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 05:05:06 CST 2026
+Module: src/controllers/vreplicaset_controller/proof/helper_invariants/proof.rs
+Command: verus --crate-type lib lib.rs --verify-module src/controllers/vreplicaset_controller/proof/helper_invariants/proof.rs
+
+error: could not find module src/controllers/vreplicaset_controller/proof/helper_invariants/proof.rs specified by --verify-module or --verify-only-module
+       available modules are:
+       - bitmap
+       - error
+       - frame
+       - frame::test
+       - frame_address
+       - kheap
+       - kpage
+       - kpool
+       - kpool::test
+       - kredzone
+       - kredzone::test
+       - kstack
+       - manager
+       - raw_array
+       - raw_array::test
+       - slab
+       - upool
+       - upool::test
+       - ustack
+       - vmem
+       or use --verify-root
+
+error: aborting due to 1 previous error
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+No changes to commit in verus/
