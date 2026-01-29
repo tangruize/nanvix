@@ -250,10 +250,10 @@ impl PhysMemoryManager {
     /// # Note on Pool Disjointness
     ///
     /// Pool disjointness (kernel and user pools occupying non-overlapping memory regions)
-    /// is a construction-time property enforced by the caller. The `new()` constructor
-    /// requires pools to be disjoint as a precondition. Since base addresses are fixed
-    /// at construction and never change, disjointness is preserved across all operations.
-    /// Use `pools_are_disjoint()` on the view to verify this property.
+    /// should be ensured by system initialization code. In the current abstract model,
+    /// both pools use `base_addr: 0` as a placeholder, so disjointness cannot be verified
+    /// at runtime. Use `pools_are_disjoint()` on the view to verify this property when
+    /// actual base addresses are provided.
     pub closed spec fn inv(&self) -> bool {
         &&& self.kpool.inv()
         &&& self.upool.inv()
