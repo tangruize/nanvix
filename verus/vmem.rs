@@ -435,9 +435,6 @@ impl Vmem {
                 &&& self.spec_is_mapped(vaddr as int)
                 &&& self.mapping_count == old(self).mapping_count + 1
             },
-            result.is_err() ==> {
-                &&& self.mapping_count == old(self).mapping_count
-            },
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
