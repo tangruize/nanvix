@@ -80,8 +80,8 @@
 //! | `alloc_user_frame()` | Allocate single user frame |
 //! | `alloc_many_user_frames(n)` | Allocate n user frames (ghost indices) |
 //! | `alloc_kernel_frame()` | Allocate single kernel frame |
-//! | `alloc_contiguous_kernel_frames(n)` | Allocate n contiguous kernel frames (returns start index) |
-//! | `alloc_many_kernel_frames(n)` | Allocate n kernel frames (ghost indices, non-contiguous) |
+//! | `alloc_contiguous_kernel_frames(n)` | Allocate n contiguous kernel frames (matches original semantics) |
+//! | `alloc_noncontiguous_kernel_frames(n)` | Allocate n non-contiguous kernel frames (ghost indices) |
 //! | `free_user_frame(frame)` | Free a user frame |
 //! | `free_kernel_frame(frame)` | Free a kernel frame |
 //==================================================================================================
@@ -205,6 +205,25 @@ impl PhysMemoryManagerView {
     pub open spec fn pools_are_disjoint(&self) -> bool {
         // Two regions [a, b) and [c, d) are disjoint iff b <= c || d <= a.
         self.kpool_limit() <= self.upool_base() || self.upool_limit() <= self.kpool_base()
+    }
+
+    //==============================================================================================
+    // Well-Formedness
+    //==============================================================================================
+
+    /// Well-formedness predicate for the view.
+    ///
+    /// # Properties
+    ///
+    /// - Both pools have non-negative capacities.
+    /// - The number of allocated frames is non-negative and within capacity.
+    pub open spec fn wf(&self) -> bool {
+        &&& self.kpool_capacity() >= 0
+        &&& self.upool_capacity() >= 0
+        &&& self.kpool_num_allocated() >= 0
+        &&& self.upool_num_allocated() >= 0
+        &&& self.kpool_num_allocated() <= self.kpool_capacity()
+        &&& self.upool_num_allocated() <= self.upool_capacity()
     }
 }
 
@@ -593,22 +612,24 @@ impl PhysMemoryManager {
         self.kpool.alloc_contiguous(count)
     }
 
-    /// Allocates multiple kernel frames from the kernel frame pool.
+    /// Allocates multiple non-contiguous kernel frames from the kernel frame pool.
     ///
     /// # Description
     ///
     /// Allocates `count` individual frames from the kernel pool. The frames are
-    /// allocated one-by-one and are not necessarily contiguous.
+    /// allocated one-by-one and are **not necessarily contiguous**.
+    ///
+    /// # Note on Naming
+    ///
+    /// This function is named `alloc_noncontiguous_kernel_frames` to distinguish it
+    /// from the original `alloc_many_kernel_frames` which allocates contiguous frames.
+    /// For contiguous allocation semantics matching the original, use
+    /// `alloc_contiguous_kernel_frames()`.
     ///
     /// # Note on Usage
     ///
     /// This function returns ghost data for specification purposes. For executable
     /// code that needs multiple frames, use `alloc_kernel_frame()` in a loop.
-    ///
-    /// # Note on `clear` Parameter
-    ///
-    /// The original API has `alloc_many_kernel_frames(clear, count)`. The `clear`
-    /// parameter is omitted because memory zeroing is orthogonal to allocation safety.
     ///
     /// # Parameters
     ///
@@ -628,7 +649,7 @@ impl PhysMemoryManager {
     /// - All frame indices are within valid range.
     /// - All frames are mutually distinct.
     /// - The user pool is unchanged.
-    pub fn alloc_many_kernel_frames(&mut self, count: usize) -> (result: Result<Ghost<Seq<int>>, Error>)
+    pub fn alloc_noncontiguous_kernel_frames(&mut self, count: usize) -> (result: Result<Ghost<Seq<int>>, Error>)
         requires
             old(self).inv(),
             count > 0,
