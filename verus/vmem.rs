@@ -456,12 +456,14 @@ impl Vmem {
 
         // Check if already mapped by scanning existing entries.
         let mut i: usize = 0;
+        let ghost old_mapping_count: usize = self.mapping_count;
         while i < self.mapping_count
             invariant
                 0 <= i <= self.mapping_count,
                 self.mapping_count < MAX_USER_PAGES,
                 self.inv(),
-                forall|j: int| 0 <= j < i as int ==>
+                self.mapping_count == old_mapping_count,
+                forall|j: int| #![auto] 0 <= j < i as int ==>
                     !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
             decreases self.mapping_count - i,
         {
