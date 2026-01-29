@@ -248,7 +248,6 @@ impl KernelPageView {
 /// - The underlying frame is valid and page-aligned
 /// - The page address is consistent with the frame address
 /// - Frame provenance (pool_id) is preserved through the page abstraction
-#[derive(Debug)]
 pub struct KernelPage {
     /// Underlying kernel frame.
     kframe: KernelFrame,
