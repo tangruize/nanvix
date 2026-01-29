@@ -1,0 +1,156 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 02:55:47 CST 2026
+Module: vmem
+Command: verus --crate-type lib lib.rs --verify-module vmem
+
+note: verifying module vmem
+
+error: postcondition not satisfied
+   --> vmem.rs:432:13
+    |
+432 | /             result.is_ok() ==> {
+433 | |                 &&& spec_is_user_addr(vaddr as int)
+434 | |                 &&& vaddr as int % PAGE_SIZE as int == 0
+435 | |                 &&& self.spec_is_mapped(vaddr as int)
+436 | |                 &&& self.mapping_count == old(self).mapping_count + 1
+437 | |             },
+    | |_____________^ failed this postcondition
+...
+483 |           Ok(())
+    |           ------ at the end of the function body
+
+error: postcondition not satisfied
+   --> vmem.rs:438:13
+    |
+438 | /             result.is_err() ==> {
+439 | |                 &&& self.mapping_count == old(self).mapping_count
+440 | |             },
+    | |_____________^ failed this postcondition
+...
+469 |                   return Err(Error::new(ErrorCode::ResourceBusy, "page already mapped"));
+    |                   ---------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> vmem.rs:505:13
+    |
+505 | /             result.is_ok() ==> {
+506 | |                 &&& spec_is_user_addr(vaddr as int)
+507 | |                 &&& vaddr as int % PAGE_SIZE as int == 0
+508 | |                 &&& old(self).spec_is_mapped(vaddr as int)
+509 | |                 &&& !self.spec_is_mapped(vaddr as int)
+510 | |                 &&& self.mapping_count == old(self).mapping_count - 1
+511 | |             },
+    | |_____________^ failed this postcondition
+...
+565 |           Ok(frame_addr)
+    |           -------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> vmem.rs:634:13
+    |
+634 | /             result.is_ok() ==> {
+635 | |                 &&& spec_is_user_addr(vaddr as int)
+636 | |                 &&& self.spec_is_mapped(vaddr as int)
+637 | |             },
+    | |_____________^ failed this postcondition
+...
+668 |           Ok(())
+    |           ------ at the end of the function body
+
+error: postcondition not satisfied
+   --> vmem.rs:813:13
+    |
+813 | /             result.is_ok() ==> {
+814 | |                 &&& spec_is_user_addr(vaddr as int)
+815 | |                 &&& vaddr as int % PAGE_SIZE as int == 0
+816 | |                 &&& self.spec_is_mapped(vaddr as int)
+817 | |             },
+    | |_____________^ failed this postcondition
+...
+853 |           Ok(())
+    |           ------ at the end of the function body
+
+note: automatically chose triggers for this expression:
+   --> vmem.rs:225:13
+    |
+225 |         &&& forall|i: int| 0 <= i < self.mapping_count as int ==> self.mappings[i as int].valid
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> vmem.rs:225:67
+    |
+225 |         &&& forall|i: int| 0 <= i < self.mapping_count as int ==> self.mappings[i as int].valid
+    |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> vmem.rs:227:13
+    |
+227 |           &&& forall|i: int| 0 <= i < self.mapping_count as int ==>
+    |  _____________^
+228 | |                 spec_is_user_addr(self.mappings[i as int].vaddr as int)
+    | |_______________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> vmem.rs:228:35
+    |
+228 |                 spec_is_user_addr(self.mappings[i as int].vaddr as int)
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> vmem.rs:230:13
+    |
+230 |           &&& forall|i: int| 0 <= i < self.mapping_count as int ==>
+    |  _____________^
+231 | |                 self.mappings[i as int].vaddr as int % PAGE_SIZE as int == 0
+    | |____________________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> vmem.rs:231:17
+    |
+231 |                 self.mappings[i as int].vaddr as int % PAGE_SIZE as int == 0
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> vmem.rs:464:17
+    |
+464 | /                 forall|j: int| 0 <= j < i as int ==>
+465 | |                     !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
+    | |______________________________________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> vmem.rs:465:23
+    |
+465 |                     !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> vmem.rs:464:17
+    |
+464 | /                 forall|j: int| 0 <= j < i as int ==>
+465 | |                     !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
+    | |______________________________________________________________________________________________^
+
+verification results:: 24 verified, 5 errors (partial verification with `--verify-*`)
+error: aborting due to 5 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 24
+Errors: 5
+Status: FAILED
+Committed: [verus] Verification failed for vmem (verified:24, errors:5)
