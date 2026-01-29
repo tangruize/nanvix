@@ -1,0 +1,22 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 02:57:28 CST 2026
+Module: vmem
+Command: verus --crate-type lib lib.rs --verify-module vmem
+
+error: expected `,`
+   --> vmem.rs:488:58
+    |
+488 |             assert(0 <= slot as int && slot as int < self.mapping_count as int);
+    |                                                          ^
+
+error: aborting due to 1 previous error
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for vmem (verified:0, errors:0)
