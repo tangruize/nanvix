@@ -561,7 +561,10 @@ impl KernelStack {
         ensures
             result == (current_sp as int - growth as int >= self.spec_base()),
     {
-        current_sp >= self.base_addr + growth
+        // Use subtraction instead of addition to avoid overflow.
+        // If current_sp >= base_addr, and growth <= current_sp - base_addr,
+        // then there is room.
+        current_sp - self.base_addr >= growth
     }
 }
 
