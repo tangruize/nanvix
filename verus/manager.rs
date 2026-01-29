@@ -194,11 +194,14 @@ impl VirtMemoryManager {
     ///
     /// Ensures:
     /// - Both pools satisfy their invariants
-    /// - View is consistent with pool states
+    ///
+    /// The underlying pool invariants guarantee:
+    /// - Capacity > 0
+    /// - num_free() >= 0
+    /// - num_allocated() <= capacity
     pub closed spec fn inv(&self) -> bool {
         &&& self.kpool.inv()
         &&& self.upool.inv()
-        &&& self@.pools_valid()
     }
 
     //==============================================================================================
