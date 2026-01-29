@@ -1,0 +1,22 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 01:39:58 CST 2026
+Module: manager
+Command: verus --crate-type lib lib.rs --verify-module manager
+
+error: cannot call function `lib::manager::PhysMemoryManager::new` with mode exec
+   --> manager.rs:650:23
+    |
+650 |         let manager = PhysMemoryManager::new(kpool, upool);
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for manager (verified:0, errors:0)
