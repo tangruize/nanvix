@@ -335,7 +335,7 @@ impl Vmem {
     //==============================================================================================
 
     /// Spec function to check the invariant.
-    pub open spec fn inv(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         &&& self@.inv()
         &&& self.mapping_count <= MAX_USER_PAGES
         &&& self.mapping_count as int == self@.num_user_pages()
