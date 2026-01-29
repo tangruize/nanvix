@@ -51,6 +51,12 @@
 //! - Uses `KernelFrame` from `kpool.rs` (verified)
 //! - Uses `FrameAddress` from `frame_address.rs` (verified)
 //! - Introduces `PageAddress` (simplified abstraction for verification)
+//!
+//! ## Verification-Only Additions
+//!
+//! The following methods are added for verification purposes but do not exist in the original:
+//! - `KernelPage::pool_id()` - Exposes the underlying frame's pool ID for provenance tracking.
+//!   This enables verification of memory allocation provenance properties.
 //==================================================================================================
 
 use crate::{
@@ -67,6 +73,15 @@ verus! {
 
 /// Page size in bytes (4 KB). Same as frame size for x86.
 pub const PAGE_SIZE: usize = 4096;
+
+/// Page shift (log2 of PAGE_SIZE). Used for page table indexing.
+pub const PAGE_SHIFT: usize = 12;
+
+/// Page table shift (log2 of PGTAB_SIZE). For x86 32-bit, 22.
+pub const PGTAB_SHIFT: usize = 22;
+
+/// Number of page table entries per page table (1024 for x86 32-bit).
+pub const PTES_PER_PGTAB: usize = 1024;
 
 //==================================================================================================
 // PageAddress - Virtual Page Address Abstraction
@@ -101,6 +116,25 @@ impl PageAddress {
     /// Spec function to get the page number.
     pub open spec fn spec_page_number(&self) -> int {
         self.raw_addr as int / PAGE_SIZE as int
+    }
+
+    /// Spec function to get the page table entry index.
+    /// This extracts bits [12:21] of the address, giving a value 0-1023.
+    /// The formula models: (addr & (PGTAB_MASK ^ PAGE_MASK)) >> PAGE_SHIFT
+    /// Which is equivalent to: (addr / PAGE_SIZE) % 1024
+    pub open spec fn spec_pte_index(&self) -> int {
+        (self.raw_addr as int / PAGE_SIZE as int) % 1024
+    }
+
+    /// Spec function to compare two page addresses.
+    pub open spec fn spec_cmp(&self, other: &Self) -> core::cmp::Ordering {
+        if self.raw_addr < other.raw_addr {
+            core::cmp::Ordering::Less
+        } else if self.raw_addr > other.raw_addr {
+            core::cmp::Ordering::Greater
+        } else {
+            core::cmp::Ordering::Equal
+        }
     }
 
     //==============================================================================================
@@ -140,11 +174,55 @@ impl PageAddress {
     {
         self.raw_addr
     }
+
+    /// Gets the page table entry index for this page address.
+    ///
+    /// # Description
+    ///
+    /// Computes the index into a page table for this address. This is used
+    /// for page table management and virtual memory mapping operations.
+    /// Equivalent to: (addr / PAGE_SIZE) % 1024
+    ///
+    /// # Returns
+    ///
+    /// The page table entry index (0 to 1023 for x86 32-bit).
+    pub fn get_pte_index(&self) -> (result: usize)
+        requires
+            self.spec_is_aligned(),
+        ensures
+            result as int == self.spec_pte_index(),
+            result < PTES_PER_PGTAB,
+    {
+        // Use arithmetic equivalent of bit extraction: (addr / PAGE_SIZE) % 1024.
+        let page_num: usize = self.raw_addr / PAGE_SIZE;
+        page_num % PTES_PER_PGTAB
+    }
+}
+
+//==================================================================================================
+// PartialEq Implementation for PageAddress
+//==================================================================================================
+
+impl PartialEq for PageAddress {
+    /// Compares two page addresses for equality.
+    ///
+    /// # Description
+    ///
+    /// Two page addresses are equal if their raw address values are equal.
+    #[verifier::external_body]
+    fn eq(&self, other: &Self) -> bool {
+        self.raw_addr == other.raw_addr
+    }
 }
 
 //==================================================================================================
 // KernelPageView - Abstract Specification
 //==================================================================================================
+
+// NOTE: PartialOrd is not implemented because vstd has complex internal specifications
+// for PartialOrd that require satisfying antisymmetry and transitivity properties.
+// The original PartialOrd implementation simply delegates to raw address comparison.
+// For verification purposes, spec_cmp() is provided for use in specifications.
 
 /// Abstract view of a kernel page for specification purposes.
 ///
