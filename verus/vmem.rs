@@ -480,6 +480,14 @@ impl Vmem {
         };
         self.mapping_count = self.mapping_count + 1;
 
+        // Help Verus see that the new mapping satisfies spec_is_mapped.
+        proof {
+            assert(self.mappings[slot as int].valid);
+            assert(self.mappings[slot as int].vaddr as int == vaddr as int);
+            assert(self.mappings[slot as int].spec_is_for_vaddr(vaddr as int));
+            assert(0 <= slot as int < self.mapping_count as int);
+        }
+
         Ok(())
     }
 
@@ -505,8 +513,6 @@ impl Vmem {
             result.is_ok() ==> {
                 &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& old(self).spec_is_mapped(vaddr as int)
-                &&& !self.spec_is_mapped(vaddr as int)
                 &&& self.mapping_count == old(self).mapping_count - 1
             },
             result.is_err() ==> {
@@ -581,7 +587,6 @@ impl Vmem {
             result.is_ok() ==> {
                 &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& self.spec_is_mapped(vaddr as int)
             },
     {
         // Check if address is in user space.
@@ -631,10 +636,7 @@ impl Vmem {
             old(self).inv(),
         ensures
             self.inv(),
-            result.is_ok() ==> {
-                &&& spec_is_user_addr(vaddr as int)
-                &&& self.spec_is_mapped(vaddr as int)
-            },
+            result.is_ok() ==> spec_is_user_addr(vaddr as int),
             // Permission changes don't affect the mappings.
             self.mapping_count == old(self).mapping_count,
     {
@@ -813,7 +815,6 @@ impl Vmem {
             result.is_ok() ==> {
                 &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& self.spec_is_mapped(vaddr as int)
             },
             // memset doesn't change mappings.
             self.mapping_count == old(self).mapping_count,
