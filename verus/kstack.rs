@@ -511,7 +511,8 @@ impl KernelStack {
             self.inv(),
             self@.contains_addr(addr as int),
         ensures
-            0 <= result < self.num_pages,
+            0 <= result as int,
+            (result as int) < self.spec_num_pages(),
             self@.addr_in_page(addr as int, result as int),
     {
         (addr - self.base_addr) / PAGE_SIZE
@@ -537,7 +538,7 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_top(),
-            result > self.base_addr,
+            result as int > self.spec_base(),
     {
         self.top()
     }
