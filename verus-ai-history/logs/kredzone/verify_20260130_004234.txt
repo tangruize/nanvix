@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 00:42:34 CST 2026
+Module: kredzone
+Command: verus --crate-type lib lib.rs --verify-module kredzone
+
+error: cannot call function `core::mem::size_of` with mode exec
+  --> kredzone.rs:65:31
+   |
+65 | pub const ENTRY_SIZE: usize = core::mem::size_of::<usize>();
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Cheating patterns: external_body:5
+Committed: [verus] Verification failed for kredzone (verified:0, errors:0) [external_body:5]
