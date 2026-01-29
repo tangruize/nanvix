@@ -211,6 +211,25 @@ impl KernelFrame {
     {
         self.addr
     }
+
+    //==============================================================================================
+    // Proof Lemmas for Cross-Module Verification
+    //==============================================================================================
+
+    /// Lemma: Connects the closed spec `spec_is_aligned` to the underlying FrameAddress alignment.
+    ///
+    /// This lemma exposes the relationship between the closed spec function and the
+    /// underlying FrameAddress properties, enabling verification in dependent modules.
+    pub proof fn lemma_alignment_connection(&self)
+        ensures
+            self.spec_is_aligned() <==> self.spec_address().spec_is_aligned(),
+            self.spec_raw_address() == self.spec_address().spec_raw_value(),
+    {
+        // Both sides are definitionally equal by the closed spec definitions.
+        // spec_is_aligned() = self.addr.spec_is_aligned()
+        // spec_address() = self.addr
+        // Therefore: self.spec_is_aligned() <==> self.spec_address().spec_is_aligned()
+    }
 }
 
 //==================================================================================================

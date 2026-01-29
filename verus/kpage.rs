@@ -352,6 +352,10 @@ impl KernelPage {
             result@.pool_id() == kframe.spec_pool_id(),
             result@.is_identity_mapped(),
     {
+        proof {
+            // Use lemma to connect closed specs to FrameAddress properties.
+            kframe.lemma_alignment_connection();
+        }
         KernelPage { kframe }
     }
 
@@ -381,6 +385,10 @@ impl KernelPage {
             result.spec_raw_value() == self@.page_address(),
             result.spec_is_aligned(),
     {
+        proof {
+            // Use lemma to connect closed specs to FrameAddress properties.
+            self.kframe.lemma_alignment_connection();
+        }
         // For identity mapping, use the frame address directly as the page address.
         let frame_addr: FrameAddress = self.kframe.base();
         PageAddress::new(frame_addr.into_raw_value())
@@ -402,6 +410,10 @@ impl KernelPage {
             result.spec_raw_value() == self@.frame_address(),
             result.spec_is_aligned(),
     {
+        proof {
+            // Use lemma to connect closed specs to FrameAddress properties.
+            self.kframe.lemma_alignment_connection();
+        }
         self.kframe.base()
     }
 
