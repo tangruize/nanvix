@@ -79,7 +79,8 @@
 //! | `alloc_user_frame()` | Allocate single user frame |
 //! | `alloc_many_user_frames(n)` | Allocate n user frames (ghost indices) |
 //! | `alloc_kernel_frame()` | Allocate single kernel frame |
-//! | `alloc_many_kernel_frames(n)` | Allocate n kernel frames (ghost indices) |
+//! | `alloc_contiguous_kernel_frames(n)` | Allocate n contiguous kernel frames (returns start index) |
+//! | `alloc_many_kernel_frames(n)` | Allocate n kernel frames (ghost indices, non-contiguous) |
 //! | `free_user_frame(frame)` | Free a user frame |
 //! | `free_kernel_frame(frame)` | Free a kernel frame |
 //==================================================================================================
@@ -521,6 +522,74 @@ impl PhysMemoryManager {
             result is Err ==> self@.kpool_view == old(self)@.kpool_view,
     {
         self.kpool.alloc()
+    }
+
+    /// Allocates a contiguous range of kernel frames from the kernel frame pool.
+    ///
+    /// # Description
+    ///
+    /// Searches for and allocates a contiguous range of `count` frames from the
+    /// kernel pool. This matches the original kernel `alloc_many()` semantics where
+    /// a contiguous range is found and allocated atomically.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of contiguous frames to allocate (must be > 0).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the starting frame index of the allocated range.
+    /// On failure (no contiguous range available), returns an error.
+    ///
+    /// # Memory Safety
+    ///
+    /// - All frames in the returned range were previously free.
+    /// - All frames in the range are now allocated.
+    /// - All frames outside the range are unchanged.
+    /// - The user pool is unchanged.
+    ///
+    /// # Liveness
+    ///
+    /// For count=1, if there's a free frame, allocation succeeds.
+    pub fn alloc_contiguous_kernel_frames(&mut self, count: usize) -> (result: Result<usize, Error>)
+        requires
+            old(self).inv(),
+            count > 0,
+            count as int <= old(self)@.kpool_capacity(),
+        ensures
+            self.inv(),
+            // Capacities are preserved.
+            self@.kpool_capacity() == old(self)@.kpool_capacity(),
+            self@.upool_capacity() == old(self)@.upool_capacity(),
+            // User pool is unchanged.
+            self@.upool_view == old(self)@.upool_view,
+            // Pool ID is preserved.
+            self@.kpool_id() == old(self)@.kpool_id(),
+            // On success: a valid contiguous range is allocated.
+            result is Ok ==> {
+                let start = result->Ok_0 as int;
+                // Range is valid.
+                &&& 0 <= start < self@.kpool_capacity()
+                &&& start + count as int <= self@.kpool_capacity()
+                // All frames in range were previously free.
+                &&& forall|i: int| start <= i < start + count as int ==>
+                    !old(self)@.kpool_is_allocated(i)
+                // All frames in range are now allocated.
+                &&& forall|i: int| start <= i < start + count as int ==>
+                    self@.kpool_is_allocated(i)
+                // All frames outside range unchanged.
+                &&& forall|i: int| #![trigger self@.kpool_is_allocated(i)]
+                    (0 <= i < start || start + count as int <= i < self@.kpool_capacity()) ==>
+                    self@.kpool_is_allocated(i) == old(self)@.kpool_is_allocated(i)
+            },
+            // Count tracking on success.
+            result is Ok ==> self.spec_kpool_num_allocated() == old(self).spec_kpool_num_allocated() + count as int,
+            // On failure: state unchanged.
+            result is Err ==> self@.kpool_view == old(self)@.kpool_view,
+            // Liveness for count=1.
+            (count == 1 && old(self)@.kpool_has_free_frame()) ==> result is Ok,
+    {
+        self.kpool.alloc_contiguous(count)
     }
 
     /// Allocates multiple kernel frames from the kernel frame pool.
