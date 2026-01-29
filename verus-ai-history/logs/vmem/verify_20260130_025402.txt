@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 02:54:02 CST 2026
+Module: vmem
+Command: verus --crate-type lib lib.rs --verify-module vmem
+
+note: verifying module vmem
+
+error: loop must have a decreases clause
+   --> vmem.rs:460:9
+    |
+460 |         while i < self.mapping_count
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for vmem (verified:0, errors:0)
