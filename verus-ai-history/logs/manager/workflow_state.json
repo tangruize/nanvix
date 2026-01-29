@@ -1,13 +1,9 @@
 {
   "module_name": "manager",
-  "outer_iteration": 3,
+  "outer_iteration": 1,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
-  "prover_session_id": "8c327cb9-4ea2-4b9d-b379-5a01b9bc8f50",
+  "prover_session_id": "fba37ef6-55a7-4e06-ba13-fac5b49e4ac5",
   "completed": false,
-  "final_grades": {
-    "claude": "A",
-    "gpt": "D",
-    "gemini": "A"
-  }
+  "final_grades": {}
 }
