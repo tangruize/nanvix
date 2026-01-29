@@ -1,0 +1,75 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 04:23:00 CST 2026
+Module: manager
+Command: verus --crate-type lib lib.rs --verify-module manager
+
+note: verifying module manager
+
+error: postcondition not satisfied
+   --> manager.rs:261:13
+    |
+261 |             result.inv(),
+    |             ^^^^^^^^^^^^ failed this postcondition
+...
+267 |         VirtMemoryManager { kpool, upool }
+    |         ---------------------------------- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> manager.rs:340:5
+    |
+340 | /     pub fn alloc_upage(
+341 | |         &mut self,
+342 | |         vmem: &mut Vmem,
+343 | |         vaddr: usize,
+344 | |         access: AccessPermission,
+345 | |     ) -> (result: Result<(), Error>)
+    | |___________________________________^
+
+error: postcondition not satisfied
+   --> manager.rs:355:13
+    |
+355 |             self.inv(),
+    |             ^^^^^^^^^^ failed this postcondition
+...
+369 |         vmem.map(frame_addr, vaddr, access)?;
+    |                                            - at this exit
+
+error: postcondition not satisfied
+   --> manager.rs:355:13
+    |
+355 |             self.inv(),
+    |             ^^^^^^^^^^ failed this postcondition
+...
+371 |         Ok(())
+    |         ------ at the end of the function body
+
+error: postcondition not satisfied
+   --> manager.rs:481:13
+    |
+481 |             self.inv(),
+    |             ^^^^^^^^^^ failed this postcondition
+...
+485 |         Ok(KernelPage::new(kframe))
+    |         --------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> manager.rs:523:9
+    |
+518 | proof fn proof_new_manager_invariant(kpool: Kpool, upool: Upool)
+    |       ---------------------------------------------------------- at the end of the function body
+...
+523 |         (VirtMemoryManager { kpool, upool }).inv(),
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 6 verified, 4 errors (partial verification with `--verify-*`)
+error: aborting due to 5 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 6
+Errors: 4
+Status: FAILED
+Committed: [verus] Verification failed for manager (verified:6, errors:4)
