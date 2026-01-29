@@ -2,7 +2,11 @@
   "module_name": "kstack",
   "current_iteration": 1,
   "prover_session_id": "35d1cbb1-7cac-4314-8bcc-1e0e767b1856",
-  "reviewer_sessions": {},
+  "reviewer_sessions": {
+    "claude-opus-4.5": "35d1cbb1-7cac-4314-8bcc-1e0e767b1856",
+    "gpt-5.1-codex-max": "35d1cbb1-7cac-4314-8bcc-1e0e767b1856",
+    "gemini-3-pro-preview": "35d1cbb1-7cac-4314-8bcc-1e0e767b1856"
+  },
   "completed": false,
   "final_grade": null
 }
