@@ -65,15 +65,17 @@
 //! ### 3. No Drop Semantics
 //! Explicit `free_*` calls make proof obligations clearer and verification tractable.
 //!
-//! ### 4. Pool Disjointness Invariant
-//! The manager invariant requires that kernel and user pools occupy disjoint memory regions.
-//! This ensures complete isolation between kernel and user memory domains.
+//! ### 4. Pool Disjointness (Spec-Level)
+//! The `pools_are_disjoint()` spec function allows verification of memory region isolation
+//! when actual base addresses are known. In the current abstract model, both pools use
+//! `base_addr: 0` as a placeholder, so this property cannot be verified at runtime.
+//! In practice, system initialization code should ensure pools occupy disjoint regions.
 //!
 //! ## API Summary
 //!
 //! | Function | Description |
 //! |----------|-------------|
-//! | `new(kpool, upool)` | Create manager from verified pools (requires disjoint regions) |
+//! | `new(kpool, upool)` | Create manager from verified pools |
 //! | `alloc_user_frame()` | Allocate single user frame |
 //! | `alloc_many_user_frames(n)` | Allocate n user frames (ghost indices) |
 //! | `alloc_kernel_frame()` | Allocate single kernel frame |
@@ -185,6 +187,19 @@ impl PhysMemoryManagerView {
 
     /// Property: The kernel and user pools are disjoint (non-overlapping memory regions).
     /// This is a critical isolation property: kernel frames and user frames cannot alias.
+    ///
+    /// # Current Limitation
+    ///
+    /// In the current abstract model, both `Kpool` and `Upool` use `base_addr: 0` as a
+    /// placeholder in their View implementations. This means `pools_are_disjoint()` will
+    /// return `false` for any non-empty pools (since both regions start at address 0).
+    ///
+    /// To use this property meaningfully, the pool implementations would need to be
+    /// extended to track actual base addresses, either by:
+    /// - Passing base addresses as constructor parameters, or
+    /// - Reading them from the underlying frame allocator.
+    ///
+    /// For now, pool disjointness should be ensured by system initialization code.
     pub open spec fn pools_are_disjoint(&self) -> bool {
         // Two regions [a, b) and [c, d) are disjoint iff b <= c || d <= a.
         self.kpool_limit() <= self.upool_base() || self.upool_limit() <= self.kpool_base()
