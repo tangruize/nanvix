@@ -42,12 +42,20 @@
 //! - **Type-level vs proof-level**: The original enforces alignment via the type system;
 //!   the verification proves the same property via postconditions.
 //! - **Equivalent guarantees**: Both approaches ensure callers receive aligned addresses.
+//! - **Why not use PageAligned<T>?**: Verus modules cannot import kernel types directly.
+//!   The postcondition `spec_is_page_aligned(result as int)` provides an equivalent
+//!   guarantee that is machine-checked.
 //!
 //! ### Constructor Signature
 //!
 //! The original `new()` takes `PageAligned<VirtualAddress>` (infallible, type-level guarantee).
 //! This version takes `usize` with preconditions (alignment must hold for caller). The
 //! runtime checks are redundant when preconditions hold, but kept for defense-in-depth.
+//!
+//! - **Equivalence**: A caller providing `PageAligned<VirtualAddress>` satisfies the
+//!   precondition `spec_is_page_aligned(base_addr as int)` by construction.
+//! - **Postcondition**: We prove `result.is_ok()` when preconditions hold, matching
+//!   the original's infallibility.
 //!
 //! ### Constant Size
 //!
@@ -88,18 +96,34 @@ verus! {
 //==================================================================================================
 // Constants
 //==================================================================================================
+//
+// IMPORTANT: Configuration Linkage
+//
+// These constants MUST match the kernel configuration in:
+//   - config::memory_layout::USER_STACK_SIZE (512 * KILOBYTE = 524288)
+//   - arch::PAGE_SIZE (4096)
+//
+// The verification is only valid when these values match the actual kernel build.
+// If the kernel configuration changes, these constants must be updated accordingly.
+//
+// Verus modules cannot directly import kernel crates, so we duplicate these values
+// and rely on CI/review to ensure synchronization.
+//==================================================================================================
 
 /// Page size in bytes (4 KiB).
+/// Must match: arch::PAGE_SIZE = 4096
 pub const PAGE_SIZE: usize = 4096;
 
 /// Page alignment requirement.
+/// Must match: PAGE_SIZE (pages are aligned to their size)
 pub const PAGE_ALIGNMENT: usize = 4096;
 
 /// User stack size in bytes (512 KiB = 128 pages).
-/// This matches config::memory_layout::USER_STACK_SIZE = 512 * KILOBYTE.
+/// Must match: config::memory_layout::USER_STACK_SIZE = 512 * KILOBYTE = 524288
 pub const USER_STACK_SIZE: usize = 524288;
 
 /// User stack size in pages (512 KiB / 4 KiB = 128 pages).
+/// Derived: USER_STACK_SIZE / PAGE_SIZE = 128
 pub const USER_STACK_PAGES: usize = 128;
 
 //==================================================================================================
