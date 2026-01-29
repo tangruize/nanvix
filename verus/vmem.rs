@@ -542,6 +542,16 @@ impl Vmem {
     /// establishing shared ownership. This is sound because:
     /// 1. Kernel mappings are read-only from user process perspective.
     /// 2. User mappings start empty in both original and verified versions.
+    ///
+    /// # Model Limitation
+    ///
+    /// The empty user mappings in the cloned Vmem mean that any `copy_from_user`
+    /// call on the child process would fail immediately in this model due to
+    /// "region not mapped". In the actual implementation, the page fault handler
+    /// would allocate and populate pages on-demand (COW). This page fault handling
+    /// is NOT modeled. Verified code that needs to reason about child process
+    /// memory access after clone would need to explicitly call `map()` to establish
+    /// the expected mappings in the model.
     pub fn clone(from: &Self) -> (result: Self)
         requires
             from.inv(),
@@ -1245,7 +1255,7 @@ impl Vmem {
     /// # Parameters
     ///
     /// - `dst`: Destination address in user space.
-    /// - `src`: Source address in kernel space.
+    /// - `src`: Source address in kernel space (must be within physical memory bounds).
     /// - `size`: Number of bytes to copy.
     ///
     /// # Returns
@@ -1263,6 +1273,16 @@ impl Vmem {
     ///
     /// - The destination user pages must be mapped. The original implementation
     ///   panics if `find_user_frame` fails during the copy loop.
+    ///
+    /// # Physical Memory Requirement
+    ///
+    /// The source address must be within physical memory bounds (< MEMORY_SIZE).
+    /// This is NOT overly restrictive - Nanvix uses identity mapping where kernel
+    /// accesses physical memory directly via low addresses. The kernel space check
+    /// (`is_kernel_region`) verifies the address is not in user space [USER_BASE,
+    /// USER_END), while the physical region check (`is_physical_region`) verifies
+    /// the address can be used for physical memory operations. These checks mirror
+    /// the original implementation exactly (lines 732-739 and 774-789).
     ///
     /// # Note
     ///
