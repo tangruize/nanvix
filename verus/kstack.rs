@@ -451,7 +451,7 @@ impl KernelStack {
             result as int == self.spec_top(),
             result as int == self.spec_base() + self.spec_size(),
             spec_is_page_aligned(result as int),
-            result > self.base_addr,
+            result as int > self.spec_base(),
     {
         self.base_addr + self.num_pages * PAGE_SIZE
     }
