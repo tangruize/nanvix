@@ -205,18 +205,17 @@ impl Vmem {
 
     /// Spec function to check if a vaddr is mapped (exists in some slot).
     pub open spec fn spec_is_mapped(&self, vaddr: int) -> bool {
-        exists|i: int| 0 <= i < self.mapping_count as int &&
+        exists|i: int|
+            #![trigger self.mappings[i]]
+            0 <= i < self.mapping_count as int &&
             self.mappings[i as int].spec_is_for_vaddr(vaddr)
     }
 
-    /// Spec function to get the frame address for a mapped vaddr.
-    /// Returns an arbitrary value if not mapped.
-    pub open spec fn spec_get_frame(&self, vaddr: int) -> int
-        recommends self.spec_is_mapped(vaddr)
+    /// Spec function to get the frame address for a mapped vaddr at a given index.
+    pub open spec fn spec_get_frame_at(&self, i: int) -> int
+        recommends 0 <= i < self.mapping_count as int
     {
-        choose|frame: int| exists|i: int| 0 <= i < self.mapping_count as int &&
-            self.mappings[i as int].spec_is_for_vaddr(vaddr) &&
-            self.mappings[i as int].frame_addr as int == frame
+        self.mappings[i as int].frame_addr as int
     }
 
     /// Invariant: mapping_count is within bounds and all mappings in [0, mapping_count) are valid.
