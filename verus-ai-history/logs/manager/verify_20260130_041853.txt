@@ -1,0 +1,45 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 04:18:53 CST 2026
+Module: manager
+Command: verus --crate-type lib lib.rs --verify-module manager
+
+error: struct literals are not allowed here; try surrounding the struct literal with parentheses
+   --> manager.rs:555:9
+    |
+555 |         VirtMemoryManager { kpool, upool }.inv(),
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0603]: constant import `PAGE_SIZE` is private
+   --> manager.rs:90:55
+    |
+90  |     vmem::{Vmem, AccessPermission, spec_is_user_addr, PAGE_SIZE},
+    |                                                       ^^^^^^^^^ private constant import
+    |
+note: the constant import `PAGE_SIZE` is defined here...
+   --> vmem.rs:159:5
+    |
+159 |     kpage::PAGE_SIZE,
+    |     ^^^^^^^^^^^^^^^^
+note: ...and refers to the constant `PAGE_SIZE` which is defined here
+   --> kpage.rs:86:1
+    |
+86  | pub const PAGE_SIZE: usize = 4096;
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ you could import this directly
+help: import `PAGE_SIZE` directly
+    |
+90  |     vmem::{Vmem, AccessPermission, spec_is_user_addr, kpage::PAGE_SIZE},
+    |                                                       +++++++
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0603`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Cheating patterns: external_body:1
+Committed: [verus] Verification failed for manager (verified:0, errors:0) [external_body:1]
