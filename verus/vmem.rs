@@ -812,6 +812,21 @@ impl Vmem {
     /// - `ResourceBusy`: The virtual address is already mapped.
     /// - `OutOfMemory`: No more mapping slots available.
     ///
+    /// # Frame Physical Bounds
+    ///
+    /// The `FrameAddress` type represents a page-aligned physical address. The verified
+    /// model does not explicitly require frame_addr < MEMORY_SIZE as a precondition
+    /// because:
+    /// 1. In the original implementation, frames come from UserFrame which is allocated
+    ///    by the physical memory allocator (upool). The allocator only provides frames
+    ///    within the physical memory range.
+    /// 2. Adding this precondition would require modeling the allocator invariants,
+    ///    which is out of scope for this address space specification.
+    /// 3. The safety property is established at allocation time, not at map time.
+    ///
+    /// For refinement proofs, a precondition like `frame_addr.spec_raw_value() < MEMORY_SIZE`
+    /// could be added if the allocator's postconditions are connected to the vmem model.
+    ///
     /// # Type Mapping
     ///
     /// The original signature is:
@@ -1303,6 +1318,16 @@ impl Vmem {
     /// This is the unchecked variant that the original implementation uses
     /// internally. It is marked external_body because it performs unsafe
     /// physical memory operations that require hardware access.
+    ///
+    /// # Destination Physical Bounds
+    ///
+    /// The original implementation checks destination frame physical bounds and panics
+    /// if violated (lines 806-813). This is a runtime safety assertion, not a return
+    /// error. The postcondition does not include destination physical bounds because:
+    /// 1. The check only applies when dry_run=false (inside the copy loop)
+    /// 2. Violation causes a panic, not an Err return
+    /// 3. Frames come from the allocator which only provides addresses within MEMORY_SIZE
+    /// The safety relies on the allocator invariant, not per-operation validation.
     #[verifier::external_body]
     pub fn copy_to_user_unaligned_unchecked(
         &self,
