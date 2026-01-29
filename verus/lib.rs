@@ -17,6 +17,7 @@
 //! - `frame` - Frame allocator (uses error, bitmap, frame_address)
 //! - `upool` - User frame pool (uses error, frame, frame_address)
 //! - `kpool` - Kernel frame pool (uses error, frame, frame_address)
+//! - `kstack` - Kernel stack (uses error)
 
 pub mod error;
 pub mod raw_array;
@@ -27,3 +28,4 @@ pub mod frame_address;
 pub mod frame;
 pub mod upool;
 pub mod kpool;
+pub mod kstack;
