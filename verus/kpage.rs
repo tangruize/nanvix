@@ -80,7 +80,7 @@ pub const PAGE_SIZE: usize = 4096;
 #[derive(Debug, Clone, Copy)]
 pub struct PageAddress {
     /// Raw virtual address (must be page-aligned).
-    raw_addr: usize,
+    pub raw_addr: usize,
 }
 
 impl PageAddress {
