@@ -38,7 +38,8 @@
 //! | Aspect | Original API | Verified API | Rationale |
 //! |--------|--------------|--------------|-----------|
 //! | `alloc_kernel_frame` | `clear: bool` param | No `clear` param | Memory zeroing is orthogonal to allocation safety |
-//! | `alloc_many_*` | Returns `Vec<Frame>` | Returns `Ghost<Seq<int>>` | Simplified verification; use loop for executable code |
+//! | `alloc_many_kernel_frames` | Returns `Vec<KernelFrame>` (contiguous) | `alloc_contiguous_kernel_frames` returns start index | Matches original contiguous semantics |
+//! | `alloc_many_user_frames` | Returns `Vec<UserFrame>` | Returns `Ghost<Seq<int>>` | Simplified verification; use loop for executable code |
 //! | `free_kernel_frame` | Via `Drop` (RAII) | Explicit method | Explicit proofs are clearer than implicit Drop |
 //! | Frame deallocation | Automatic via `Drop` | Explicit `free_*` calls | Makes proof obligations explicit |
 //!
