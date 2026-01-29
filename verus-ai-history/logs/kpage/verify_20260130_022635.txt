@@ -1,0 +1,35 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 02:26:35 CST 2026
+Module: kpage
+Command: verus --crate-type lib lib.rs --verify-module kpage
+
+error[E0277]: `kpool::KernelFrame` doesn't implement `std::fmt::Debug`
+   --> kpage.rs:254:5
+    |
+251 | #[derive(Debug)]
+    |          ----- in this derive macro expansion
+...
+254 |     kframe: KernelFrame,
+    |     ^^^^^^^^^^^^^^^^^^^ `kpool::KernelFrame` cannot be formatted using `{:?}`
+    |
+    = help: the trait `std::fmt::Debug` is not implemented for `kpool::KernelFrame`
+    = note: add `#[derive(Debug)]` to `kpool::KernelFrame` or manually `impl std::fmt::Debug for kpool::KernelFrame`
+help: consider annotating `kpool::KernelFrame` with `#[derive(Debug)]`
+   --> kpool.rs:103:1
+    |
+103 + #[derive(Debug)]
+104 | pub struct KernelFrame {
+    |
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0277`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kpage (verified:0, errors:0)
