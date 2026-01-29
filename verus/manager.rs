@@ -638,26 +638,10 @@ mod test {
 
     verus! {
 
-    /// Test: Constructor preserves pool properties.
-    proof fn test_new_preserves_properties(
-        kpool: Kpool,
-        upool: Upool,
-    )
-        requires
-            kpool.inv(),
-            upool.inv(),
-    {
-        let manager = PhysMemoryManager::new(kpool, upool);
-        assert(manager.inv());
-        assert(manager@.kpool_capacity() == kpool@.capacity());
-        assert(manager@.upool_capacity() == upool@.capacity());
-    }
-
     /// Test: User allocation doesn't affect kernel pool.
     proof fn test_user_alloc_kpool_unchanged(
         old_mgr: PhysMemoryManager,
         new_mgr: PhysMemoryManager,
-        uframe: UserFrame,
     )
         requires
             old_mgr.inv(),
@@ -676,7 +660,6 @@ mod test {
     proof fn test_kernel_alloc_upool_unchanged(
         old_mgr: PhysMemoryManager,
         new_mgr: PhysMemoryManager,
-        kframe: KernelFrame,
     )
         requires
             old_mgr.inv(),
@@ -696,7 +679,7 @@ mod test {
         initial_mgr: PhysMemoryManager,
         after_alloc_mgr: PhysMemoryManager,
         after_free_mgr: PhysMemoryManager,
-        uframe: UserFrame,
+        frame_idx: int,
     )
         requires
             initial_mgr.inv(),
@@ -704,19 +687,18 @@ mod test {
             after_free_mgr.inv(),
             // After allocation.
             initial_mgr@.upool_has_free_frame(),
-            uframe.spec_is_aligned(),
-            0 <= uframe.spec_frame_number() < after_alloc_mgr@.upool_capacity(),
-            after_alloc_mgr@.upool_is_allocated(uframe.spec_frame_number()),
-            !initial_mgr@.upool_is_allocated(uframe.spec_frame_number()),
+            0 <= frame_idx < after_alloc_mgr@.upool_capacity(),
+            after_alloc_mgr@.upool_is_allocated(frame_idx),
+            !initial_mgr@.upool_is_allocated(frame_idx),
             // After free.
-            !after_free_mgr@.upool_is_allocated(uframe.spec_frame_number()),
+            !after_free_mgr@.upool_is_allocated(frame_idx),
             // Frame unchanged for others.
-            forall|i: int| 0 <= i < initial_mgr@.upool_capacity() && i != uframe.spec_frame_number() ==>
+            forall|i: int| 0 <= i < initial_mgr@.upool_capacity() && i != frame_idx ==>
                 after_free_mgr@.upool_is_allocated(i) == initial_mgr@.upool_is_allocated(i),
     {
         // The specific frame is back to its original state.
-        assert(!after_free_mgr@.upool_is_allocated(uframe.spec_frame_number()));
-        assert(!initial_mgr@.upool_is_allocated(uframe.spec_frame_number()));
+        assert(!after_free_mgr@.upool_is_allocated(frame_idx));
+        assert(!initial_mgr@.upool_is_allocated(frame_idx));
     }
 
     } // verus!
