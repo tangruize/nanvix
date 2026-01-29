@@ -61,8 +61,17 @@ verus! {
 /// This should match what is defined in start.S.
 pub const KREDZONE_SIZE: usize = 128;
 
-/// Size of a single entry in bytes.
-pub const ENTRY_SIZE: usize = core::mem::size_of::<usize>();
+/// Size of a single entry in bytes (sizeof(usize)).
+/// Note: On x86-32 this is 4, on x86-64 this is 8.
+/// We use a literal to avoid Verus issues with size_of.
+#[cfg(target_pointer_width = "64")]
+pub const ENTRY_SIZE: usize = 8;
+
+#[cfg(target_pointer_width = "32")]
+pub const ENTRY_SIZE: usize = 4;
+
+#[cfg(all(not(target_pointer_width = "32"), not(target_pointer_width = "64")))]
+pub const ENTRY_SIZE: usize = 8;  // Default to 64-bit.
 
 /// Number of entries in the kernel red zone (spec version).
 pub spec const SPEC_NUM_ENTRIES: int = KREDZONE_SIZE as int / ENTRY_SIZE as int;
