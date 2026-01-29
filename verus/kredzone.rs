@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
-//! # Kernel Red Zone (Verified Implementation)
+//! # Kernel Red Zone (Verified Specification)
 //!
-//! This module provides a verified implementation of the Kernel Red Zone data structure.
+//! This module provides a verified specification for the Kernel Red Zone data structure.
 //! The kernel red zone is a small, fixed-size memory region used to store temporary values
 //! during kernel operations (e.g., for context switching or interrupt handling).
 //!
@@ -16,35 +16,59 @@
 //! - **Indexed access**: Values are stored/loaded by index
 //! - **Bounds checking**: All accesses are validated against the maximum index
 //!
-//! ## Memory Safety Properties Verified
+//! ## Verification Architecture
+//!
+//! This module uses a **specification-first** approach with explicit trust boundaries:
+//!
+//! ### Verified (Abstract Model)
+//!
+//! The following properties are **formally proven** for the abstract `KernelRedZoneView`:
 //!
 //! 1. **Bounds Safety**: Index must be within [0, NUM_ENTRIES) for all operations.
 //! 2. **Element Isolation**: Writing to index i does not affect any other index j != i.
 //! 3. **Read-after-Write**: Loading from index i after storing v at i returns v.
-//! 4. **No Index Overflow**: Index arithmetic does not overflow.
+//! 4. **Store Commutativity**: Independent stores to different indices commute.
+//! 5. **Store Idempotence**: Consecutive stores to same index keep last value.
+//! 6. **Invariant Preservation**: Operations preserve well-formedness.
 //!
-//! ## Liveness Properties Verified
+//! ### Trusted (Implementation)
 //!
-//! 1. **Store Success**: If index is valid, store always succeeds.
-//! 2. **Load Success**: If index is valid, load always succeeds.
+//! The `store()` and `load()` functions are marked `#[verifier::external_body]` because:
 //!
-//! ## Verification Scope and Abstraction Decisions
+//! 1. They access an `extern "C"` static variable (`kredzone`) linked from assembly.
+//! 2. They use `volatile` memory operations which Verus cannot reason about.
+//! 3. Threading ghost state through a global static is not feasible in this context.
 //!
-//! This verification focuses on the **logical correctness and index safety** of the
-//! kernel red zone. The following are explicitly handled:
+//! The trust assumptions are:
 //!
-//! ### External Memory Access
+//! - **T1**: The assembly-defined `kredzone` region is at least KREDZONE_SIZE bytes.
+//! - **T2**: Volatile reads return the last value written at that address.
+//! - **T3**: No concurrent access occurs (single-threaded kernel context).
 //!
-//! The original implementation uses an `extern "C"` static variable `kredzone` linked
-//! from assembly. This verified version models the red zone as an abstract sequence
-//! of `usize` values with `external_body` for the actual memory operations.
+//! ### Ghost State (`KernelRedZoneGhost`)
 //!
-//! ### API Summary
+//! The `KernelRedZoneGhost` struct provides an abstract model for callers who wish to
+//! reason about sequences of operations. Since `store`/`load` operate on global state
+//! without tracked parameters, callers must maintain their own ghost state that mirrors
+//! the expected concrete state. The `spec_store_effect` and `spec_load_result` functions
+//! define the expected behavior for such reasoning.
 //!
-//! | Function | Description |
-//! |----------|-------------|
-//! | `store(index, value)` | Store a value at the given index |
-//! | `load(index)` | Load a value from the given index |
+//! ## API Summary
+//!
+//! | Function | Description | Trust Level |
+//! |----------|-------------|-------------|
+//! | `store(index, value)` | Store a value at the given index | Trusted (external_body) |
+//! | `load(index)` | Load a value from the given index | Trusted (external_body) |
+//!
+//! ## Divergences from Original Implementation
+//!
+//! - **Logging omitted**: The `error!()` macro calls are omitted in the verified version
+//!   to avoid side effects during verification. Logging behavior is preserved in the
+//!   original `src/kernel/src/mm/kredzone.rs`.
+//!
+//! - **ENTRY_SIZE**: Uses conditional compilation with literals instead of
+//!   `mem::size_of::<usize>()`. See `lemma_entry_size_matches_target` for verification
+//!   that these values are correct for supported platforms.
 //!
 //==================================================================================================
 
@@ -75,6 +99,30 @@ pub const ENTRY_SIZE: usize = 8;  // Default to 64-bit.
 
 /// Number of entries in the kernel red zone (spec version).
 pub spec const SPEC_NUM_ENTRIES: int = KREDZONE_SIZE as int / ENTRY_SIZE as int;
+
+/// Lemma: ENTRY_SIZE matches size_of::<usize>() for the target platform.
+///
+/// This lemma documents the assumption that ENTRY_SIZE correctly reflects
+/// the pointer width. Since Verus cannot directly reason about size_of,
+/// we verify this through conditional compilation matching target_pointer_width.
+///
+/// For 32-bit: ENTRY_SIZE = 4 = sizeof(u32) = sizeof(usize)
+/// For 64-bit: ENTRY_SIZE = 8 = sizeof(u64) = sizeof(usize)
+#[cfg(target_pointer_width = "64")]
+pub proof fn lemma_entry_size_matches_target()
+    ensures
+        ENTRY_SIZE == 8,
+        SPEC_NUM_ENTRIES == 16,  // 128 / 8 = 16 entries.
+{
+}
+
+#[cfg(target_pointer_width = "32")]
+pub proof fn lemma_entry_size_matches_target()
+    ensures
+        ENTRY_SIZE == 4,
+        SPEC_NUM_ENTRIES == 32,  // 128 / 4 = 32 entries.
+{
+}
 
 /// Number of entries in the kernel red zone (exec version).
 pub const NUM_ENTRIES: usize = KREDZONE_SIZE / ENTRY_SIZE;
@@ -214,13 +262,36 @@ pub proof fn lemma_update_preserves_well_formed(view: KernelRedZoneView, i: int,
 }
 
 //==================================================================================================
-// KernelRedZone - Global State Model
+// KernelRedZone - Ghost State Model
 //==================================================================================================
 
-/// Ghost state representing the global kernel red zone.
+/// Ghost state representing the abstract kernel red zone.
 ///
-/// Since the kernel red zone is a global static variable accessed via extern "C",
-/// we model it as ghost state that tracks the abstract view.
+/// Since the kernel red zone is a global static variable accessed via `extern "C"`,
+/// we cannot thread tracked ghost state through the `store`/`load` functions directly.
+/// Instead, this struct provides an abstract model for **caller-side reasoning**.
+///
+/// ## Usage Pattern
+///
+/// Callers who need to reason about sequences of store/load operations can:
+///
+/// 1. Maintain a `ghost view: KernelRedZoneView` that tracks expected state.
+/// 2. After calling `store(i, v)`, update ghost state: `view = spec_store_effect(view, i, v)`.
+/// 3. Before calling `load(i)`, assert expected value: `spec_load_result(view, i)`.
+///
+/// The correctness lemmas (`lemma_store_then_load`, etc.) prove that if the ghost
+/// state is maintained correctly and the trust assumptions hold, the abstract
+/// reasoning is valid.
+///
+/// ## Why Not Tracked Parameters?
+///
+/// The original implementation uses an `extern "C"` static variable, which:
+/// - Has no Rust ownership model (it's assembly-defined).
+/// - Cannot accept tracked/ghost parameters (fixed C ABI).
+/// - Is accessed via raw pointer arithmetic with volatile operations.
+///
+/// Therefore, we document the trust boundary rather than attempting to force
+/// ghost state through an incompatible interface.
 #[verifier::ext_equal]
 pub tracked struct KernelRedZoneGhost {
     pub ghost view: KernelRedZoneView,
@@ -261,6 +332,18 @@ impl KernelRedZoneGhost {
 ///
 /// - `InvalidArgument`: If index is out of bounds.
 ///
+/// # Verification Notes
+///
+/// This function is marked `external_body` because it accesses an extern "C" static
+/// variable using volatile pointer operations. The specification captures:
+///
+/// - **Postcondition on success**: The index was valid.
+/// - **Postcondition on failure**: The index was out of bounds.
+///
+/// The actual memory effect (writing `value` at `index`) is trusted, not verified.
+/// Callers reasoning about state changes should use `spec_store_effect()` to model
+/// the expected effect on their ghost state.
+///
 #[verifier::external_body]
 pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
     ensures
@@ -278,6 +361,7 @@ pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
     // Safety: the kernel red zone is a global static variable and index is valid.
     // Note: In the real implementation, this uses volatile writes to the extern kredzone.
     // For verification, we model this as external_body since it involves raw memory.
+    // Logging (error! macro) is omitted; see original src/kernel/src/mm/kredzone.rs.
     Ok(())
 }
 
@@ -298,6 +382,21 @@ pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
 /// # Errors
 ///
 /// - `InvalidArgument`: If index is out of bounds.
+///
+/// # Verification Notes
+///
+/// This function is marked `external_body` because it accesses an extern "C" static
+/// variable using volatile pointer operations. The specification captures:
+///
+/// - **Postcondition on success**: The index was valid.
+/// - **Postcondition on failure**: The index was out of bounds.
+///
+/// The actual value returned is trusted, not verified. The return value `Ok(0)` in
+/// the body is a placeholder; the real implementation performs a volatile read.
+/// Callers reasoning about returned values should use `spec_load_result()` with
+/// their ghost state to determine the expected value.
+///
+/// Logging (error! macro) is omitted; see original src/kernel/src/mm/kredzone.rs.
 ///
 #[verifier::external_body]
 pub fn load(index: usize) -> (result: Result<usize, Error>)
@@ -466,9 +565,13 @@ pub proof fn lemma_negative_index_invalid(i: int)
 }
 
 //==================================================================================================
-// Tests
+// Tests (Abstract Model Only)
 //==================================================================================================
 
+/// These tests verify properties of the abstract `KernelRedZoneView` model.
+/// Due to `external_body` on `store`/`load`, these tests do NOT verify the
+/// executable code paths. They ensure the abstract specification is internally
+/// consistent and satisfies the expected algebraic properties.
 #[cfg(verus_keep_ghost)]
 mod test {
     use super::*;
@@ -562,6 +665,11 @@ mod test {
         assert(view.is_well_formed());
         lemma_store_preserves_invariant(view, 0, 42);
         assert(spec_store_effect(view, 0, 42).is_well_formed());
+    }
+
+    /// Test: Entry size is correct for target platform.
+    proof fn test_entry_size_correct() {
+        lemma_entry_size_matches_target();
     }
 }
 
