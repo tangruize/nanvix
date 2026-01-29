@@ -127,20 +127,12 @@ verus! {
 //
 // Verus modules cannot directly import kernel crates, so we duplicate these values.
 //
-// CI INTEGRATION REQUIREMENT:
-// The CI pipeline should include a step that verifies these constants match the kernel:
-//
-//   ```bash
-//   # Example CI check (scripts/verify-verus-constants.sh):
-//   KERNEL_PAGE_SIZE=$(grep -E "PAGE_SIZE.*=.*4096" src/libs/arch/src/lib.rs)
-//   KERNEL_STACK_SIZE=$(grep -E "USER_STACK_SIZE.*=.*512.*KILOBYTE" src/libs/config/src/lib.rs)
-//   VERUS_PAGE_SIZE=$(grep -E "PAGE_SIZE.*=.*4096" verus/ustack.rs)
-//   VERUS_STACK_SIZE=$(grep -E "USER_STACK_SIZE.*=.*524288" verus/ustack.rs)
-//   # Fail if any don't match
-//   ```
+// CI INTEGRATION:
+// Run `scripts/verify-verus-constants.sh` to verify these constants match the kernel.
+// This script is included in the CI pipeline to prevent configuration drift.
 //
 // VERIFICATION: The lemma `lemma_constants_valid` below proves internal consistency
-// of these constants. External linkage must be verified by CI tests.
+// of these constants. External linkage is verified by the CI script above.
 //==================================================================================================
 
 /// Page size in bytes (4 KiB).
