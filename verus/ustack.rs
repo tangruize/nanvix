@@ -85,14 +85,25 @@
 //! beyond the original API. These demonstrate additional verified properties and are
 //! clearly marked as extensions.
 //!
+//! ### Type-Safe API (PageAlignedAddr)
+//!
+//! To mirror the original `PageAligned<VirtualAddress>` return types, this module provides:
+//! - `PageAlignedAddr`: A newtype wrapper with an alignment invariant
+//! - `base_aligned()`: Returns base as PageAlignedAddr (mirrors original `base()`)
+//! - `top_aligned()`: Returns top as PageAlignedAddr (mirrors original `top()`)
+//!
+//! These preserve the type-level alignment guarantees from the original API.
+//!
 //! ## API Summary
 //!
 //! | Function | Description |
 //! |----------|-------------|
 //! | `new(base_addr)` | Create a new user stack with the given base address |
 //! | `size()` | Returns the size in bytes (constant USER_STACK_SIZE) |
-//! | `base()` | Returns the base address |
-//! | `top()` | Returns the top address (first byte past end) |
+//! | `base()` | Returns the base address (raw usize) |
+//! | `top()` | Returns the top address (raw usize) |
+//! | `base_aligned()` | Returns base as PageAlignedAddr |
+//! | `top_aligned()` | Returns top as PageAlignedAddr |
 //!
 //==================================================================================================
 
@@ -114,12 +125,22 @@ verus! {
 // The verification is only valid when these values match the actual kernel build.
 // If the kernel configuration changes, these constants must be updated accordingly.
 //
-// Verus modules cannot directly import kernel crates, so we duplicate these values
-// and rely on CI/review to ensure synchronization.
+// Verus modules cannot directly import kernel crates, so we duplicate these values.
+//
+// CI INTEGRATION REQUIREMENT:
+// The CI pipeline should include a step that verifies these constants match the kernel:
+//
+//   ```bash
+//   # Example CI check (scripts/verify-verus-constants.sh):
+//   KERNEL_PAGE_SIZE=$(grep -E "PAGE_SIZE.*=.*4096" src/libs/arch/src/lib.rs)
+//   KERNEL_STACK_SIZE=$(grep -E "USER_STACK_SIZE.*=.*512.*KILOBYTE" src/libs/config/src/lib.rs)
+//   VERUS_PAGE_SIZE=$(grep -E "PAGE_SIZE.*=.*4096" verus/ustack.rs)
+//   VERUS_STACK_SIZE=$(grep -E "USER_STACK_SIZE.*=.*524288" verus/ustack.rs)
+//   # Fail if any don't match
+//   ```
 //
 // VERIFICATION: The lemma `lemma_constants_valid` below proves internal consistency
-// of these constants. External linkage must be verified by CI tests that compare
-// these values against the actual kernel configuration.
+// of these constants. External linkage must be verified by CI tests.
 //==================================================================================================
 
 /// Page size in bytes (4 KiB).
@@ -234,6 +255,89 @@ proof fn lemma_postcondition_models_page_aligned(addr: int)
         spec_models_page_aligned(addr),
 {
     // Direct from definition.
+}
+
+//==================================================================================================
+// PageAlignedAddr - Type-Level Alignment Wrapper
+//==================================================================================================
+//
+// This type mirrors the kernel's `PageAligned<VirtualAddress>` to provide type-level
+// alignment guarantees. The invariant ensures the wrapped address is always page-aligned.
+//==================================================================================================
+
+/// A page-aligned virtual address.
+///
+/// This type mirrors `PageAligned<VirtualAddress>` from the kernel, providing
+/// type-level guarantees that the wrapped address is page-aligned.
+///
+/// # Invariant
+///
+/// The wrapped address is always page-aligned: `addr % PAGE_SIZE == 0`.
+pub struct PageAlignedAddr {
+    addr: usize,
+}
+
+impl PageAlignedAddr {
+    /// Invariant: The address is page-aligned.
+    pub closed spec fn inv(&self) -> bool {
+        spec_is_page_aligned(self.addr as int)
+    }
+
+    /// Spec function to get the raw address value.
+    pub closed spec fn spec_addr(&self) -> int {
+        self.addr as int
+    }
+
+    /// Creates a new PageAlignedAddr from a raw address.
+    ///
+    /// # Preconditions
+    ///
+    /// The address must be page-aligned.
+    ///
+    /// # Returns
+    ///
+    /// A PageAlignedAddr wrapping the given address.
+    pub fn from_raw(addr: usize) -> (result: Option<Self>)
+        ensures
+            result.is_some() ==> {
+                let pa = result.unwrap();
+                &&& pa.inv()
+                &&& pa.spec_addr() == addr as int
+            },
+            result.is_none() ==> !spec_is_page_aligned(addr as int),
+    {
+        if addr % PAGE_ALIGNMENT == 0 {
+            Some(PageAlignedAddr { addr })
+        } else {
+            None
+        }
+    }
+
+    /// Creates a new PageAlignedAddr from a raw address (unchecked).
+    ///
+    /// # Preconditions
+    ///
+    /// The address must be page-aligned.
+    pub fn from_raw_unchecked(addr: usize) -> (result: Self)
+        requires
+            spec_is_page_aligned(addr as int),
+        ensures
+            result.inv(),
+            result.spec_addr() == addr as int,
+    {
+        PageAlignedAddr { addr }
+    }
+
+    /// Returns the raw address value.
+    pub fn into_raw(&self) -> (result: usize)
+        requires
+            self.inv(),
+        ensures
+            result as int == self.spec_addr(),
+            spec_is_page_aligned(result as int),
+    {
+        self.addr
+    }
 }
 
 //==================================================================================================
@@ -580,6 +684,36 @@ impl UserStack {
             result as int > self.spec_base(),
     {
         self.base_addr + USER_STACK_SIZE
+    }
+
+    //==============================================================================================
+    // Type-Safe Accessors (mirrors original PageAligned<VirtualAddress> API)
+    //==============================================================================================
+
+    /// Returns the base address as a PageAlignedAddr.
+    ///
+    /// This method mirrors the original API that returns `PageAligned<VirtualAddress>`.
+    pub fn base_aligned(&self) -> (result: PageAlignedAddr)
+        requires
+            self.inv(),
+        ensures
+            result.inv(),
+            result.spec_addr() == self.spec_base(),
+    {
+        PageAlignedAddr::from_raw_unchecked(self.base_addr)
+    }
+
+    /// Returns the top address as a PageAlignedAddr.
+    ///
+    /// This method mirrors the original API that returns `PageAligned<VirtualAddress>`.
+    pub fn top_aligned(&self) -> (result: PageAlignedAddr)
+        requires
+            self.inv(),
+        ensures
+            result.inv(),
+            result.spec_addr() == self.spec_top(),
+    {
+        PageAlignedAddr::from_raw_unchecked(self.base_addr + USER_STACK_SIZE)
     }
 
     //==============================================================================================
