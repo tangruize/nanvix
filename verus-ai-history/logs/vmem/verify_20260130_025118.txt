@@ -1,0 +1,28 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 02:51:18 CST 2026
+Module: vmem
+Command: verus --crate-type lib lib.rs --verify-module vmem
+
+error: cannot assign to exec variable from proof mode
+   --> vmem.rs:634:13
+    |
+634 | /             self.ghost_view = Ghost(VmemView {
+635 | |                 user_pages: old_view.user_pages.insert(vaddr as int),
+636 | |                 user_mappings: old_view.user_mappings.insert(vaddr as int, frame_addr.spec_raw_value()),
+637 | |                 kernel_pages: old_view.kernel_pages,
+638 | |                 user_page_table_count: old_view.user_page_table_count,
+639 | |                 kernel_page_table_count: old_view.kernel_page_table_count,
+640 | |             });
+    | |______________^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for vmem (verified:0, errors:0)
