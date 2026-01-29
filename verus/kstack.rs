@@ -405,7 +405,7 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_size(),
-            result as int == self.num_pages as int * (PAGE_SIZE as int),
+            result as int == self.spec_num_pages() * (PAGE_SIZE as int),
             result % PAGE_SIZE == 0,
     {
         self.num_pages * PAGE_SIZE
