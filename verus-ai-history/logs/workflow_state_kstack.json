@@ -1,6 +1,6 @@
 {
   "module_name": "kstack",
-  "current_iteration": 3,
+  "current_iteration": 4,
   "prover_session_id": "35d1cbb1-7cac-4314-8bcc-1e0e767b1856",
   "reviewer_sessions": {
     "claude-opus-4.5": "35d1cbb1-7cac-4314-8bcc-1e0e767b1856",
