@@ -1,0 +1,76 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 02:27:07 CST 2026
+Module: kpage
+Command: verus --crate-type lib lib.rs --verify-module kpage
+
+note: verifying module kpage
+
+error: postcondition not satisfied
+   --> kpage.rs:349:13
+    |
+349 |             result.inv(),
+    |             ^^^^^^^^^^^^ failed this postcondition
+...
+355 |         KernelPage { kframe }
+    |         --------------------- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kpage.rs:377:5
+    |
+377 |     pub fn base(&self) -> (result: PageAddress)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kpage.rs:381:13
+    |
+381 |             result.spec_raw_value() == self@.page_address(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+386 |         PageAddress::new(frame_addr.into_raw_value())
+    |         --------------------------------------------- at the end of the function body
+
+error: precondition not satisfied
+   --> kpage.rs:386:9
+    |
+121 |             raw_addr as int % PAGE_SIZE as int == 0,
+    |             --------------------------------------- failed precondition
+...
+386 |         PageAddress::new(frame_addr.into_raw_value())
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kpage.rs:398:5
+    |
+398 |     pub fn frame_address(&self) -> (result: FrameAddress)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kpage.rs:402:13
+    |
+402 |             result.spec_raw_value() == self@.frame_address(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+405 |         self.kframe.base()
+    |         ------------------ at the end of the function body
+
+error: postcondition not satisfied
+   --> kpage.rs:403:13
+    |
+403 |             result.spec_is_aligned(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+404 |     {
+405 |         self.kframe.base()
+    |         ------------------ at the end of the function body
+
+verification results:: 6 verified, 3 errors (partial verification with `--verify-*`)
+error: aborting due to 5 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 6
+Errors: 3
+Status: FAILED
+Committed: [verus] Verification failed for kpage (verified:6, errors:3)
