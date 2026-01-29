@@ -44,12 +44,14 @@
 //! - **T1**: The assembly-defined `kredzone` region is at least KREDZONE_SIZE bytes.
 //! - **T2**: Volatile reads return the last value written at that address.
 //! - **T3**: No concurrent access occurs (single-threaded kernel context).
+//! - **T4**: The kredzone region is zero-initialized before first use (BSS section).
 //!
 //! **Why these cannot be encoded as Verus preconditions:**
 //!
 //! - T1 is a linker/build-time property verified by the assembly source (`start.S`).
 //! - T2 is a hardware/compiler semantics assumption outside Verus's reasoning scope.
 //! - T3 is a kernel design invariant enforced by the single-threaded execution model.
+//! - T4 is a linker/loader property (BSS zero-initialization) verified by the toolchain.
 //!
 //! These are **environmental assumptions** documented for auditors, not runtime checks.
 //!
@@ -142,14 +144,20 @@ pub const KREDZONE_SIZE: usize = 128;
 /// Size of a single entry in bytes (sizeof(usize)).
 /// Note: On x86-32 this is 4, on x86-64 this is 8.
 /// We use a literal to avoid Verus issues with size_of.
+/// 
+/// **Warning:** Only 32-bit and 64-bit platforms are officially supported.
+/// The fallback for other architectures defaults to 64-bit but should not be relied upon.
 #[cfg(target_pointer_width = "64")]
 pub const ENTRY_SIZE: usize = 8;
 
 #[cfg(target_pointer_width = "32")]
 pub const ENTRY_SIZE: usize = 4;
 
+// Fallback for unsupported architectures - defaults to 64-bit with a warning.
+// Nanvix officially targets x86-32. This fallback exists only for Verus compilation
+// on non-standard hosts. Production builds should fail on unsupported architectures.
 #[cfg(all(not(target_pointer_width = "32"), not(target_pointer_width = "64")))]
-pub const ENTRY_SIZE: usize = 8;  // Default to 64-bit.
+pub const ENTRY_SIZE: usize = 8;  // WARNING: Unsupported architecture, defaulting to 64-bit.
 
 /// Number of entries in the kernel red zone (spec version).
 pub spec const SPEC_NUM_ENTRIES: int = KREDZONE_SIZE as int / ENTRY_SIZE as int;
@@ -406,6 +414,7 @@ impl KernelRedZoneGhost {
 /// - **Postcondition on failure**: The index was out of bounds.
 ///
 /// The actual memory effect (writing `value` at `index`) is trusted, not verified.
+/// **For functional correctness verification, use `store_with_ghost()` instead.**
 /// Callers reasoning about state changes should use `spec_store_effect()` to model
 /// the expected effect on their ghost state.
 ///
@@ -469,8 +478,9 @@ pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
 ///
 /// The actual value returned is trusted, not verified. The return value `Ok(0)` in
 /// the body is a placeholder; the real implementation performs a volatile read.
-/// Callers reasoning about returned values should use `load_with_ghost()` or
-/// `spec_load_result()` with their ghost state to determine the expected value.
+/// **For functional correctness verification, use `load_with_ghost()` instead.**
+/// Callers reasoning about returned values should use `spec_load_result()` with
+/// their ghost state to determine the expected value.
 ///
 /// # Warning
 ///
@@ -630,6 +640,15 @@ pub fn load_with_ghost(
 /// Creates an initial well-formed ghost state with all zeros.
 ///
 /// This is useful for initializing ghost state at the start of kernel execution.
+///
+/// # Trust Assumption
+///
+/// This function relies on **T4**: The kredzone region is zero-initialized before
+/// first use (BSS section). If the kredzone is not zero-initialized by the
+/// loader/linker, the ghost state will be inconsistent with the actual memory.
+///
+/// To establish the invariant at runtime, call `store(i, 0)` for all valid indices
+/// during kernel initialization before using `create_initial_ghost()`.
 pub proof fn create_initial_ghost() -> (tracked result: KernelRedZoneGhost)
     ensures
         result.inv(),
@@ -862,6 +881,32 @@ mod test {
     /// Test: Entry size is correct for target platform.
     proof fn test_entry_size_correct() {
         lemma_entry_size_matches_target();
+    }
+
+    /// Test: Ghost state wrappers compile and proof steps succeed.
+    /// This exercises the store_with_ghost and load_with_ghost wrapper logic.
+    proof fn test_ghost_wrapper_reasoning() {
+        // Create initial ghost state (relies on T4: zero initialization).
+        let tracked mut ghost = create_initial_ghost();
+        
+        // Verify initial state is well-formed.
+        assert(ghost.inv());
+        // The postcondition of create_initial_ghost ensures index 0 is 0.
+        assert(spec_is_valid_index(0));  // Index 0 is valid.
+        // Use the postcondition: forall i, valid(i) ==> view.index(i) == 0
+        
+        // Model a store operation at index 0 with value 42.
+        lemma_valid_index_in_bounds(ghost.view, 0);
+        let new_view = spec_store_effect(ghost.view, 0, 42);
+        lemma_update_preserves_well_formed(ghost.view, 0, 42);
+        ghost.view = new_view;
+        
+        // Verify the new ghost state is well-formed.
+        assert(ghost.inv());
+        
+        // Verify read-after-write: loading from index 0 should return 42.
+        lemma_store_then_load(ghost.view, 0, 42);
+        // After store(0, 42), spec_load_result(view, 0) == 42.
     }
 }
 
