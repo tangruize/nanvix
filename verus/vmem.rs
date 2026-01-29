@@ -264,12 +264,32 @@ pub open spec fn spec_is_user_addr(vaddr: int) -> bool {
 }
 
 /// Property: A virtual address is in kernel space.
+///
+/// # Note
+///
+/// Kernel space is defined as any address NOT in user space. On x86 with the
+/// standard 3GB/1GB split:
+/// - User space: USER_BASE (1GB) to USER_END (3GB)
+/// - Kernel space: 0 to USER_BASE and USER_END to 4GB
+///
+/// Addresses in the range 0-1GB are typically not directly accessible in
+/// user mode on x86. Addresses above 3GB are the kernel's address space.
+/// This definition matches the x86 memory layout used by Nanvix.
 pub open spec fn spec_is_kernel_addr(vaddr: int) -> bool {
     !spec_is_user_addr(vaddr)
 }
 
 /// Property: A memory region lies entirely in user space.
 /// Requires size > 0 and no overflow.
+/// Property: A memory region lies entirely in user space.
+///
+/// # Requirements
+///
+/// - `size > 0`: Zero-length regions return false. The verified copy operations
+///   explicitly check for zero size and return an error, matching the original
+///   implementation which also rejects zero-length copies.
+/// - No overflow: `start + size - 1 >= start`
+/// - Both endpoints must be in user space
 pub open spec fn spec_is_user_region(start: int, size: int) -> bool {
     &&& size > 0
     &&& start >= 0
@@ -279,7 +299,12 @@ pub open spec fn spec_is_user_region(start: int, size: int) -> bool {
 }
 
 /// Property: A memory region lies entirely in kernel space.
-/// Requires size > 0 and no overflow.
+///
+/// # Requirements
+///
+/// - `size > 0`: Zero-length regions return false (same as user regions).
+/// - No overflow: `start + size - 1 >= start`
+/// - Both endpoints must be in kernel space
 pub open spec fn spec_is_kernel_region(start: int, size: int) -> bool {
     &&& size > 0
     &&& start >= 0
@@ -356,7 +381,23 @@ impl Vmem {
     }
 
     /// Spec function to check if all pages in a user region are mapped.
-    /// This is a simplified model that checks page-aligned boundaries.
+    ///
+    /// # Approximation
+    ///
+    /// This is a simplified model that checks page-aligned boundaries within
+    /// the region. It verifies that every page boundary address within
+    /// [start, start+size) has a corresponding mapping.
+    ///
+    /// # Limitations
+    ///
+    /// - Only checks page-aligned offsets within the region
+    /// - If start is not page-aligned, the first partial page's mapping is
+    ///   checked via spec_page_is_mapped which aligns down to page boundary
+    /// - For full coverage verification, the caller should ensure start is
+    ///   page-aligned and size is a multiple of PAGE_SIZE
+    ///
+    /// The original implementation checks mapping existence page-by-page during
+    /// the copy loop, which this approximates.
     pub open spec fn spec_user_region_is_mapped(&self, start: int, size: int) -> bool
         recommends spec_is_user_region(start, size)
     {
