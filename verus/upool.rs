@@ -180,10 +180,20 @@ impl UserFrame {
 
 /// Abstract view of the user frame pool for specification purposes.
 /// This mirrors FrameAllocatorView but provides pool-specific semantics.
+///
+/// # Region Properties
+///
+/// The view includes:
+/// - `base_addr`: The base physical address of the pool region
+///
+/// Frame addresses are computed as: `base_addr + frame_idx * FRAME_SIZE`.
 #[verifier::ext_equal]
 pub struct UpoolView {
     /// The underlying frame allocator view.
     pub allocator_view: FrameAllocatorView,
+    /// Base physical address of the pool region.
+    /// Frame i has address: base_addr + i * FRAME_SIZE.
+    pub base_addr: int,
 }
 
 impl UpoolView {
@@ -229,6 +239,35 @@ impl UpoolView {
     /// Returns true if the pool is full (all frames allocated).
     pub open spec fn is_full(&self) -> bool {
         self.allocator_view.is_full()
+    }
+
+    //==============================================================================================
+    // Region Properties
+    //==============================================================================================
+
+    /// Returns the base address of the pool region.
+    pub open spec fn base(&self) -> int {
+        self.base_addr
+    }
+
+    /// Computes the physical address of a frame given its index.
+    pub open spec fn frame_addr(&self, frame_idx: int) -> int {
+        self.base_addr + frame_idx * FRAME_SIZE as int
+    }
+
+    /// Returns the limit address (one past the last valid address).
+    pub open spec fn limit(&self) -> int {
+        self.base_addr + self.capacity() * FRAME_SIZE as int
+    }
+
+    /// Property: A frame address is within the pool region.
+    pub open spec fn addr_in_region(&self, addr: int) -> bool {
+        self.base_addr <= addr && addr < self.limit()
+    }
+
+    /// Property: A frame index corresponds to a valid address in the region.
+    pub open spec fn frame_in_region(&self, frame_idx: int) -> bool {
+        0 <= frame_idx && frame_idx < self.capacity()
     }
 
     //==============================================================================================
@@ -280,6 +319,8 @@ impl View for Upool {
     closed spec fn view(&self) -> UpoolView {
         UpoolView {
             allocator_view: self.frame_allocator@,
+            // Base address is abstract (default 0).
+            base_addr: 0,
         }
     }
 }
