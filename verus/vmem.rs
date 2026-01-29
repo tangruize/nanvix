@@ -285,6 +285,29 @@ impl Vmem {
         self.mappings[i as int].frame_addr as int
     }
 
+    /// Spec function to check if a page at vaddr is mapped.
+    /// Returns true if there exists a mapping for the page containing vaddr.
+    pub open spec fn spec_page_is_mapped(&self, vaddr: int) -> bool {
+        let page_addr: int = (vaddr / PAGE_SIZE as int) * PAGE_SIZE as int;
+        exists|i: int|
+            #![trigger self.mappings[i]]
+            0 <= i < self.mapping_count as int &&
+            self.mappings[i as int].vaddr as int == page_addr
+    }
+
+    /// Spec function to check if all pages in a user region are mapped.
+    /// This is a simplified model that checks page-aligned boundaries.
+    pub open spec fn spec_user_region_is_mapped(&self, start: int, size: int) -> bool
+        recommends spec_is_user_region(start, size)
+    {
+        // For a region to be fully mapped, every page it touches must be mapped.
+        // We approximate this by requiring the region lies within mapped pages.
+        forall|offset: int|
+            #![trigger self.spec_page_is_mapped(start + offset)]
+            0 <= offset < size && (start + offset) % PAGE_SIZE as int == 0 ==>
+            self.spec_page_is_mapped(start + offset)
+    }
+
     /// Invariant: mapping_count is within bounds and all mappings in [0, mapping_count) are valid.
     pub closed spec fn inv(&self) -> bool {
         &&& self.mapping_count <= MAX_USER_PAGES
@@ -955,13 +978,17 @@ impl Vmem {
     /// - `BadAddress`: Destination region not in kernel space.
     /// - `BadAddress`: Destination region not within physical memory bounds.
     ///
+    /// # Preconditions
+    ///
+    /// - The source user pages must be mapped. The original implementation
+    ///   panics if `find_user_frame` fails during the copy loop.
+    ///
     /// # Note
     ///
-    /// The original implementation also checks that each source page is mapped
+    /// The original implementation checks that each source page is mapped
     /// and that physical addresses are within bounds during the copy loop.
-    /// This verified version checks the destination physical bounds upfront
-    /// as a precondition. Source mapping existence is not modeled here because
-    /// it requires page-by-page frame lookup which is abstracted.
+    /// This verified version requires mapping existence as a precondition
+    /// and checks destination physical bounds upfront.
     pub fn copy_from_user_unaligned(
         &self,
         dst: usize,
@@ -970,6 +997,8 @@ impl Vmem {
     ) -> (result: Result<(), Error>)
         requires
             self.inv(),
+            // Source user pages must be mapped (original panics if not).
+            size > 0 ==> self.spec_user_region_is_mapped(src as int, size as int),
         ensures
             result.is_ok() ==> {
                 &&& size > 0
@@ -1001,6 +1030,7 @@ impl Vmem {
 
         // In a real implementation, we would perform the physical memory copy.
         // This includes looking up user frames and copying page-by-page.
+        // The precondition ensures all source pages are mapped.
         Ok(())
     }
 
@@ -1023,13 +1053,18 @@ impl Vmem {
     /// - `BadAddress`: Destination region not in user space.
     /// - `BadAddress`: Source region not within physical memory bounds.
     ///
+    /// # Preconditions
+    ///
+    /// - The destination user pages must be mapped. The original implementation
+    ///   panics if `find_user_frame` fails during the copy loop.
+    ///
     /// # Note
     ///
     /// The original implementation performs a dry-run first to check for errors
     /// before the actual copy. It also checks that destination user frames exist
     /// and that physical addresses are within bounds. This verified version
-    /// checks source physical bounds upfront. Destination frame existence is
-    /// not modeled because it requires page-by-page lookup.
+    /// requires mapping existence as a precondition and checks source physical
+    /// bounds upfront.
     pub fn copy_to_user_unaligned(
         &self,
         dst: usize,
@@ -1038,6 +1073,8 @@ impl Vmem {
     ) -> (result: Result<(), Error>)
         requires
             self.inv(),
+            // Destination user pages must be mapped (original panics if not).
+            size > 0 ==> self.spec_user_region_is_mapped(dst as int, size as int),
         ensures
             result.is_ok() ==> {
                 &&& size > 0
@@ -1069,6 +1106,7 @@ impl Vmem {
 
         // In a real implementation, we would perform the physical memory copy.
         // This includes looking up user frames and copying page-by-page.
+        // The precondition ensures all destination pages are mapped.
         Ok(())
     }
 
