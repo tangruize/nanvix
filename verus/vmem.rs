@@ -341,6 +341,16 @@ impl Vmem {
         &&& self.mapping_count as int == self@.num_user_pages()
     }
 
+    /// Spec function to check if there is capacity for more mappings.
+    pub closed spec fn has_mapping_capacity(&self) -> bool {
+        self.mapping_count < MAX_USER_PAGES
+    }
+
+    /// Spec function to check if there are any mappings.
+    pub closed spec fn has_mappings(&self) -> bool {
+        self.mapping_count > 0
+    }
+
     /// Spec function for user address check.
     pub open spec fn spec_is_user_addr(vaddr: int) -> bool {
         VmemView::spec_is_user_addr(vaddr)
@@ -569,7 +579,7 @@ impl Vmem {
     ) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
-            old(self).mapping_count < MAX_USER_PAGES,
+            old(self).has_mapping_capacity(),
         ensures
             self.inv(),
             result.is_ok() ==> {
@@ -577,12 +587,8 @@ impl Vmem {
                 &&& vaddr as int % PAGE_SIZE as int == 0
                 &&& self@.is_user_page_mapped(vaddr as int)
                 &&& self@.get_user_frame(vaddr as int) == frame_addr.spec_raw_value()
-                &&& self.mapping_count == old(self).mapping_count + 1
             },
-            result.is_err() ==> {
-                &&& self.mapping_count == old(self).mapping_count
-                &&& self@ == old(self)@
-            },
+            result.is_err() ==> self@ == old(self)@,
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -654,7 +660,7 @@ impl Vmem {
     pub fn unmap(&mut self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
-            old(self).mapping_count > 0,
+            old(self).has_mappings(),
         ensures
             self.inv(),
             result.is_ok() ==> {
@@ -663,12 +669,8 @@ impl Vmem {
                 &&& old(self)@.is_user_page_mapped(vaddr as int)
                 &&& !self@.is_user_page_mapped(vaddr as int)
                 &&& result.unwrap() as int == old(self)@.get_user_frame(vaddr as int)
-                &&& self.mapping_count == old(self).mapping_count - 1
             },
-            result.is_err() ==> {
-                &&& self.mapping_count == old(self).mapping_count
-                &&& self@ == old(self)@
-            },
+            result.is_err() ==> self@ == old(self)@,
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
