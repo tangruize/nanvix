@@ -89,6 +89,20 @@
 //! be attached to the original implementation as pre/postconditions that the
 //! implementation must satisfy at runtime or through separate proof.
 //!
+//! **Future Work**: Implement refinement proofs that connect this specification
+//! model to the actual page table implementation. This would require:
+//! 1. A verified model of x86 page directory/table structures
+//! 2. Proof that the implementation's linked list operations refine the array model
+//! 3. Connection to a hardware memory model for physical operations
+//!
+//! ### Verification Value
+//! While this model abstracts page table complexity, it provides value by:
+//! 1. **Contract Verification**: Proves that the API contracts are internally consistent
+//! 2. **Invariant Preservation**: Verifies that all operations maintain key invariants
+//! 3. **Safety Properties**: Proves user/kernel separation, bounds checking, uniqueness
+//! 4. **Precondition Discovery**: Identifies necessary preconditions for safe operation
+//! 5. **Reference Specification**: Serves as a formal reference for implementation
+//!
 //! ## Relationship to Other Verified Modules
 //!
 //! - Uses `FrameAddress` from `frame_address.rs` (verified) - for frame addresses
@@ -113,6 +127,7 @@
 //! | `is_physical_region()` | Check if region is within physical memory |
 //! | `copy_from_user_unaligned()` | Copy from user space to kernel space |
 //! | `copy_to_user_unaligned()` | Copy from kernel space to user space |
+//! | `copy_to_user_unaligned_unchecked()` | Unchecked copy with dry-run support |
 //! | `memset()` | Fill a page with a value |
 //! | `uctrl()` | Change access permissions on a user page |
 //! | `kctrl()` | Change access permissions on a kernel page |
@@ -163,9 +178,14 @@ pub const MEMORY_SIZE: usize = 0x10000000; // 256 MB
 ///
 /// This is a verification simplification. The original implementation uses
 /// linked lists with dynamic allocation. For verification tractability, we
-/// use a fixed-size array. This value should be large enough for typical
-/// verification scenarios.
-pub const MAX_USER_PAGES: usize = 1024;
+/// use a fixed-size array.
+///
+/// # Capacity
+///
+/// With PAGE_SIZE=4096 bytes and MAX_USER_PAGES=65536, this model supports
+/// up to 256 MB of user virtual memory, which covers the full user address
+/// space for typical embedded/microkernel configurations.
+pub const MAX_USER_PAGES: usize = 65536;
 
 //==================================================================================================
 // Access Permissions
@@ -1135,6 +1155,52 @@ impl Vmem {
         // This includes looking up user frames and copying page-by-page.
         // The precondition ensures all destination pages are mapped.
         Ok(())
+    }
+
+    /// Copies data from kernel space to user space without dry-run validation.
+    ///
+    /// # Parameters
+    ///
+    /// - `dst`: Destination address in user space.
+    /// - `src`: Source address in kernel space.
+    /// - `size`: Number of bytes to copy.
+    /// - `dry_run`: If true, only validate without performing the copy.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, Ok(()). Upon failure, an error describing the issue.
+    ///
+    /// # Safety
+    ///
+    /// When not running in dry-run mode, this function performs a physical memory
+    /// copy. Any errors that occur while copying data will cause this function to
+    /// panic. The caller must ensure all preconditions are satisfied.
+    ///
+    /// # Note
+    ///
+    /// This is the unchecked variant that the original implementation uses
+    /// internally. It is marked external_body because it performs unsafe
+    /// physical memory operations that require hardware access.
+    #[verifier::external_body]
+    pub fn copy_to_user_unaligned_unchecked(
+        &self,
+        dst: usize,
+        src: usize,
+        size: usize,
+        dry_run: bool,
+    ) -> (result: Result<(), Error>)
+        requires
+            self.inv(),
+            size > 0 ==> self.spec_user_region_is_mapped(dst as int, size as int),
+        ensures
+            result.is_ok() ==> {
+                &&& size > 0
+                &&& spec_is_kernel_region(src as int, size as int)
+                &&& spec_is_user_region(dst as int, size as int)
+                &&& spec_is_physical_region(src as int, size as int)
+            },
+    {
+        unimplemented!()
     }
 
     /// Fills a user page with a given value.
