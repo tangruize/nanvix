@@ -86,8 +86,8 @@
 use crate::{
     kpool::{Kpool, KernelFrame},
     upool::{Upool, UserFrame},
-    kpage::KernelPage,
-    vmem::{Vmem, AccessPermission, spec_is_user_addr, PAGE_SIZE},
+    kpage::{KernelPage, PAGE_SIZE},
+    vmem::{Vmem, AccessPermission, spec_is_user_addr},
     error::{Error, ErrorCode},
 };
 use vstd::prelude::*;
@@ -552,7 +552,7 @@ proof fn proof_new_manager_invariant(kpool: Kpool, upool: Upool)
         kpool.inv(),
         upool.inv(),
     ensures
-        VirtMemoryManager { kpool, upool }.inv(),
+        (VirtMemoryManager { kpool, upool }).inv(),
 {
     // Direct from constructor postconditions.
 }
