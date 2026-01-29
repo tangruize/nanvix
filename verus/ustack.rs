@@ -13,7 +13,7 @@
 //! A user stack is a fixed-size memory region defined by:
 //! - A **base address**: the lowest virtual address of the stack (page-aligned)
 //! - A **top address**: the first address past the end of the stack (base + size)
-//! - A **size**: the constant `USER_STACK_SIZE` (typically 64KB = 16 pages)
+//! - A **size**: the constant `USER_STACK_SIZE` (512KB = 128 pages)
 //!
 //! Since stacks grow downward on x86, the stack pointer starts near the top and grows
 //! toward the base.
@@ -43,10 +43,31 @@
 //!   the verification proves the same property via postconditions.
 //! - **Equivalent guarantees**: Both approaches ensure callers receive aligned addresses.
 //!
+//! ### Constructor Signature
+//!
+//! The original `new()` takes `PageAligned<VirtualAddress>` (infallible, type-level guarantee).
+//! This version takes `usize` with preconditions (alignment must hold for caller). The
+//! runtime checks are redundant when preconditions hold, but kept for defense-in-depth.
+//!
 //! ### Constant Size
 //!
 //! The user stack always uses `USER_STACK_SIZE`. We represent this as a constant
 //! and verify all properties assuming this fixed size.
+//!
+//! ### Documentation Correction (base/top semantics)
+//!
+//! The original code comments state: base = "highest address", top = "lowest address".
+//! However, the implementation computes `top = base + size`, meaning top > base.
+//! This verified version documents the mathematically consistent semantics:
+//! - **base**: lowest address of the stack region
+//! - **top**: highest address (first byte past end)
+//! The stack pointer starts at top and grows downward toward base.
+//!
+//! ### Extended API
+//!
+//! This module includes helper methods (`contains`, `page_index`, `initial_sp`, `has_room`)
+//! beyond the original API. These demonstrate additional verified properties and are
+//! clearly marked as extensions.
 //!
 //! ## API Summary
 //!
@@ -74,12 +95,12 @@ pub const PAGE_SIZE: usize = 4096;
 /// Page alignment requirement.
 pub const PAGE_ALIGNMENT: usize = 4096;
 
-/// User stack size in bytes (64 KiB = 16 pages).
-/// This matches config::memory_layout::USER_STACK_SIZE.
-pub const USER_STACK_SIZE: usize = 65536;
+/// User stack size in bytes (512 KiB = 128 pages).
+/// This matches config::memory_layout::USER_STACK_SIZE = 512 * KILOBYTE.
+pub const USER_STACK_SIZE: usize = 524288;
 
-/// User stack size in pages.
-pub const USER_STACK_PAGES: usize = 16;
+/// User stack size in pages (512 KiB / 4 KiB = 128 pages).
+pub const USER_STACK_PAGES: usize = 128;
 
 //==================================================================================================
 // Specification Helper Functions
@@ -164,13 +185,12 @@ impl UserStackView {
         self.base_addr + self.size() <= usize::MAX as int
     }
 
-    /// Property: All pages in the stack have contiguous addresses.
-    /// Page i starts at base_addr + i * PAGE_SIZE.
+    /// Property: All pages in the stack are contiguous.
+    /// Page i ends exactly where page i+1 starts (no gaps, no overlaps).
     pub open spec fn pages_are_contiguous(&self) -> bool {
         forall|i: int|
-            #![trigger self.page_start(i)]
-            0 <= i < self.num_pages() ==>
-            self.page_start(i) == self.base_addr + i * (PAGE_SIZE as int)
+            0 <= i < self.num_pages() - 1 ==>
+            self.page_end(i) == self.page_start(i + 1)
     }
 
     /// Returns the start address of page i.
@@ -326,14 +346,18 @@ impl UserStack {
             assert(spec_is_size_aligned(USER_STACK_SIZE as int));
         }
 
-        // Prove page contiguity.
+        // Prove page contiguity (consecutive pages are adjacent).
         proof {
             assert forall|i: int|
-                0 <= i < USER_STACK_PAGES as int
+                0 <= i < USER_STACK_PAGES as int - 1
             implies
-                #[trigger] (base_addr as int + i * (PAGE_SIZE as int)) ==
-                base_addr as int + i * (PAGE_SIZE as int)
-            by {}
+                #[trigger] (base_addr as int + (i + 1) * (PAGE_SIZE as int)) ==
+                base_addr as int + i * (PAGE_SIZE as int) + (PAGE_SIZE as int)
+            by {
+                // page_end(i) = base_addr + (i+1) * PAGE_SIZE
+                // page_start(i+1) = base_addr + (i+1) * PAGE_SIZE
+                // They are equal by definition.
+            }
         }
 
         let stack = UserStack { base_addr };
@@ -540,6 +564,8 @@ impl UserStack {
 //==================================================================================================
 
 /// Lemma: Page alignment is preserved under addition of page-aligned values.
+///
+/// Uses modular arithmetic: (a + b) % p = ((a % p) + (b % p)) % p = (0 + 0) % p = 0.
 proof fn lemma_page_aligned_add(a: int, b: int)
     requires
         spec_is_page_aligned(a),
@@ -547,10 +573,12 @@ proof fn lemma_page_aligned_add(a: int, b: int)
     ensures
         spec_is_page_aligned(a + b),
 {
-    assert((a + b) % (PAGE_SIZE as int) == 0) by {
-        assert(a % (PAGE_SIZE as int) == 0);
-        assert(b % (PAGE_SIZE as int) == 0);
-    }
+    let p = PAGE_SIZE as int;
+    // By preconditions: a % p == 0 and b % p == 0.
+    // By modular arithmetic: (a + b) % p == ((a % p) + (b % p)) % p == (0 + 0) % p == 0.
+    assert(a % p == 0);
+    assert(b % p == 0);
+    assert((a + b) % p == 0);
 }
 
 /// Lemma: Page multiplication produces page-aligned results.
@@ -569,10 +597,10 @@ proof fn lemma_user_stack_size_aligned()
         spec_is_size_aligned(USER_STACK_SIZE as int),
         USER_STACK_SIZE as int == USER_STACK_PAGES as int * (PAGE_SIZE as int),
 {
-    assert(USER_STACK_SIZE == 65536);
+    assert(USER_STACK_SIZE == 524288);
     assert(PAGE_SIZE == 4096);
-    assert(USER_STACK_PAGES == 16);
-    assert(16 * 4096 == 65536);
+    assert(USER_STACK_PAGES == 128);
+    assert(128 * 4096 == 524288);
 }
 
 /// Lemma: A well-formed stack has aligned top.
