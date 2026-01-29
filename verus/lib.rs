@@ -17,6 +17,7 @@
 //! - `frame` - Frame allocator (uses error, bitmap, frame_address)
 //! - `upool` - User frame pool (uses error, frame, frame_address)
 //! - `kpool` - Kernel frame pool (uses error, frame, frame_address)
+//! - `kpage` - Kernel page (uses kpool, frame_address)
 //! - `kstack` - Kernel stack (uses error)
 //! - `ustack` - User stack (uses error)
 //! - `kredzone` - Kernel red zone (uses error)
@@ -31,6 +32,7 @@ pub mod frame_address;
 pub mod frame;
 pub mod upool;
 pub mod kpool;
+pub mod kpage;
 pub mod kstack;
 pub mod ustack;
 pub mod kredzone;
