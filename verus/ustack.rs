@@ -322,6 +322,7 @@ impl UserStack {
             spec_is_page_aligned(base_addr as int),
             base_addr as int + (USER_STACK_SIZE as int) <= usize::MAX as int,
         ensures
+            result.is_ok(),
             result.is_ok() ==> {
                 let stack = result.unwrap();
                 &&& stack.inv()
@@ -340,7 +341,7 @@ impl UserStack {
             return Err(Error::new(ErrorCode::OutOfMemory, "address overflow"));
         }
 
-        // Prove that USER_STACK_SIZE is page-aligned (16 * 4096 = 65536).
+        // Prove that USER_STACK_SIZE is page-aligned (128 * 4096 = 524288).
         proof {
             assert(USER_STACK_SIZE as int == USER_STACK_PAGES as int * (PAGE_SIZE as int));
             assert(spec_is_size_aligned(USER_STACK_SIZE as int));
