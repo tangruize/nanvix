@@ -145,8 +145,6 @@ impl VirtMemoryManagerView {
     pub open spec fn pools_valid(&self) -> bool {
         &&& 0 <= self.kpool_free_count <= self.kpool_capacity
         &&& 0 <= self.upool_free_count <= self.upool_capacity
-        &&& self.kpool_capacity > 0
-        &&& self.upool_capacity > 0
     }
 }
 
