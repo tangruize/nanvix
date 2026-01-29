@@ -20,6 +20,7 @@
 //! - `kstack` - Kernel stack (uses error)
 //! - `ustack` - User stack (uses error)
 //! - `kredzone` - Kernel red zone (uses error)
+//! - `manager` - Physical memory manager (uses kpool, upool)
 
 pub mod error;
 pub mod raw_array;
