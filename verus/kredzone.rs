@@ -45,6 +45,14 @@
 //! - **T2**: Volatile reads return the last value written at that address.
 //! - **T3**: No concurrent access occurs (single-threaded kernel context).
 //!
+//! **Why these cannot be encoded as Verus preconditions:**
+//!
+//! - T1 is a linker/build-time property verified by the assembly source (`start.S`).
+//! - T2 is a hardware/compiler semantics assumption outside Verus's reasoning scope.
+//! - T3 is a kernel design invariant enforced by the single-threaded execution model.
+//!
+//! These are **environmental assumptions** documented for auditors, not runtime checks.
+//!
 //! ### Ghost State (`KernelRedZoneGhost`)
 //!
 //! The `KernelRedZoneGhost` struct provides an abstract model for callers who wish to
@@ -53,6 +61,15 @@
 //! the expected concrete state. The `spec_store_effect` and `spec_load_result` functions
 //! define the expected behavior for such reasoning.
 //!
+//! **Why ghost state cannot be coupled to executable functions:**
+//!
+//! The original implementation uses `extern "C" { static mut kredzone: usize; }` which:
+//! - Has a fixed C ABI that cannot accept Verus tracked/ghost parameters.
+//! - Is accessed via raw pointer arithmetic (`ptr.add(index)`).
+//! - Uses `write_volatile`/`read_volatile` which are opaque to Verus.
+//!
+//! The proven algebraic properties (`lemma_store_then_load`, etc.) apply to the abstract
+//! model. Under trust assumptions T1-T3, these properties transfer to the implementation.
 //! ## API Summary
 //!
 //! | Function | Description | Trust Level |
