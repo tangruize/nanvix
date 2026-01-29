@@ -1,40 +1,28 @@
-# Review: manager (gpt-5.1-codex-max)
-
-## Grade: D
-
-## Issues Found
-
-### Critical
-- None.
-
-### High
-- **Location: alloc_kernel_frame / alloc_contiguous_kernel_frames**  
-  **Status:** Not fixed. The `clear: bool` semantics remain removed; no specification or proof of returning zeroed frames as provided by the original API. Behavioral gap still unaddressed.  
-  **Needed:** Reintroduce a cleared-allocation path (flag or helper) and prove zeroed frames while preserving invariants.
-- **Location: alloc_contiguous_kernel_frames / alloc_noncontiguous_kernel_frames**  
-  **Status:** Not fixed. Batch kernel allocation still returns a start index or ghost indices instead of `Vec<KernelFrame>`; provenance/validity of each frame and executable batch semantics are not proved.  
-  **Needed:** Verified `alloc_many_kernel_frames(clear, count) -> Result<Vec<KernelFrame>, Error>` matching original behavior (including clearing), with distinctness/validity proofs.
-- **Location: alloc_many_user_frames**  
-  **Status:** Not fixed. Still returns `Ghost<Seq<int>>` with a precondition requiring enough space, removing the failure path and executable returns of `Vec<UserFrame>`. Observable behavior diverges from original API.  
-  **Needed:** Executable batch user allocation returning `Result<Vec<UserFrame>, Error>` with error on exhaustion and proofs of distinctness/validity.
-
-### Medium
-- **Location: PhysMemoryManager inv / pools_are_disjoint**  
-  **Status:** Not fixed. Disjointness remains only a doc/spec helper; constructor/invariant do not require or ensure non-overlap. Potential aliasing between pools remains unchecked.  
-  **Needed:** Include disjointness in constructor preconditions/ensures (once base addresses are modeled) or strengthen the invariant accordingly.
-- **Location: free_user_frame semantics**  
-  **Status:** Not fixed. Preconditions forbid misuse and ensures always `Ok(())`; the original API surfaces errors (e.g., double free/invalid) via `Err`. Error path remains unmodeled, so behavior is not equivalent.  
-  **Needed:** Model error cases and return `Err` when preconditions fail; prove success otherwise.
-- **Location: Kernel frame RAII frees**  
-  **Status:** Not fixed. Original design frees via `Drop`; verified code only covers explicit `free_kernel_frame` and does not model drop-based deallocation. Original behavior remains unverified.  
-  **Needed:** Specify/prove the RAII/drop path or adjust the API and proofs to cover all deallocation mechanisms used by callers.
-
-### Low
-- None.
-
-## Positive Observations
-- Single-frame allocations/free still preserve pool invariants, capacities, and provenance checks; liveness for single-frame alloc succeeds/fails based on availability.
-- Allocation/free proofs maintain non-interference between pools for single-frame operations.
-
-## Summary
-None of the previously reported behavioral gaps were addressed. Clearing semantics, executable batch allocations with error paths, disjointness guarantees, error modeling for frees, and RAII deallocation remain unverified. Verification is still incomplete relative to the original manager API.
+1. # Review: manager (gpt-5.1-codex-max)
+2. 
+3. ## Grade: F
+4. 
+5. ## Issues Found
+6. 
+7. ### Critical
+8. - Unmap leak and behavioral mismatch remain: `unmap_upage` still drops the returned frame address without freeing it to the user pool, diverging from the original and risking exhaustion. No change was made to return the frame or adjust specs; the leak persists.
+9. - Cloning loses mappings: `new_vmem` still forces `mapping_count == 0` instead of preserving mappings like the original `Vmem::clone`, so semantics remain wrong and unproven.
+10. 
+11. ### High
+12. - Allocation accounting/spec gap persists: `alloc_upage` postconditions still do not relate upool free count or pool provenance to the mapped page; capacity could remain unchanged after allocation per the spec.
+13. - Missing coverage for multi-page and ELF paths: the verified module still lacks `alloc_upages`, `alloc_kpages` (multi), and `load_elf` modeling or stubs, leaving major behaviors unverified.
+14. - Page-table allocation behavior not modeled: user-page mapping still calls `vmem.map` without any kpool/page-table frame accounting, so required capacity checks are absent.
+15. 
+16. ### Medium
+17. - Clear-zeroing semantics dropped: no modeling of the `clear` behavior; zeroing safety remains unaddressed.
+18. - Global singleton/init semantics unverified: `init`, `get`, and `get_mut` remain unmodeled, so initialization exclusivity and synchronization are unchecked.
+19. - Manager invariant still not tied to mapping counts: no relation between pool usage and vmem mappings, leaving global accounting unverified.
+20. 
+21. ### Low
+22. - User-range busy check for multi-page allocation remains unaddressed; the FIXME from the original is still absent here.
+23. 
+24. ## Positive Observations
+25. - Module still avoids `assume`/`external_body`, and existing preconditions enforce alignment, address range, mapping existence, and basic pool capacity checks.
+26. 
+27. ## Summary
+28. No observed changes to `verus/manager.rs`; all previously reported issues persist. Verification remains incomplete with semantic mismatches (unmap leak, clone behavior) and missing coverage (multi-page, ELF, page-table allocation, global init). Address these gaps and strengthen specs/invariants before the module can be considered sound.
