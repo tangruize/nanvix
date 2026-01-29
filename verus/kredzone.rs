@@ -124,6 +124,17 @@ pub proof fn lemma_entry_size_matches_target()
 {
 }
 
+/// Fallback lemma for unsupported architectures (defaults to 64-bit behavior).
+/// This ensures the lemma exists on all platforms, even if the platform is
+/// not officially supported. The ENTRY_SIZE defaults to 8 in this case.
+#[cfg(all(not(target_pointer_width = "32"), not(target_pointer_width = "64")))]
+pub proof fn lemma_entry_size_matches_target()
+    ensures
+        ENTRY_SIZE == 8,
+        SPEC_NUM_ENTRIES == 16,  // 128 / 8 = 16 entries (default 64-bit).
+{
+}
+
 /// Number of entries in the kernel red zone (exec version).
 pub const NUM_ENTRIES: usize = KREDZONE_SIZE / ENTRY_SIZE;
 
