@@ -133,7 +133,6 @@
 //! | `map()` | Map a user frame to a virtual address |
 //! | `map_kpage()` | Map a kernel page to a virtual address |
 //! | `unmap()` | Unmap a page from the virtual address space |
-//! | `find_user_frame()` | Find the physical frame for a user page |
 //! | `is_user_addr()` | Check if address is in user space |
 //! | `is_user_region()` | Check if region is entirely in user space |
 //! | `is_kernel_addr()` | Check if address is in kernel space |
@@ -919,7 +918,13 @@ impl Vmem {
     /// # Returns
     ///
     /// Upon success, the frame address. Upon failure, an error.
-    pub fn find_user_frame(&self, vaddr: usize) -> (result: Result<usize, Error>)
+    ///
+    /// # Visibility
+    ///
+    /// This is a private helper function matching the original implementation's
+    /// visibility. It is used internally by copy operations to look up frame
+    /// addresses.
+    fn find_user_frame(&self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             self.inv(),
         ensures
