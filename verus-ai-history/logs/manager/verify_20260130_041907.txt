@@ -1,0 +1,143 @@
+=== Verus Verification ===
+Timestamp: Fri Jan 30 04:19:07 CST 2026
+Module: manager
+Command: verus --crate-type lib lib.rs --verify-module manager
+
+error[E0599]: no method named `free_count` found for struct `kpool::KpoolView` in the current scope
+   --> manager.rs:189:43
+    |
+189 |             kpool_free_count: self.kpool@.free_count(),
+    |                                           ^^^^^^^^^^ method not found in `KpoolView`
+    |
+   ::: kpool.rs:251:1
+    |
+251 | pub struct KpoolView {
+    | -------------------- method `free_count` not found for this struct
+
+error[E0599]: no method named `free_count` found for struct `upool::UpoolView` in the current scope
+   --> manager.rs:191:43
+    |
+191 |             upool_free_count: self.upool@.free_count(),
+    |                                           ^^^^^^^^^^ method not found in `UpoolView`
+    |
+   ::: upool.rs:191:1
+    |
+191 | pub struct UpoolView {
+    | -------------------- method `free_count` not found for this struct
+
+error[E0599]: no method named `id` found for struct `upool::UpoolView` in the current scope
+   --> manager.rs:194:35
+    |
+194 |             upool_id: self.upool@.id(),
+    |                                   ^^ method not found in `UpoolView`
+    |
+   ::: upool.rs:191:1
+    |
+191 | pub struct UpoolView {
+    | -------------------- method `id` not found for this struct
+
+error[E0599]: no method named `free_count` found for struct `kpool::KpoolView` in the current scope
+   --> manager.rs:273:48
+    |
+273 |             result@.kpool_free_count == kpool@.free_count(),
+    |                                                ^^^^^^^^^^ method not found in `KpoolView`
+    |
+   ::: kpool.rs:251:1
+    |
+251 | pub struct KpoolView {
+    | -------------------- method `free_count` not found for this struct
+
+error[E0599]: no method named `free_count` found for struct `upool::UpoolView` in the current scope
+   --> manager.rs:274:48
+    |
+274 |             result@.upool_free_count == upool@.free_count(),
+    |                                                ^^^^^^^^^^ method not found in `UpoolView`
+    |
+   ::: upool.rs:191:1
+    |
+191 | pub struct UpoolView {
+    | -------------------- method `free_count` not found for this struct
+
+error[E0599]: no method named `free_count` found for struct `upool::Upool` in the current scope
+   --> manager.rs:376:23
+    |
+376 |         if self.upool.free_count() == 0 {
+    |                       ^^^^^^^^^^ method not found in `Upool`
+    |
+   ::: upool.rs:311:1
+    |
+311 | pub struct Upool {
+    | ---------------- method `free_count` not found for this struct
+
+error[E0599]: no method named `has_capacity` found for mutable reference `&mut vmem::Vmem` in the current scope
+   --> manager.rs:381:18
+    |
+381 |         if !vmem.has_capacity() {
+    |                  ^^^^^^^^^^^^
+    |
+help: there is a method `has_mapping_capacity` with a similar name
+    |
+381 |         if !vmem.has_mapping_capacity() {
+    |                      ++++++++
+
+error[E0308]: mismatched types
+   --> manager.rs:389:18
+    |
+389 |         vmem.map(uframe, vaddr, access)?;
+    |              --- ^^^^^^ expected `FrameAddress`, found `UserFrame`
+    |              |
+    |              arguments to this method are incorrect
+    |
+note: method defined here
+   --> vmem.rs:851:12
+    |
+851 |     pub fn map(
+    |            ^^^
+852 |         &mut self,
+853 |         frame_addr: FrameAddress,
+    |         ------------------------
+
+error[E0308]: `?` operator has incompatible types
+   --> manager.rs:437:33
+    |
+437 |         let uframe: UserFrame = vmem.unmap(vaddr)?;
+    |                                 ^^^^^^^^^^^^^^^^^^ expected `UserFrame`, found `usize`
+    |
+    = note: `?` operator cannot convert from `usize` to `upool::UserFrame`
+
+error[E0599]: no method named `free_count` found for struct `kpool::Kpool` in the current scope
+   --> manager.rs:531:20
+    |
+531 |         self.kpool.free_count()
+    |                    ^^^^^^^^^^ method not found in `Kpool`
+    |
+   ::: kpool.rs:390:1
+    |
+390 | pub struct Kpool {
+    | ---------------- method `free_count` not found for this struct
+
+error[E0599]: no method named `free_count` found for struct `upool::Upool` in the current scope
+   --> manager.rs:541:20
+    |
+541 |         self.upool.free_count()
+    |                    ^^^^^^^^^^ method not found in `Upool`
+    |
+   ::: upool.rs:311:1
+    |
+311 | pub struct Upool {
+    | ---------------- method `free_count` not found for this struct
+
+error: aborting due to 11 previous errors
+
+Some errors have detailed explanations: E0308, E0599.
+For more information about an error, try `rustc --explain E0308`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Cheating patterns: external_body:1
+Committed: [verus] Verification failed for manager (verified:0, errors:0) [external_body:1]
