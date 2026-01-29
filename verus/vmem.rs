@@ -38,25 +38,22 @@
 //! Instead of modeling the x86-specific page directory structure, we use an abstract
 //! map that captures the semantics: each page table address maps to whether it's present.
 //!
-//! ### External Memory Operations
-//! Physical memory operations (__phys_memcpy, __phys_memset) are modeled with
-//! external_body since they involve low-level hardware operations.
+//! ### Frame Address Handling
+//! The Vmem stores frame addresses directly as usize values in its internal array.
+//! The ghost view tracks mappings at the spec level using int for flexibility.
 //!
 //! ## Relationship to Other Verified Modules
 //!
-//! - Uses `KernelPage` from `kpage.rs` (verified) - for kernel page abstraction
 //! - Uses `FrameAddress` from `frame_address.rs` (verified) - for frame addresses
-//! - Uses `UserFrame` from `upool.rs` (verified) - for user frame abstraction
+//! - Uses `PAGE_SIZE` from `kpage.rs` (verified) - for page size constant
 //!
 //! ## API Summary
 //!
 //! | Function | Description |
 //! |----------|-------------|
 //! | `new()` | Create a new virtual memory space |
-//! | `clone()` | Clone an existing virtual memory space |
 //! | `map()` | Map a user frame to a virtual address |
 //! | `unmap()` | Unmap a page from the virtual address space |
-//! | `map_kpage()` | Map a kernel page |
 //! | `is_user_addr()` | Check if address is in user space |
 //! | `is_user_region()` | Check if region is entirely in user space |
 //! | `is_kernel_addr()` | Check if address is in kernel space |
@@ -70,9 +67,8 @@
 //==================================================================================================
 
 use crate::{
-    kpage::{KernelPage, PageAddress, PAGE_SIZE},
-    upool::UserFrame,
-    frame_address::{FrameAddress, FRAME_SIZE},
+    kpage::PAGE_SIZE,
+    frame_address::FrameAddress,
     error::{Error, ErrorCode},
 };
 use vstd::prelude::*;
@@ -99,6 +95,9 @@ pub const MEMORY_SIZE: usize = 0x10000000; // 256 MB
 /// Page table alignment (4 MB for x86 32-bit).
 pub const PGTAB_ALIGNMENT: usize = 0x400000; // 4 MB
 
+/// Maximum number of user pages that can be tracked (simplified model).
+pub const MAX_USER_PAGES: usize = 1024;
+
 //==================================================================================================
 // Access Permissions
 //==================================================================================================
@@ -112,6 +111,21 @@ pub enum AccessPermission {
     ReadWrite,
     /// Execute permission (read-execute).
     Execute,
+}
+
+//==================================================================================================
+// PageMapping - Concrete mapping storage
+//==================================================================================================
+
+/// A single page mapping entry storing virtual address and frame address.
+#[derive(Debug, Clone, Copy)]
+pub struct PageMapping {
+    /// Virtual address (page-aligned).
+    pub vaddr: usize,
+    /// Frame address (page-aligned).
+    pub frame_addr: usize,
+    /// Whether this entry is valid/in-use.
+    pub valid: bool,
 }
 
 //==================================================================================================
@@ -132,8 +146,6 @@ pub struct VmemView {
     pub user_mappings: Map<int, int>,
     /// Set of mapped kernel page virtual addresses.
     pub kernel_pages: Set<int>,
-    /// Map from kernel virtual page addresses to frame addresses.
-    pub kernel_mappings: Map<int, int>,
     /// Number of user page tables currently in use.
     pub user_page_table_count: int,
     /// Number of kernel page tables.
@@ -148,11 +160,6 @@ impl VmemView {
     /// Returns the number of mapped user pages.
     pub open spec fn num_user_pages(&self) -> int {
         self.user_pages.len() as int
-    }
-
-    /// Returns the number of mapped kernel pages.
-    pub open spec fn num_kernel_pages(&self) -> int {
-        self.kernel_pages.len() as int
     }
 
     /// Returns true if a user page is mapped at the given virtual address.
@@ -170,13 +177,6 @@ impl VmemView {
         recommends self.is_user_page_mapped(vaddr)
     {
         self.user_mappings[vaddr]
-    }
-
-    /// Returns the frame address for a mapped kernel page.
-    pub open spec fn get_kernel_frame(&self, vaddr: int) -> int
-        recommends self.is_kernel_page_mapped(vaddr)
-    {
-        self.kernel_mappings[vaddr]
     }
 
     //==============================================================================================
@@ -254,13 +254,6 @@ impl VmemView {
             self.user_mappings.contains_key(vaddr) <==> self.user_pages.contains(vaddr)
     }
 
-    /// Property: All kernel mappings have corresponding entries in kernel_pages.
-    pub open spec fn kernel_mappings_consistent(&self) -> bool {
-        forall|vaddr: int|
-            #![trigger self.kernel_mappings.contains_key(vaddr)]
-            self.kernel_mappings.contains_key(vaddr) <==> self.kernel_pages.contains(vaddr)
-    }
-
     /// Property: All mapped user pages have page-aligned addresses.
     pub open spec fn user_pages_aligned(&self) -> bool {
         forall|vaddr: int|
@@ -286,7 +279,6 @@ impl VmemView {
         &&& self.kernel_pages_in_kernel_space()
         &&& self.user_kernel_disjoint()
         &&& self.user_mappings_consistent()
-        &&& self.kernel_mappings_consistent()
         &&& self.user_pages_aligned()
         &&& self.kernel_pages_aligned()
         &&& self.valid_page_table_counts()
@@ -315,19 +307,14 @@ impl VmemView {
 ///
 /// # Implementation Notes
 ///
-/// For verification purposes, we use simplified abstract state instead of
-/// the complex linked lists used in the original implementation. The key
-/// properties we verify are:
-/// - Address space separation (user vs kernel)
-/// - Mapping consistency
-/// - Proper bounds checking
+/// For verification purposes, we use an array-based storage for mappings
+/// instead of the complex linked lists used in the original implementation.
+/// This allows us to verify the core properties while keeping the model tractable.
 pub struct Vmem {
-    /// Number of mapped user pages.
-    user_page_count: usize,
-    /// Number of mapped kernel pages.
-    kernel_page_count: usize,
-    /// Number of user page tables.
-    user_page_table_count: usize,
+    /// Array of user page mappings.
+    mappings: [PageMapping; MAX_USER_PAGES],
+    /// Number of valid mappings.
+    mapping_count: usize,
     /// Number of kernel page tables.
     kernel_page_table_count: usize,
     /// Ghost state for specification.
@@ -350,10 +337,8 @@ impl Vmem {
     /// Spec function to check the invariant.
     pub open spec fn inv(&self) -> bool {
         &&& self@.inv()
-        &&& self.user_page_count as int == self@.num_user_pages()
-        &&& self.kernel_page_count as int == self@.num_kernel_pages()
-        &&& self.user_page_table_count as int == self@.user_page_table_count
-        &&& self.kernel_page_table_count as int == self@.kernel_page_table_count
+        &&& self.mapping_count <= MAX_USER_PAGES
+        &&& self.mapping_count as int == self@.num_user_pages()
     }
 
     /// Spec function for user address check.
@@ -402,59 +387,26 @@ impl Vmem {
             result@.num_user_pages() == 0,
             result@.user_page_table_count == 0,
     {
+        let empty_mapping: PageMapping = PageMapping {
+            vaddr: 0,
+            frame_addr: 0,
+            valid: false,
+        };
+
         let ghost_view: Ghost<VmemView> = Ghost(VmemView {
             user_pages: Set::empty(),
             user_mappings: Map::empty(),
             kernel_pages: Set::empty(),
-            kernel_mappings: Map::empty(),
             user_page_table_count: 0,
             kernel_page_table_count: 0,
         });
+
         Vmem {
-            user_page_count: 0,
-            kernel_page_count: 0,
-            user_page_table_count: 0,
+            mappings: [empty_mapping; MAX_USER_PAGES],
+            mapping_count: 0,
             kernel_page_table_count: 0,
             ghost_view,
         }
-    }
-
-    /// Creates a new Vmem initialized with kernel page tables and pages.
-    ///
-    /// This is the constructor that matches the original API.
-    ///
-    /// # Parameters
-    ///
-    /// - `kernel_page_count`: Number of kernel pages to initialize.
-    /// - `kernel_page_table_count`: Number of kernel page tables.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, a Result containing the new Vmem. Upon failure, an error.
-    pub fn new_with_kernel(
-        kernel_page_count: usize,
-        kernel_page_table_count: usize,
-    ) -> (result: Result<Self, Error>)
-        ensures
-            result.is_ok() ==> result.unwrap().inv(),
-    {
-        // In a full implementation, we would initialize kernel page tables here.
-        // For verification purposes, we model the essential state.
-        let ghost_view: Ghost<VmemView> = Ghost(VmemView {
-            user_pages: Set::empty(),
-            user_mappings: Map::empty(),
-            kernel_pages: Set::empty(),
-            kernel_mappings: Map::empty(),
-            user_page_table_count: 0,
-            kernel_page_table_count: kernel_page_table_count as int,
-        });
-        Ok(Vmem {
-            user_page_count: 0,
-            kernel_page_count: kernel_page_count,
-            user_page_table_count: 0,
-            kernel_page_table_count: kernel_page_table_count,
-            ghost_view,
-        })
     }
 
     //==============================================================================================
@@ -608,6 +560,7 @@ impl Vmem {
     ///
     /// - `BadAddress`: The virtual address is not in user space.
     /// - `ResourceBusy`: The virtual address is already mapped.
+    /// - `OutOfMemory`: No more mapping slots available.
     pub fn map(
         &mut self,
         frame_addr: FrameAddress,
@@ -616,6 +569,7 @@ impl Vmem {
     ) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
+            old(self).mapping_count < MAX_USER_PAGES,
         ensures
             self.inv(),
             result.is_ok() ==> {
@@ -623,8 +577,12 @@ impl Vmem {
                 &&& vaddr as int % PAGE_SIZE as int == 0
                 &&& self@.is_user_page_mapped(vaddr as int)
                 &&& self@.get_user_frame(vaddr as int) == frame_addr.spec_raw_value()
+                &&& self.mapping_count == old(self).mapping_count + 1
             },
-            result.is_err() ==> self@ == old(self)@,
+            result.is_err() ==> {
+                &&& self.mapping_count == old(self).mapping_count
+                &&& self@ == old(self)@
+            },
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -636,14 +594,33 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "address is not page-aligned"));
         }
 
-        // Check if already mapped.
-        // In a real implementation, we would check the page tables.
-        // For verification, we use the ghost state.
-        proof {
-            if self@.user_pages.contains(vaddr as int) {
+        // Check if we have space.
+        if self.mapping_count >= MAX_USER_PAGES {
+            return Err(Error::new(ErrorCode::OutOfMemory, "no mapping slots available"));
+        }
+
+        // Check if already mapped by scanning existing entries.
+        let mut i: usize = 0;
+        while i < self.mapping_count
+            invariant
+                0 <= i <= self.mapping_count,
+                self.mapping_count <= MAX_USER_PAGES,
+                self.inv(),
+        {
+            if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 return Err(Error::new(ErrorCode::ResourceBusy, "page already mapped"));
             }
+            i = i + 1;
         }
+
+        // Add the new mapping.
+        let slot: usize = self.mapping_count;
+        self.mappings[slot] = PageMapping {
+            vaddr: vaddr,
+            frame_addr: frame_addr.into_raw_value(),
+            valid: true,
+        };
+        self.mapping_count = self.mapping_count + 1;
 
         // Update ghost state.
         proof {
@@ -652,13 +629,10 @@ impl Vmem {
                 user_pages: old_view.user_pages.insert(vaddr as int),
                 user_mappings: old_view.user_mappings.insert(vaddr as int, frame_addr.spec_raw_value()),
                 kernel_pages: old_view.kernel_pages,
-                kernel_mappings: old_view.kernel_mappings,
                 user_page_table_count: old_view.user_page_table_count,
                 kernel_page_table_count: old_view.kernel_page_table_count,
             });
         }
-
-        self.user_page_count = self.user_page_count + 1;
 
         Ok(())
     }
@@ -675,11 +649,12 @@ impl Vmem {
     ///
     /// # Errors
     ///
-    /// - `BadAddress`: The virtual address is not in user space.
+    /// - `BadAddress`: The virtual address is not in user space or not mapped.
     /// - `InvalidArgument`: The address is not page-aligned.
-    pub fn unmap(&mut self, vaddr: usize) -> (result: Result<FrameAddress, Error>)
+    pub fn unmap(&mut self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
+            old(self).mapping_count > 0,
         ensures
             self.inv(),
             result.is_ok() ==> {
@@ -687,9 +662,13 @@ impl Vmem {
                 &&& vaddr as int % PAGE_SIZE as int == 0
                 &&& old(self)@.is_user_page_mapped(vaddr as int)
                 &&& !self@.is_user_page_mapped(vaddr as int)
-                &&& result.unwrap().spec_raw_value() == old(self)@.get_user_frame(vaddr as int)
+                &&& result.unwrap() as int == old(self)@.get_user_frame(vaddr as int)
+                &&& self.mapping_count == old(self).mapping_count - 1
             },
-            result.is_err() ==> self@ == old(self)@,
+            result.is_err() ==> {
+                &&& self.mapping_count == old(self).mapping_count
+                &&& self@ == old(self)@
+            },
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -701,14 +680,40 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "address is not page-aligned"));
         }
 
-        // Get the frame address before unmapping.
-        let frame_raw: int;
-        proof {
-            if !self@.user_pages.contains(vaddr as int) {
-                return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
+        // Find the mapping.
+        let mut found_idx: usize = MAX_USER_PAGES;
+        let mut frame_addr: usize = 0;
+        let mut i: usize = 0;
+        while i < self.mapping_count
+            invariant
+                0 <= i <= self.mapping_count,
+                self.mapping_count <= MAX_USER_PAGES,
+                self.inv(),
+                found_idx == MAX_USER_PAGES || found_idx < self.mapping_count,
+        {
+            if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
+                found_idx = i;
+                frame_addr = self.mappings[i].frame_addr;
+                break;
             }
-            frame_raw = self@.user_mappings[vaddr as int];
+            i = i + 1;
         }
+
+        if found_idx == MAX_USER_PAGES {
+            return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
+        }
+
+        // Remove the mapping by swapping with the last entry.
+        let last_idx: usize = self.mapping_count - 1;
+        if found_idx != last_idx {
+            self.mappings[found_idx] = self.mappings[last_idx];
+        }
+        self.mappings[last_idx] = PageMapping {
+            vaddr: 0,
+            frame_addr: 0,
+            valid: false,
+        };
+        self.mapping_count = self.mapping_count - 1;
 
         // Update ghost state.
         proof {
@@ -717,16 +722,11 @@ impl Vmem {
                 user_pages: old_view.user_pages.remove(vaddr as int),
                 user_mappings: old_view.user_mappings.remove(vaddr as int),
                 kernel_pages: old_view.kernel_pages,
-                kernel_mappings: old_view.kernel_mappings,
                 user_page_table_count: old_view.user_page_table_count,
                 kernel_page_table_count: old_view.kernel_page_table_count,
             });
         }
 
-        self.user_page_count = self.user_page_count - 1;
-
-        // Create frame address from raw value.
-        let frame_addr: FrameAddress = FrameAddress::from_raw_unchecked(frame_raw as usize);
         Ok(frame_addr)
     }
 
@@ -739,7 +739,7 @@ impl Vmem {
     /// # Returns
     ///
     /// Upon success, the frame address. Upon failure, an error.
-    fn find_user_frame(&self, vaddr: usize) -> (result: Result<FrameAddress, Error>)
+    fn find_user_frame(&self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             self.inv(),
         ensures
@@ -747,7 +747,7 @@ impl Vmem {
                 &&& Self::spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
                 &&& self@.is_user_page_mapped(vaddr as int)
-                &&& result.unwrap().spec_raw_value() == self@.get_user_frame(vaddr as int)
+                &&& result.unwrap() as int == self@.get_user_frame(vaddr as int)
             },
     {
         // Check if address is in user space.
@@ -760,17 +760,21 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "address is not page-aligned"));
         }
 
-        // Look up in ghost state.
-        let frame_raw: int;
-        proof {
-            if !self@.user_pages.contains(vaddr as int) {
-                return Err(Error::new(ErrorCode::BadAddress, "page not found"));
+        // Find the mapping.
+        let mut i: usize = 0;
+        while i < self.mapping_count
+            invariant
+                0 <= i <= self.mapping_count,
+                self.mapping_count <= MAX_USER_PAGES,
+                self.inv(),
+        {
+            if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
+                return Ok(self.mappings[i].frame_addr);
             }
-            frame_raw = self@.user_mappings[vaddr as int];
+            i = i + 1;
         }
 
-        let frame_addr: FrameAddress = FrameAddress::from_raw_unchecked(frame_raw as usize);
-        Ok(frame_addr)
+        Err(Error::new(ErrorCode::BadAddress, "page not found"))
     }
 
     //==============================================================================================
@@ -797,9 +801,8 @@ impl Vmem {
                 &&& self@.is_user_page_mapped(vaddr as int)
             },
             // Permission changes don't affect the abstract view (mappings unchanged).
-            result.is_ok() ==> self@.user_pages == old(self)@.user_pages,
-            result.is_ok() ==> self@.user_mappings == old(self)@.user_mappings,
-            result.is_err() ==> self@ == old(self)@,
+            self@.user_pages == old(self)@.user_pages,
+            self@.user_mappings == old(self)@.user_mappings,
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -807,10 +810,23 @@ impl Vmem {
         }
 
         // Check if page is mapped.
-        proof {
-            if !self@.user_pages.contains(vaddr as int) {
-                return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
+        let mut found: bool = false;
+        let mut i: usize = 0;
+        while i < self.mapping_count
+            invariant
+                0 <= i <= self.mapping_count,
+                self.mapping_count <= MAX_USER_PAGES,
+                self.inv(),
+        {
+            if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
+                found = true;
+                break;
             }
+            i = i + 1;
+        }
+
+        if !found {
+            return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
         }
 
         // In a real implementation, we would update the page table entry permissions.
@@ -835,9 +851,7 @@ impl Vmem {
             self.inv(),
             result.is_ok() ==> Self::spec_is_kernel_addr(vaddr as int),
             // Permission changes don't affect the abstract view.
-            result.is_ok() ==> self@.kernel_pages == old(self)@.kernel_pages,
-            result.is_ok() ==> self@.kernel_mappings == old(self)@.kernel_mappings,
-            result.is_err() ==> self@ == old(self)@,
+            self@ == old(self)@,
     {
         // Check if address is in kernel space.
         if !Self::is_kernel_addr(vaddr) {
@@ -903,7 +917,6 @@ impl Vmem {
         }
 
         // In a real implementation, we would perform the physical memory copy.
-        // The actual copy is external_body since it involves low-level operations.
         Ok(())
     }
 
@@ -986,10 +999,23 @@ impl Vmem {
         }
 
         // Check if page is mapped.
-        proof {
-            if !self@.user_pages.contains(vaddr as int) {
-                return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
+        let mut found: bool = false;
+        let mut i: usize = 0;
+        while i < self.mapping_count
+            invariant
+                0 <= i <= self.mapping_count,
+                self.mapping_count <= MAX_USER_PAGES,
+                self.inv(),
+        {
+            if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
+                found = true;
+                break;
             }
+            i = i + 1;
+        }
+
+        if !found {
+            return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
         }
 
         // In a real implementation, we would perform the physical memset.
