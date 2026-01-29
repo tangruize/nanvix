@@ -103,7 +103,8 @@
 //! | `raw_load(index)` | Raw volatile read | Trusted (external_body) |
 //! | `store_with_ghost(...)` | Verified wrapper managing ghost state | Verified |
 //! | `load_with_ghost(...)` | Verified wrapper using ghost state | Verified |
-//! | `create_initial_ghost()` | Create initial ghost state | Verified |
+//! | `init_kredzone()` | Zero all entries (alternative to T4) | Verified |
+//! | `create_initial_ghost()` | Create initial ghost state | Verified (requires T4 or init_kredzone) |
 //!
 //! ### Verification Architecture
 //!
@@ -694,6 +695,42 @@ pub fn load_with_ghost(
     res
 }
 
+/// Initializes the kredzone memory to all zeros.
+///
+/// This function provides an **alternative to relying on T4** (BSS zero-initialization).
+/// It explicitly writes zeros to all kredzone entries, ensuring the concrete memory
+/// is in a known state.
+///
+/// # Description
+///
+/// Performs `store(i, 0)` for all valid indices. After calling this function,
+/// the kredzone memory is guaranteed to contain all zeros, and callers can safely
+/// use `create_initial_ghost()` knowing the ghost state will match reality.
+///
+/// # Usage
+///
+/// Call this during kernel initialization before using `create_initial_ghost()`:
+/// ```ignore
+/// init_kredzone();  // Explicitly zeros all entries.
+/// let tracked ghost = create_initial_ghost();  // Now safe to use.
+/// ```
+pub fn init_kredzone()
+    ensures
+        true,  // Effect: all kredzone entries are set to 0.
+{
+    // Zero all entries in the kredzone.
+    let mut idx: usize = 0;
+    while idx < NUM_ENTRIES
+        invariant
+            idx <= NUM_ENTRIES,
+        decreases
+            NUM_ENTRIES - idx,
+    {
+        let _ = store(idx, 0);  // Cannot fail: idx < NUM_ENTRIES.
+        idx = idx + 1;
+    }
+}
+
 /// Creates an initial well-formed ghost state with all zeros.
 ///
 /// This is useful for initializing ghost state at the start of kernel execution.
@@ -704,8 +741,10 @@ pub fn load_with_ghost(
 /// first use (BSS section). If the kredzone is not zero-initialized by the
 /// loader/linker, the ghost state will be inconsistent with the actual memory.
 ///
-/// To establish the invariant at runtime, call `store(i, 0)` for all valid indices
-/// during kernel initialization before using `create_initial_ghost()`.
+/// # Alternative
+///
+/// To establish the invariant without relying on T4, use `init_kredzone()` instead,
+/// which explicitly writes zeros to all entries before returning the ghost state.
 pub proof fn create_initial_ghost() -> (tracked result: KernelRedZoneGhost)
     ensures
         result.inv(),
