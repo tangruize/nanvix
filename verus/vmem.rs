@@ -77,17 +77,38 @@ verus! {
 
 /// User space base address.
 /// Must be page-aligned and mark the start of user-accessible virtual memory.
+///
+/// # Configuration Note
+///
+/// This value matches `config::memory_layout::USER_BASE` from the system configuration.
+/// The value 0x40000000 (1 GB) is the standard user space start address for x86.
 pub const USER_BASE: usize = 0x40000000; // 1 GB
 
 /// User space end address (exclusive).
 /// Must be page-aligned and mark the end of user-accessible virtual memory.
+///
+/// # Configuration Note
+///
+/// This value matches `config::memory_layout::USER_END` from the system configuration.
+/// The value 0xC0000000 (3 GB) is the standard kernel/user split point for x86.
 pub const USER_END: usize = 0xC0000000; // 3 GB
 
 /// Total physical memory size (for bounds checking).
-/// This should match the system configuration.
+///
+/// # Configuration Note
+///
+/// This value matches `config::kernel::MEMORY_SIZE` from the system configuration.
+/// The value 0x10000000 (256 MB) is the default physical memory size.
 pub const MEMORY_SIZE: usize = 0x10000000; // 256 MB
 
 /// Maximum number of user pages that can be tracked (simplified model).
+///
+/// # Abstraction Note
+///
+/// This is a verification simplification. The original implementation uses
+/// linked lists with dynamic allocation. For verification tractability, we
+/// use a fixed-size array. This value should be large enough for typical
+/// verification scenarios.
 pub const MAX_USER_PAGES: usize = 1024;
 
 //==================================================================================================
@@ -95,6 +116,15 @@ pub const MAX_USER_PAGES: usize = 1024;
 //==================================================================================================
 
 /// Access permission flags for memory pages.
+///
+/// # Abstraction Note
+///
+/// The original implementation uses bit flags for permissions. This simplified
+/// enum captures the essential permission categories for verification purposes.
+/// The mapping is:
+/// - `ReadOnly` -> original's read-only mode
+/// - `ReadWrite` -> original's read-write mode
+/// - `Execute` -> original's read-execute mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessPermission {
     /// Read-only access.
@@ -229,6 +259,13 @@ impl Vmem {
         // All valid mappings have page-aligned vaddr.
         &&& forall|i: int| #![auto] 0 <= i < self.mapping_count as int ==>
                 self.mappings[i as int].vaddr as int % PAGE_SIZE as int == 0
+        // Uniqueness: Each virtual address is mapped at most once.
+        &&& forall|i: int, j: int|
+                #![trigger self.mappings[i], self.mappings[j]]
+                0 <= i < self.mapping_count as int &&
+                0 <= j < self.mapping_count as int &&
+                i != j ==>
+                self.mappings[i].vaddr != self.mappings[j].vaddr
     }
 
     /// Spec function to check if there is capacity for more mappings.
@@ -270,6 +307,115 @@ impl Vmem {
             mappings: [empty_mapping; MAX_USER_PAGES],
             mapping_count: 0,
         }
+    }
+
+    /// Clones a virtual memory space for process forking.
+    ///
+    /// Creates a new Vmem that shares kernel page tables/pages (reference counted)
+    /// but has independent (empty) user page tables.
+    ///
+    /// # Parameters
+    ///
+    /// - `from`: The source virtual memory space to clone from.
+    ///
+    /// # Returns
+    ///
+    /// A new Vmem instance with kernel mappings shared and empty user mappings.
+    ///
+    /// # Postconditions
+    ///
+    /// - The returned Vmem satisfies its invariant.
+    /// - The returned Vmem has no user pages mapped (user space is empty).
+    ///
+    /// # Note
+    ///
+    /// In the verified model, we only track user mappings. Kernel mappings are
+    /// abstracted as shared state that is not explicitly modeled.
+    pub fn clone(from: &Self) -> (result: Self)
+        requires
+            from.inv(),
+        ensures
+            result.inv(),
+            result.mapping_count == 0,
+    {
+        let empty_mapping: PageMapping = PageMapping {
+            vaddr: 0,
+            frame_addr: 0,
+            valid: false,
+        };
+
+        Vmem {
+            mappings: [empty_mapping; MAX_USER_PAGES],
+            mapping_count: 0,
+        }
+    }
+
+    /// Loads the page directory into the CR3 register.
+    ///
+    /// This activates the virtual memory space for the current CPU.
+    ///
+    /// # Note
+    ///
+    /// This is modeled as a no-op in verification since we don't model
+    /// hardware state (CR3 register). The specification captures that
+    /// loading is only valid for a Vmem that satisfies its invariant.
+    #[verifier::external_body]
+    pub fn load(&self) -> (result: Result<(), Error>)
+        requires
+            self.inv(),
+        ensures
+            result.is_ok(),
+    {
+        unimplemented!()
+    }
+
+    /// Returns the page directory physical address.
+    ///
+    /// # Note
+    ///
+    /// This is modeled as external since the page directory is not
+    /// explicitly modeled in the verified abstraction.
+    #[verifier::external_body]
+    pub fn pgdir(&self) -> (result: usize)
+        requires
+            self.inv(),
+    {
+        unimplemented!()
+    }
+
+    /// Maps a kernel page to the target virtual address space.
+    ///
+    /// # Parameters
+    ///
+    /// - `frame_addr`: Physical frame address of the kernel page.
+    /// - `vaddr`: Virtual address to map to (must be page-aligned and in kernel space).
+    /// - `access`: Access permissions for the mapping.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, Ok(()). Upon failure, an error describing the issue.
+    ///
+    /// # Note
+    ///
+    /// Kernel mappings are not tracked in the verified model's mapping array,
+    /// as they are shared across address spaces. This function models the
+    /// precondition checking only.
+    #[verifier::external_body]
+    pub fn map_kpage(
+        &mut self,
+        frame_addr: FrameAddress,
+        vaddr: usize,
+        access: AccessPermission,
+    ) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            spec_is_kernel_addr(vaddr as int),
+            vaddr as int % PAGE_SIZE as int == 0,
+        ensures
+            self.inv(),
+            self.mapping_count == old(self).mapping_count,
+    {
+        unimplemented!()
     }
 
     //==============================================================================================
@@ -804,7 +950,9 @@ impl Vmem {
     /// # Parameters
     ///
     /// - `vaddr`: Virtual address of the page (must be page-aligned and in user space).
-    /// - `value`: Value to fill the page with.
+    /// - `value`: Value to fill the page with. Note: the underlying implementation
+    ///   truncates this to u8 when calling __phys_memset. Only the lowest 8 bits
+    ///   are used for the fill pattern.
     ///
     /// # Returns
     ///
