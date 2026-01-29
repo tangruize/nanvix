@@ -1,22 +1,27 @@
 # Review: manager (gpt-5.1-codex-max)
 
-## Grade: B-
+## Grade: C
 
 ## Issues Found
 
 ### Critical
-- Clear semantics still missing: `alloc_kernel_frame` and `alloc_many_kernel_frames` omit the original `clear` behavior, leaving zeroed-frame requests unverified.
-- Batch allocations remain ghost-only with preconditions that force success (`alloc_many_*` requires capacity and ensures `Ok`), so executable batched allocation behavior and failure paths are not covered compared to the original `Result` APIs.
+- Coverage gap remains: `init`, `get`, `get_mut`, `alloc_upages`, `alloc_kpages`, and `load_elf` are still absent; global initialization/accessors, bulk allocators, kernel multi-page allocation, and ELF loading remain unverified.
+- Unmap leak unresolved: `unmap_upage` still discards the returned frame address and never frees it to the user pool, enabling pool exhaustion despite unmapped pages.
 
 ### High
-- API divergence persists: verified module still adds `alloc_contiguous_kernel_frames` and `free_kernel_frame` while the Drop-based kernel free path from the source remains unverified, so coverage of actual shipped behavior is incomplete.
+- Page-table allocation not modeled: `alloc_upage` lacks requirements/proofs for kernel page-table frame capacity/provenance when mapping a new user page.
+- Multi-page behaviors still unverified: no specifications or proofs for contiguous multi-page user or kernel allocation/mapping.
 
 ### Medium
-- Pool disjointness remains an optional view predicate; constructor/invariant do not enforce non-overlapping regions or record bases, leaving isolation unproven.
-- Free operations require the frame to be allocated; invalid-input/error paths (present in the original `Result`-returning APIs) are not verified.
+- Zeroing semantics omitted: `alloc_upage` still excludes the original `clear` flag and postcondition on page initialization.
+- Global singleton behavior unverified: static `MEMORY_MANAGER` initialization/access (including double-init panic and synchronization expectations) remains out of scope.
 
 ### Low
-- RAII/Drop mismatch persists: specs rely on explicit frees while the original manager uses Drop for kernel frames, leaving behavioral differences unaddressed.
+- ELF loading still absent: executable loading path remains without specification or proof.
+
+## Positive Observations
+- Single-page allocation/control specs continue to enforce user-space alignment, mapping capacity, and vmem invariant preservation.
+- No unchecked `assume`/`external_body`; modeled operations still verify cleanly.
 
 ## Summary
-No observable code changes since the prior review; all previously reported gaps remain. Verification is still partial and not equivalent to the original manager semantics (clear behavior, executable batch allocations and failure paths, disjointness, and API coverage). Address these issues before considering the proof complete.
+No material fixes are visible; all previously reported gaps persist. The verification scope remains limited to a subset of single-page operations and diverges from the original module’s functionality. These issues must be addressed before the grade can improve.
