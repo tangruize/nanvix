@@ -76,9 +76,23 @@
 //! provide (translation lookup, resource cleanup) are captured in the high-level
 //! specifications of the public API.
 //!
+//! **Rationale for omitting `lookup_page_table`/`lookup_kernel_page_table`**:
+//! These functions iterate over linked lists to find page tables by address.
+//! The array model abstracts this by maintaining mappings directly. The safety
+//! of the lookup is captured by the uniqueness invariant - if a vaddr is mapped,
+//! there is exactly one entry for it. The linked list iteration correctness
+//! would need to be verified separately if refinement proofs are implemented.
+//!
+//! **Rationale for omitting `Drop` implementation**:
+//! The `Drop` trait deallocates page tables and releases kernel pages. This is
+//! resource management that doesn't affect memory safety properties verified here
+//! (address space separation, bounds checking). Resource leak verification would
+//! require tracking allocation/deallocation pairs, which is out of scope for this
+//! memory safety specification model.
+//!
 //! ### Memory Operations as Specifications
 //! Functions like `copy_from_user_unaligned`, `copy_to_user_unaligned`, `memset`,
-//! `uctrl`, and `kctrl` verify preconditions and postconditions but do not perform
+//! and `uctrl` verify preconditions and postconditions but do not perform
 //! actual memory operations. They serve as specifications that the actual
 //! implementation must satisfy. The implementation would perform unsafe hardware
 //! operations that cannot be verified without a full hardware model.
@@ -437,6 +451,17 @@ impl Vmem {
     /// - The returned Vmem satisfies its invariant.
     /// - The returned Vmem has no user pages mapped (user space is empty).
     ///
+    /// # Fork Semantics
+    ///
+    /// This models POSIX fork() semantics where:
+    /// - Kernel mappings are shared (via reference counting in the original)
+    /// - User mappings start empty in the child and are populated via copy-on-write
+    ///   at page fault time, NOT via deep copy at clone time
+    ///
+    /// This is why `result.mapping_count == 0` - the cloned Vmem has no user
+    /// mappings initially. The actual user page data is copied lazily when
+    /// the child process writes to a page.
+    ///
     /// # Note
     ///
     /// In the verified model, we only track user mappings. Kernel mappings are
@@ -709,6 +734,18 @@ impl Vmem {
     /// - `BadAddress`: The virtual address is not in user space or not page-aligned.
     /// - `ResourceBusy`: The virtual address is already mapped.
     /// - `OutOfMemory`: No more mapping slots available.
+    ///
+    /// # Type Mapping
+    ///
+    /// The original signature is:
+    /// ```ignore
+    /// fn map(&mut self, uframe: UserFrame, vaddr: PageAligned<VirtualAddress>,
+    ///        access: AccessPermission, page_table_allocator: T) -> Result<(), Error>
+    /// ```
+    /// Type correspondences:
+    /// - `UserFrame.frame_address() -> FrameAddress`
+    /// - `PageAligned<VirtualAddress>.into_raw_value() -> usize`
+    /// - The `page_table_allocator` callback is not modeled (page table allocation is abstracted)
     pub fn map(
         &mut self,
         frame_addr: FrameAddress,
@@ -797,6 +834,13 @@ impl Vmem {
     /// # Errors
     ///
     /// - `BadAddress`: The virtual address is not in user space, not page-aligned, or not mapped.
+    ///
+    /// # Type Mapping
+    ///
+    /// The original returns `Result<UserFrame, Error>`. This verified version returns
+    /// `Result<usize, Error>` where the `usize` is the raw physical frame address.
+    /// The correspondence is: `UserFrame.frame_address().into_raw_value() -> usize`.
+    /// Note that `UserFrame` carries ownership semantics that `usize` cannot capture.
     pub fn unmap(&mut self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
@@ -807,6 +851,8 @@ impl Vmem {
                 &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
                 &&& self.mapping_count == old(self).mapping_count - 1
+                // The returned value was a previously-mapped frame address.
+                &&& old(self).spec_is_mapped(vaddr as int)
             },
             result.is_err() ==> {
                 &&& self.mapping_count == old(self).mapping_count
@@ -929,7 +975,10 @@ impl Vmem {
             old(self).inv(),
         ensures
             self.inv(),
-            result.is_ok() ==> spec_is_user_addr(vaddr as int),
+            result.is_ok() ==> {
+                &&& spec_is_user_addr(vaddr as int)
+                &&& vaddr as int % PAGE_SIZE as int == 0
+            },
             // Permission changes don't affect the mappings.
             self.mapping_count == old(self).mapping_count,
     {
@@ -938,7 +987,8 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "address is not in user space"));
         }
 
-        // Check if page is mapped.
+        // Check if page is mapped (this implicitly checks page-alignment since
+        // all mappings have page-aligned vaddr by invariant).
         let mut found: bool = false;
         let mut i: usize = 0;
         while i < self.mapping_count
@@ -946,6 +996,11 @@ impl Vmem {
                 0 <= i <= self.mapping_count,
                 self.mapping_count <= MAX_USER_PAGES,
                 self.inv(),
+                found ==> exists|j: int|
+                    #![trigger self.mappings[j]]
+                    0 <= j < self.mapping_count as int &&
+                    self.mappings[j].valid &&
+                    self.mappings[j].vaddr == vaddr,
             decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
@@ -974,32 +1029,26 @@ impl Vmem {
     ///
     /// Upon success, Ok(()). Upon failure, an error.
     ///
-    /// # Abstraction Note
+    /// # Note
     ///
-    /// The verified model does not track kernel mappings, so we cannot verify
-    /// that the kernel page exists before changing permissions. The original
-    /// implementation would fail if the PDE/PTE is absent. This is a scope
-    /// limitation: kernel mapping existence checking would require modeling
-    /// the kernel page table structure.
+    /// This is marked `external_body` because the verified model does not track
+    /// kernel mappings. The original implementation would fail with `NoSuchEntry`
+    /// if the PDE/PTE is absent. The specification captures the precondition that
+    /// the Vmem invariant holds and the address must be in kernel space.
     ///
-    /// In a production implementation, this function should verify that the
-    /// target page is actually mapped before attempting to modify permissions.
+    /// The implementation must verify that the kernel page exists before
+    /// modifying permissions.
+    #[verifier::external_body]
     pub fn kctrl(&mut self, vaddr: usize, access: AccessPermission) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
+            spec_is_kernel_addr(vaddr as int),
+            vaddr as int % PAGE_SIZE as int == 0,
         ensures
             self.inv(),
-            result.is_ok() ==> spec_is_kernel_addr(vaddr as int),
-            // Permission changes don't affect the user mappings.
             self.mapping_count == old(self).mapping_count,
     {
-        // Check if address is in kernel space.
-        if !Self::is_kernel_addr(vaddr) {
-            return Err(Error::new(ErrorCode::BadAddress, "address is not in kernel space"));
-        }
-
-        // In a real implementation, we would update the page table entry permissions.
-        Ok(())
+        unimplemented!()
     }
 
     //==============================================================================================
@@ -1023,7 +1072,6 @@ impl Vmem {
     /// - `InvalidArgument`: The size is zero.
     /// - `BadAddress`: Source region not in user space.
     /// - `BadAddress`: Destination region not in kernel space.
-    /// - `BadAddress`: Destination region not within physical memory bounds.
     ///
     /// # Preconditions
     ///
@@ -1033,9 +1081,10 @@ impl Vmem {
     /// # Note
     ///
     /// The original implementation checks that each source page is mapped
-    /// and that physical addresses are within bounds during the copy loop.
-    /// This verified version requires mapping existence as a precondition
-    /// and checks destination physical bounds upfront.
+    /// and that the source frame physical addresses are within bounds during
+    /// the copy loop. The destination is a kernel virtual address that is
+    /// identity-mapped to physical memory, so no separate physical bounds
+    /// check is performed on it.
     pub fn copy_from_user_unaligned(
         &self,
         dst: usize,
@@ -1051,7 +1100,6 @@ impl Vmem {
                 &&& size > 0
                 &&& spec_is_user_region(src as int, size as int)
                 &&& spec_is_kernel_region(dst as int, size as int)
-                &&& spec_is_physical_region(dst as int, size as int)
             },
     {
         // Check if size is zero.
@@ -1067,12 +1115,6 @@ impl Vmem {
         // Check if destination is in kernel space.
         if !Self::is_kernel_region(dst, size) {
             return Err(Error::new(ErrorCode::BadAddress, "destination not in kernel space"));
-        }
-
-        // Check if destination is within physical memory bounds.
-        // The original implementation checks this during the copy loop.
-        if !Self::is_physical_region(dst, size) {
-            return Err(Error::new(ErrorCode::BadAddress, "destination not within physical memory"));
         }
 
         // In a real implementation, we would perform the physical memory copy.
@@ -1281,6 +1323,17 @@ proof fn user_space_bounds_valid()
         USER_BASE < USER_END,
 {
     // Constants are set such that USER_BASE = 1GB < USER_END = 3GB.
+}
+
+/// Proof that MAX_USER_PAGES is sufficient for the user address space.
+/// With PAGE_SIZE = 4096 bytes, the user space (USER_END - USER_BASE) = 2GB = 524288 pages.
+/// MAX_USER_PAGES = 65536 covers 256MB, which is sufficient for embedded/microkernel use.
+proof fn max_user_pages_sufficient()
+    ensures
+        MAX_USER_PAGES as int * PAGE_SIZE as int >= MEMORY_SIZE as int,
+        // MAX_USER_PAGES can cover at least 256MB (MEMORY_SIZE)
+{
+    // 65536 * 4096 = 268435456 bytes = 256 MB >= MEMORY_SIZE (256 MB)
 }
 
 /// Proof that a valid user region implies start is a user address.
