@@ -33,3 +33,4 @@ pub mod kpool;
 pub mod kstack;
 pub mod ustack;
 pub mod kredzone;
+pub mod manager;
