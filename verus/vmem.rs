@@ -25,6 +25,7 @@
 //! 4. **Physical Memory Bounds**: Physical addresses lie within valid memory range.
 //! 5. **Non-Zero Size**: Memory operations require non-zero size.
 //! 6. **Invariant Preservation**: All operations maintain the Vmem invariant.
+//! 7. **Physical Memory Bounds**: Copy operations verify physical address ranges.
 //!
 //! ## Abstraction Decisions
 //!
@@ -37,6 +38,29 @@
 //! The VmemView is derived from the concrete mappings array rather than maintained
 //! as separate ghost state. This follows the pattern used in other verified modules
 //! like upool and kpool.
+//!
+//! ### Kernel Mappings Not Modeled
+//! Kernel page tables and pages are shared across address spaces via Rc<RefCell<>>
+//! in the original implementation. We do not model kernel mappings because:
+//! 1. They are shared state managed separately from user mappings
+//! 2. Verification of shared ownership would require linear types or separation logic
+//! 3. The core safety properties (user/kernel separation) are captured without modeling kernel internals
+//!
+//! ### Capacity Simplification
+//! The verified model uses a fixed-size array (MAX_USER_PAGES=1024) while the original
+//! uses unbounded linked lists. This is sufficient for verification of core properties
+//! and typical workloads. Production systems should validate this bound.
+//!
+//! ### Hardware Effects Not Modeled
+//! TLB flush effects, CR3 loading, and cache coherency are hardware-specific behaviors
+//! that are not modeled in this verification. Functions affecting hardware state are
+//! marked external_body with appropriate precondition/postcondition contracts.
+//!
+//! ### Internal Helpers Abstracted
+//! Functions like `lookup_page_table`, `lookup_kernel_page_table`, and `Drop` are
+//! implementation details that are abstracted away. The essential behaviors they
+//! provide (translation lookup, resource cleanup) are captured in the high-level
+//! specifications of the public API.
 //!
 //! ## Relationship to Other Verified Modules
 //!
@@ -124,12 +148,20 @@ pub const MAX_USER_PAGES: usize = 1024;
 ///
 /// # Abstraction Note
 ///
-/// The original implementation uses bit flags for permissions. This simplified
-/// enum captures the essential permission categories for verification purposes.
-/// The mapping is:
+/// The original implementation uses bit flags for permissions combined with
+/// caching flags. This simplified enum captures the essential permission
+/// categories for verification purposes. The mapping is:
 /// - `ReadOnly` -> original's read-only mode
-/// - `ReadWrite` -> original's read-write mode
+/// - `ReadWrite` -> original's read-write mode  
 /// - `Execute` -> original's read-execute mode
+///
+/// # Scope Limitation
+///
+/// Permission enforcement at the PTE level is not verified. The map/ctrl
+/// operations accept permissions as parameters but the verified model does
+/// not track per-page permissions. This is an intentional scope limitation:
+/// verifying permission enforcement would require modeling the full PTE
+/// structure and MMU behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessPermission {
     /// Read-only access.
@@ -424,11 +456,25 @@ impl Vmem {
     ///
     /// Upon success, Ok(()). Upon failure, an error describing the issue.
     ///
+    /// # Errors
+    ///
+    /// - `BadAddress`: The virtual address is not in kernel space or not page-aligned.
+    /// - `TryAgain`: Failed to read page directory entry.
+    /// - `NoSuchEntry`: Page table not found.
+    ///
     /// # Note
     ///
     /// Kernel mappings are not tracked in the verified model's mapping array,
-    /// as they are shared across address spaces. This function models the
-    /// precondition checking only.
+    /// as they are shared across address spaces. This function is marked
+    /// external_body because:
+    /// 1. Kernel mappings use complex linked list structures with Rc<RefCell<>>
+    /// 2. Page table allocation requires a callback allocator
+    /// 3. TLB flush effects are hardware-specific
+    ///
+    /// The specification captures:
+    /// - Preconditions: valid invariant, kernel address, page alignment
+    /// - Postconditions: invariant preserved, user mapping count unchanged
+    /// - May fail: returns Result to model failure modes
     #[verifier::external_body]
     pub fn map_kpage(
         &mut self,
@@ -857,13 +903,24 @@ impl Vmem {
     /// # Returns
     ///
     /// Upon success, Ok(()). Upon failure, an error.
+    ///
+    /// # Abstraction Note
+    ///
+    /// The verified model does not track kernel mappings, so we cannot verify
+    /// that the kernel page exists before changing permissions. The original
+    /// implementation would fail if the PDE/PTE is absent. This is a scope
+    /// limitation: kernel mapping existence checking would require modeling
+    /// the kernel page table structure.
+    ///
+    /// In a production implementation, this function should verify that the
+    /// target page is actually mapped before attempting to modify permissions.
     pub fn kctrl(&mut self, vaddr: usize, access: AccessPermission) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
         ensures
             self.inv(),
             result.is_ok() ==> spec_is_kernel_addr(vaddr as int),
-            // Permission changes don't affect the mappings.
+            // Permission changes don't affect the user mappings.
             self.mapping_count == old(self).mapping_count,
     {
         // Check if address is in kernel space.
@@ -896,6 +953,15 @@ impl Vmem {
     /// - `InvalidArgument`: The size is zero.
     /// - `BadAddress`: Source region not in user space.
     /// - `BadAddress`: Destination region not in kernel space.
+    /// - `BadAddress`: Destination region not within physical memory bounds.
+    ///
+    /// # Note
+    ///
+    /// The original implementation also checks that each source page is mapped
+    /// and that physical addresses are within bounds during the copy loop.
+    /// This verified version checks the destination physical bounds upfront
+    /// as a precondition. Source mapping existence is not modeled here because
+    /// it requires page-by-page frame lookup which is abstracted.
     pub fn copy_from_user_unaligned(
         &self,
         dst: usize,
@@ -909,6 +975,7 @@ impl Vmem {
                 &&& size > 0
                 &&& spec_is_user_region(src as int, size as int)
                 &&& spec_is_kernel_region(dst as int, size as int)
+                &&& spec_is_physical_region(dst as int, size as int)
             },
     {
         // Check if size is zero.
@@ -926,7 +993,14 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "destination not in kernel space"));
         }
 
+        // Check if destination is within physical memory bounds.
+        // The original implementation checks this during the copy loop.
+        if !Self::is_physical_region(dst, size) {
+            return Err(Error::new(ErrorCode::BadAddress, "destination not within physical memory"));
+        }
+
         // In a real implementation, we would perform the physical memory copy.
+        // This includes looking up user frames and copying page-by-page.
         Ok(())
     }
 
@@ -941,6 +1015,21 @@ impl Vmem {
     /// # Returns
     ///
     /// Upon success, Ok(()). Upon failure, an error describing the issue.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidArgument`: The size is zero.
+    /// - `BadAddress`: Source region not in kernel space.
+    /// - `BadAddress`: Destination region not in user space.
+    /// - `BadAddress`: Source region not within physical memory bounds.
+    ///
+    /// # Note
+    ///
+    /// The original implementation performs a dry-run first to check for errors
+    /// before the actual copy. It also checks that destination user frames exist
+    /// and that physical addresses are within bounds. This verified version
+    /// checks source physical bounds upfront. Destination frame existence is
+    /// not modeled because it requires page-by-page lookup.
     pub fn copy_to_user_unaligned(
         &self,
         dst: usize,
@@ -954,6 +1043,7 @@ impl Vmem {
                 &&& size > 0
                 &&& spec_is_kernel_region(src as int, size as int)
                 &&& spec_is_user_region(dst as int, size as int)
+                &&& spec_is_physical_region(src as int, size as int)
             },
     {
         // Check if size is zero.
@@ -971,6 +1061,14 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "destination not in user space"));
         }
 
+        // Check if source is within physical memory bounds.
+        // The original implementation checks this during the copy loop.
+        if !Self::is_physical_region(src, size) {
+            return Err(Error::new(ErrorCode::BadAddress, "source not within physical memory"));
+        }
+
+        // In a real implementation, we would perform the physical memory copy.
+        // This includes looking up user frames and copying page-by-page.
         Ok(())
     }
 
