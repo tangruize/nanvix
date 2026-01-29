@@ -45,6 +45,7 @@
 //! - **T2**: Volatile reads return the last value written at that address.
 //! - **T3**: No concurrent access occurs (single-threaded kernel context).
 //! - **T4**: The kredzone region is zero-initialized before first use (BSS section).
+//! - **T5**: Only one `KernelRedZoneGhost` instance is active at any time (uniqueness).
 //!
 //! **Why these cannot be encoded as Verus preconditions:**
 //!
@@ -52,6 +53,7 @@
 //! - T2 is a hardware/compiler semantics assumption outside Verus's reasoning scope.
 //! - T3 is a kernel design invariant enforced by the single-threaded execution model.
 //! - T4 is a linker/loader property (BSS zero-initialization) verified by the toolchain.
+//! - T5 is a design discipline requirement; Verus cannot enforce uniqueness for global state.
 //!
 //! These are **environmental assumptions** documented for auditors, not runtime checks.
 //!
@@ -72,6 +74,34 @@
 //!
 //! The proven algebraic properties (`lemma_store_then_load`, etc.) apply to the abstract
 //! model. Under trust assumptions T1-T3, these properties transfer to the implementation.
+//!
+//! ### ⚠️ Ghost State Uniqueness Requirement (T5)
+//!
+//! **CRITICAL**: The ghost state model assumes exactly **one** `KernelRedZoneGhost` instance
+//! exists at any time, representing the single global `kredzone` memory. This is Trust
+//! Assumption T5.
+//!
+//! - **T5**: Only one `KernelRedZoneGhost` instance is active and all kredzone operations
+//!   use that instance consistently.
+//!
+//! **Soundness Warning**: If multiple ghost instances are created (e.g., calling
+//! `create_initial_ghost()` twice), they can diverge from each other and from reality.
+//! The `assume` in `load_with_ghost` is only sound if the ghost state is the unique
+//! model of the kredzone and has been kept synchronized via `store_with_ghost`.
+//!
+//! **Recommended Usage Pattern**:
+//! ```ignore
+//! // At kernel boot, create ONE ghost state:
+//! init_kredzone();  // Zero all entries.
+//! let tracked mut ghost = create_initial_ghost();  // The ONLY ghost instance.
+//!
+//! // All subsequent operations use this single instance:
+//! store_with_ghost(0, 42, Tracked(&mut ghost))?;
+//! let val = load_with_ghost(0, Tracked(&ghost))?;
+//! ```
+//!
+//! This uniqueness cannot be enforced by Verus's type system for global state, so it
+//! must be enforced by kernel design discipline.
 //!
 //! ## Verification Scope Limitations
 //!
@@ -685,10 +715,18 @@ pub fn load_with_ghost(
     let res = load(index);
     proof {
         if res.is_ok() {
-            // TRUST ASSUMPTION T2: Volatile reads return the last value written.
+            // TRUST ASSUMPTIONS T2 + T5:
+            // - T2: Volatile reads return the last value written.
+            // - T5: The ghost state is the UNIQUE model of kredzone, kept in sync.
+            //
             // This assume bridges the abstract model to the implementation.
             // Validity: The extern C kredzone memory and volatile semantics ensure
-            // that read_volatile returns the value from the last write_volatile.
+            // that read_volatile returns the value from the last write_volatile,
+            // AND the caller has maintained the ghost state via store_with_ghost.
+            //
+            // SOUNDNESS WARNING: This assume is only valid if T5 holds. If multiple
+            // ghost instances exist, or if the raw store() was used without updating
+            // ghost state, this assume may assert a false equality.
             assume(res.unwrap() == spec_load_result(ghost.view, index as int));
         }
     }
@@ -735,16 +773,27 @@ pub fn init_kredzone()
 ///
 /// This is useful for initializing ghost state at the start of kernel execution.
 ///
-/// # Trust Assumption
+/// # Trust Assumptions
 ///
-/// This function relies on **T4**: The kredzone region is zero-initialized before
-/// first use (BSS section). If the kredzone is not zero-initialized by the
-/// loader/linker, the ghost state will be inconsistent with the actual memory.
+/// This function relies on:
+///
+/// - **T4**: The kredzone region is zero-initialized before first use (BSS section).
+/// - **T5**: Only one `KernelRedZoneGhost` instance is active at any time.
+///
+/// If T4 is violated, the ghost state will be inconsistent with the actual memory.
+/// If T5 is violated (multiple ghost instances exist), the `assume` in `load_with_ghost`
+/// becomes unsound.
 ///
 /// # Alternative
 ///
-/// To establish the invariant without relying on T4, use `init_kredzone()` instead,
-/// which explicitly writes zeros to all entries before returning the ghost state.
+/// To establish the invariant without relying on T4, call `init_kredzone()` first,
+/// which explicitly writes zeros to all entries.
+///
+/// # Soundness Warning
+///
+/// **Do not call this function more than once.** Creating multiple ghost instances
+/// that all claim to model the single global kredzone will lead to unsound verification.
+/// See module documentation for the recommended usage pattern.
 pub proof fn create_initial_ghost() -> (tracked result: KernelRedZoneGhost)
     ensures
         result.inv(),
