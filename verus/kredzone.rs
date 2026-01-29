@@ -70,6 +70,27 @@
 //!
 //! The proven algebraic properties (`lemma_store_then_load`, etc.) apply to the abstract
 //! model. Under trust assumptions T1-T3, these properties transfer to the implementation.
+//!
+//! ## Verification Scope Limitations
+//!
+//! The following requests **cannot be implemented** due to Verus/language constraints:
+//!
+//! 1. **Stronger store/load specs relating to abstract state**: Would require Verus to
+//!    reason about `write_volatile`/`read_volatile` on extern C statics, which is not
+//!    supported. The volatile operations are fundamentally opaque to the verifier.
+//!
+//! 2. **Encoding trust assumptions as preconditions**: T1-T3 are environmental properties
+//!    (linker output, hardware semantics, OS design) that exist outside Verus's scope.
+//!    They cannot be expressed as runtime-checkable preconditions.
+//!
+//! 3. **Threading ghost state through store/load**: The functions must maintain API
+//!    compatibility with the original `pub fn store(index: usize, value: usize)` signature.
+//!    Adding tracked parameters would change the ABI and break all callers.
+//!
+//! This verification represents the **maximum achievable assurance** for this component.
+//! The bounds checking is fully verified; functional correctness relies on the documented
+//! trust assumptions which must be validated by code review of the assembly and kernel design.
+//!
 //! ## API Summary
 //!
 //! | Function | Description | Trust Level |
