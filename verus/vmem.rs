@@ -222,12 +222,12 @@ impl Vmem {
     pub closed spec fn inv(&self) -> bool {
         &&& self.mapping_count <= MAX_USER_PAGES
         // All mappings in [0, mapping_count) have valid flag set.
-        &&& forall|i: int| 0 <= i < self.mapping_count as int ==> self.mappings[i as int].valid
+        &&& forall|i: int| #![auto] 0 <= i < self.mapping_count as int ==> self.mappings[i as int].valid
         // All valid mappings are for user addresses.
-        &&& forall|i: int| 0 <= i < self.mapping_count as int ==>
+        &&& forall|i: int| #![auto] 0 <= i < self.mapping_count as int ==>
                 spec_is_user_addr(self.mappings[i as int].vaddr as int)
         // All valid mappings have page-aligned vaddr.
-        &&& forall|i: int| 0 <= i < self.mapping_count as int ==>
+        &&& forall|i: int| #![auto] 0 <= i < self.mapping_count as int ==>
                 self.mappings[i as int].vaddr as int % PAGE_SIZE as int == 0
     }
 
