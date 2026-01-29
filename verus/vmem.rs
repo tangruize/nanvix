@@ -548,6 +548,11 @@ impl Vmem {
         ensures
             result.inv(),
             result.mapping_count == 0,
+            // Note: Source preservation is guaranteed by Rust's borrow checker.
+            // The `from: &Self` parameter is an immutable borrow, so Rust ensures
+            // the source is unchanged. Verus's `old()` requires `&mut` so we cannot
+            // express this directly in the postcondition, but the type system
+            // provides the guarantee.
     {
         // Use from in a proof block to document that we require source validity.
         // Kernel mappings sharing is abstracted - we only verify user mapping properties.
@@ -1072,8 +1077,12 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "address is not in user space"));
         }
 
-        // Check if page is mapped (this implicitly checks page-alignment since
-        // all mappings have page-aligned vaddr by invariant).
+        // Check if address is page-aligned.
+        if vaddr % PAGE_SIZE != 0 {
+            return Err(Error::new(ErrorCode::BadAddress, "address is not page-aligned"));
+        }
+
+        // Check if page is mapped.
         let mut found: bool = false;
         let mut i: usize = 0;
         while i < self.mapping_count
