@@ -21,6 +21,13 @@ use ::sys::error::{
     ErrorCode,
 };
 
+// Verus verification support.
+use ::verus_stub::*;
+
+// Include verification specifications when verifying with Verus.
+#[cfg(verus_keep_ghost)]
+include!("lib.verus.rs");
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -31,6 +38,7 @@ use ::sys::error::{
 /// A bitmap.
 ///
 #[derive(Debug)]
+#[verus_verify(external)]
 pub struct Bitmap {
     /// Capacity of the bitmap (in bits).
     number_of_bits: usize,
@@ -44,6 +52,7 @@ pub struct Bitmap {
 // Implementations
 //==================================================================================================
 
+#[verus_verify(external)]
 impl Bitmap {
     ///
     /// # Description
@@ -332,6 +341,7 @@ impl Bitmap {
 }
 
 #[cfg(test)]
+#[verus_verify(external)]
 impl ::core::ops::Deref for Bitmap {
     type Target = RawArray<u8>;
 
