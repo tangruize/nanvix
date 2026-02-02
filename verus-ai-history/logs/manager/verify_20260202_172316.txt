@@ -1,0 +1,78 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 17:23:16 CST 2026
+Module: manager
+Command: verus --crate-type lib lib.rs --verify-module manager
+
+note: verifying module manager
+
+error: postcondition not satisfied
+   --> manager.rs:396:13
+    |
+396 | /             result.is_ok() ==> {
+397 | |                 &&& vmem.spec_is_mapped(vaddr as int)
+398 | |                 &&& vmem.mapping_count == old(vmem).mapping_count + 1
+399 | |                 &&& self@.upool_free_count == old(self)@.upool_free_count - 1
+400 | |             },
+    | |_____________^ failed this postcondition
+...
+411 |           Ok(())
+    |           ------ at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> manager.rs:436:5
+    |
+436 | /     pub fn unmap_upage(
+437 | |         &mut self,
+438 | |         vmem: &mut Vmem,
+439 | |         vaddr: usize,
+440 | |     ) -> (result: Result<(), Error>)
+    | |___________________________________^
+
+error: postcondition not satisfied
+   --> manager.rs:454:13
+    |
+454 | /             result.is_ok() ==> {
+455 | |                 &&& vmem.mapping_count == old(vmem).mapping_count - 1
+456 | |                 &&& self@.upool_free_count == old(self)@.upool_free_count + 1
+457 | |             },
+    | |_____________^ failed this postcondition
+...
+465 |           Ok(())
+    |           ------ at the end of the function body
+
+error: precondition not satisfied
+   --> manager.rs:463:9
+    |
+463 |         self.upool.free_by_addr(frame_addr)?;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: upool.rs:815:13
+    |
+815 |             addr as int % FRAME_SIZE as int == 0,
+    |             ------------------------------------ failed precondition
+
+error: postcondition not satisfied
+   --> manager.rs:532:13
+    |
+532 | /             result.is_ok() ==> {
+533 | |                 &&& result.unwrap().inv()
+534 | |                 &&& self@.kpool_free_count == old(self)@.kpool_free_count - 1
+535 | |             },
+    | |_____________^ failed this postcondition
+...
+538 |           Ok(KernelPage::new(kframe))
+    |           --------------------------- at the end of the function body
+
+verification results:: 7 verified, 3 errors (partial verification with `--verify-*`)
+error: aborting due to 4 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 7
+Errors: 3
+Status: FAILED
+Cheating patterns: external_body:2
+Committed: [verus] Verification failed for manager (verified:7, errors:3) [external_body:2]
