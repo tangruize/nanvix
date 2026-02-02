@@ -1842,6 +1842,8 @@ impl Slab {
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
                 // Explicit postcondition that address is within buffer bounds.
                 &&& old(self)@.is_within_buffer(addr)
+                // Returned address is non-null (derivable from data_addr > 0 and is_valid_addr).
+                &&& addr > 0
             },
             // Error case: state unchanged and slab was full (no capacity).
             result is Err ==> (self@ == old(self)@ && !old(self)@.can_allocate()),
