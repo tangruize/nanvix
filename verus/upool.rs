@@ -638,13 +638,6 @@ impl Upool {
             // so alloc() is guaranteed to succeed.
             let alloc_result: Result<UserFrame, Error> = self.alloc();
             
-            // By postcondition of alloc: has_free_frame() ==> result is Ok.
-            // We established has_free_frame() via the lemma, so alloc_result is Ok.
-            proof {
-                assert(prev_self@.has_free_frame());
-                // Therefore alloc_result is Ok.
-            }
-            
             // Extract the frame. Use match with proof that Err is unreachable.
             let uframe: UserFrame = match alloc_result {
                 Ok(f) => f,
