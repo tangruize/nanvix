@@ -1,0 +1,30 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 20:40:56 CST 2026
+Module: upool
+Command: verus --crate-type lib lib.rs --verify-module upool
+
+note: verifying module upool
+
+note: verifying module upool::test
+
+error: postcondition not satisfied
+   --> upool.rs:433:13
+    |
+433 |             result > 0,
+    |             ^^^^^^^^^^ failed this postcondition
+434 |     {
+435 |         self.frame_allocator.capacity()
+    |         ------------------------------- at the end of the function body
+
+verification results:: 19 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 19
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for upool (verified:19, errors:1)
