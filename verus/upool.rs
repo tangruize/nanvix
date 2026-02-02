@@ -658,18 +658,11 @@ impl Upool {
             let ghost new_frame_idx: int = uframe.spec_frame_number();
             
             proof {
-                // EXPLICIT CONTRAPOSITIVE: Prove !original_self@.is_allocated(new_frame_idx).
-                // We have: !prev_self@.is_allocated(new_frame_idx) (from alloc postcondition).
-                // By monotonicity invariant: original_self@.is_allocated(i) ==> prev_self@.is_allocated(i).
-                // Contrapositive: !prev_self@.is_allocated(i) ==> !original_self@.is_allocated(i).
-                // Therefore: !original_self@.is_allocated(new_frame_idx).
-                assert(!prev_self@.is_allocated(new_frame_idx));
-                // Instantiate monotonicity at new_frame_idx to help SMT.
+                // Contrapositive of monotonicity: !prev_self@.is_allocated(i) ==> !original_self@.is_allocated(i).
                 if original_self@.is_allocated(new_frame_idx) {
-                    assert(prev_self@.is_allocated(new_frame_idx));  // By monotonicity.
-                    assert(false);  // Contradiction with !prev_self@.is_allocated(new_frame_idx).
+                    assert(prev_self@.is_allocated(new_frame_idx));
+                    assert(false);
                 }
-                assert(!original_self@.is_allocated(new_frame_idx));
                 
                 // The new frame is distinct from all previously collected frames.
                 assert forall|k: int| 0 <= k < prev_len
@@ -681,9 +674,6 @@ impl Upool {
                 
                 // Update frame_indices.
                 frame_indices = prev_frame_indices.push(new_frame_idx);
-                
-                // Verify invariants for the updated frame_indices.
-                assert(frame_indices.len() == prev_len + 1);
                 
                 // For old elements (i < prev_len):
                 assert forall|i: int| #![trigger frame_indices[i]]
@@ -697,19 +687,9 @@ impl Upool {
                 by {
                     let idx: int = frame_indices[i];
                     assert(idx == prev_frame_indices[i]);
-                    assert(0 <= idx < self@.capacity());
-                    assert(!original_self@.is_allocated(idx));
                     assert(prev_self@.is_allocated(idx));
                     assert(idx != new_frame_idx);
                 }
-                
-                // For the new element (i == prev_len):
-                assert({
-                    let idx: int = frame_indices[prev_len as int];
-                    &&& 0 <= idx < self@.capacity()
-                    &&& self@.is_allocated(idx)
-                    &&& !original_self@.is_allocated(idx)
-                });
             }
             allocated_count = allocated_count + 1;
         }
