@@ -1,0 +1,134 @@
+=== Copilot Session ===
+Timestamp: 2026-02-02T20:53:45.925962
+Model: claude-opus-4.5
+Session: f0eefb2c-b4ed-4b82-aaa5-9f76b38c9090
+Duration: 84.4s
+Exit code: 0
+
+=== Prompt ===
+Simplify the Verus verification in verus/raw_array.rs
+
+Reference: src/libs/raw-array/src/lib.rs
+
+== WHAT TO SIMPLIFY ==
+1. Remove truly redundant lemmas (duplicate proofs of the same property)
+2. Remove redundant postconditions implied by others in the same function
+3. Condense verbose inline proofs into reusable lemmas
+4. Remove debug artifacts (unnecessary asserts, TODO comments, dead code)
+
+== CRITICAL: WHAT IS "REDUNDANT"? ==
+A lemma is redundant ONLY if another lemma proves the EXACT same thing:
+- Same requires (preconditions)
+- Same ensures (postconditions)
+
+WARNING: "Never called" does NOT mean redundant! Verus verifies all lemmas regardless.
+WARNING: Different requires = different property, even if ensures looks similar.
+
+When in doubt, KEEP the lemma.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, external_body
+- Verification must still pass
+
+== PROCESS ==
+1. For each removal candidate, compare requires+ensures with existing lemmas
+2. Remove only if truly identical
+3. Run: ./verus-ai/scripts/verify.sh raw_array
+
+== OUTPUT ==
+Write report to verus-ai-history/simplify/raw_array_20260202_205221.md showing what was removed and why.
+
+=== Output ===
+● Read verus/raw_array.rs
+  └ 763 lines read
+
+● Read src/libs/raw-array/src/lib.rs
+  └ 294 lines read
+
+Now let me analyze the Verus file to identify truly redundant lemmas. Let me examine the lemmas more carefully:
+
+● update_todo
+  └ TODO list updated
+
+● Create simplify directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/simplify
+  └ 1 line...
+
+Let me analyze each lemma systematically:
+
+**Lemmas in verus/raw_array.rs:**
+
+1. `lemma_update_preserves_len` - proves `view.update(i, value).len() == view.len()`
+2. `lemma_update_only_changes_index` - proves unchanged indices after update (i != j)
+3. `lemma_update_sets_index` - proves `view.update(i, value).index(i) == value`
+4. `lemma_view_eq_reflexive` - proves `view.spec_eq(view)`
+5. `lemma_view_eq_symmetric` - proves symmetric equality
+6. `lemma_view_eq_transitive` - proves transitive equality
+7. `lemma_equal_views_equal_elements` - proves equal views have equal elements
+8. `lemma_equal_views_equal_len` - proves equal views have equal lengths
+9. `lemma_set_preserves_len` - works on `Seq<T>` directly with complex requires
+10. `lemma_view_determines_equivalence` - proves spec_len and elements equal given view equality
+11. `lemma_set_commutes` - proves set operations commute for different indices
+12. `lemma_set_overwrite` - proves double set equals single set to final value
+
+**Analysis:**
+
+- `lemma_set_preserves_len` (lines 549-558): This has requires that include `post.len() == pre.len()` AND ensures `post.len() == pre.len()`. This is trivially redundant - the postcondition is literally one of the preconditions.
+
+- `lemma_view_determines_equivalence` (lines 561-568) and `lemma_equal_views_equal_len` + `lemma_equal_views_equal_elements`: 
+  - `lemma_equal_views_equal_len` requires `v1.spec_eq(v2)` and ensures `v1.len() == v2.len()`
+  - `lemma_equal_views_equal_elements` requires `v1.spec_eq(v2)` and `0 <= i < v1.len()`, ensures `v1.index(i) == v2.index(i)`
+  - `lemma_view_determines_equivalence` requires `a1@ =~= a2@` (which is stronger, sequence equality), ensures both lengths equal AND elements equal
+
+  These are NOT redundant because they work on different types (`RawArrayView` vs `RawArray`) and have different preconditions (`spec_eq` vs `=~=`).
+
+Let me run the current verification first to establish a baseline:
+
+● Run baseline verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh raw_array 2>&1 | head -100
+  └ 24 lines...
+
+Good, baseline passes with 22 verified. Now let me identify what can be simplified:
+
+**True redundancies found:**
+
+1. **`lemma_set_preserves_len`** (lines 549-558): This lemma has `post.len() == pre.len()` as BOTH a require and an ensure - completely redundant, it proves nothing new.
+
+2. **`lemma_equal_views_equal_len`** (lines 149-155): The `spec_eq` function is defined as `self.contents =~= other.contents`. Since `=~=` on sequences implies equal lengths, this is actually a built-in property of extensional sequence equality. However, keeping it is fine as an explicit helper.
+
+3. Looking at `lemma_view_determines_equivalence` (lines 561-568): 
+   - It requires `a1@ =~= a2@` (stronger than `spec_eq` since it's directly on the view)
+   - It ensures `a1.spec_len() == a2.spec_len()` AND element equality
+   - This could potentially be redundant with the combination of `lemma_equal_views_equal_len` + `lemma_equal_views_equal_elements`, BUT they work on different types (`RawArray` vs `RawArrayView`), so NOT redundant.
+
+Let me now make the simplification - removing `lemma_set_preserves_len` since it's trivially self-proving:
+
+● Edit verus/raw_array.rs (-12)
+
+Now let me verify the change doesn't break anything:
+
+● Verify after removing lemma_set_preserves_len
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh raw_array 2>&1 | head -80
+  └ 26 lines...
+
+Verification passes with 21 verified (down from 22 - exactly 1 trivially redundant lemma removed). Let me now write the report:
+
+● update_todo
+  └ TODO list updated
+
+● Create verus-ai-history/simplify/raw_array_20260202_205221.md (+70)
+
+● update_todo
+  └ TODO list updated
+
+Simplification complete. Removed 1 trivially redundant lemma (`lemma_set_preserves_len`) where the postcondition was already stated as a precondition. Verification passes with 21 verified items. Report written to `verus-ai-history/simplify/raw_array_20260202_205221.md`.
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 10.611s
+Total session time:     1m 22.039s
+Total code changes:     +70 -12
+Breakdown by AI model:
+ claude-opus-4.5         286.2k in, 3.5k out, 236.1k cached (Est. 3 Premium requests)
+
+=== End ===
