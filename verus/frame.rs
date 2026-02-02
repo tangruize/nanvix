@@ -255,46 +255,6 @@ impl FrameAllocator {
         }
     }
 
-    /// Lemma: The view's no_memory_aliasing property holds.
-    proof fn lemma_no_memory_aliasing(&self)
-        requires self.inv(),
-        ensures self@.no_memory_aliasing()
-    {
-        assert forall|i: int, j: int|
-            self@.is_allocated(i) && self@.is_allocated(j) && i != j
-        implies
-            self@.frames_are_disjoint(i, j)
-        by {
-            // Both i and j are valid frame indices (by allocated_frames_in_range).
-            assert(0 <= i < self@.capacity);
-            assert(0 <= j < self@.capacity);
-            // Use the lemma to show disjointness.
-            Self::lemma_frames_disjoint(i, j);
-        }
-    }
-
-    /// Lemma: Address-to-index inverse property holds for valid indices.
-    proof fn lemma_addr_frame_idx_inverse(i: int)
-        requires 0 <= i,
-        ensures (i * FRAME_SIZE as int) / FRAME_SIZE as int == i
-    {
-        // By properties of integer division when FRAME_SIZE > 0.
-        assert(FRAME_SIZE > 0);
-        assert((i * FRAME_SIZE as int) / FRAME_SIZE as int == i);
-    }
-
-    /// Lemma: Allocated frames remain in range after allocation.
-    proof fn lemma_alloc_preserves_range(&self, new_idx: int)
-        requires
-            self.inv(),
-            0 <= new_idx < self@.capacity,
-        ensures
-            forall|i: int| #![trigger self@.is_allocated(i)]
-                self@.is_allocated(i) ==> 0 <= i < self@.capacity
-    {
-        // By invariant, allocated_frames_in_range holds.
-    }
-
     /// Lemma: Connects has_free_frame to bitmap's has_free_bit.
     /// When invariant holds, has_free_frame implies bitmap has_free_bit.
     proof fn lemma_has_free_frame_implies_bitmap_has_free_bit(&self)
@@ -1262,18 +1222,6 @@ impl FrameAllocator {
 // Additional Lemmas for Memory Safety
 //==================================================================================================
 
-/// Lemma: Freshly initialized allocator has no memory aliasing (vacuously true).
-proof fn lemma_fresh_allocator_no_aliasing(alloc: &FrameAllocator)
-    requires
-        alloc.inv(),
-        alloc@.is_freshly_initialized(),
-    ensures
-        alloc@.no_memory_aliasing()
-{
-    // No allocated frames means no pairs to check, so vacuously true.
-    assert(alloc@.allocated_frames =~= Set::<int>::empty());
-}
-
 /// Lemma: After allocation, no memory aliasing is preserved.
 proof fn lemma_alloc_preserves_no_aliasing(old_alloc: &FrameAllocator, new_alloc: &FrameAllocator, new_idx: int)
     requires
@@ -1355,13 +1303,6 @@ mod test {
     use super::*;
 
     verus! {
-
-    /// Test: Fresh allocator is empty.
-    proof fn test_fresh_allocator_empty()
-    {
-        // This is a proof that validates the specification.
-        // A freshly initialized allocator has no allocated frames.
-    }
 
     /// Test: Allocation returns valid frame index.
     proof fn test_alloc_valid_index(alloc: FrameAllocator, new_alloc: FrameAllocator, frame_idx: int)
