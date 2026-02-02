@@ -518,6 +518,28 @@ impl<T> core::ops::Deref for RawArray<T> {
 // in trait implementations. Use the `set()` method for mutable access instead.
 
 //==================================================================================================
+// Drop Implementation
+//==================================================================================================
+
+impl<T> Drop for RawArray<T> {
+    #[verifier::external_body]
+    fn drop(&mut self) {
+        match &self.storage {
+            RawArrayStorage::Managed { ptr, len } => {
+                let layout: Layout = match Layout::array::<T>(*len) {
+                    Ok(layout) => layout,
+                    Err(_) => return,
+                };
+                unsafe {
+                    dealloc(ptr.as_ptr() as *mut u8, layout);
+                }
+            },
+            RawArrayStorage::Unmanaged { .. } => (),
+        }
+    }
+}
+
+//==================================================================================================
 // Additional Lemmas for Client Code
 //==================================================================================================
 
