@@ -391,12 +391,13 @@ impl FrameAllocator {
     ///
     /// # Returns
     ///
-    /// Upon success, a FrameAllocator is returned.
+    /// Upon success, a FrameAllocator is returned. Upon failure, an error is returned.
     ///
     /// # Note
     ///
     /// The storage must be zero-initialized. All frames will initially be free.
-    pub fn from_raw_storage(storage: RawArray<u8>) -> (result: FrameAllocator)
+    /// This matches the original signature: `fn from_raw_storage(...) -> Result<Self, Error>`.
+    pub fn from_raw_storage(storage: RawArray<u8>) -> (result: Result<FrameAllocator, Error>)
         requires
             storage@.len() > 0,
             storage@.len() <= usize::MAX / (u8::BITS as usize),
@@ -404,23 +405,27 @@ impl FrameAllocator {
             storage@.len() * (u8::BITS as usize) < u32::MAX as usize,
             forall|i: int| 0 <= i < storage@.len() ==> storage@[i] == 0,
         ensures
-            result.inv(),
-            result@.capacity == storage@.len() * (u8::BITS as int),
-            result@.is_empty(),
+            result is Ok,
+            result is Ok ==> {
+                let alloc = result->Ok_0;
+                &&& alloc.inv()
+                &&& alloc@.capacity == storage@.len() * (u8::BITS as int)
+                &&& alloc@.is_empty()
+            },
     {
         let bitmap = Bitmap::from_raw_array(storage);
-        let result = FrameAllocator { bitmap };
+        let alloc = FrameAllocator { bitmap };
         proof {
             // Bitmap is empty, so no bits are set.
             // Therefore allocated_frames is the empty set.
-            assert forall|i: int| 0 <= i < result.bitmap@.number_of_bits()
-                implies !result.bitmap.is_bit_set(i) by {
+            assert forall|i: int| 0 <= i < alloc.bitmap@.number_of_bits()
+                implies !alloc.bitmap.is_bit_set(i) by {
                 // From bitmap postcondition: forall|i| !result.is_bit_set(i)
             }
             // Therefore the set is empty.
-            assert(result@.allocated_frames =~= Set::empty());
+            assert(alloc@.allocated_frames =~= Set::empty());
         }
-        result
+        Ok(alloc)
     }
 
     /// Returns the capacity (number of frames managed).
@@ -435,13 +440,18 @@ impl FrameAllocator {
     // Allocation
     //==============================================================================================
 
-    /// Allocates a frame.
+    /// Allocates a frame and returns its frame index.
+    ///
+    /// # Description
+    ///
+    /// This is a helper function that returns the raw frame index (usize).
+    /// For the primary allocation API matching the original source, use `alloc()`.
     ///
     /// # Returns
     ///
     /// Upon success, the frame index is returned as a usize.
     /// Upon failure, an error is returned.
-    pub fn alloc(&mut self) -> (result: Result<usize, Error>)
+    pub fn alloc_index(&mut self) -> (result: Result<usize, Error>)
         requires old(self).inv(),
         ensures
             self.inv(),
@@ -481,13 +491,17 @@ impl FrameAllocator {
         }
     }
 
-    /// Allocates a frame and returns its address.
+    /// Allocates a frame.
+    ///
+    /// # Description
+    ///
+    /// This matches the original source: `fn alloc(&mut self) -> Result<FrameAddress, Error>`.
     ///
     /// # Returns
     ///
     /// Upon success, the frame address is returned.
     /// Upon failure, an error is returned.
-    pub fn alloc_address(&mut self) -> (result: Result<FrameAddress, Error>)
+    pub fn alloc(&mut self) -> (result: Result<FrameAddress, Error>)
         requires old(self).inv(),
         ensures
             self.inv(),
@@ -830,6 +844,129 @@ impl FrameAllocator {
         }
 
         Ok(())
+    }
+
+    /// Allocates a contiguous range of frames with runtime checking.
+    ///
+    /// # Description
+    ///
+    /// This function matches the original source behavior exactly:
+    /// 1. First checks if ALL frames in the range are free (runtime check).
+    /// 2. If any frame is already allocated, returns OutOfMemory error.
+    /// 3. If all frames are free, allocates them all.
+    ///
+    /// This differs from `alloc_range` which requires frames to be free as a precondition.
+    ///
+    /// # Parameters
+    ///
+    /// - `start_frame`: Start frame index (inclusive).
+    /// - `count`: Number of frames to allocate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, all frames in [start_frame, start_frame + count) are allocated.
+    /// Upon failure (any frame already allocated), an error is returned.
+    pub fn alloc_range_checked(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            count > 0,
+            start_frame as int + count as int <= old(self)@.capacity,
+        ensures
+            self.inv(),
+            // Capacity is preserved.
+            self@.capacity == old(self)@.capacity,
+            // If all frames were free, allocation succeeds.
+            (forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+                !old(self)@.is_allocated(i)) ==> result is Ok,
+            // On success: all frames in range are now allocated.
+            result is Ok ==> {
+                &&& forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+                    self@.is_allocated(i)
+                &&& forall|i: int| #![trigger self@.is_allocated(i)]
+                    (0 <= i < start_frame as int || start_frame as int + count as int <= i < self@.capacity) ==>
+                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+            },
+            // On success: count increases by exactly `count`.
+            result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
+            // On failure: state unchanged.
+            result is Err ==> self@ == old(self)@,
+    {
+        let end_frame: usize = start_frame + count;
+        
+        // Step 1: Check if all frames in the range are free (matches original).
+        let mut idx: usize = start_frame;
+        while idx < end_frame
+            invariant
+                self.inv(),
+                self@ == old(self)@,
+                self@.capacity == old(self)@.capacity,
+                start_frame <= idx <= end_frame,
+                end_frame as int <= self@.capacity,
+                // All frames checked so far are free.
+                forall|i: int| start_frame as int <= i < idx as int ==>
+                    !self@.is_allocated(i),
+            decreases
+                end_frame - idx,
+        {
+            match self.bitmap.test(idx) {
+                Ok(is_set) => {
+                    if is_set {
+                        // Frame is already allocated - return error (matches original).
+                        return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
+                    }
+                    // Frame is free, continue checking.
+                    proof {
+                        self.lemma_allocated_iff_bit_set(idx as int);
+                    }
+                },
+                Err(err) => return Err(err),
+            }
+            idx = idx + 1;
+        }
+        
+        // Step 2: All frames are free, allocate them (matches original).
+        // At this point we have proven all frames are free.
+        proof {
+            // Connect to the bitmap level.
+            assert forall|i: int| start_frame as int <= i < end_frame as int
+                implies !self.bitmap.is_bit_set(i)
+            by {
+                self.lemma_allocated_iff_bit_set(i);
+            }
+        }
+        
+        let ghost original_self: FrameAllocator = *self;
+        let ghost original_capacity: int = self@.capacity;
+        
+        match self.alloc_range_inner(start_frame, end_frame, Ghost(original_self), Ghost(original_capacity)) {
+            Ok(()) => {
+                proof {
+                    // All frames in range are now allocated.
+                    assert forall|i: int| start_frame as int <= i < end_frame as int
+                        implies self@.is_allocated(i)
+                    by {
+                        assert(self.bitmap.is_bit_set(i));
+                        self.lemma_allocated_iff_bit_set(i);
+                    }
+                    
+                    // All frames outside range unchanged.
+                    assert forall|i: int|
+                        (0 <= i < start_frame as int || end_frame as int <= i < self@.capacity)
+                        implies self@.is_allocated(i) == original_self@.is_allocated(i)
+                    by {
+                        assert(self.bitmap.is_bit_set(i) == original_self.bitmap.is_bit_set(i));
+                        self.lemma_allocated_iff_bit_set(i);
+                        original_self.lemma_allocated_iff_bit_set(i);
+                    }
+                }
+                Ok(())
+            },
+            Err(e) => {
+                // Unreachable: alloc_range_inner always succeeds.
+                proof { assert(false); }
+                Err(e)
+            },
+        }
     }
 
     //==============================================================================================
