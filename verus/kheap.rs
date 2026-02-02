@@ -1211,6 +1211,18 @@ impl Kheap {
                 &&& slab_size.spec_as_int() >= size as int
                 // Alignment: address is aligned to block size.
                 &&& addr % slab_size.spec_as_int() == 0
+                // Frame: base_addr and total_size are unchanged.
+                &&& self@.base_addr == old(self)@.base_addr
+                &&& self@.total_size == old(self)@.total_size
+                // Frame: other slabs unchanged.
+                &&& (slab_size != SlabSize::Slab8 ==> self@.slab_8 == old(self)@.slab_8)
+                &&& (slab_size != SlabSize::Slab16 ==> self@.slab_16 == old(self)@.slab_16)
+                &&& (slab_size != SlabSize::Slab32 ==> self@.slab_32 == old(self)@.slab_32)
+                &&& (slab_size != SlabSize::Slab64 ==> self@.slab_64 == old(self)@.slab_64)
+                &&& (slab_size != SlabSize::Slab128 ==> self@.slab_128 == old(self)@.slab_128)
+                &&& (slab_size != SlabSize::Slab256 ==> self@.slab_256 == old(self)@.slab_256)
+                &&& (slab_size != SlabSize::Slab512 ==> self@.slab_512 == old(self)@.slab_512)
+                &&& (slab_size != SlabSize::Slab4096 ==> self@.slab_4096 == old(self)@.slab_4096)
             }),
             // Liveness: if slab can allocate, allocation succeeds.
             // This propagates the liveness guarantee from Slab::allocate.
@@ -1317,6 +1329,9 @@ impl Kheap {
                 let new_slab = self@.get_slab(slab_size);
                 let block_idx = old_slab.data_addr_to_block_idx(addr as int);
                 &&& !new_slab.is_allocated(block_idx)
+                // Frame: base_addr and total_size are unchanged.
+                &&& self@.base_addr == old(self)@.base_addr
+                &&& self@.total_size == old(self)@.total_size
                 // Frame: other slabs unchanged.
                 &&& (slab_size != SlabSize::Slab8 ==> self@.slab_8 == old(self)@.slab_8)
                 &&& (slab_size != SlabSize::Slab16 ==> self@.slab_16 == old(self)@.slab_16)
@@ -1326,8 +1341,12 @@ impl Kheap {
                 &&& (slab_size != SlabSize::Slab256 ==> self@.slab_256 == old(self)@.slab_256)
                 &&& (slab_size != SlabSize::Slab512 ==> self@.slab_512 == old(self)@.slab_512)
                 &&& (slab_size != SlabSize::Slab4096 ==> self@.slab_4096 == old(self)@.slab_4096)
+                // Liveness: after deallocation, the slab can allocate again.
+                &&& new_slab.can_allocate()
             },
             result is Err ==> self@ == old(self)@,
+            // Liveness: if preconditions are met (block is valid and allocated), deallocation succeeds.
+            result is Ok,
     {
         // Determine which slab to use.
         let slab_size: SlabSize = match layout_to_slab_size(size) {
@@ -1400,7 +1419,12 @@ pub unsafe fn init(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
         Slab::spec_is_power_of_two(512),
         Slab::spec_is_power_of_two(4096),
     ensures
-        result is Ok ==> result->Ok_0.inv(),
+        result is Ok ==> {
+            let heap = result->Ok_0;
+            &&& heap.inv()
+            // Liveness: newly initialized heap is empty and ready for allocations.
+            &&& heap@.is_empty()
+        },
 {
     Kheap::from_raw_parts(addr, size)
 }
