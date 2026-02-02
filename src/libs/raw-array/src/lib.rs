@@ -267,6 +267,53 @@ impl<T> RawArray<T> {
     }
 }
 
+/// Impl block for methods with Verus specs.
+#[verus_verify]
+impl<T> RawArray<T> {
+    ///
+    /// # Description
+    ///
+    /// Sets an element at the given index.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the element to set.
+    /// - `value`: Value to set.
+    ///
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        requires
+            old(self).in_bounds(index as int),
+        ensures
+            self@.len() == old(self)@.len(),
+            self@[index as int] == value,
+            forall|i: int| 0 <= i < self@.len() && i != index as int
+                ==> self@[i] == old(self)@[i],
+    )]
+    pub fn set(&mut self, index: usize, value: T) {
+        let slice: &mut [T] = self.storage.get_mut();
+        slice[index] = value;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the length of the array.
+    ///
+    /// # Returns
+    ///
+    /// The length of the array.
+    ///
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            result == self@.len(),
+    )]
+    pub fn raw_len(&self) -> usize {
+        self.storage.get().len()
+    }
+}
+
 #[verus_verify(external)]
 impl<T> Deref for RawArray<T> {
     type Target = [T];

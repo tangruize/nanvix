@@ -3,6 +3,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(all(test, feature = "std"), feature(random))]
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 
 //==================================================================================================
 // Modules
@@ -16,7 +17,7 @@ mod test;
 //==================================================================================================
 
 use ::raw_array::RawArray;
-use ::sys::error::{
+use ::error::{
     Error,
     ErrorCode,
 };
@@ -106,6 +107,15 @@ impl Bitmap {
     /// Upon success, a new bitmap is returned. Upon failure, an error is returned instead.
     ///
     #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            array@.len() > 0,
+            array@.len() < (u32::MAX as nat) / (u8::BITS as nat),
+        ensures
+            result.inv(),
+            result@.number_of_bits() == (array@.len() * (u8::BITS as nat)) as int,
+            result@.usage() == 0,
+    )]
     pub fn from_raw_array(array: RawArray<u8>) -> Self {
         // NOTE: no need to test if the length of the raw array is valid, as it is by construction.
         // NOTE: the bitmap is already zeroed out by RawArray::new() or RawArray::from_raw_parts().
@@ -167,6 +177,27 @@ impl Bitmap {
     /// instead.
     ///
     #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            result.is_ok() ==> {
+                let start_idx: int = result.unwrap() as int;
+                &&& 0 <= start_idx < self@.number_of_bits()
+                &&& 0 < (size as int) <= self@.number_of_bits()
+                &&& start_idx + (size as int) <= self@.number_of_bits()
+                &&& self@.number_of_bits() == old(self)@.number_of_bits()
+                &&& self.all_bits_set_in_range_spec(start_idx, start_idx + (size as int))
+                &&& old(self).all_bits_unset_in_range_spec(start_idx, start_idx + (size as int))
+                &&& forall|i: int| #![trigger self.is_bit_set_spec(i)]
+                    0 <= i < self@.number_of_bits() &&
+                    (i < start_idx || i >= start_idx + (size as int)) ==>
+                    self.is_bit_set_spec(i) == old(self).is_bit_set_spec(i)
+                &&& self@.usage() == old(self)@.usage() + (size as int)
+            },
+            result.is_err() ==> self@ == old(self)@,
+    )]
     pub fn alloc_range(&mut self, size: usize) -> Result<usize, Error> {
         // Check if the size is valid.
         if size == 0 || size > self.number_of_bits {
@@ -180,47 +211,47 @@ impl Bitmap {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
-        debug_assert_eq!(
-            self.bits.len() * u8::BITS as usize,
-            self.number_of_bits,
-            "bitmap length must match the number of bits"
-        );
-
         let mut start: usize = 0;
 
         // Traverse the bitmap until the last possible starting bit.
         while start <= self.number_of_bits - size {
-            // Check for fast skip/ path.
-            let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
+            // Check for fast skip path.
+            let is_aligned: bool = start % (u8::BITS as usize) == 0;
             if is_aligned {
                 let word: usize = start / u8::BITS as usize;
                 // Fast skip: if the starting word is full, skip to the next word.
                 if self.bits[word] == u8::MAX {
                     // Jump to next byte boundary.
-                    start += u8::BITS as usize;
+                    start = start + u8::BITS as usize;
                     continue;
                 }
             }
 
             // Check if all bits in the range are free.
             let mut free: bool = true;
-            for offset in 0..size {
+            let mut offset: usize = 0;
+            while offset < size {
                 let idx: usize = start + offset;
                 let (w, b): (usize, usize) = self.index_unchecked(idx);
                 if (self.bits[w] & (1 << b)) != 0 {
                     free = false;
-                    start += offset + 1;
+                    start = start + offset + 1;
                     break;
                 }
+                offset = offset + 1;
             }
+
             if free {
                 // Allocate the range
-                for offset in 0..size {
-                    let idx: usize = start + offset;
+                let mut alloc_offset: usize = 0;
+                while alloc_offset < size {
+                    let idx: usize = start + alloc_offset;
                     let (w, b): (usize, usize) = self.index_unchecked(idx);
-                    self.bits[w] |= 1 << b;
+                    let new_byte: u8 = self.bits[w] | (1 << b);
+                    self.bits.set(w, new_byte);
+                    alloc_offset = alloc_offset + 1;
                 }
-                self.usage += size;
+                self.usage = self.usage + size;
                 return Ok(start);
             }
         }
@@ -295,10 +326,28 @@ impl Bitmap {
     /// Upon success, `Ok(true)` is returned if the bit is set, `Ok(false)` is returned otherwise.
     /// Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires self.inv(),
+        ensures
+            result.is_ok() ==> {
+                &&& (index as int) < self@.number_of_bits()
+                &&& result.unwrap() == self.is_bit_set_spec(index as int)
+            },
+            result.is_err() ==> (index as int) >= self@.number_of_bits(),
+            (index as int) < self@.number_of_bits() ==> result.is_ok(),
+    )]
     pub fn test(&self, index: usize) -> Result<bool, Error> {
         let (word, bit): (usize, usize) = self.index(index)?;
-        Ok((self.bits[word] & (1 << bit)) != 0)
+        let byte_val: u8 = self.bits[word];
+        let result_val: bool = (byte_val & (1 << bit)) != 0;
+        proof! {
+            // Prove that result_val == self.is_bit_set_spec(index)
+            // By lemma: is_bit_set_spec(index) == bit_at(self.bits@, index)
+            // By definition: bit_at(bytes, i) = (bytes[word] & (1 << bit)) != 0
+            //                where word = i / 8 and bit = i % 8
+            lemma_is_bit_set_equals_bit_at(self, index as int);
+        }
+        Ok(result_val)
     }
 
     ///

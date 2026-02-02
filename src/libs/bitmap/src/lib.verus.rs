@@ -11,20 +11,6 @@ use vstd::prelude::*;
 verus! {
 
 //==================================================================================================
-// External Type Specifications
-//==================================================================================================
-
-// Error type from sys crate.
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExError(Error);
-
-// ErrorCode enum from sys crate.
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExErrorCode(ErrorCode);
-
-//==================================================================================================
 // Bitmap View Implementation
 //==================================================================================================
 
@@ -65,6 +51,57 @@ impl Bitmap {
     /// Spec function: check if all bits in range [start, end) are not set.
     pub open spec fn all_bits_unset_in_range_spec(&self, start: int, end: int) -> bool {
         forall|i: int| start <= i < end ==> !self.is_bit_set_spec(i)
+    }
+
+    /// Lemma: is_full implies no free bit.
+    pub proof fn lemma_is_full_implies_no_free_bit_on_bitmap(&self)
+        requires
+            self.inv(),
+            self@.is_full(),
+        ensures
+            !self@.has_free_bit(),
+    {
+        lemma_is_full_implies_no_free_bit(&self@);
+    }
+
+    /// Lemma: setting a byte bit reflects in the boolean view.
+    pub(crate) proof fn lemma_byte_or_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
+        requires
+            0 <= word < self.bits@.len(),
+            0 <= bit < (u8::BITS as int),
+            new_self.bits@.len() == self.bits@.len(),
+            new_self.bits@[word] == (self.bits@[word] | (1u8 << bit)),
+            forall|i: int| 0 <= i < self.bits@.len() && i != word ==> self.bits@[i] == new_self.bits@[i],
+            self.number_of_bits == new_self.number_of_bits,
+            self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
+        ensures
+            forall|i: int| 0 <= i < self@.number_of_bits() ==>
+                self@.bits[i] == new_self@.bits[i] || i == word * (u8::BITS as int) + bit,
+            new_self@.bits[word * (u8::BITS as int) + bit],
+    {
+        lemma_bit_or_effects(self.bits@[word], bit, new_self.bits@[word]);
+    }
+
+    /// Lemma: setting a bit increases the count by 1.
+    pub(crate) proof fn lemma_set_bit_increases_count(&self, new_self: &Self, index: int)
+        requires
+            0 <= index < self@.number_of_bits(),
+            !self.is_bit_set_spec(index),
+            new_self.is_bit_set_spec(index),
+            forall|i: int| 0 <= i < self@.number_of_bits() && i != index ==>
+                self.is_bit_set_spec(i) == new_self.is_bit_set_spec(i),
+            self@.number_of_bits() == new_self@.number_of_bits(),
+            self@.bits.len() == new_self@.bits.len(),
+        ensures
+            new_self@.usage() == self@.usage() + 1,
+    {
+        assert forall|i: int| 0 <= i < self@.number_of_bits() && i != index
+        implies self@.bits[i] == new_self@.bits[i]
+        by {
+            assert(self.is_bit_set_spec(i) == new_self.is_bit_set_spec(i));
+        };
+
+        lemma_set_bit_increases_count_in_seq(self@.bits, new_self@.bits, 0, self@.number_of_bits(), index);
     }
 }
 
@@ -350,6 +387,30 @@ pub proof fn lemma_all_set_means_count_equals_size(bits: Seq<bool>, start: int, 
 //==================================================================================================
 // Lemmas: Bit-level Operations
 //==================================================================================================
+
+/// Lemma: view bits equals bit_at for valid indices.
+/// This connects the abstract view with the concrete byte representation.
+pub(crate) proof fn lemma_view_bits_equals_bit_at(bm: &Bitmap, index: int)
+    requires
+        bm.inv(),
+        0 <= index < bm@.number_of_bits(),
+    ensures
+        bm@.bits[index] == bit_at(bm.bits@, index),
+{
+    // By definition of bits_to_seq: bits_to_seq(bytes, n) = Seq::new(n, |i| bit_at(bytes, i))
+    // So bm@.bits[index] = bits_to_seq(bm.bits@, bm.number_of_bits)[index] = bit_at(bm.bits@, index)
+}
+
+/// Lemma: is_bit_set_spec equals bit_at for valid indices.
+pub(crate) proof fn lemma_is_bit_set_equals_bit_at(bm: &Bitmap, index: int)
+    requires
+        bm.inv(),
+        0 <= index < bm@.number_of_bits(),
+    ensures
+        bm.is_bit_set_spec(index) == bit_at(bm.bits@, index),
+{
+    lemma_view_bits_equals_bit_at(bm, index);
+}
 
 /// Lemma: Helper for proving bit operations on bytes (OR sets bit).
 #[verifier(bit_vector)]

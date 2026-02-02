@@ -15,6 +15,7 @@ crate-type = ["lib"]
 [dependencies]
 raw-array = { workspace = true }
 sys = { workspace = true }
+error = { workspace = true }
 verus_stub = { workspace = true }
 # Verus core libs needed for cargo-v to detect this crate as a verus target.
 verus_builtin = { workspace = true, optional = true }
@@ -25,9 +26,9 @@ rand = "0.8"
 
 [features]
 default = []
-std = ["sys/std", "raw-array/std"]
+std = ["sys/std", "raw-array/std", "error/std"]
 # Enable Verus verification for this crate.
-verus = ["verus_stub/disable", "sys/verus", "raw-array/verus", "verus_builtin", "vstd"]
+verus = ["verus_stub/disable", "sys/verus", "raw-array/verus", "error/verus", "verus_builtin", "vstd"]
 
 [lints]
 workspace = true

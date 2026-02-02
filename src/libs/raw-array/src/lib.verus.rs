@@ -21,6 +21,21 @@ verus! {
 struct ExRawArrayStorage<T>(RawArrayStorage<T>);
 
 //==================================================================================================
+// Assume Specifications for External Traits
+//==================================================================================================
+
+/// Assume specification for RawArray::deref (from Deref trait).
+/// This allows using len() on RawArray in verified code.
+#[verifier::reject_recursive_types(T)]
+pub assume_specification<T>[ <RawArray<T> as core::ops::Deref>::deref ](
+    arr: &RawArray<T>,
+) -> (result: &<RawArray<T> as core::ops::Deref>::Target)
+    ensures
+        result.len() == arr@.len(),
+        forall|i: int| 0 <= i < arr@.len() ==> result[i] == arr@[i],
+;
+
+//==================================================================================================
 // RawArray View Implementation
 //==================================================================================================
 
