@@ -561,18 +561,15 @@ impl FrameAllocator {
             result is Ok,
             // Capacity is preserved.
             self@.capacity == old(self)@.capacity,
-            // On success: frame is deallocated.
-            result is Ok ==> {
-                let frame_idx = frame.spec_frame_number();
-                // The frame is now free.
-                &&& !self@.is_allocated(frame_idx)
-                // All other frames unchanged.
-                &&& forall|i: int| #![trigger self@.is_allocated(i)]
-                    0 <= i < self@.capacity && i != frame_idx ==>
-                    self@.is_allocated(i) == old(self)@.is_allocated(i)
-            },
+            // Unconditional guarantees (since success is guaranteed by liveness above).
+            // The frame is now free.
+            !self@.is_allocated(frame.spec_frame_number()),
+            // All other frames unchanged.
+            forall|i: int| #![trigger self@.is_allocated(i)]
+                0 <= i < self@.capacity && i != frame.spec_frame_number() ==>
+                self@.is_allocated(i) == old(self)@.is_allocated(i),
             // EXPLICIT COUNT: exactly one fewer frame allocated.
-            result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
+            self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
     {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
