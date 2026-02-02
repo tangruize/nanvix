@@ -2165,6 +2165,72 @@ impl Slab {
                     }
 
                     Self::lemma_inv_from_components(self);
+
+                    // Prove can_allocate() after deallocation.
+                    // The deallocated block is no longer in allocated_blocks.
+                    // Since it was previously allocated, and is now not, the set is strictly smaller.
+                    assert(!self@.is_allocated(block_idx_spec));
+                    // The deallocated block was in range (0 <= block_idx_spec < num_data_blocks).
+                    assert(0 <= block_idx_spec < self@.num_data_blocks);
+                    // Since !is_allocated(block_idx_spec), there's at least one free block.
+                    // can_allocate() = free() > 0 = capacity - used > 0.
+                    // Since block_idx_spec is in [0, num_data_blocks) and not allocated,
+                    // the allocated_blocks set cannot be equal to the full range.
+                    // Therefore used < capacity, so free > 0.
+                    // Use the reasoning: there exists an unallocated block (block_idx_spec).
+                    // This means |allocated_blocks| < num_data_blocks (since block_idx_spec is not in it).
+                    self.lemma_allocated_blocks_finite();
+                    assert(self@.allocated_blocks.finite());
+                    self.lemma_allocated_blocks_subset_of_range();
+                    // allocated_blocks is a subset of [0, num_data_blocks), and block_idx_spec is not in it.
+                    // So allocated_blocks is a strict subset of [0, num_data_blocks).
+                    let full_range: Set<int> = set_int_range(0, self@.num_data_blocks);
+                    lemma_int_range(0, self@.num_data_blocks);
+                    assert(full_range.finite());
+                    assert(full_range.len() == self@.num_data_blocks);
+                    // block_idx_spec is in full_range but not in allocated_blocks.
+                    assert(full_range.contains(block_idx_spec));
+                    assert(!self@.allocated_blocks.contains(block_idx_spec));
+                    // Since allocated_blocks is subset of full_range and missing at least one element,
+                    // |allocated_blocks| < |full_range| = num_data_blocks.
+                    // Note: subset_of + missing element => strict inequality on cardinality.
+                    // Actually, lemma_len_subset gives <=, not <. Need to show strictly less.
+                    // We know: allocated_blocks.subset_of(full_range) and full_range.contains(block_idx_spec)
+                    // and !allocated_blocks.contains(block_idx_spec).
+                    // Therefore allocated_blocks != full_range, and since it's a subset, it's a strict subset.
+                    // For finite sets: strict subset => |A| < |B|.
+                    assert(self@.allocated_blocks.subset_of(full_range));
+                    // Show that full_range has at least one element not in allocated_blocks.
+                    assert(full_range.contains(block_idx_spec) && !self@.allocated_blocks.contains(block_idx_spec));
+                    // This means allocated_blocks is a STRICT subset of full_range.
+                    // For strict subsets of finite sets, |A| < |B|.
+                    // Use: if A subset B and exists x in B with x not in A, then |A| < |B|.
+                    lemma_len_subset(self@.allocated_blocks, full_range);
+                    // This gives |allocated_blocks| <= |full_range|.
+                    // We need to show strict inequality.
+                    // If |allocated_blocks| == |full_range|, then A == B (for finite sets with A subset B).
+                    // But we have x in B and x not in A, so A != B.
+                    if self@.allocated_blocks.len() == full_range.len() {
+                        // A.subset_of(B) and |A| == |B| and both finite => A == B.
+                        // But we have x not in A and x in B, contradiction.
+                        // Need a lemma for this. Let's assert the contrapositive.
+                        assert(self@.allocated_blocks =~= full_range ==> false) by {
+                            assert(full_range.contains(block_idx_spec));
+                            assert(!self@.allocated_blocks.contains(block_idx_spec));
+                        }
+                        // So allocated_blocks != full_range.
+                        // For finite sets with A subset_of B and |A| == |B|, we need A == B.
+                        // Use axiom/lemma: finite subset with same cardinality is equal.
+                        // This is a standard set theory fact.
+                        assert(false); // A != B yet |A| == |B|? Contradiction with subset property.
+                    }
+                    // Therefore |allocated_blocks| < |full_range| = num_data_blocks.
+                    assert(self@.allocated_blocks.len() < self@.num_data_blocks);
+                    // used() = num_allocated() = allocated_blocks.len().
+                    assert(self@.used() < self@.capacity());
+                    // free() = capacity - used > 0.
+                    assert(self@.free() > 0);
+                    assert(self@.can_allocate());
                 }
                 Ok(())
             },
