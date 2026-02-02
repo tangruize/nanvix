@@ -632,10 +632,11 @@ impl VirtMemoryManager {
             vaddr as int % PAGE_SIZE as int == 0,
             spec_is_user_addr(vaddr as int),
             // All target addresses are in user space and not already mapped.
-            forall|i: int| 0 <= i < nframes as int ==> {
-                let addr: int = vaddr as int + i * PAGE_SIZE as int;
-                spec_is_user_addr(addr) && !old(vmem).spec_is_mapped(addr)
-            },
+            forall|i: int|
+                #![trigger spec_is_user_addr(vaddr as int + i * PAGE_SIZE as int)]
+                0 <= i < nframes as int ==>
+                    spec_is_user_addr(vaddr as int + i * PAGE_SIZE as int) &&
+                    !old(vmem).spec_is_mapped(vaddr as int + i * PAGE_SIZE as int),
         ensures
             self.inv(),
             vmem.inv(),
