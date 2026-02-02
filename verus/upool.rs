@@ -491,7 +491,7 @@ impl Upool {
             // On failure: state unchanged.
             result is Err ==> self@ == old(self)@,
     {
-        match self.frame_allocator.alloc_address() {
+        match self.frame_allocator.alloc() {
             Ok(addr) => {
                 let uframe: UserFrame = UserFrame::new(addr);
                 proof {

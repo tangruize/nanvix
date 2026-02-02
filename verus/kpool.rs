@@ -603,7 +603,7 @@ impl Kpool {
             // On failure: state unchanged.
             result is Err ==> self@ == old(self)@,
     {
-        match self.frame_allocator.alloc_address() {
+        match self.frame_allocator.alloc() {
             Ok(addr) => {
                 let kframe: KernelFrame = KernelFrame::new_internal(addr, self.pool_id);
                 Ok(kframe)
