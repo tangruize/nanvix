@@ -269,11 +269,15 @@ impl PageAlignedAddr {
     /// A PageAlignedAddr wrapping the given address.
     pub fn from_raw(addr: usize) -> (result: Option<Self>)
         ensures
+            // Liveness: alignment implies success.
+            spec_is_page_aligned(addr as int) ==> result.is_some(),
+            // Safety: success implies well-formed result.
             result.is_some() ==> {
                 let pa = result.unwrap();
                 &&& pa.inv()
                 &&& pa.spec_addr() == addr as int
             },
+            // Error case: failure implies misalignment.
             result.is_none() ==> !spec_is_page_aligned(addr as int),
     {
         if addr % PAGE_ALIGNMENT == 0 {
@@ -793,8 +797,11 @@ impl UserStack {
             self.inv(),
             self@.contains_addr(addr as int),
         ensures
-            0 <= result as int,
+            // Precise computation: result equals the floor division of offset by page size.
+            result as int == (addr as int - self.spec_base()) / (PAGE_SIZE as int),
+            // Upper bound: result is within valid page range.
             (result as int) < USER_STACK_PAGES as int,
+            // Semantic property: the address is within the computed page.
             self@.addr_in_page(addr as int, result as int),
     {
         (addr - self.base_addr) / PAGE_SIZE
