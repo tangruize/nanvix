@@ -3,8 +3,8 @@
 
 // Bitmap Verification Specifications
 //
-// This file contains complete Verus verification specifications, proofs, and lemmas
-// for the Bitmap module. All specs and proofs are copied from verus/bitmap.rs.
+// This file contains complete Verus verification specifications for Bitmap.
+// Includes BitmapView specs, proof lemmas, and tests.
 
 use vstd::prelude::*;
 
@@ -78,9 +78,7 @@ pub open spec fn bit_at(bytes: Seq<u8>, bit_index: int) -> bool {
 }
 
 /// Helper spec function: convert Seq<u8> to Seq<bool>.
-pub open spec fn bits_to_seq(bytes: Seq<u8>, num_bits: int) -> Seq<bool>
-    decreases num_bits
-{
+pub open spec fn bits_to_seq(bytes: Seq<u8>, num_bits: int) -> Seq<bool> {
     Seq::new(num_bits as nat, |i: int| bit_at(bytes, i))
 }
 
@@ -120,12 +118,12 @@ pub closed spec fn count_set_bits_in_seq(bits: Seq<bool>, start: int, end: int) 
     if start >= end {
         0
     } else {
-        let rest = count_set_bits_in_seq(bits, start + 1, end);
+        let rest: int = count_set_bits_in_seq(bits, start + 1, end);
         if 0 <= start < bits.len() && bits[start] { rest + 1 } else { rest }
     }
 }
 
-/// Bitmap invariant.
+/// Bitmap invariant specification.
 pub open spec fn bitmap_inv(num_bits: int, usage: int, bytes_len: int) -> bool {
     &&& num_bits > 0
     &&& num_bits == bytes_len * (u8::BITS as int)
@@ -351,6 +349,66 @@ pub proof fn lemma_zero_byte_has_no_bits(bit_idx: u8)
 {
 }
 
+/// Lemma: Helper for proving bit operations on bytes (OR effects).
+pub proof fn lemma_bit_or_effects(old_byte: u8, bit_pos: int, new_byte: u8)
+    requires
+        0 <= bit_pos < 8,
+        new_byte == (old_byte | (1u8 << bit_pos)),
+    ensures
+        (new_byte & (1u8 << bit_pos)) != 0,
+        forall|other_pos: int| #![auto] 0 <= other_pos < 8 && other_pos != bit_pos ==>
+            (new_byte & (1u8 << other_pos)) == (old_byte & (1u8 << other_pos)),
+{
+    let shift: u8 = bit_pos as u8;
+    assert((new_byte & (1u8 << shift)) != 0) by (bit_vector)
+        requires
+            new_byte == (old_byte | (1u8 << shift)),
+            0 <= shift < 8,
+    ;
+    assert forall|other_pos: int| #![auto] 0 <= other_pos < 8 && other_pos != bit_pos implies
+        (new_byte & (1u8 << other_pos)) == (old_byte & (1u8 << other_pos))
+    by {
+        let other_shift: u8 = other_pos as u8;
+        assert((new_byte & (1u8 << other_shift)) == (old_byte & (1u8 << other_shift))) by (bit_vector)
+            requires
+                new_byte == (old_byte | (1u8 << shift)),
+                0 <= shift < 8,
+                0 <= other_shift < 8,
+                shift != other_shift,
+        ;
+    }
+}
+
+/// Lemma: Helper for proving bit clear operations on bytes (AND NOT effects).
+pub proof fn lemma_bit_and_not_effects(old_byte: u8, bit_pos: int, new_byte: u8)
+    requires
+        0 <= bit_pos < 8,
+        new_byte == (old_byte & !(1u8 << bit_pos)),
+    ensures
+        (new_byte & (1u8 << bit_pos)) == 0,
+        forall|other_pos: int| #![auto] 0 <= other_pos < 8 && other_pos != bit_pos ==>
+            (new_byte & (1u8 << other_pos)) == (old_byte & (1u8 << other_pos)),
+{
+    let shift: u8 = bit_pos as u8;
+    assert((new_byte & (1u8 << shift)) == 0) by (bit_vector)
+        requires
+            new_byte == (old_byte & !(1u8 << shift)),
+            0 <= shift < 8,
+    ;
+    assert forall|other_pos: int| #![auto] 0 <= other_pos < 8 && other_pos != bit_pos implies
+        (new_byte & (1u8 << other_pos)) == (old_byte & (1u8 << other_pos))
+    by {
+        let other_shift: u8 = other_pos as u8;
+        assert((new_byte & (1u8 << other_shift)) == (old_byte & (1u8 << other_shift))) by (bit_vector)
+            requires
+                new_byte == (old_byte & !(1u8 << shift)),
+                0 <= shift < 8,
+                0 <= other_shift < 8,
+                shift != other_shift,
+        ;
+    }
+}
+
 //==================================================================================================
 // Lemmas: View Properties
 //==================================================================================================
@@ -363,7 +421,7 @@ pub proof fn lemma_is_empty_means_no_bits_set(view: &BitmapView)
         forall|i: int| 0 <= i < view.number_of_bits() ==> !view.bits[i],
 {
     if exists|i: int| 0 <= i < view.number_of_bits() && view.bits[i] {
-        let i = choose|i: int| 0 <= i < view.number_of_bits() && view.bits[i];
+        let i: int = choose|i: int| 0 <= i < view.number_of_bits() && view.bits[i];
         lemma_bit_set_in_seq_implies_count_geq_1(view.bits, 0, view.number_of_bits(), i);
     }
 }
@@ -376,7 +434,7 @@ pub proof fn lemma_is_full_means_all_bits_set(view: &BitmapView)
         forall|i: int| 0 <= i < view.number_of_bits() ==> view.bits[i],
 {
     if exists|i: int| 0 <= i < view.number_of_bits() && !view.bits[i] {
-        let i = choose|i: int| 0 <= i < view.number_of_bits() && !view.bits[i];
+        let i: int = choose|i: int| 0 <= i < view.number_of_bits() && !view.bits[i];
         lemma_bit_unset_in_seq_implies_count_lt_size(view.bits, 0, view.number_of_bits(), i);
     }
 }
@@ -389,6 +447,18 @@ pub proof fn lemma_is_full_implies_no_free_bit(view: &BitmapView)
         !view.has_free_bit(),
 {
     lemma_is_full_means_all_bits_set(view);
+}
+
+/// Lemma: if view is not full, there exists at least one unset bit.
+pub proof fn lemma_not_full_means_exists_unset_bit(view: &BitmapView)
+    requires
+        !view.is_full(),
+    ensures
+        exists|i: int| 0 <= i < view.number_of_bits() && !view.bits[i],
+{
+    if forall|i: int| 0 <= i < view.number_of_bits() ==> view.bits[i] {
+        lemma_all_bits_set_means_full(view);
+    }
 }
 
 /// Lemma: if a bit is unset, then has_free_bit() is true.
@@ -424,9 +494,9 @@ pub proof fn lemma_byte_index_bounded(bit_idx: int, num_bits: int, bytes_len: in
     ensures
         bit_idx / (u8::BITS as int) < bytes_len,
 {
-    let idx = bit_idx;
-    let len = bytes_len;
-    let bits = u8::BITS as int;
+    let idx: int = bit_idx;
+    let len: int = bytes_len;
+    let bits: int = u8::BITS as int;
     assert(idx / bits < len) by (nonlinear_arith)
         requires idx < len * bits, bits > 0, len > 0
     {}
@@ -446,6 +516,205 @@ pub proof fn lemma_index_reconstruction(bit_idx: int)
     ensures
         (bit_idx / (u8::BITS as int)) * (u8::BITS as int) + bit_idx % (u8::BITS as int) == bit_idx,
 {
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+mod test {
+    use super::*;
+
+    /// Test: BitmapView usage calculation.
+    proof fn test_bitmap_view_usage() {
+        let view: BitmapView = BitmapView {
+            bits: seq![false, true, false, true, true, false, false, false],
+        };
+
+        assert(view.number_of_bits() == 8);
+        // 3 bits set at indices 1, 3, 4.
+        lemma_count_set_bits_in_seq_bounded(view.bits, 0, 8);
+    }
+
+    /// Test: Empty view has no bits set.
+    proof fn test_empty_view() {
+        let view: BitmapView = BitmapView {
+            bits: seq![false, false, false, false, false, false, false, false],
+        };
+
+        lemma_all_zero_in_seq_implies_count_zero(view.bits, 0, 8);
+        assert(view.is_empty());
+        lemma_is_empty_means_no_bits_set(&view);
+    }
+
+    /// Test: Full view has all bits set.
+    proof fn test_full_view() {
+        let view: BitmapView = BitmapView {
+            bits: seq![true, true, true, true, true, true, true, true],
+        };
+
+        lemma_all_set_means_count_equals_size(view.bits, 0, 8);
+        assert(view.is_full());
+        lemma_is_full_means_all_bits_set(&view);
+    }
+
+    /// Test: Full view has no free bit.
+    proof fn test_full_no_free_bit() {
+        let view: BitmapView = BitmapView {
+            bits: seq![true, true, true, true, true, true, true, true],
+        };
+
+        lemma_all_set_means_count_equals_size(view.bits, 0, 8);
+        lemma_is_full_implies_no_free_bit(&view);
+        assert(!view.has_free_bit());
+    }
+
+    /// Test: Setting a bit increases count.
+    proof fn test_set_bit_increases_count() {
+        let old_bits: Seq<bool> = seq![false, false, false, false];
+        let new_bits: Seq<bool> = seq![false, true, false, false];
+
+        lemma_set_bit_increases_count_in_seq(old_bits, new_bits, 0, 4, 1);
+        assert(count_set_bits_in_seq(new_bits, 0, 4) == count_set_bits_in_seq(old_bits, 0, 4) + 1);
+    }
+
+    /// Test: Clearing a bit decreases count.
+    proof fn test_clear_bit_decreases_count() {
+        let old_bits: Seq<bool> = seq![false, true, false, false];
+        let new_bits: Seq<bool> = seq![false, false, false, false];
+
+        lemma_clear_bit_decreases_count_in_seq(old_bits, new_bits, 0, 4, 1);
+        assert(count_set_bits_in_seq(new_bits, 0, 4) == count_set_bits_in_seq(old_bits, 0, 4) - 1);
+    }
+
+    /// Test: bit_at function.
+    proof fn test_bit_at() {
+        let bytes: Seq<u8> = seq![0b00000010u8];  // Bit 1 is set.
+
+        // bit_at extracts the correct bit value.
+        // Bit 0 is not set (0b00000010 & 0b00000001 == 0).
+        assert((0b00000010u8 & (1u8 << 0u8)) == 0) by (bit_vector);
+        assert(bit_at(bytes, 0) == false);
+
+        // Bit 1 is set (0b00000010 & 0b00000010 != 0).
+        assert((0b00000010u8 & (1u8 << 1u8)) != 0) by (bit_vector);
+        assert(bit_at(bytes, 1) == true);
+    }
+
+    /// Test: Byte index bounded.
+    proof fn test_byte_index_bounded() {
+        lemma_byte_index_bounded(7, 8, 1);
+        lemma_byte_index_bounded(15, 16, 2);
+        lemma_byte_index_bounded(63, 64, 8);
+    }
+
+    /// Test: Bit offset bounded.
+    proof fn test_bit_offset_bounded() {
+        lemma_bit_offset_bounded(0);
+        lemma_bit_offset_bounded(7);
+        lemma_bit_offset_bounded(8);
+        lemma_bit_offset_bounded(15);
+    }
+
+    /// Test: Index reconstruction.
+    proof fn test_index_reconstruction() {
+        lemma_index_reconstruction(0);
+        lemma_index_reconstruction(7);
+        lemma_index_reconstruction(8);
+        lemma_index_reconstruction(15);
+        lemma_index_reconstruction(100);
+    }
+
+    /// Test: Unset bit implies has_free_bit.
+    proof fn test_unset_bit_implies_free() {
+        let view: BitmapView = BitmapView {
+            bits: seq![true, true, false, true, true, true, true, true],
+        };
+
+        lemma_unset_bit_implies_has_free_bit(&view, 2);
+        assert(view.has_free_bit());
+    }
+
+    /// Test: All bits set means full.
+    proof fn test_all_bits_set_means_full() {
+        let view: BitmapView = BitmapView {
+            bits: seq![true, true, true, true],
+        };
+
+        lemma_all_bits_set_means_full(&view);
+        assert(view.is_full());
+    }
+
+    /// Test: bits_to_seq creates correct sequence.
+    proof fn test_bits_to_seq() {
+        let bytes: Seq<u8> = seq![0b00000000u8];
+        let bits: Seq<bool> = bits_to_seq(bytes, 8);
+
+        assert(bits.len() == 8);
+        // All bits should be false since byte is 0.
+        assert forall|i: int| 0 <= i < 8 implies !bits[i]
+        by {
+            let idx: u8 = i as u8;
+            assert((0u8 & (1u8 << idx)) == 0) by (bit_vector)
+                requires 0 <= idx < 8;
+        }
+    }
+
+    /// Test: bit_or_effects lemma.
+    proof fn test_bit_or_effects() {
+        let old_byte: u8 = 0b00000000u8;
+        let shift: u8 = 2u8;
+        // new_byte = old_byte | (1 << 2) = 0 | 4 = 4 = 0b00000100.
+        assert((0b00000000u8 | (1u8 << 2u8)) == 0b00000100u8) by (bit_vector);
+        let new_byte: u8 = (old_byte | (1u8 << shift));
+        lemma_bit_or_effects(old_byte, 2, new_byte);
+    }
+
+    /// Test: bit_and_not_effects lemma.
+    proof fn test_bit_and_not_effects() {
+        let old_byte: u8 = 0b11111111u8;
+        let shift: u8 = 2u8;
+        // new_byte = old_byte & !(1 << 2) = 255 & ~4 = 255 & 251 = 251 = 0b11111011.
+        assert((0b11111111u8 & !(1u8 << 2u8)) == 0b11111011u8) by (bit_vector);
+        let new_byte: u8 = (old_byte & !(1u8 << shift));
+        lemma_bit_and_not_effects(old_byte, 2, new_byte);
+    }
+
+    /// Test: not_full_means_exists_unset_bit lemma.
+    proof fn test_not_full_exists_unset() {
+        let view: BitmapView = BitmapView {
+            bits: seq![true, true, false, true],  // One bit unset.
+        };
+
+        // First prove that the view is not full.
+        // Count is 3, size is 4.
+        lemma_bit_unset_in_seq_implies_count_lt_size(view.bits, 0, 4, 2);
+        assert(!view.is_full());
+        lemma_not_full_means_exists_unset_bit(&view);
+    }
+
+    /// Test: Multiple bits set.
+    proof fn test_multiple_bits_set() {
+        let bits: Seq<bool> = seq![true, false, true, false, true, false, true, false];
+
+        // Count should be 4 (bits 0, 2, 4, 6 are set).
+        lemma_count_set_bits_in_seq_bounded(bits, 0, 8);
+        lemma_bit_set_in_seq_implies_count_geq_1(bits, 0, 8, 0);
+    }
+
+    /// Test: Count in subrange.
+    proof fn test_count_subrange() {
+        let bits: Seq<bool> = seq![true, true, true, true, false, false, false, false];
+
+        // Count in [0, 4) should be 4.
+        lemma_all_set_means_count_equals_size(bits, 0, 4);
+        assert(count_set_bits_in_seq(bits, 0, 4) == 4);
+
+        // Count in [4, 8) should be 0.
+        lemma_all_zero_in_seq_implies_count_zero(bits, 4, 8);
+        assert(count_set_bits_in_seq(bits, 4, 8) == 0);
+    }
 }
 
 } // verus!
