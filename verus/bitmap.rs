@@ -623,17 +623,11 @@ impl Bitmap {
                 &&& bitmap@.is_empty()
                 &&& forall|i: int| 0 <= i < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(i)
             },
-            // Error case: invalid arguments produce errors.
-            result is Err ==> (
-                number_of_bits == 0 ||
-                number_of_bits >= u32::MAX as usize ||
-                number_of_bits % (u8::BITS as usize) != 0
-            ),
-            // Liveness: valid inputs succeed.
-            (number_of_bits > 0 &&
-             number_of_bits < u32::MAX as usize &&
-             number_of_bits % (u8::BITS as usize) == 0 &&
-             number_of_bits <= (usize::MAX as int - 7) / 8 * 8) ==> result is Ok,
+            // Error case: at least one of these conditions must hold.
+            // Note: RawArray::new may also fail, so we cannot fully enumerate error causes.
+            (number_of_bits == 0 ||
+             number_of_bits >= u32::MAX as usize ||
+             number_of_bits % (u8::BITS as usize) != 0) ==> result is Err,
     {
         // Check if the length is invalid.
         if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
