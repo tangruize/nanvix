@@ -444,6 +444,9 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_size(),
+            // Strengthened: Size is always positive and page-aligned.
+            result > 0,
+            result % PAGE_SIZE == 0,
     {
         self.num_pages * PAGE_SIZE
     }
@@ -487,6 +490,8 @@ impl KernelStack {
         ensures
             result as int == self.spec_top(),
             spec_is_page_aligned(result as int),
+            // Strengthened: top is strictly greater than base.
+            result > self.spec_base(),
     {
         self.base_addr + self.num_pages * PAGE_SIZE
     }
