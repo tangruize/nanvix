@@ -577,6 +577,8 @@ impl Kpool {
             self@.capacity() == old(self)@.capacity(),
             // Pool ID is preserved.
             self@.id() == old(self)@.id(),
+            // Base address is preserved.
+            self@.base() == old(self)@.base(),
             // Liveness: If there's a free frame, allocation succeeds.
             old(self)@.has_free_frame() ==> result is Ok,
             // Converse: If no free frame, allocation fails.
@@ -663,6 +665,8 @@ impl Kpool {
             // Capacity and pool ID are preserved.
             self@.capacity() == old(self)@.capacity(),
             self@.id() == old(self)@.id(),
+            // Base address is preserved.
+            self@.base() == old(self)@.base(),
             // LIVENESS: alloc_range always succeeds when preconditions are met.
             result is Ok,
             // All frames in range are now allocated.
@@ -731,6 +735,8 @@ impl Kpool {
             // Capacity and pool ID are preserved.
             self@.capacity() == old(self)@.capacity(),
             self@.id() == old(self)@.id(),
+            // Base address is preserved.
+            self@.base() == old(self)@.base(),
             // On success: a valid contiguous range is allocated.
             result is Ok ==> {
                 let start = result->Ok_0 as int;
@@ -1006,6 +1012,8 @@ impl Kpool {
             self.inv(),
             self@.capacity() == old(self)@.capacity(),
             self@.id() == old(self)@.id(),
+            // Base address is preserved.
+            self@.base() == old(self)@.base(),
             // LIVENESS: free always succeeds when preconditions are met.
             result is Ok,
             // On success: the frame is freed.
@@ -1056,6 +1064,8 @@ impl Kpool {
             // Capacity and pool ID are preserved.
             self@.capacity() == old(self)@.capacity(),
             self@.id() == old(self)@.id(),
+            // Base address is preserved.
+            self@.base() == old(self)@.base(),
             // LIVENESS: always succeeds when preconditions met.
             result is Ok,
             // All frames in range are now free.
@@ -1132,6 +1142,8 @@ impl Kpool {
             // Capacity and pool ID are preserved.
             self@.capacity() == old(self)@.capacity(),
             self@.id() == old(self)@.id(),
+            // Base address is preserved.
+            self@.base() == old(self)@.base(),
             // LIVENESS: always succeeds when preconditions met.
             result is Ok,
             // All frames in the sequence are now free.
