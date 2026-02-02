@@ -924,9 +924,7 @@ impl FrameAllocator {
                             assert(self@.is_allocated(idx as int));
                             // Since self@ == old(self)@, we have old(self)@.is_allocated(idx).
                             assert(old(self)@.is_allocated(idx as int));
-                            // idx is in range [start_frame, end_frame).
-                            assert(start_frame as int <= idx as int);
-                            assert(idx as int < end_frame as int);
+                            // idx is in range [start_frame, end_frame), which is [start_frame, start_frame + count).
                             // This establishes the exists|i| postcondition with witness idx.
                         }
                         return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
