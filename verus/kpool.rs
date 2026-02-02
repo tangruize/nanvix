@@ -675,13 +675,10 @@ impl Kpool {
     {
         // Connect Kpool's view to FrameAllocator's view.
         proof {
-            // By inv, self@.allocator_view == self.frame_allocator@.
-            // So self@.is_allocated(i) == self.frame_allocator@.is_allocated(i).
             assert forall|i: int| start_frame as int <= i < start_frame as int + count as int
                 implies !self.frame_allocator@.is_allocated(i)
             by {
                 assert(!self@.is_allocated(i));
-                assert(self@.allocator_view == self.frame_allocator@);
             }
         }
         self.frame_allocator.alloc_range(start_frame, count)
@@ -1071,7 +1068,6 @@ impl Kpool {
                 implies self.frame_allocator@.is_allocated(i)
             by {
                 assert(self@.is_allocated(i));
-                assert(self@.allocator_view == self.frame_allocator@);
             }
         }
         self.frame_allocator.free_range(start_frame, count)
