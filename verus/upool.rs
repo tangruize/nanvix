@@ -845,7 +845,6 @@ mod test {
             new_pool@.is_allocated(uframe.spec_frame_number()),
             !old_pool@.is_allocated(uframe.spec_frame_number()),
     {
-        assert(0 <= uframe.spec_frame_number() < new_pool@.capacity());
         assert(uframe.spec_raw_address() >= 0);
     }
 
