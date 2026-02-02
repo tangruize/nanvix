@@ -386,17 +386,6 @@ impl Slab {
         // By definition: for n > 1 and n % 2 == 0, spec_is_power_of_two(n) == spec_is_power_of_two(n/2).
     }
 
-    /// Lemma: If n > 1 and n % 2 != 0, then n is not a power of two.
-    proof fn lemma_odd_not_power_of_two(n: int)
-        requires
-            n > 1,
-            n % 2 != 0,
-        ensures
-            !Self::spec_is_power_of_two(n),
-    {
-        // By definition: for n > 1 and n % 2 != 0, spec_is_power_of_two(n) == false.
-    }
-
     /// Lemma: 8 is a power of two.
     pub proof fn lemma_power_of_two_8()
         ensures Self::spec_is_power_of_two(8),
@@ -553,25 +542,11 @@ impl Slab {
         // Follows from definition of view().
     }
 
-    /// Lemma: Allocated blocks are always within valid range.
-    /// This follows from the definition of allocated_blocks in view().
-    proof fn lemma_allocated_in_range(&self, i: int)
-        requires
-            self.inv(),
-            self@.is_allocated(i),
-        ensures
-            0 <= i < self@.num_data_blocks,
-    {
-        // By definition of view(), allocated_blocks only contains i where
-        // 0 <= i < num_data_blocks && is_bit_set(num_index_blocks + i).
-        // So if i is allocated, it must be in [0, num_data_blocks).
-    }
-
     /// Lemma: If no block is allocated, the slab is empty.
     /// Bridges `forall|i| !is_allocated(i)` to `is_empty()`.
-    /// 
+    ///
     /// # Proof Strategy
-    /// 
+    ///
     /// We prove that allocated_blocks == empty set by showing no element can be in it.
     /// - For i in [0, num_data_blocks): !is_allocated(i) by precondition.
     /// - For i outside this range: !is_allocated(i) by allocated_blocks_in_range (from inv).
@@ -641,24 +616,6 @@ impl Slab {
     {
         // slab.inv() implies index.inv(), and index.inv() implies the bound.
         self.index.lemma_number_of_bits_bounded();
-    }
-
-    /// Lemma: If bitmap.alloc() returns a bit index, that bit was not set before.
-    /// Combined with lemma_index_blocks_always_set, this means alloc returns a data block.
-    proof fn lemma_alloc_returns_data_block(&self, block: int)
-        requires
-            self.inv(),
-            0 <= block < self.index@.number_of_bits(),
-            !self.index.is_bit_set(block),
-        ensures
-            block >= self.num_index_blocks as int,
-    {
-        // If block < num_index_blocks, then by inv, is_bit_set(block) would be true.
-        // But precondition says !is_bit_set(block), contradiction.
-        if block < self.num_index_blocks as int {
-            assert(self.index.is_bit_set(block)); // from inv
-            assert(!self.index.is_bit_set(block)); // from precondition
-        }
     }
 
     /// Lemma: Invariant implies positive capacity.
@@ -844,245 +801,9 @@ impl Slab {
         assert(self.index@.has_free_bit());
     }
 
-    /// Lemma (Liveness): If bitmap is full, then slab is full.
-    /// This is the converse of lemma_can_allocate_implies_bitmap_has_free_bit.
-    /// It connects bitmap fullness to slab fullness.
-    proof fn lemma_bitmap_full_implies_slab_full(&self)
-        requires
-            self.inv(),
-            self.index@.is_full(),
-        ensures
-            self@.is_full(),
-    {
-        // bitmap.is_full() means: forall|i| 0 <= i < number_of_bits ==> is_bit_set(i).
-        // In particular, for all data block indices j (0 <= j < num_data_blocks):
-        //   is_bit_set(num_index_blocks + j) == true.
-        // By view definition, is_allocated(j) <==> is_bit_set(num_index_blocks + j).
-        // So: forall|j| 0 <= j < num_data_blocks ==> is_allocated(j).
-        // This means allocated_blocks = {0, 1, ..., num_data_blocks - 1}.
-        // Therefore: |allocated_blocks| == num_data_blocks == capacity.
-        // By definition, is_full() <==> num_allocated() == num_data_blocks.
-
-        let num_data: int = self.num_data_blocks as int;
-        let num_idx: int = self.num_index_blocks as int;
-
-        // Use lemma to establish that is_full() implies all bits are set.
-        self.index.lemma_is_full_means_all_bits_set();
-
-        // Prove all data block indices are allocated.
-        assert forall|j: int| 0 <= j < num_data implies self@.is_allocated(j) by {
-            let bitmap_idx = num_idx + j;
-            assert(0 <= bitmap_idx < self.index@.number_of_bits());
-            assert(self.index.is_bit_set(bitmap_idx));  // From bitmap.is_full() via lemma
-            // By view definition, this means is_allocated(j).
-        }
-
-        // Now prove allocated_blocks == set_int_range(0, num_data).
-        let full_range: Set<int> = set_int_range(0, num_data);
-        lemma_int_range(0, num_data);
-        assert(full_range.finite());
-        assert(full_range.len() == num_data);
-
-        // Prove: forall|j| full_range.contains(j) ==> allocated_blocks.contains(j).
-        assert forall|j: int| #![auto] full_range.contains(j) implies self@.allocated_blocks.contains(j) by {
-            assert(0 <= j < num_data);
-            assert(self@.is_allocated(j));
-        }
-
-        // Also: forall|j| allocated_blocks.contains(j) ==> full_range.contains(j).
-        // This follows from allocated_blocks_in_range (proven via inv).
-        assert forall|j: int| #![auto] self@.allocated_blocks.contains(j) implies full_range.contains(j) by {
-            assert(self@.allocated_blocks_in_range());
-            assert(0 <= j < num_data);
-        }
-
-        // Therefore allocated_blocks == full_range (same membership).
-        assert(self@.allocated_blocks =~= full_range);
-
-        // Since allocated_blocks == full_range, |allocated_blocks| == num_data.
-        self.lemma_allocated_blocks_finite();
-        assert(self@.allocated_blocks.len() == num_data);
-
-        // is_full() <==> num_allocated() == num_data_blocks.
-        // num_allocated() == |allocated_blocks| == num_data == num_data_blocks.
-        assert(self@.num_allocated() == self@.num_data_blocks);
-        assert(self@.is_full());
-    }
-
-    /// Lemma (Liveness): Deallocation from full slab enables allocation.
-    /// If the slab was full, after deallocating one block, allocation becomes possible.
-    proof fn lemma_dealloc_from_full_enables_alloc(&self, new_self: &Self, block_idx: int)
-        requires
-            self.inv(),
-            new_self.inv(),
-            self@.used() == self@.capacity(),  // Slab was full
-            0 <= block_idx < self@.num_data_blocks,
-            self@.is_allocated(block_idx),
-            !new_self@.is_allocated(block_idx),
-            // Other blocks unchanged
-            forall|i: int| (0 <= i < self@.num_data_blocks && i != block_idx) ==>
-                (self@.is_allocated(i) <==> new_self@.is_allocated(i)),
-            new_self@.num_data_blocks == self@.num_data_blocks,
-        ensures
-            new_self@.can_allocate(),
-            new_self@.free() >= 1,
-    {
-        // Prove that new_self's allocated_blocks is a subset of self's allocated_blocks minus block_idx.
-        // Step 1: self@.allocated_blocks contains block_idx
-        assert(self@.allocated_blocks.contains(block_idx));
-
-        // Step 2: new_self@.allocated_blocks does NOT contain block_idx
-        assert(!new_self@.allocated_blocks.contains(block_idx));
-
-        // Step 3: new_self@.allocated_blocks is a subset of self@.allocated_blocks.remove(block_idx)
-        // Because: for any i in new_self's allocated_blocks:
-        //   - i != block_idx (since block_idx is not in new_self)
-        //   - if i is allocated in new_self, it was allocated in self (by unchanged property)
-        //   - so i is in self@.allocated_blocks.remove(block_idx)
-        let old_set: Set<int> = self@.allocated_blocks;
-        let new_set: Set<int> = new_self@.allocated_blocks;
-        let removed_set: Set<int> = old_set.remove(block_idx);
-
-        // Prove old_set is finite: it's a subset of set_int_range(0, num_data_blocks)
-        let range_set: Set<int> = set_int_range(0, self@.num_data_blocks);
-
-        // Prove old_set is a subset of range_set
-        assert forall|i: int| old_set.contains(i) implies range_set.contains(i) by {
-            // If i is in old_set, then i is allocated, so 0 <= i < num_data_blocks
-            // by the definition of allocated_blocks in view()
-        }
-        assert(old_set.subset_of(range_set));
-
-        // range_set is finite
-        lemma_int_range(0, self@.num_data_blocks);
-        assert(range_set.finite());
-
-        // old_set is a subset of finite range_set, so old_set is finite
-        lemma_set_subset_finite(range_set, old_set);
-        assert(old_set.finite());
-
-        // removed_set is finite (removing from finite set stays finite)
-        assert(removed_set.finite());
-
-        // Similarly prove new_set is finite
-        let new_range_set: Set<int> = set_int_range(0, new_self@.num_data_blocks);
-        assert forall|i: int| new_set.contains(i) implies new_range_set.contains(i) by {
-            // If i is in new_set, then i is allocated in new_self, so 0 <= i < num_data_blocks
-        }
-        assert(new_set.subset_of(new_range_set));
-        lemma_int_range(0, new_self@.num_data_blocks);
-        assert(new_range_set.finite());
-        lemma_set_subset_finite(new_range_set, new_set);
-        assert(new_set.finite());
-
-        // Assert that new_set is a subset of removed_set
-        assert forall|i: int| new_set.contains(i) implies removed_set.contains(i) by {
-            if new_set.contains(i) {
-                // i is allocated in new_self
-                assert(new_self@.is_allocated(i));
-                // i != block_idx since block_idx is not allocated in new_self
-                assert(i != block_idx);
-                // i must be in range since it's allocated
-                assert(0 <= i < new_self@.num_data_blocks);
-                assert(0 <= i < self@.num_data_blocks);
-                // By the unchanged property, i was also allocated in self
-                assert(self@.is_allocated(i));
-                assert(old_set.contains(i));
-                // Since i != block_idx and i is in old_set, i is in removed_set
-                assert(removed_set.contains(i));
-            }
-        }
-        assert(new_set.subset_of(removed_set));
-
-        // Use vstd lemma: removing an element decreases length by 1 if element was present
-        axiom_set_remove_len(old_set, block_idx);
-        assert(removed_set.len() == old_set.len() - 1);
-
-        // new_set is a subset of removed_set, so its length is at most removed_set's length
-        lemma_len_subset(new_set, removed_set);
-        assert(new_set.len() <= removed_set.len());
-
-        // Therefore: new_set.len() <= old_set.len() - 1
-        // old_set.len() == self@.used() == self@.capacity() == self@.num_data_blocks
-        // So: new_set.len() <= capacity - 1
-        // Therefore: new_self@.used() < new_self@.capacity()
-        // Therefore: new_self@.free() >= 1 and can_allocate() is true
-        assert(new_self@.used() <= self@.capacity() - 1);
-        assert(new_self@.free() >= 1);
-        assert(new_self@.can_allocate());
-    }
-
-    //==============================================================================================
-    // Memory Initialization Lemmas
-    //==============================================================================================
-
-    /// Lemma: A newly created slab is freshly initialized (no data blocks allocated).
-    proof fn lemma_new_slab_freshly_initialized(slab: &Slab)
-        requires
-            slab.inv(),
-            // All data blocks are unset in the bitmap (from new()).
-            forall|i: int| slab.num_index_blocks as int <= i < (slab.num_index_blocks + slab.num_data_blocks) as int
-                ==> !slab.index.is_bit_set(i),
-        ensures
-            slab@.is_freshly_initialized(),
-    {
-        // Proof: All data blocks unset means no block in allocated_blocks.
-        // allocated_blocks = { i | is_bit_set(num_index_blocks + i) } = empty set.
-        assert(slab@.allocated_blocks =~= Set::<int>::empty()) by {
-            assert forall|i: int| !slab@.allocated_blocks.contains(i) by {
-                if 0 <= i < slab@.num_data_blocks {
-                    let bitmap_idx = slab.num_index_blocks as int + i;
-                    assert(!slab.index.is_bit_set(bitmap_idx));
-                }
-            }
-        }
-    }
-
-    /// Lemma: A freshly initialized slab has maximum free capacity.
-    proof fn lemma_fresh_slab_max_free(slab: &Slab)
-        requires
-            slab.inv(),
-            slab@.is_freshly_initialized(),
-        ensures
-            slab@.free() == slab@.capacity(),
-            slab@.used() == 0,
-    {
-        // If allocated_blocks is empty, used() = 0, free() = capacity - 0 = capacity.
-    }
-
     //==============================================================================================
     // High-Level Memory Management Lemmas
     //==============================================================================================
-
-    /// Lemma (Issue 2): Metadata and Data regions are disjoint.
-    /// This proves that writing to the index bitmap cannot corrupt data blocks.
-    proof fn lemma_metadata_data_disjoint(&self, base_addr: int, index_bytes: int)
-        requires
-            self.inv(),
-            base_addr >= 0,
-            // data_addr is computed as base_addr + num_index_blocks * block_size
-            self.data_addr as int == base_addr + self.num_index_blocks as int * self.block_size as int,
-            // index_bytes is the number of bytes used by the bitmap
-            index_bytes >= 0,
-            // num_index_blocks * block_size >= index_bytes (ceiling division ensures this)
-            self.num_index_blocks as int * self.block_size as int >= index_bytes,
-        ensures
-            self.metadata_data_disjoint(base_addr, index_bytes),
-    {
-        // The index uses index_bytes bytes starting at base_addr.
-        // num_index_blocks = ceil(index_bytes / block_size), so:
-        // num_index_blocks * block_size >= index_bytes.
-        // Therefore: data_addr = base_addr + num_index_blocks * block_size
-        //                     >= base_addr + index_bytes
-        //                      = index_region_end.
-        let index_region_end = base_addr + index_bytes;
-        let data_region_start = self.data_addr as int;
-
-        // From precondition: data_addr = base_addr + num_index_blocks * block_size.
-        // From precondition: num_index_blocks * block_size >= index_bytes.
-        // Therefore: data_addr >= base_addr + index_bytes = index_region_end.
-        assert(data_region_start >= index_region_end);
-    }
 
     /// Lemma: Block memory regions are disjoint for different block indices.
     /// This proves the no_memory_aliasing property.
@@ -1179,80 +900,6 @@ impl Slab {
         // addr_to_block_idx(addr) = (addr - data_addr) / bs = (i * bs) / bs = i
         assert(view.addr_to_block_idx(addr) == (addr - view.data_addr) / bs);
         assert(view.addr_to_block_idx(addr) == i);
-    }
-
-    /// Lemma: block_addr(addr_to_block_idx(a)) == a for valid addresses.
-    /// This proves the inverse relationship for valid addresses.
-    proof fn lemma_block_addr_inverse(view: &SlabView, addr: int)
-        requires
-            view.block_size > 0,
-            view.is_valid_addr(addr),
-        ensures
-            view.block_addr_inverse(addr),
-    {
-        // Proof:
-        // is_valid_addr(addr) implies (addr - data_addr) % block_size == 0.
-        // Let offset = addr - data_addr.
-        // Since offset % block_size == 0, offset = k * block_size for some k.
-        // addr_to_block_idx(addr) = offset / block_size = k.
-        // block_addr(k) = data_addr + k * block_size = data_addr + offset = addr.
-        let bs = view.block_size;
-        let data_addr = view.data_addr;
-        let offset = addr - data_addr;
-
-        // From is_valid_addr: offset >= 0 and offset % bs == 0.
-        assert(offset >= 0);
-        assert(offset % bs == 0);
-
-        // When offset % bs == 0, we have: (offset / bs) * bs == offset.
-        assert((offset / bs) * bs == offset) by(nonlinear_arith)
-            requires bs > 0, offset >= 0, offset % bs == 0;
-
-        // addr_to_block_idx = offset / bs.
-        let k = offset / bs;
-        assert(view.addr_to_block_idx(addr) == k);
-
-        // block_addr(k) = data_addr + k * bs = data_addr + offset = addr.
-        assert(view.block_addr(k) == data_addr + k * bs);
-        assert(k * bs == offset);
-        assert(data_addr + offset == addr);
-    }
-
-    /// Lemma: All allocated blocks are within valid range.
-    proof fn lemma_allocated_blocks_in_range(&self)
-        requires
-            self.inv(),
-        ensures
-            self@.allocated_blocks_in_range(),
-    {
-        // From the view definition, allocated_blocks only contains indices i where:
-        // 0 <= i < num_data_blocks && is_bit_set(num_index_blocks + i).
-        // Therefore, any allocated block index is in [0, num_data_blocks).
-    }
-
-    /// Lemma: No memory aliasing - all allocated blocks have disjoint regions.
-    proof fn lemma_no_memory_aliasing(&self)
-        requires
-            self.inv(),
-        ensures
-            self@.no_memory_aliasing(),
-    {
-        // For any two allocated blocks i, j with i != j:
-        // - 0 <= i < num_data_blocks (from lemma_allocated_blocks_in_range)
-        // - 0 <= j < num_data_blocks (from lemma_allocated_blocks_in_range)
-        // - blocks_are_disjoint(i, j) (from lemma_blocks_disjoint)
-        // Therefore, no_memory_aliasing holds.
-        assert forall|i: int, j: int|
-            (self@.is_allocated(i) && self@.is_allocated(j) && i != j)
-            implies self@.blocks_are_disjoint(i, j)
-        by {
-            if self@.is_allocated(i) && self@.is_allocated(j) && i != j {
-                // From view definition, allocated indices are in valid range.
-                assert(0 <= i < self@.num_data_blocks);
-                assert(0 <= j < self@.num_data_blocks);
-                Self::lemma_blocks_disjoint(&self@, i, j);
-            }
-        }
     }
 
     //==============================================================================================
