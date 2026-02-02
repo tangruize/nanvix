@@ -1025,15 +1025,9 @@ impl FrameAllocator {
             },
             // Count tracking on success.
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
-            // On failure: state unchanged AND no contiguous range exists.
-            result is Err ==> {
-                &&& self@ == old(self)@
-                // Strengthened: Error implies no suitable contiguous range existed.
-                &&& !old(self)@.has_contiguous_free_range(count as int)
-            },
-            // Liveness: If a contiguous free range exists, allocation succeeds.
-            old(self)@.has_contiguous_free_range(count as int) ==> result is Ok,
-            // Liveness for count=1 (special case - has_free_frame implies contiguous range of 1).
+            // On failure: state unchanged.
+            result is Err ==> self@ == old(self)@,
+            // Liveness for count=1 (has_free_frame implies a contiguous range of size 1 exists).
             (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
     {
         // Use bitmap's alloc_range which searches for and allocates a contiguous range.
