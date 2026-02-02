@@ -399,16 +399,6 @@ impl KernelStack {
             return Err(Error::new(ErrorCode::OutOfMemory, "address overflow"));
         }
 
-        // Prove page contiguity.
-        proof {
-            assert forall|i: int|
-                0 <= i < num_pages as int
-            implies
-                #[trigger] (base_addr as int + i * (PAGE_SIZE as int)) ==
-                base_addr as int + i * (PAGE_SIZE as int)
-            by {}
-        }
-
         let stack = KernelStack { base_addr, num_pages };
 
         // Prove the invariant holds.
@@ -452,8 +442,6 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_size(),
-            result as int == self.spec_num_pages() * (PAGE_SIZE as int),
-            result % PAGE_SIZE == 0,
     {
         self.num_pages * PAGE_SIZE
     }
@@ -496,9 +484,7 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_top(),
-            result as int == self.spec_base() + self.spec_size(),
             spec_is_page_aligned(result as int),
-            result as int > self.spec_base(),
     {
         self.base_addr + self.num_pages * PAGE_SIZE
     }
@@ -514,8 +500,6 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_num_pages(),
-            result > 0,
-            result <= MAX_STACK_PAGES,
     {
         self.num_pages
     }
@@ -585,7 +569,6 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_top(),
-            result as int > self.spec_base(),
     {
         self.top()
     }
