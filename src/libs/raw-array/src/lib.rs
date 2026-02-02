@@ -208,7 +208,8 @@ impl<T> RawArrayStorage<T> {
 /// A type that represent a fixed-size array.
 ///
 #[derive(Debug)]
-#[verus_verify(external)]
+#[verus_verify]
+#[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(T))]
 pub struct RawArray<T> {
     /// The backing storage of the raw array.
     storage: RawArrayStorage<T>,

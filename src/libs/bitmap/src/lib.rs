@@ -38,7 +38,7 @@ include!("lib.verus.rs");
 /// A bitmap.
 ///
 #[derive(Debug)]
-#[verus_verify(external)]
+#[verus_verify]
 pub struct Bitmap {
     /// Capacity of the bitmap (in bits).
     number_of_bits: usize,
@@ -52,7 +52,7 @@ pub struct Bitmap {
 // Implementations
 //==================================================================================================
 
-#[verus_verify(external)]
+#[verus_verify]
 impl Bitmap {
     ///
     /// # Description
@@ -67,6 +67,7 @@ impl Bitmap {
     ///
     /// Upon success, a new bitmap is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     pub fn new(number_of_bits: usize) -> Result<Self, Error> {
         // Check if the length is invalid.
         if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
@@ -75,18 +76,13 @@ impl Bitmap {
         }
 
         // Check if the length is not a multiple of the number of the bitmap word.
-        if !number_of_bits.is_multiple_of(u8::BITS as usize) {
+        if number_of_bits % (u8::BITS as usize) != 0 {
             let reason: &str = "length must be a multiple of 8";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        // Allocate the bitmap.
-        let mut array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
-
-        // Zero out the bitmap.
-        for byte in array.iter_mut() {
-            *byte = 0;
-        }
+        // Allocate the bitmap (already zero-initialized by RawArray::new).
+        let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
 
         Ok(Self {
             number_of_bits,
@@ -109,13 +105,10 @@ impl Bitmap {
     ///
     /// Upon success, a new bitmap is returned. Upon failure, an error is returned instead.
     ///
-    pub fn from_raw_array(mut array: RawArray<u8>) -> Self {
+    #[verus_verify(external_body)]
+    pub fn from_raw_array(array: RawArray<u8>) -> Self {
         // NOTE: no need to test if the length of the raw array is valid, as it is by construction.
-
-        // Zero out the bitmap.
-        for byte in array.iter_mut() {
-            *byte = 0;
-        }
+        // NOTE: the bitmap is already zeroed out by RawArray::new() or RawArray::from_raw_parts().
 
         Self {
             number_of_bits: array.len() * u8::BITS as usize,
@@ -133,6 +126,13 @@ impl Bitmap {
     ///
     /// The number of bits in the bitmap.
     ///
+    #[verus_spec(result =>
+        requires self.inv(),
+        ensures
+            result as int == self@.number_of_bits(),
+            result > 0,
+            result < u32::MAX as usize,
+    )]
     pub fn number_of_bits(&self) -> usize {
         self.number_of_bits
     }
@@ -147,6 +147,7 @@ impl Bitmap {
     /// Upon success, the index of the allocated bit is returned. Upon failure, an error is returned
     /// instead.
     ///
+    #[verus_verify(external_body)]
     pub fn alloc(&mut self) -> Result<usize, Error> {
         self.alloc_range(1)
     }
@@ -165,6 +166,7 @@ impl Bitmap {
     /// Upon success, the index of the allocated range is returned. Upon failure, an error is returned
     /// instead.
     ///
+    #[verus_verify(external_body)]
     pub fn alloc_range(&mut self, size: usize) -> Result<usize, Error> {
         // Check if the size is valid.
         if size == 0 || size > self.number_of_bits {
@@ -240,6 +242,7 @@ impl Bitmap {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     pub fn set(&mut self, index: usize) -> Result<(), Error> {
         // Check if the bit is already set.
         if self.test(index)? {
@@ -265,6 +268,7 @@ impl Bitmap {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     pub fn clear(&mut self, index: usize) -> Result<(), Error> {
         // Check if the bit is already cleared.
         if !self.test(index)? {
@@ -291,6 +295,7 @@ impl Bitmap {
     /// Upon success, `Ok(true)` is returned if the bit is set, `Ok(false)` is returned otherwise.
     /// Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     pub fn test(&self, index: usize) -> Result<bool, Error> {
         let (word, bit): (usize, usize) = self.index(index)?;
         Ok((self.bits[word] & (1 << bit)) != 0)
@@ -310,6 +315,21 @@ impl Bitmap {
     /// Upon success, the `(word, bit)` pair of the index is returned. Upon
     /// failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires self.inv(),
+        ensures
+            result.is_ok() ==> {
+                let word = result.unwrap().0;
+                let bit = result.unwrap().1;
+                &&& word < self.bits@.len()
+                &&& bit < u8::BITS as usize
+                &&& word == index / (u8::BITS as usize)
+                &&& bit == index % (u8::BITS as usize)
+                &&& index < self.bits@.len() * (u8::BITS as usize)
+            },
+            result.is_err() ==> (index as int) >= self@.number_of_bits(),
+            (index as int) < self@.number_of_bits() ==> result.is_ok(),
+    )]
     fn index(&self, index: usize) -> Result<(usize, usize), Error> {
         // Check if the index is out of bounds.
         if index >= self.bits.len() * u8::BITS as usize {
@@ -333,7 +353,27 @@ impl Bitmap {
     ///
     /// The `(word, bit)` pair of the index.
     ///
+    #[verus_spec(result =>
+        requires
+            self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
+            self.number_of_bits as int == self@.number_of_bits(),
+            index < self.number_of_bits,
+            self.bits@.len() > 0,
+        ensures
+            result.0 == index / (u8::BITS as usize),
+            result.1 == index % (u8::BITS as usize),
+            result.0 < self.bits@.len(),
+            result.1 < u8::BITS as usize,
+    )]
     fn index_unchecked(&self, index: usize) -> (usize, usize) {
+        proof! {
+            let idx: int = index as int;
+            let len: int = self.bits@.len() as int;
+            let bits: int = u8::BITS as int;
+            assert(idx / bits < len) by (nonlinear_arith)
+                requires idx < len * bits, bits > 0, len > 0
+            {}
+        }
         let word: usize = index / u8::BITS as usize;
         let bit: usize = index % u8::BITS as usize;
         (word, bit)

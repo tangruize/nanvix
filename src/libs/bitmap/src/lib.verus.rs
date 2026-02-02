@@ -11,6 +11,64 @@ use vstd::prelude::*;
 verus! {
 
 //==================================================================================================
+// External Type Specifications
+//==================================================================================================
+
+// Error type from sys crate.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExError(Error);
+
+// ErrorCode enum from sys crate.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExErrorCode(ErrorCode);
+
+//==================================================================================================
+// Bitmap View Implementation
+//==================================================================================================
+
+/// Implement View for Bitmap to map it to BitmapView.
+impl View for Bitmap {
+    type V = BitmapView;
+
+    closed spec fn view(&self) -> BitmapView {
+        BitmapView {
+            bits: bits_to_seq(self.bits@, self.number_of_bits as int),
+        }
+    }
+}
+
+impl Bitmap {
+    /// Invariant: the bitmap's number_of_bits must equal bits.len() * 8
+    /// and must be less than u32::MAX.
+    pub closed spec fn inv(&self) -> bool {
+        &&& self@.number_of_bits() > 0
+        &&& self@.number_of_bits() == self.bits@.len() * (u8::BITS as int)
+        &&& self@.number_of_bits() < u32::MAX as int
+        &&& self@.usage() <= self@.number_of_bits()
+        &&& self.number_of_bits as int == self@.number_of_bits()
+        &&& self.usage as int == self@.usage()
+    }
+
+    /// Spec function: check if a bit at the given bit index is set.
+    pub open spec fn is_bit_set_spec(&self, bit_index: int) -> bool {
+        &&& 0 <= bit_index < self@.number_of_bits()
+        &&& self@.bits[bit_index]
+    }
+
+    /// Spec function: check if all bits in range [start, end) are set.
+    pub open spec fn all_bits_set_in_range_spec(&self, start: int, end: int) -> bool {
+        forall|i: int| start <= i < end ==> self.is_bit_set_spec(i)
+    }
+
+    /// Spec function: check if all bits in range [start, end) are not set.
+    pub open spec fn all_bits_unset_in_range_spec(&self, start: int, end: int) -> bool {
+        forall|i: int| start <= i < end ==> !self.is_bit_set_spec(i)
+    }
+}
+
+//==================================================================================================
 // BitmapView - The Abstract Specification Model
 //==================================================================================================
 

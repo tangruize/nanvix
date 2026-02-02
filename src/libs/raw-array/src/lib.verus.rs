@@ -11,6 +11,48 @@ use vstd::prelude::*;
 verus! {
 
 //==================================================================================================
+// External Type Specifications
+//==================================================================================================
+
+// RawArrayStorage is an internal implementation detail.
+#[verifier::reject_recursive_types(T)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
+struct ExRawArrayStorage<T>(RawArrayStorage<T>);
+
+//==================================================================================================
+// RawArray View Implementation
+//==================================================================================================
+
+/// Implement View for RawArray to map it to Seq<T>.
+impl<T> View for RawArray<T> {
+    type V = Seq<T>;
+
+    /// The abstract view of the array as a sequence.
+    /// This is uninterpreted because the actual mapping from raw memory to Seq
+    /// requires trusting the memory subsystem.
+    uninterp spec fn view(&self) -> Seq<T>;
+}
+
+impl<T> RawArray<T> {
+    /// Returns the spec-level length of the array.
+    pub open spec fn spec_len(&self) -> nat {
+        self@.len()
+    }
+
+    /// Returns true if index i is within bounds.
+    pub open spec fn in_bounds(&self, i: int) -> bool {
+        0 <= i < self.spec_len() as int
+    }
+
+    /// Invariant for RawArray: length is positive and bounded.
+    pub open spec fn inv(&self) -> bool {
+        &&& self@.len() > 0
+        &&& self@.len() < i32::MAX as nat
+    }
+}
+
+//==================================================================================================
 // RawArrayView - The Abstract Specification Model
 //==================================================================================================
 
