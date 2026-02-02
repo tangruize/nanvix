@@ -763,14 +763,12 @@ impl Kpool {
                         implies !old(self)@.is_allocated(i)
                     by {
                         assert(!old(self).frame_allocator@.is_allocated(i));
-                        assert(old(self)@.allocator_view == old(self).frame_allocator@);
                     }
                     
                     assert forall|i: int| start as int <= i < start as int + count as int
                         implies self@.is_allocated(i)
                     by {
                         assert(self.frame_allocator@.is_allocated(i));
-                        assert(self@.allocator_view == self.frame_allocator@);
                     }
                     
                     assert forall|i: int|
@@ -778,8 +776,6 @@ impl Kpool {
                         implies self@.is_allocated(i) == old(self)@.is_allocated(i)
                     by {
                         assert(self.frame_allocator@.is_allocated(i) == old(self).frame_allocator@.is_allocated(i));
-                        assert(self@.allocator_view == self.frame_allocator@);
-                        assert(old(self)@.allocator_view == old(self).frame_allocator@);
                     }
                 }
                 Ok(start)
