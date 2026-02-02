@@ -521,9 +521,10 @@ impl<T> core::ops::Deref for RawArray<T> {
 // Drop Implementation
 //==================================================================================================
 
+// Note: Drop implementation is marked external because Verus doesn't support opens_invariants
+// on Drop traits. The implementation matches the original source exactly.
+#[verifier::external]
 impl<T> Drop for RawArray<T> {
-    #[verifier::external_body]
-    #[verifier::opens_invariants_none]
     fn drop(&mut self) {
         match &self.storage {
             RawArrayStorage::Managed { ptr, len } => {
