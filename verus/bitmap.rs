@@ -559,7 +559,6 @@ impl Bitmap {
     }
 
     /// Lemma: Connects closed `is_bit_set` to open `BitmapView.is_bit_set`.
-    /// This allows frame and other modules to reason about is_bit_set through the view.
     pub proof fn lemma_is_bit_set_equals_view(&self, i: int)
         requires
             self.inv(),
@@ -567,9 +566,7 @@ impl Bitmap {
         ensures
             self.is_bit_set(i) == self@.is_bit_set(i),
     {
-        // Both are defined in terms of self@.bits[i]
-        assert(self.is_bit_set(i) == self@.bits[i]);
-        assert(self@.is_bit_set(i) == self@.bits[i]);
+        // Both reduce to self@.bits[i].
     }
 
     /// Lemma: If bits sequences are equal, then is_bit_set returns the same result.
