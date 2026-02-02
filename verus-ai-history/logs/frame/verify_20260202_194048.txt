@@ -1,0 +1,31 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:40:48 CST 2026
+Module: frame
+Command: verus --crate-type lib lib.rs --verify-module frame
+
+note: verifying module frame
+
+note: verifying module frame::test
+
+error: postcondition not satisfied
+   --> frame.rs:879:13
+    |
+879 | /             (forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+880 | |                 !old(self)@.is_allocated(i)) ==> result is Ok,
+    | |_____________________________________________________________^ failed this postcondition
+...
+925 |                           return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
+    |                           ---------------------------------------------------------------------------- at this exit
+
+verification results:: 29 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 29
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for frame (verified:29, errors:1)
