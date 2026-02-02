@@ -250,6 +250,11 @@ impl UpoolView {
         self.base_addr
     }
 
+    /// Returns the pool identifier (uses base address as ID).
+    pub open spec fn id(&self) -> int {
+        self.base_addr
+    }
+
     /// Computes the physical address of a frame given its index.
     pub open spec fn frame_addr(&self, frame_idx: int) -> int {
         self.base_addr + frame_idx * FRAME_SIZE as int
