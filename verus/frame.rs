@@ -917,9 +917,10 @@ impl FrameAllocator {
                             self.lemma_allocated_iff_bit_set(idx as int);
                             // idx is in range and is_allocated(idx) is true.
                             assert(self@.is_allocated(idx as int));
-                            // Therefore the antecedent of the postcondition is false.
-                            assert(!(forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
-                                !old(self)@.is_allocated(i)));
+                            // idx is in the range [start_frame, end_frame).
+                            assert(start_frame as int <= idx as int < start_frame as int + count as int);
+                            // So there EXISTS an i in range with is_allocated(i).
+                            // This is a counterexample to the forall, making the antecedent false.
                         }
                         return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
                     }
