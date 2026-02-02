@@ -1,0 +1,35 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 20:21:51 CST 2026
+Module: kpool
+Command: verus --crate-type lib lib.rs --verify-module kpool
+
+note: verifying module kpool
+
+note: verifying module kpool::test
+
+error: postcondition not satisfied
+   --> kpool.rs:755:13
+    |
+755 |               result is Err ==> self.spec_num_allocated() == old(self).spec_num_allocated(),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+759 | /         match self.frame_allocator.alloc_contiguous_range(count) {
+760 | |             Ok(start) => {
+761 | |                 proof {
+...   |
+784 | |             Err(e) => Err(e),
+785 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 32 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 32
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kpool (verified:32, errors:1)
