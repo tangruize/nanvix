@@ -403,16 +403,6 @@ impl Bitmap {
     // Lemmas: View Synchronization
     //==================================================================================================
 
-    /// Lemma: usage count equals the number of set bits
-    pub proof fn lemma_usage_equals_count_set_bits(&self)
-        requires
-            self.inv(),
-        ensures
-            self@.usage() == Self::count_set_bits_in_seq(self@.bits, 0, self@.number_of_bits()),
-    {
-        // This follows directly from the definition of usage in BitmapView
-    }
-
     /// Lemma: if bitmap is empty, no bits are set
     pub proof fn lemma_is_empty_means_no_bits_set(&self)
         requires
