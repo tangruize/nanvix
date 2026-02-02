@@ -1061,7 +1061,6 @@ impl Kheap {
             assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_512_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_4096_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_128_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_128_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_256_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_512_bytes@));
             assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_4096_bytes@));
