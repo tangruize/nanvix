@@ -100,6 +100,39 @@ Update the module until verification passes with all issues addressed.
 """.strip()
 
 
+PROVER_FIX_FRESH_PROMPT = """
+You are starting a NEW verification session for {module_name}.
+
+== CONTEXT ==
+Original source: {source_path}
+Verified code: verus/{module_name}.rs
+Dependencies already verified: {dependencies}
+
+This is an OS kernel memory management component. The existing verified code needs
+improvements based on reviewer feedback.
+
+== REVIEWER ISSUES ==
+Review file(s): {review_file}
+
+Please read the review file(s) carefully and address each issue:
+1. Critical/High issues MUST be fixed
+2. For Medium/Low issues, fix if valid or explain why rejection is justified
+3. If the reviewer asks for missing functions, add them with proper verification
+
+== REQUIREMENTS ==
+1. Maintain or improve existing View types and invariants
+2. All functions must have requires/ensures contracts
+3. NO assume or unjustified external_body for core module functions
+4. Verify semantic equivalence with original source
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh {module_name}
+
+Iterate until verification passes (0 errors) and all reviewer issues are addressed.
+Document significant changes in module comments.
+""".strip()
+
+
 PROVER_RETRY_PROMPT = """
 Verus verification failed. Please fix the errors and try again.
 

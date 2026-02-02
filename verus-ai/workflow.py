@@ -27,7 +27,6 @@ from config import (
     INITIAL_PROVER_RETRIES,
     LOGS_DIR,
     MAX_INNER_ITERATIONS,
-    MAX_OUTER_ITERATIONS,
     ModuleConfig,
     PROJECT_ROOT,
     PROVER_MODEL,
@@ -38,6 +37,7 @@ from config import (
     get_existing_modules,
     PROVER_TIMEOUT,
 )
+import config  # For dynamic MAX_OUTER_ITERATIONS access.
 from copilot import CopilotSession, run_copilot, run_prover, run_reviewer, save_session
 from guardrails import (
     CheatingReport,
@@ -48,6 +48,7 @@ from guardrails import (
 from prompts import (
     CHEATING_JUSTIFICATION_PROMPT,
     PROVER_FIX_PROMPT,
+    PROVER_FIX_FRESH_PROMPT,
     PROVER_PROMPT,
     PROVER_RETRY_PROMPT,
     REVIEW_FOLLOWUP_PROMPT,
@@ -184,6 +185,21 @@ def load_workflow_state(module_name: str) -> Optional[WorkflowState]:
     with open(state_file, "r") as f:
         data = json.load(f)
 
+    # Handle migration from old format.
+    if "current_iteration" in data:
+        # Old format: migrate to new format.
+        old_iteration = data.pop("current_iteration", 1)
+        data["outer_iteration"] = old_iteration
+        data["inner_iteration"] = 0
+        data["current_reviewer_idx"] = 0
+        # Convert old final_grade to final_grades dict.
+        if "final_grade" in data:
+            old_grade = data.pop("final_grade")
+            if old_grade:
+                data["final_grades"] = {"claude": old_grade, "gpt": old_grade, "gemini": old_grade}
+        # Remove old reviewer_sessions (we don't reuse sessions anymore).
+        data.pop("reviewer_sessions", None)
+
     return WorkflowState(**data)
 
 
@@ -262,20 +278,31 @@ def run_initial_prover(module: ModuleConfig) -> tuple[bool, CopilotSession]:
 def run_single_review(
     module: ModuleConfig,
     model: str,
-    iteration: int,
+    outer_round: int,
+    inner_attempt: int,
     session: Optional[CopilotSession] = None,
 ) -> ReviewResult:
-    """Run a single reviewer."""
+    """
+    Run a single reviewer.
+
+    Parameters:
+        module: Module configuration.
+        model: Reviewer model name.
+        outer_round: Current outer round (1-based).
+        inner_attempt: Current inner attempt within this reviewer (1-based).
+        session: Optional session to resume (within same reviewer's inner loop).
+    """
     model_short = model.split("-")[0]  # e.g., "claude" from "claude-opus-4.5"
     # Organize reviews by module subdirectory.
+    # Naming: {model}_r{outer}_a{inner}.md (e.g., claude_r1_a2.md)
     module_review_dir = REVIEWS_DIR / module.name
     module_review_dir.mkdir(parents=True, exist_ok=True)
-    review_file = module_review_dir / f"{model_short}_iter{iteration}.md"
-    result_file = module_review_dir / f"{model_short}_iter{iteration}_result.txt"
+    review_file = module_review_dir / f"{model_short}_r{outer_round}_a{inner_attempt}.md"
+    result_file = module_review_dir / f"{model_short}_r{outer_round}_a{inner_attempt}_result.txt"
 
-    if session and session.session_id:
-        # Follow-up review with result file.
-        previous_review = module_review_dir / f"{model_short}_iter{iteration-1}.md"
+    if session and session.session_id and inner_attempt > 1:
+        # Follow-up review with result file (within same reviewer's inner loop).
+        previous_review = module_review_dir / f"{model_short}_r{outer_round}_a{inner_attempt-1}.md"
         prompt = REVIEW_FOLLOWUP_PROMPT.format(
             previous_review_file=previous_review,
             module_name=module.name,
@@ -283,7 +310,7 @@ def run_single_review(
             result_file=result_file,
         )
     else:
-        # Initial review.
+        # Initial review (new reviewer or new outer round).
         prompt = REVIEWER_PROMPT.format(
             module_name=module.name,
             source_path=module.source_path,
@@ -293,13 +320,13 @@ def run_single_review(
         )
 
     # Commit: reviewer start.
-    git_commit_module(module.name, f"[verus-ai] Reviewer START: {module.name} ({model})")
+    git_commit_module(module.name, f"[verus-ai] Reviewer START: {module.name} ({model_short} r{outer_round}a{inner_attempt})")
 
-    print(f"[REVIEWER] Running {model} review...")
+    print(f"[REVIEWER] Running {model} (round {outer_round}, attempt {inner_attempt})...")
     output, new_session = run_reviewer(prompt, model, session, module_name=module.name)
 
     # Commit: reviewer end.
-    git_commit_module(module.name, f"[verus-ai] Reviewer END: {module.name} ({model}, session: {new_session.session_id or 'unknown'})")
+    git_commit_module(module.name, f"[verus-ai] Reviewer END: {module.name} ({model_short} r{outer_round}a{inner_attempt})")
 
     # Read the review file if it exists.
     grade = "?"
@@ -333,30 +360,51 @@ def run_prover_fix(
     module: ModuleConfig,
     review_files: List[Path],
     session: CopilotSession,
+    fresh_context: bool = False,
 ) -> tuple[bool, CopilotSession]:
-    """Run prover to fix issues from reviews."""
+    """Run prover to fix issues from reviews.
+    
+    Parameters:
+        module: Module configuration.
+        review_files: List of review files to address.
+        session: Copilot session (may be None for fresh start).
+        fresh_context: If True, use full context prompt for new session.
+    """
     # Combine review file references.
     review_refs = "\n".join([f"- {rf}" for rf in review_files])
 
-    prompt = PROVER_FIX_PROMPT.format(
-        review_file=review_refs,
-        module_name=module.name,
-        verus_cmd=module.verus_cmd(),
-    )
+    if fresh_context:
+        # Use full context prompt for fresh prover session.
+        existing_modules = get_existing_modules()
+        deps_str = ", ".join(existing_modules) if existing_modules else "none"
+        prompt = PROVER_FIX_FRESH_PROMPT.format(
+            review_file=review_refs,
+            module_name=module.name,
+            source_path=module.source_path,
+            dependencies=deps_str,
+        )
+    else:
+        prompt = PROVER_FIX_PROMPT.format(
+            review_file=review_refs,
+            module_name=module.name,
+            verus_cmd=module.verus_cmd(),
+        )
 
     # Commit: prover fix start.
-    git_commit_module(module.name, f"[verus-ai] Prover FIX START: {module.name} (session: {session.session_id or 'new'})")
+    session_info = 'fresh' if fresh_context else (session.session_id or 'new')
+    git_commit_module(module.name, f"[verus-ai] Prover FIX START: {module.name} (session: {session_info})")
 
     print(f"[PROVER] Fixing issues from {len(review_files)} reviews...")
-    print(f"[PROVER] Resuming session: {session.session_id or 'new'}")
+    print(f"[PROVER] Session mode: {'fresh context' if fresh_context else 'resuming ' + (session.session_id or 'new')}")
 
     # Use run_copilot directly to pass the session for resume.
+    # For fresh_context, don't pass session to start a new one.
     output, new_session = run_copilot(
         prompt,
         PROVER_MODEL,
-        session=session,
+        session=None if fresh_context else session,
         timeout=PROVER_TIMEOUT,
-        log_prefix="prover_fix",
+        log_prefix="prover_fix_fresh" if fresh_context else "prover_fix",
         module_name=module.name,
     )
 
@@ -366,188 +414,120 @@ def run_prover_fix(
     return True, new_session
 
 
-def run_iteration_parallel(
+def run_one_on_one_review(
     module: ModuleConfig,
-    iteration: int,
+    model: str,
+    outer_round: int,
     state: WorkflowState,
-) -> IterationResult:
-    """Run one iteration with all reviewers in parallel (original behavior)."""
+    fresh_prover: bool = False,
+) -> tuple[str, bool]:
+    """
+    Run one-on-one review with a single reviewer until A+ or max attempts.
+
+    The reviewer and prover engage in a back-and-forth loop:
+    - Reviewer reviews the code
+    - If not A+, prover fixes issues
+    - Reviewer re-reviews
+    - Repeat until A+ or max inner iterations
+
+    Each reviewer gets a FRESH session (no session from previous reviewer or round).
+
+    Parameters:
+        module: Module configuration.
+        model: Reviewer model name.
+        outer_round: Current outer round (1-based).
+        state: Workflow state.
+        fresh_prover: If True, use fresh context for prover fixes.
+
+    Returns:
+        Tuple of (final_grade, passed).
+    """
+    model_short = model.split("-")[0]
+    reviewer_session: Optional[CopilotSession] = None  # Fresh session for each reviewer.
+
     print(f"\n{'='*60}")
-    print(f"ITERATION {iteration} for {module.name} (PARALLEL MODE)")
+    print(f"ONE-ON-ONE: {model} (Round {outer_round})")
     print(f"{'='*60}")
 
-    # Step 1: Check Verus verification.
-    print("[VERUS] Running verification...")
-    verus_success, verus_output = run_verus(module.name)
-    print(f"[VERUS] {'PASSED' if verus_success else 'FAILED'}")
+    for inner_attempt in range(1, MAX_INNER_ITERATIONS + 1):
+        print(f"\n[ATTEMPT {inner_attempt}/{MAX_INNER_ITERATIONS}]")
 
-    if not verus_success:
-        print("[VERUS] Output:", verus_output[:500])
-
-    # Step 2: Check for cheating.
-    print("[GUARDRAILS] Checking for cheating patterns...")
-    cheating_report = detect_cheating_in_module(module.name)
-    if cheating_report.has_cheating():
-        print(f"[GUARDRAILS] WARNING: {cheating_report.summary()}")
-    else:
-        print("[GUARDRAILS] No cheating detected")
-
-    # Step 3: Run all reviewers.
-    reviews = []
-    for model in REVIEWER_MODELS:
-        model_short = model.split("-")[0]
-        prev_session_id = state.reviewer_sessions.get(model)
-        prev_session = CopilotSession(session_id=prev_session_id, model=model) if prev_session_id else None
-
-        review = run_single_review(module, model, iteration, prev_session)
-        reviews.append(review)
-
-        # Update session.
-        if review.session_id:
-            state.reviewer_sessions[model] = review.session_id
-
-        print(f"[REVIEWER] {model}: Grade={review.grade}, Issues={review.issues_count}")
-
-    # Step 4: Check if all passed.
-    all_passed = all(is_passing_grade(r.grade) for r in reviews) and verus_success
-
-    return IterationResult(
-        iteration=iteration,
-        prover_success=True,
-        verus_success=verus_success,
-        cheating_report=cheating_report,
-        reviews=reviews,
-        all_passed=all_passed,
-    )
-
-
-def run_iteration_serial(
-    module: ModuleConfig,
-    iteration: int,
-    state: WorkflowState,
-) -> IterationResult:
-    """
-    Run one iteration with reviewers in serial.
-
-    Serial mode: Reviewer1 → Prover Fix → Reviewer2 → Prover Fix → Reviewer3 → Prover Fix.
-    Each reviewer sees the improved code from the previous reviewer's feedback.
-    """
-    print(f"\n{'='*60}")
-    print(f"ITERATION {iteration} for {module.name} (SERIAL MODE)")
-    print(f"{'='*60}")
-
-    reviews = []
-    all_passed = True
-
-    for reviewer_idx, model in enumerate(REVIEWER_MODELS, 1):
-        model_short = model.split("-")[0]
-
-        # Step 1: Check Verus verification before each review.
-        print(f"\n[STEP {reviewer_idx}a] Running Verus verification...")
+        # Step 1: Run Verus verification.
+        print("[VERUS] Running verification...")
         verus_success, verus_output = run_verus(module.name)
         print(f"[VERUS] {'PASSED' if verus_success else 'FAILED'}")
 
         if not verus_success:
-            print("[VERUS] Output:", verus_output[:500])
-            all_passed = False
+            print(f"[VERUS] Output: {verus_output[:500]}")
 
         # Step 2: Check for cheating.
-        print(f"[STEP {reviewer_idx}b] Checking for cheating patterns...")
         cheating_report = detect_cheating_in_module(module.name)
         if cheating_report.has_cheating():
             print(f"[GUARDRAILS] WARNING: {cheating_report.summary()}")
+
+        # Step 3: Run reviewer.
+        review = run_single_review(
+            module, model, outer_round, inner_attempt, reviewer_session
+        )
+        reviewer_session = CopilotSession(session_id=review.session_id, model=model)
+
+        print(f"[REVIEWER] {model_short}: Grade={review.grade}, Issues={review.issues_count}")
+
+        # Step 4: Check if passed.
+        if is_passing_grade(review.grade) and verus_success:
+            print(f"[SUCCESS] {model_short} passed with grade {review.grade}")
+            return review.grade, True
+
+        # Step 5: If not passed and not last attempt, run prover fix.
+        if inner_attempt < MAX_INNER_ITERATIONS:
+            if review.review_file.exists():
+                print(f"[PROVER] Fixing issues from {model_short}...")
+                # Determine if we need fresh context:
+                # - fresh_prover=True AND no current session = use fresh context
+                # - Otherwise, resume existing session
+                use_fresh_context = fresh_prover and state.prover_session_id is None
+                prover_session = CopilotSession(
+                    session_id=state.prover_session_id, model=PROVER_MODEL
+                )
+                _, new_prover_session = run_prover_fix(
+                    module, [review.review_file], prover_session, fresh_context=use_fresh_context
+                )
+                state.prover_session_id = new_prover_session.session_id
+                save_workflow_state(state)
+            else:
+                print(f"[WARNING] No review file found for {model_short}")
         else:
-            print("[GUARDRAILS] No cheating detected")
+            print(f"[TIMEOUT] Max inner attempts reached for {model_short}")
 
-        # Step 3: Run this reviewer.
-        print(f"\n[STEP {reviewer_idx}c] Running reviewer: {model}...")
-        prev_session_id = state.reviewer_sessions.get(model)
-        prev_session = CopilotSession(session_id=prev_session_id, model=model) if prev_session_id else None
-
-        review = run_single_review(module, model, iteration, prev_session)
-        reviews.append(review)
-
-        # Update session.
-        if review.session_id:
-            state.reviewer_sessions[model] = review.session_id
-
-        print(f"[REVIEWER] {model}: Grade={review.grade}, Issues={review.issues_count}")
-
-        # Check if this reviewer passed.
-        if not is_passing_grade(review.grade):
-            all_passed = False
-
-        # Step 4: Run prover fix after each reviewer (except the last one if all passed).
-        is_last_reviewer = reviewer_idx == len(REVIEWER_MODELS)
-
-        if review.review_file.exists() and review.issues_count > 0:
-            print(f"\n[STEP {reviewer_idx}d] Prover fixing issues from {model}...")
-            prover_session = CopilotSession(session_id=state.prover_session_id, model=PROVER_MODEL)
-            _, new_session = run_prover_fix(module, [review.review_file], prover_session)
-            state.prover_session_id = new_session.session_id
-            save_workflow_state(state)
-
-            # Git commit after each fix.
-            git_commit_module(
-                module.name,
-                f"[verus-ai] Iter {iteration} fix after {model_short} for {module.name}"
-            )
-        elif is_last_reviewer:
-            print(f"\n[STEP {reviewer_idx}d] No issues to fix from {model}")
-        else:
-            print(f"\n[STEP {reviewer_idx}d] No issues from {model}, continuing to next reviewer...")
-
-    # Final check.
-    verus_success, _ = run_verus(module.name)
-    cheating_report = detect_cheating_in_module(module.name)
-    all_passed = all_passed and verus_success and all(is_passing_grade(r.grade) for r in reviews)
-
-    return IterationResult(
-        iteration=iteration,
-        prover_success=True,
-        verus_success=verus_success,
-        cheating_report=cheating_report,
-        reviews=reviews,
-        all_passed=all_passed,
-    )
-
-
-def run_iteration(
-    module: ModuleConfig,
-    iteration: int,
-    state: WorkflowState,
-    mode: str = "serial",
-) -> IterationResult:
-    """Run one complete prover-reviewer iteration."""
-    if mode == "parallel":
-        return run_iteration_parallel(module, iteration, state)
-    else:
-        return run_iteration_serial(module, iteration, state)
+    # Return last grade even if not passed.
+    return review.grade, False
 
 
 def run_workflow(
     source_path: str,
     module_name: Optional[str] = None,
     resume: bool = False,
-    mode: Optional[str] = None,
+    fresh_prover: bool = False,
 ) -> bool:
     """
     Run the complete verification workflow for a module.
 
+    New double-loop structure:
+    - Outer loop: All reviewers get a chance (max MAX_OUTER_ITERATIONS rounds)
+    - Inner loop: Each reviewer has one-on-one with prover (max MAX_INNER_ITERATIONS attempts)
+
+    Reviewers do NOT share sessions across outer rounds (to avoid context pollution).
+
     Parameters:
-        source_path: Path to the source file to verify (relative to PROJECT_ROOT).
-        module_name: Optional module name. If not provided, inferred from filename.
+        source_path: Path to the source file to verify.
+        module_name: Optional module name.
         resume: Whether to resume from saved state.
-        mode: Workflow mode ("serial" or "parallel"). If None, uses config default.
+        fresh_prover: If True, start new prover session each outer round (default: False).
 
     Returns:
-        True if verification succeeded.
+        True if verification succeeded (all reviewers passed).
     """
-    # Determine workflow mode.
-    workflow_mode = mode if mode else WORKFLOW_MODE
-    print(f"[CONFIG] Workflow mode: {workflow_mode}")
-
-    # Create module config from source path.
+    # Create module config.
     module = ModuleConfig.from_source_path(source_path, module_name)
 
     # Check source file exists.
@@ -565,61 +545,87 @@ def run_workflow(
     print(f"VERUS AI VERIFICATION WORKFLOW")
     print(f"Module: {module.name}")
     print(f"Source: {module.source_path}")
-    print(f"Mode: {workflow_mode}")
+    print(f"Max outer rounds: {config.MAX_OUTER_ITERATIONS}")
+    print(f"Max inner attempts per reviewer: {MAX_INNER_ITERATIONS}")
     if resume:
-        print(f"Resuming from iteration: {state.current_iteration}")
+        print(f"Resuming from outer round: {state.outer_iteration}")
     print(f"{'#'*60}")
 
     # Step 0: Run initial prover if starting fresh.
-    if state.current_iteration == 0 and not resume:
+    if state.outer_iteration == 0 and not resume:
         success, prover_session = run_initial_prover(module)
-        if not success:
-            print("[ERROR] Initial prover failed")
-            return False
-
         state.prover_session_id = prover_session.session_id
-        state.current_iteration = 1
+        state.outer_iteration = 1
         save_workflow_state(state)
 
         # Git commit.
         git_commit_module(module.name, f"[verus-ai] Initial verification of {module.name}")
 
-    # Main iteration loop.
-    for iteration in range(state.current_iteration, MAX_REVIEW_ITERATIONS + 1):
-        state.current_iteration = iteration
+    # Outer loop: rounds where all reviewers participate.
+    start_round = state.outer_iteration if resume else 1
+    for outer_round in range(start_round, config.MAX_OUTER_ITERATIONS + 1):
+        state.outer_iteration = outer_round
 
-        result = run_iteration(module, iteration, state, mode=workflow_mode)
+        # Optionally reset prover session at the start of each outer round (except first).
+        if fresh_prover and outer_round > start_round:
+            print(f"\n[FRESH PROVER] Starting new prover session for round {outer_round}")
+            state.prover_session_id = None
+
         save_workflow_state(state)
 
-        if result.all_passed:
+        print(f"\n{'#'*60}")
+        print(f"OUTER ROUND {outer_round}/{config.MAX_OUTER_ITERATIONS}")
+        if fresh_prover:
+            print(f"Prover session: {'new' if state.prover_session_id is None else 'continuing'}")
+        print(f"{'#'*60}")
+
+        round_grades: Dict[str, str] = {}
+        all_passed = True
+
+        # Inner loop: one-on-one with each reviewer.
+        for reviewer_idx, model in enumerate(REVIEWER_MODELS):
+            model_short = model.split("-")[0]
+
+            grade, passed = run_one_on_one_review(
+                module, model, outer_round, state, fresh_prover=fresh_prover
+            )
+            round_grades[model_short] = grade
+            state.final_grades[model_short] = grade
+            save_workflow_state(state)
+
+            if not passed:
+                all_passed = False
+
+        # Check if all passed.
+        if all_passed:
             print(f"\n{'='*60}")
-            print(f"SUCCESS: All reviewers passed at iteration {iteration}")
+            print(f"SUCCESS: All reviewers passed at round {outer_round}")
+            grades_str = ", ".join([f"{k}: {v}" for k, v in round_grades.items()])
+            print(f"Grades: {grades_str}")
             print(f"{'='*60}")
 
             # Final commit.
-            grades = ", ".join([f"{r.model}: {r.grade}" for r in result.reviews])
-            git_commit_module(module.name, f"[verus-ai] Verified {module.name} ({grades})")
+            git_commit_module(
+                module.name,
+                f"[verus-ai] Verified {module.name} ({grades_str})"
+            )
 
             state.completed = True
-            state.final_grade = max(r.grade for r in result.reviews)
             save_workflow_state(state)
             return True
 
-        # In parallel mode, run prover to fix all issues at once.
-        # In serial mode, fixes are already done inside run_iteration_serial.
-        if workflow_mode == "parallel":
-            review_files = [r.review_file for r in result.reviews if r.review_file.exists()]
-            if review_files:
-                prover_session = CopilotSession(session_id=state.prover_session_id, model=PROVER_MODEL)
-                _, new_session = run_prover_fix(module, review_files, prover_session)
-                state.prover_session_id = new_session.session_id
-                save_workflow_state(state)
-
-                # Git commit iteration.
-                git_commit_module(module.name, f"[verus-ai] Iteration {iteration} fixes for {module.name}")
+        # Not all passed, continue to next outer round.
+        grades_str = ", ".join([f"{k}: {v}" for k, v in round_grades.items()])
+        print(f"\n[ROUND {outer_round}] Not all passed. Grades: {grades_str}")
+        git_commit_module(
+            module.name,
+            f"[verus-ai] Round {outer_round} complete for {module.name} ({grades_str})"
+        )
 
     print(f"\n{'='*60}")
-    print(f"TIMEOUT: Max iterations ({MAX_REVIEW_ITERATIONS}) reached")
+    print(f"TIMEOUT: Max outer rounds ({config.MAX_OUTER_ITERATIONS}) reached")
+    grades_str = ", ".join([f"{k}: {v}" for k, v in state.final_grades.items()])
+    print(f"Final grades: {grades_str}")
     print(f"{'='*60}")
     return False
 
@@ -631,11 +637,10 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s verify src/kernel/src/mm/phys/upool.rs           # Verify upool (serial mode)
-  %(prog)s verify src/libs/bitmap/src/lib.rs --parallel     # Verify with parallel reviewers
+  %(prog)s verify src/kernel/src/mm/phys/upool.rs           # Verify upool
   %(prog)s verify src/libs/bitmap/src/lib.rs --name bitmap  # Verify with custom name
   %(prog)s continue kstack                                  # Continue previous workflow
-  %(prog)s continue kstack --iterations 3                   # Continue for 3 more iterations
+  %(prog)s continue kstack --rounds 2                       # Continue for 2 more outer rounds
   %(prog)s status                                           # Show verified modules
   %(prog)s check bitmap                                     # Check for cheating
         """,
@@ -647,15 +652,14 @@ Examples:
     verify_parser = subparsers.add_parser("verify", help="Verify a source file")
     verify_parser.add_argument("source", help="Source file path")
     verify_parser.add_argument("--name", help="Module name (default: inferred from filename)")
-    verify_parser.add_argument("--serial", action="store_true", default=True, help="Serial mode: reviewers run one by one (default)")
-    verify_parser.add_argument("--parallel", action="store_true", help="Parallel mode: all reviewers run at once")
+    verify_parser.add_argument("--fresh-prover", action="store_true", help="Start new prover session each outer round (default: keep same session)")
 
     # Continue command.
     continue_parser = subparsers.add_parser("continue", help="Continue a previous workflow")
     continue_parser.add_argument("module", help="Module name to continue")
-    continue_parser.add_argument("--iterations", type=int, default=5, help="Maximum additional iterations (default: 5)")
-    continue_parser.add_argument("--serial", action="store_true", default=True, help="Serial mode (default)")
-    continue_parser.add_argument("--parallel", action="store_true", help="Parallel mode")
+    continue_parser.add_argument("--rounds", type=int, default=3, help="Maximum additional outer rounds (default: 3)")
+    continue_parser.add_argument("--reset", action="store_true", help="Reset to round 1 (start fresh reviews but keep verus code)")
+    continue_parser.add_argument("--fresh-prover", action="store_true", help="Start new prover session each outer round")
 
     # Status command.
     subparsers.add_parser("status", help="Show status of verified modules")
@@ -667,25 +671,38 @@ Examples:
     args = parser.parse_args()
 
     if args.command == "verify":
-        mode = "parallel" if args.parallel else "serial"
-        success = run_workflow(args.source, module_name=args.name, resume=False, mode=mode)
+        fresh_prover = getattr(args, 'fresh_prover', False)
+        success = run_workflow(args.source, module_name=args.name, resume=False, fresh_prover=fresh_prover)
         return 0 if success else 1
 
     elif args.command == "continue":
-        # Continue mode: resume from saved state with additional iterations.
+        # Continue mode: resume from saved state with additional rounds.
         state = load_workflow_state(args.module)
         if state is None:
             print(f"ERROR: No saved state for module '{args.module}'")
             return 1
 
-        # Update max iterations for this run.
-        original_max = MAX_REVIEW_ITERATIONS
-        import config
-        config.MAX_REVIEW_ITERATIONS = state.current_iteration + args.iterations
+        # Reset option: start fresh reviews but keep the verus code.
+        if args.reset:
+            print(f"\n[RESET] Resetting {args.module} to round 1")
+            state.outer_iteration = 1
+            state.inner_iteration = 0
+            state.current_reviewer_idx = 0
+            state.final_grades = {}
+            state.completed = False
+            save_workflow_state(state)
 
-        mode = "parallel" if args.parallel else "serial"
-        print(f"\n[CONTINUE] Resuming {args.module} from iteration {state.current_iteration}")
-        print(f"[CONTINUE] Will run up to {args.iterations} more iterations")
+        # Update max outer iterations for this run.
+        import config
+        config.MAX_OUTER_ITERATIONS = state.outer_iteration + args.rounds
+
+        fresh_prover = getattr(args, 'fresh_prover', False)
+        print(f"\n[CONTINUE] Resuming {args.module} from outer round {state.outer_iteration}")
+        print(f"[CONTINUE] Will run up to {args.rounds} more outer rounds (max = {config.MAX_OUTER_ITERATIONS})")
+        print(f"[CONTINUE] Prover session: {'fresh each round' if fresh_prover else 'persistent'}")
+        if state.final_grades:
+            grades_str = ", ".join([f"{k}: {v}" for k, v in state.final_grades.items()])
+            print(f"[CONTINUE] Previous grades: {grades_str}")
 
         # Find the verus file as source.
         verus_file = VERUS_DIR / f"{args.module}.rs"
@@ -693,8 +710,7 @@ Examples:
             print(f"ERROR: Verus file not found: {verus_file}")
             return 1
 
-        success = run_workflow(str(verus_file), module_name=args.module, resume=True, mode=mode)
-        config.MAX_REVIEW_ITERATIONS = original_max
+        success = run_workflow(str(verus_file), module_name=args.module, resume=True, fresh_prover=fresh_prover)
         return 0 if success else 1
 
     elif args.command == "status":
@@ -704,9 +720,10 @@ Examples:
         for name in existing:
             state = load_workflow_state(name)
             if state:
-                status = "COMPLETED" if state.completed else f"Iteration {state.current_iteration}"
-                grade = state.final_grade or "?"
-                print(f"  {name:15} {status:20} Grade: {grade}")
+                status = "COMPLETED" if state.completed else f"Round {state.outer_iteration}"
+                grades = state.final_grades or {}
+                grades_str = ", ".join([f"{k}:{v}" for k, v in grades.items()]) if grades else "?"
+                print(f"  {name:15} {status:20} Grades: {grades_str}")
             else:
                 print(f"  {name:15} (no workflow state)")
         if not existing:
