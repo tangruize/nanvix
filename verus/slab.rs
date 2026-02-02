@@ -2036,6 +2036,8 @@ impl Slab {
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
             },
             result is Err ==> self@ == old(self)@,
+            // Liveness: if preconditions are met (block is valid and allocated), deallocation succeeds.
+            result is Ok,
     {
         // Issue 3 FIX: Keep runtime bounds check for defensive programming.
         // This protects against unverified callers that may violate preconditions.
