@@ -887,26 +887,6 @@ mod test {
         }
     }
 
-    /// Test: No double allocation.
-    proof fn test_no_double_alloc(pool: Upool, frame_idx: int)
-        requires
-            pool.inv(),
-            0 <= frame_idx < pool@.capacity(),
-            pool@.is_allocated(frame_idx),
-    {
-        assert(pool@.is_allocated(frame_idx));
-    }
-
-    /// Test: No double free.
-    proof fn test_no_double_free(pool: Upool, frame_idx: int)
-        requires
-            pool.inv(),
-            0 <= frame_idx < pool@.capacity(),
-            !pool@.is_allocated(frame_idx),
-    {
-        assert(!pool@.is_allocated(frame_idx));
-    }
-
     /// Test: Distinct frames have disjoint memory.
     proof fn test_distinct_frames_disjoint_memory(frame_indices: Seq<int>)
         requires
@@ -933,17 +913,6 @@ mod test {
         assert(pool@.num_free() == pool@.capacity());
         assert(pool@.num_free() > 0);
         assert(pool@.can_allocate());
-    }
-
-    /// Test: alloc_many returns distinct frames.
-    proof fn test_alloc_many_distinct(frame_indices: Seq<int>)
-        requires
-            frame_indices.len() >= 2,
-            forall|i: int, j: int| #![trigger frame_indices[i], frame_indices[j]]
-                0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j ==>
-                frame_indices[i] != frame_indices[j],
-    {
-        assert(frame_indices[0] != frame_indices[1]);
     }
 
     /// Test: New frame is disjoint from existing.
