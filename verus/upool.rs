@@ -808,19 +808,19 @@ impl Upool {
         requires
             old(self).inv(),
             addr as int % FRAME_SIZE as int == 0,
-            addr as int / FRAME_SIZE as int < old(self)@.capacity(),
-            old(self)@.is_allocated(addr as int / FRAME_SIZE as int),
+            (addr as int / FRAME_SIZE as int) < (old(self))@.capacity(),
+            (old(self))@.is_allocated(addr as int / FRAME_SIZE as int),
         ensures
             self.inv(),
             // LIVENESS: free always succeeds when preconditions are met.
             result is Ok,
-            self@.capacity() == old(self)@.capacity(),
+            self@.capacity() == (old(self))@.capacity(),
             // Frame is now free.
             !self@.is_allocated(addr as int / FRAME_SIZE as int),
             // All other frames unchanged.
             forall|i: int| #![trigger self@.is_allocated(i)]
                 0 <= i < self@.capacity() && i != addr as int / FRAME_SIZE as int ==>
-                self@.is_allocated(i) == old(self)@.is_allocated(i),
+                self@.is_allocated(i) == (old(self))@.is_allocated(i),
             // Count decreases by exactly 1.
             self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
     {
