@@ -1843,7 +1843,8 @@ impl Slab {
                 // Explicit postcondition that address is within buffer bounds.
                 &&& old(self)@.is_within_buffer(addr)
             },
-            result is Err ==> self@ == old(self)@,
+            // Error case: state unchanged and slab was full (no capacity).
+            result is Err ==> (self@ == old(self)@ && !old(self)@.can_allocate()),
             // Liveness: if there's free capacity, allocation succeeds.
             old(self)@.can_allocate() ==> result is Ok,
     {
