@@ -888,10 +888,7 @@ mod test {
                 0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j ==>
                 frame_indices[i] != frame_indices[j],
     {
-        let i0: int = frame_indices[0];
-        let i1: int = frame_indices[1];
-        assert(i0 != i1);
-        Upool::lemma_frames_disjoint(i0, i1);
+        Upool::lemma_frames_disjoint(frame_indices[0], frame_indices[1]);
     }
 
     /// Test: Fresh pool can allocate.
