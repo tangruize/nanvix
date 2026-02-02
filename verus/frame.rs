@@ -917,9 +917,8 @@ impl FrameAllocator {
                             self.lemma_allocated_iff_bit_set(idx as int);
                             // idx is in range and is_allocated(idx) is true.
                             assert(self@.is_allocated(idx as int));
-                            // idx is in the range [start_frame, start_frame + count).
-                            assert(start_frame as int <= idx as int);
-                            assert(idx as int < (start_frame + count) as int);
+                            // idx is in the range [start_frame, end_frame).
+                            // end_frame == start_frame + count, so idx < end_frame.
                             // So there EXISTS an i in range with is_allocated(i).
                             // This is a counterexample to the forall, making the antecedent false.
                         }
