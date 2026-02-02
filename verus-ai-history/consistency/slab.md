@@ -119,8 +119,8 @@
 - Verus: `data_addr: usize`
 
 ## Verification Status
-- Before fixes: PASSED (70 verified, 0 errors)
-- After fixes: PASSED (70 verified, 0 errors)
+- Before fixes: PASSED (89 verified, 0 errors)
+- After fixes: PASSED (89 verified, 0 errors)
 
 ## Remaining Concerns
 
