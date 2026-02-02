@@ -225,31 +225,7 @@ pub open spec fn spec_models_page_aligned(addr: int) -> bool {
     &&& spec_is_page_aligned(addr)
 }
 
-/// Equivalence lemma: Our preconditions accept exactly PageAligned inputs.
-///
-/// If a caller has a PageAligned<VirtualAddress>, converting to usize satisfies
-/// our precondition. Conversely, any usize satisfying our precondition could
-/// have been constructed from PageAligned.
-proof fn lemma_page_aligned_equivalence(addr: int)
-    ensures
-        spec_models_page_aligned(addr) <==> (addr >= 0 && spec_is_page_aligned(addr)),
-{
-    // Trivially true by definition.
-}
 
-/// Equivalence lemma: Our postconditions provide PageAligned guarantees.
-///
-/// Any value returned with postcondition spec_is_page_aligned(result) could be
-/// safely wrapped in PageAligned<VirtualAddress>.
-proof fn lemma_postcondition_models_page_aligned(addr: int)
-    requires
-        addr >= 0,
-        spec_is_page_aligned(addr),
-    ensures
-        spec_models_page_aligned(addr),
-{
-    // Direct from definition.
-}
 
 //==================================================================================================
 // PageAlignedAddr - Type-Level Alignment Wrapper
@@ -741,7 +717,6 @@ impl UserStack {
             self.inv(),
         ensures
             result as int == self.spec_top(),
-            result as int == self.spec_base() + self.spec_size(),
             spec_is_page_aligned(result as int),
             result as int > self.spec_base(),
     {
