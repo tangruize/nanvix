@@ -937,9 +937,6 @@ impl Kpool {
                 // Update frame_indices.
                 frame_indices = prev_frame_indices.push(new_frame_idx);
                 
-                // Now prove the invariant for the updated frame_indices.
-                assert(frame_indices.len() == prev_len + 1);
-                
                 // For old elements (i < prev_len):
                 assert forall|i: int| #![trigger frame_indices[i]]
                     0 <= i < prev_len
@@ -952,10 +949,7 @@ impl Kpool {
                 by {
                     let idx: int = frame_indices[i];
                     assert(idx == prev_frame_indices[i]);
-                    assert(0 <= idx < self@.capacity());
-                    assert(!original_self@.is_allocated(idx));
                     assert(prev_self@.is_allocated(idx));
-                    assert(idx != new_frame_idx);
                 }
                 
                 // For the new element (i == prev_len):
@@ -966,8 +960,6 @@ impl Kpool {
                     &&& !original_self@.is_allocated(idx)
                 }) by {
                     assert(frame_indices[prev_len as int] == new_frame_idx);
-                    assert(0 <= new_frame_idx < self@.capacity());
-                    assert(self@.is_allocated(new_frame_idx));
                     assert(!prev_self@.is_allocated(new_frame_idx));
                 }
             }
@@ -1296,25 +1288,25 @@ mod test {
     //==============================================================================================
 
     /// Test: No double allocation - allocated frame cannot be allocated again.
+    /// This test documents that `is_allocated` is a precondition for free operations.
     proof fn test_no_double_alloc(pool: Kpool, frame_idx: int)
         requires
             pool.inv(),
             0 <= frame_idx < pool@.capacity(),
             pool@.is_allocated(frame_idx),
     {
-        // If frame is allocated, it's not available for allocation.
-        assert(pool@.is_allocated(frame_idx));
+        // Precondition directly establishes `is_allocated`.
     }
 
     /// Test: No double free - free frame cannot be freed again.
+    /// This test documents that `!is_allocated` blocks free operations.
     proof fn test_no_double_free(pool: Kpool, frame_idx: int)
         requires
             pool.inv(),
             0 <= frame_idx < pool@.capacity(),
             !pool@.is_allocated(frame_idx),
     {
-        // If frame is not allocated, it cannot be freed.
-        assert(!pool@.is_allocated(frame_idx));
+        // Precondition directly establishes `!is_allocated`.
     }
 
     //==============================================================================================
@@ -1500,14 +1492,13 @@ mod test {
     //==============================================================================================
 
     /// Test: Pool with no free frames cannot allocate.
+    /// Guaranteed by the liveness specification of alloc().
     proof fn test_no_free_frame_cannot_allocate(pool: Kpool)
         requires
             pool.inv(),
             !pool@.has_free_frame(),
     {
-        // If there's no free frame, allocation will fail.
-        // This is guaranteed by the liveness specification of alloc().
-        assert(!pool@.has_free_frame());
+        // Precondition directly establishes `!has_free_frame`.
     }
 
     /// Test: Pool with free frames can allocate.
@@ -1516,8 +1507,7 @@ mod test {
             pool.inv(),
             pool@.has_free_frame(),
     {
-        // If there's a free frame, allocation will succeed.
-        assert(pool@.has_free_frame());
+        // Precondition directly establishes `has_free_frame`.
     }
 
     } // verus!
