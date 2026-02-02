@@ -1,3 +1,4 @@
+```markdown
 # Review: manager (gpt-5.1-codex-max)
 
 ## Grade: C
@@ -5,26 +6,27 @@
 ## Issues Found
 
 ### Critical
-- Unmap leak and behavioral mismatch: `unmap_upage` drops the returned frame address without freeing it to the user pool, whereas the original frees the `UserFrame`. This can exhaust user frames and breaks semantic equivalence. Suggested Fix: model and return the frame to the pool (or extend `vmem.unmap` spec to return a `UserFrame`) and prove pool counts are restored.
-- Cloning loses mappings: `new_vmem` ensures `mapping_count == 0`, while the original `Vmem::clone` preserves mappings. This changes semantics and misses obligations about cloned address spaces. Suggested Fix: model clone to preserve existing mappings (and associated invariants) or explicitly justify deviation with a proof of equivalence.
+- None.
 
 ### High
-- Allocation accounting/spec gap: `alloc_upage` lacks postconditions tying upool free count decrement and frame provenance to the mapped page; specs allow capacity to be unchanged after allocation. Suggested Fix: strengthen ensures to relate `upool` free count and pool id to the newly mapped frame.
-- Missing coverage for multi-page and ELF paths: `alloc_upages`, `alloc_kpages`, and `load_elf` are absent from the verified module, leaving major functionality unchecked. Suggested Fix: add verified counterparts (or stubs with precise specs) for these functions.
-- Page-table allocation behavior not modeled: original user-page mapping allocates kernel frames/page tables via `page_table_allocator`, but the verified version calls `vmem.map` without modeling kernel frame consumption. Suggested Fix: include kpool usage and prove capacity constraints for page-table allocation.
+- Coverage gap: init/get/get_mut/load_elf/alloc_kpages/alloc_upages are absent from the verified module, so global initialization, shared access synchronization, ELF loading, and bulk kernel/user allocations are unverified (VirtMemoryManager::init/get/get_mut/new/load_elf/alloc_kpages/alloc_upages).
+- Behavior mismatch: Verified alloc_upage/unmap_upage omit page-table allocator and do not free frames on unmap, so provenance and pool accounting are unchecked and can diverge from the original (alloc_upage, unmap_upage).
 
 ### Medium
-- Clear-zeroing semantics dropped: original `alloc_upage`/`alloc_kpage` support `clear` to zero pages; verified code omits this behavior and its safety guarantees. Suggested Fix: model the `clear` parameter and prove zeroing or document and justify exclusion.
-- Global singleton/init semantics unverified: `init`, `get`, and `get_mut` (global state and synchronization assumptions) are not modeled, so initialization safety and exclusivity are unchecked. Suggested Fix: add specs capturing single-initialization and access conditions or separate a verified wrapper with documented assumptions.
-- Manager invariants do not relate pool counts to vmem mappings, so no global accounting ties allocations/unmaps to pool capacity. Suggested Fix: extend invariants/specs to connect mapping count changes with pool free/used counts.
+- Specification weakness: Verified ctrl_upage lacks a precondition that the page is mapped, allowing vacuous success compared to the original requirement that the mapping exists (ctrl_upage).
+- Missing clearing semantics: Verified alloc_upage ignores the `clear` flag present in the source, so zeroing guarantees for newly mapped pages are unmodeled (alloc_upage).
+- Missing ResourceBusy errors: Failure modes from RefCell borrow contention are not represented; specs allow operations without modeling synchronization failures that exist in the original (alloc_upage, alloc_upages, alloc_kpage, alloc_kpages).
+- Missing kernel-page allocation count invariant: No spec ensures alloc_kpage/alloc_kpages reduce kernel free count or preserve contiguity expectations, leaving capacity/provenance partially unchecked (alloc_kpage, alloc_kpages).
 
 ### Low
-- No specification for user-range busy check in `alloc_upages` (FIXME in original) is addressed; verification misses this pending safety property. Suggested Fix: incorporate and prove the range-not-busy condition when multi-page allocation is modeled.
+- Global-state omission: The verified model explicitly drops the static MEMORY_MANAGER and Rc/RefCell ownership semantics; while noted, the lack of modeling means no proof that global access patterns respect safety/synchronization (module-level design).
+- Incomplete mapping-capacity coverage: Verified alloc_upage only covers single-page mapping; multi-page range checks (including overlap/range-busy constraints) from alloc_upages are unmodeled (alloc_upages).
 
 ## Positive Observations
-- Verification passes with no `assume` or `external_body` in the module.
-- Core preconditions enforce page alignment, user-address range, mapping existence for unmap, and capacity checks for pools and vmem.
-- Pool invariants are preserved across operations, and mapping counts are tracked in user operations.
+- No unchecked `assume` or `external_body` in the verified module; proofs rely on explicit invariants.
+- Core single-page allocation/unmap/permission paths include alignment, user-range, and mapping-capacity preconditions, and preserve vmem/manager invariants.
+- Verification passes with all obligations discharged (`./verus-ai/scripts/verify.sh manager`).
 
 ## Summary
-Significant functionality (multi-page alloc/free, ELF loading, page-table allocations, global init) is unverified, and key semantic differences exist (leaking frames on unmap, losing mappings on clone, missing clear semantics). Strengthen specs to tie allocations to pool accounting, model the missing behaviors, and align clone/unmap semantics with the original to achieve coverage and equivalence.
+The verification covers only a simplified subset of the memory manager: global initialization, shared access synchronization, ELF loading, multi-page and kernel-page allocation paths are unmodeled, and single-page operations diverge by not freeing frames or honoring clearing and contention semantics. As a result, key resource accounting, provenance, and liveness properties of the original implementation remain unverified. To raise confidence, extend the verified module to include the missing APIs, model the RefCell/borrow failure paths and clear-on-alloc semantics, enforce mapped-precondition on ctrl_upage, and ensure unmap returns frames to pools with corresponding invariants on free counts and capacity. 
+```
