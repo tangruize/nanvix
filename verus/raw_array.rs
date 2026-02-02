@@ -545,18 +545,6 @@ impl<T> Drop for RawArray<T> {
 // Additional Lemmas for Client Code
 //==================================================================================================
 
-/// Lemma: Setting an element preserves the length.
-pub proof fn lemma_set_preserves_len<T>(pre: Seq<T>, post: Seq<T>, index: int, value: T)
-    requires
-        0 <= index < pre.len(),
-        post.len() == pre.len(),
-        post[index] == value,
-        forall|i: int| 0 <= i < pre.len() && i != index ==> post[i] == pre[i],
-    ensures
-        post.len() == pre.len(),
-{
-}
-
 /// Lemma: If two arrays have the same view, they are equivalent.
 pub proof fn lemma_view_determines_equivalence<T>(a1: &RawArray<T>, a2: &RawArray<T>)
     requires
