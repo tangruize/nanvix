@@ -1,0 +1,51 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:38:37 CST 2026
+Module: frame
+Command: verus --crate-type lib lib.rs --verify-module frame
+
+error[E0599]: no method named `alloc_address` found for struct `frame::FrameAllocator` in the current scope
+   --> upool.rs:494:36
+    |
+494 |         match self.frame_allocator.alloc_address() {
+    |                                    ^^^^^^^^^^^^^
+    |
+   ::: frame.rs:148:1
+    |
+148 | pub struct FrameAllocator {
+    | ------------------------- method `alloc_address` not found for this struct
+    |
+help: there is a method `alloc_index` with a similar name
+    |
+494 -         match self.frame_allocator.alloc_address() {
+494 +         match self.frame_allocator.alloc_index() {
+    |
+
+error[E0599]: no method named `alloc_address` found for struct `frame::FrameAllocator` in the current scope
+   --> kpool.rs:606:36
+    |
+606 |         match self.frame_allocator.alloc_address() {
+    |                                    ^^^^^^^^^^^^^
+    |
+   ::: frame.rs:148:1
+    |
+148 | pub struct FrameAllocator {
+    | ------------------------- method `alloc_address` not found for this struct
+    |
+help: there is a method `alloc_index` with a similar name
+    |
+606 -         match self.frame_allocator.alloc_address() {
+606 +         match self.frame_allocator.alloc_index() {
+    |
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0599`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for frame (verified:0, errors:0)
