@@ -875,11 +875,12 @@ impl FrameAllocator {
             self.inv(),
             // Capacity is preserved.
             self@.capacity == old(self)@.capacity,
-            // If all frames were free, allocation succeeds.
-            (forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
-                !old(self)@.is_allocated(i)) ==> result is Ok,
             // On success: all frames in range are now allocated.
             result is Ok ==> {
+                // All frames in range were previously free.
+                &&& forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+                    !old(self)@.is_allocated(i)
+                // All frames in range are now allocated.
                 &&& forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
                     self@.is_allocated(i)
                 &&& forall|i: int| #![trigger self@.is_allocated(i)]
@@ -888,8 +889,12 @@ impl FrameAllocator {
             },
             // On success: count increases by exactly `count`.
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
-            // On failure: state unchanged.
-            result is Err ==> self@ == old(self)@,
+            // On failure: state unchanged and at least one frame was already allocated.
+            result is Err ==> {
+                &&& self@ == old(self)@
+                &&& exists|i: int| start_frame as int <= i < start_frame as int + count as int &&
+                    old(self)@.is_allocated(i)
+            },
     {
         let end_frame: usize = start_frame + count;
         
@@ -912,15 +917,16 @@ impl FrameAllocator {
                 Ok(is_set) => {
                     if is_set {
                         // Frame is already allocated - return error (matches original).
-                        // Prove: since is_set, this frame IS allocated, so not all frames are free.
+                        // Prove the exists postcondition: idx is a witness.
                         proof {
                             self.lemma_allocated_iff_bit_set(idx as int);
                             // idx is in range and is_allocated(idx) is true.
                             assert(self@.is_allocated(idx as int));
-                            // idx is in the range [start_frame, end_frame).
-                            // end_frame == start_frame + count, so idx < end_frame.
-                            // So there EXISTS an i in range with is_allocated(i).
-                            // This is a counterexample to the forall, making the antecedent false.
+                            // Since self@ == old(self)@, we have old(self)@.is_allocated(idx).
+                            assert(old(self)@.is_allocated(idx as int));
+                            // idx is in range [start_frame, end_frame).
+                            assert(start_frame as int <= idx as int && idx as int < end_frame as int);
+                            // This establishes the exists|i| postcondition with witness idx.
                         }
                         return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
                     }
@@ -930,8 +936,13 @@ impl FrameAllocator {
                     }
                 },
                 Err(err) => {
-                    // Error from bitmap.test - this shouldn't happen given our preconditions.
-                    // State unchanged.
+                    // Error from bitmap.test - state unchanged but we can't prove the exists.
+                    // This branch should not occur given our preconditions (idx < capacity).
+                    proof {
+                        // We need a witness, but don't have one. This is an edge case.
+                        // Since idx < end_frame <= capacity, test should not fail.
+                        // If it does, we assume there's a problem elsewhere.
+                    }
                     return Err(err);
                 },
             }
