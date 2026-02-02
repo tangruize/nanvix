@@ -370,6 +370,8 @@ impl KernelStack {
             0 < num_pages <= MAX_STACK_PAGES,
             base_addr as int + spec_pages_to_bytes(num_pages as int) <= usize::MAX as int,
         ensures
+            // Liveness: When preconditions are met, allocation always succeeds.
+            result.is_ok(),
             result.is_ok() ==> {
                 let stack = result.unwrap();
                 &&& stack.inv()
@@ -500,6 +502,9 @@ impl KernelStack {
             self.inv(),
         ensures
             result as int == self.spec_num_pages(),
+            // Strengthened: Guarantee positive count and bounded.
+            result > 0,
+            result <= MAX_STACK_PAGES,
     {
         self.num_pages
     }
@@ -542,7 +547,9 @@ impl KernelStack {
             self.inv(),
             self@.contains_addr(addr as int),
         ensures
-            0 <= result as int,
+            // Strengthened: Removed trivial `0 <= result as int` (always true for usize).
+            // Added tighter upper bound.
+            result < self.num_pages,
             (result as int) < self.spec_num_pages(),
             self@.addr_in_page(addr as int, result as int),
     {
