@@ -142,7 +142,7 @@ impl UserFrame {
         self.spec_is_from_pool(pool)
     }
 
-    /// Instantiates a user frame (internal use only).
+    /// Instantiates a user frame.
     ///
     /// # Parameters
     ///
@@ -151,7 +151,7 @@ impl UserFrame {
     /// # Returns
     ///
     /// A user frame wrapping the given address.
-    fn new(addr: FrameAddress) -> (result: UserFrame)
+    pub fn new(addr: FrameAddress) -> (result: UserFrame)
         requires
             addr.spec_is_aligned(),
         ensures
