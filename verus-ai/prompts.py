@@ -203,51 +203,88 @@ Verified code: verus/{module_name}.rs
 Use the original source as reference to understand the intended behavior.
 The verified code should remain semantically equivalent to the original.
 
-== IMPORTANT: BE VERY CAREFUL WHEN REMOVING LEMMAS ==
+== CRITICAL: WHEN ARE TWO LEMMAS TRULY REDUNDANT? ==
 
-A `proof fn` lemma in Verus is verified by Verus regardless of whether it is called anywhere.
-This means:
-- A lemma that "is never called" may still be proving an important property
-- Removing it = Verus no longer verifies that property = you LOSE that proof
+Two lemmas are ONLY redundant if they prove the EXACT SAME property under the EXACT SAME conditions.
 
-**Only remove a lemma if you can prove it is TRULY redundant:**
-- The SAME property is already proven somewhere else (duplicate proof)
-- The lemma's postcondition is logically implied by another lemma's postcondition
-- The lemma was scaffolding during development and is now superseded
+**Check BOTH requires AND ensures:**
+- Lemma A: requires P, ensures Q
+- Lemma B: requires P', ensures Q'
+- Redundant ONLY IF: P ≡ P' AND Q ≡ Q'
+
+**Common mistake - these are NOT redundant:**
+- `lemma_foo`: requires inv(), free() > 0; ensures can_allocate()
+- `test_foo`:  requires free() > 0; ensures can_allocate()
+These prove DIFFERENT things! One requires inv(), one doesn't.
+
+**Also NOT redundant - opposite directions:**
+- `lemma_A`: requires inv(); ensures property_X()
+- `lemma_B`: requires property_X(); ensures some_consequence
+These are DIFFERENT! One proves inv ==> X, the other proves X ==> consequence.
 
 **When in doubt, KEEP the lemma.** It's better to have a slightly verbose proof than to
 accidentally remove a critical safety or liveness property.
 
 == GOALS ==
-1. **Remove truly redundant lemmas**: Only if the exact same property is proven elsewhere.
-   NOT just "unused" - must be "proves nothing new".
+1. **Remove truly redundant lemmas**: Only if BOTH requires AND ensures are logically equivalent.
 2. **Remove redundant postconditions**: If a postcondition is logically implied by other
-   postconditions in the same function. Example: `ensures result >= 0` is redundant if
-   `ensures result == x` where x is known non-negative.
+   postconditions in the SAME function.
 3. **Condense verbose inline proofs**: Move repeated proof patterns into reusable lemmas.
 4. **Remove debug artifacts**: Unnecessary assert statements, TODO comments, commented code.
 
 == STRICT CONSTRAINTS ==
 - DO NOT remove a lemma just because it is "never called"
+- DO NOT remove a lemma if its requires clause is WEAKER (fewer preconditions)
 - DO NOT change the semantics of any executable code
 - DO NOT weaken any existing postconditions
 - DO NOT add any `assume`, `admit`, `external_body`, or `external` annotations
 - Verification MUST still pass after simplification
 
 == PROCESS ==
-1. List all `proof fn` lemmas and understand what property each one proves
-2. For each candidate removal, justify: "This is redundant because [X] already proves the same"
-3. Check postconditions for logical redundancy (not just textual similarity)
+1. List all `proof fn` lemmas with their FULL requires and ensures
+2. For each candidate removal, show side-by-side comparison:
+   ```
+   CANDIDATE: test_foo
+   requires: free() > 0
+   ensures: can_allocate()
+   
+   COMPARE TO: lemma_foo
+   requires: inv(), free() > 0    <-- DIFFERENT! Has extra inv()
+   ensures: can_allocate()
+   
+   VERDICT: NOT REDUNDANT - different preconditions
+   ```
+3. Only remove if verdict is "REDUNDANT - identical requires and ensures"
 4. Run verification: ./verus-ai/scripts/verify.sh {module_name}
 
 == OUTPUT ==
-Summary:
+Write a report to verus-ai-history/simplify/{module_name}.md:
+
+```markdown
+# Simplify Report: {module_name}
+
+## Summary
 - Lemmas analyzed: N total
-- Lemmas removed: M (with justification for each: "redundant with [other lemma]")
-- Lemmas kept: K (even if unused - they prove unique properties)
-- Postconditions removed: L (with justification)
-- Lines reduced: before X -> after Y
-- Cheating added: NONE (must be none!)
+- Lemmas removed: M
+- Lemmas kept: K
+- Lines: before X -> after Y
+
+## Redundancy Analysis
+
+### Removed (with justification)
+| Lemma | Redundant With | Requires Match | Ensures Match |
+|-------|----------------|----------------|---------------|
+| test_foo | lemma_foo | ✅ identical | ✅ identical |
+
+### Kept (even if unused)
+| Lemma | Reason Kept |
+|-------|-------------|
+| lemma_bar | Unique property: proves X under weaker conditions |
+
+## Verification
+- Before: PASS (N verified)
+- After: PASS (M verified)
+```
 """.strip()
 
 
@@ -398,23 +435,43 @@ A strong spec makes verification more useful by catching more bugs.
 3. Strengthen weak specs and add proof if needed
 4. Run verification: ./verus-ai/scripts/verify.sh {module_name}
 
-== OUTPUT FORMAT ==
+== OUTPUT ==
 
-For each strengthened spec:
-```
-Function: alloc()
-Before: ensures result.is_ok() ==> frame.inv()
-Issue: One-sided conditional, missing error case
-After: ensures
-    old(self)@.has_capacity() ==> result.is_ok(),
-    result.is_ok() ==> frame.inv(),
-    result.is_err() ==> !old(self)@.has_capacity()
-```
+Write a report to verus-ai-history/strengthen/{module_name}.md:
 
-Summary:
-- Strengthened N specs: [list function names]
-- Added M error conditions
-- Verification: PASS/FAIL
+```markdown
+# Strengthen Report: {module_name}
+
+## Summary
+- Functions analyzed: N
+- Specs strengthened: M
+- Specs unchanged: K (already strong)
+
+## Strengthened Specs
+
+### Function: alloc()
+- **Before**: `ensures result.is_ok() ==> frame.inv()`
+- **Issue**: One-sided conditional, missing error case
+- **After**:
+  ```
+  ensures
+      old(self)@.has_capacity() ==> result.is_ok(),
+      result.is_ok() ==> frame.inv(),
+      result.is_err() ==> !old(self)@.has_capacity()
+  ```
+
+### Function: dealloc()
+...
+
+## Unchanged (Already Strong)
+| Function | Reason |
+|----------|--------|
+| new() | Already has bidirectional ensures |
+
+## Verification
+- Before: PASS (N verified)
+- After: PASS (M verified)
+```
 """.strip()
 
 
