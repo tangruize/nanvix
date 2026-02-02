@@ -523,6 +523,7 @@ impl<T> core::ops::Deref for RawArray<T> {
 
 impl<T> Drop for RawArray<T> {
     #[verifier::external_body]
+    #[verifier::opens_invariants_none]
     fn drop(&mut self) {
         match &self.storage {
             RawArrayStorage::Managed { ptr, len } => {
