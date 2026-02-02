@@ -1,0 +1,506 @@
+=== Copilot Session ===
+Timestamp: 2026-02-02T18:58:46.126975
+Model: claude-opus-4.5
+Session: f0eefb2c-b4ed-4b82-aaa5-9f76b38c9090
+Duration: 348.5s
+Exit code: 0
+
+=== Prompt ===
+Simplify and clean up the Verus verification in verus/slab.rs
+
+== REFERENCE ==
+Original source code: src/libs/slab/src/lib.rs
+Verified code: verus/slab.rs
+
+Use the original source as reference to understand the intended behavior.
+The verified code should remain semantically equivalent to the original.
+
+== IMPORTANT: BE VERY CAREFUL WHEN REMOVING LEMMAS ==
+
+A `proof fn` lemma in Verus is verified by Verus regardless of whether it is called anywhere.
+This means:
+- A lemma that "is never called" may still be proving an important property
+- Removing it = Verus no longer verifies that property = you LOSE that proof
+
+**Only remove a lemma if you can prove it is TRULY redundant:**
+- The SAME property is already proven somewhere else (duplicate proof)
+- The lemma's postcondition is logically implied by another lemma's postcondition
+- The lemma was scaffolding during development and is now superseded
+
+**When in doubt, KEEP the lemma.** It's better to have a slightly verbose proof than to
+accidentally remove a critical safety or liveness property.
+
+== GOALS ==
+1. **Remove truly redundant lemmas**: Only if the exact same property is proven elsewhere.
+   NOT just "unused" - must be "proves nothing new".
+2. **Remove redundant postconditions**: If a postcondition is logically implied by other
+   postconditions in the same function. Example: `ensures result >= 0` is redundant if
+   `ensures result == x` where x is known non-negative.
+3. **Condense verbose inline proofs**: Move repeated proof patterns into reusable lemmas.
+4. **Remove debug artifacts**: Unnecessary assert statements, TODO comments, commented code.
+
+== STRICT CONSTRAINTS ==
+- DO NOT remove a lemma just because it is "never called"
+- DO NOT change the semantics of any executable code
+- DO NOT weaken any existing postconditions
+- DO NOT add any `assume`, `admit`, `external_body`, or `external` annotations
+- Verification MUST still pass after simplification
+
+== PROCESS ==
+1. List all `proof fn` lemmas and understand what property each one proves
+2. For each candidate removal, justify: "This is redundant because [X] already proves the same"
+3. Check postconditions for logical redundancy (not just textual similarity)
+4. Run verification: ./verus-ai/scripts/verify.sh slab
+
+== OUTPUT ==
+Summary:
+- Lemmas analyzed: N total
+- Lemmas removed: M (with justification for each: "redundant with [other lemma]")
+- Lemmas kept: K (even if unused - they prove unique properties)
+- Postconditions removed: L (with justification)
+- Lines reduced: before X -> after Y
+- Cheating added: NONE (must be none!)
+
+=== Output ===
+● Read verus/slab.rs
+  └ 1 line read
+
+● Read src/libs/slab/src/lib.rs
+  └ 229 lines read
+
+The Verus file is very large. Let me view it in sections to understand its structure.
+
+● Find all proof fn lemmas
+  $ grep -n "^pub proof fn\|^proof fn" /home/ubuntu/nanvix/verus/slab.rs
+  └ 10 lines...
+
+● Get line count and start of slab.rs
+  $ wc -l /home/ubuntu/nanvix/verus/slab.rs && head -200 /home/ubuntu/nanvix/verus/slab.rs
+  └ 202 lines...
+
+● Read verus/slab.rs lines 2650-2977
+  └ 333 lines read
+
+● Find spec functions
+  $ grep -n "^pub open spec fn\|^    pub open spec fn\|^open spec fn"
+  /home/ubuntu/nanvix/verus/slab.rs | head -60
+  └ 27 lines...
+
+Let me view more of the file to understand the structure completely, especially the lemmas and helper functions:
+
+● Read verus/slab.rs lines 200-400
+  └ 206 lines read
+
+● Find all functions and constants
+  $ grep -n "^pub fn\|^fn\|pub proof fn\|proof fn\|^pub const\|^const\|pub closed spec fn\|closed
+  spec fn" /home/ubuntu/nanvix/verus/slab.rs
+  └ 76 lines...
+
+Let me continue viewing the file to understand all the lemmas:
+
+● Read verus/slab.rs lines 400-600
+  └ 206 lines read
+
+● Read verus/slab.rs lines 600-800
+  └ 206 lines read
+
+● Read verus/slab.rs lines 1000-1200
+  └ 206 lines read
+
+● Read verus/slab.rs lines 800-1000
+  └ 206 lines read
+
+● Read verus/slab.rs lines 1200-1450
+  └ 256 lines read
+
+Now let me continue viewing the rest of the file to see the implementation and tests:
+
+● Read verus/slab.rs lines 1450-1700
+  └ 256 lines read
+
+● Read verus/slab.rs lines 1700-1950
+  └ 256 lines read
+
+Let me continue viewing the file to understand more of the allocate and deallocate functions:
+
+● Read verus/slab.rs lines 1950-2200
+  └ 256 lines read
+
+Now let me view the test sections and also run the verification to understand the current state:
+
+● Read verus/slab.rs lines 2200-2350
+  └ 156 lines read
+
+● Run initial verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh slab 2>&1 | head -60
+  └ 21 lines...
+
+Verification passes. Now let me create a plan and analyze all the proof functions to identify truly redundant ones:
+
+● update_todo
+  └ TODO list updated
+
+● List proof functions and their ensures clauses
+  $ grep -n "proof fn\|ensures" /home/ubuntu/nanvix/verus/slab.rs | head -150
+  └ 127 lines...
+
+Now let me check which lemmas are actually called/used in the code:
+
+● Check usage of core lemmas
+  $ grep -n "lemma_mul_distribute\|lemma_inv_from_components\|lemma_view_fields\|lemma_allocated_in_
+  range\|lemma_no_allocated_implies_empty\|lemma_new_slab_is_empty\|lemma_index_blocks_always_set\|l
+  emma_slab_inv_implies_bitmap_inv" /home/ubuntu/nanvix/verus/slab.rs
+  └ 20 lines...
+
+● Check usage of power of two lemmas
+  $ grep -n "lemma_one_is_power_of_two\|lemma_double_power_of_two\|lemma_odd_not_power_of_two\|lemma
+  _power_of_two_8\|lemma_power_of_two_16\|lemma_power_of_two_32\|lemma_power_of_two_64\|lemma_power_
+  of_two_128\|lemma_power_of_two_256\|lemma_power_of_two_512\|lemma_power_of_two_1024\|lemma_power_o
+  f_two_2048\|lemma_power_of_two_4096" /home/ubuntu/nanvix/verus/slab.rs
+  └ 36 lines...
+
+● Check usage of more lemmas
+  $ grep -n "lemma_alloc_returns_data_block\|lemma_allocate_adds_block\|lemma_deallocate_removes_blo
+  ck\|lemma_deallocate_enables_reallocation\|lemma_block_conservation\|lemma_inv_implies_positive_ca
+  pacity\|lemma_free_implies_can_allocate\|lemma_allocated_implies_can_deallocate"
+  /home/ubuntu/nanvix/verus/slab.rs
+  └ 9 lines...
+
+● Check usage of more lemmas
+  $ grep -n
+  "lemma_allocated_blocks_subset_of_range\|lemma_allocated_blocks_finite\|lemma_can_allocate_implies
+  _bitmap_has_free_bit\|lemma_bitmap_full_implies_slab_full\|lemma_dealloc_from_full_enables_alloc\|
+  lemma_new_slab_freshly_initialized\|lemma_fresh_slab_max_free\|lemma_metadata_data_disjoint"
+  /home/ubuntu/nanvix/verus/slab.rs
+  └ 16 lines...
+
+● Check usage of remaining lemmas
+  $ grep -n "lemma_blocks_disjoint\|lemma_addr_block_idx_inverse\|lemma_block_addr_inverse\|lemma_al
+  located_blocks_in_range\|lemma_no_memory_aliasing\|lemma_mul_divisible\|lemma_div_cancel\|lemma_mu
+  l_inequality\|lemma_div_mul_le\|lemma_div_mod_identity\|lemma_distributive\|lemma_pos_mul_pos"
+  /home/ubuntu/nanvix/verus/slab.rs
+  └ 27 lines...
+
+Now I understand the structure. Let me analyze which lemmas are truly redundant:
+
+**Lemmas that are NEVER called** (but we must check if they prove unique properties):
+1. `lemma_odd_not_power_of_two` - proves !spec_is_power_of_two for odd numbers > 1
+2. `lemma_allocated_in_range` - proves 0 <= i < num_data_blocks when is_allocated(i)
+3. `lemma_no_allocated_implies_empty` - public, may be used externally
+4. `lemma_alloc_returns_data_block` - proves block >= num_index_blocks  
+5. `lemma_allocate_adds_block` - proves allocation status for blocks
+6. `lemma_deallocate_removes_block` - proves deallocation status for blocks
+7. `lemma_deallocate_enables_reallocation` - liveness property
+8. `lemma_block_conservation` - proves used + free == capacity
+9. `lemma_inv_implies_positive_capacity` - public, proves capacity > 0
+10. `lemma_free_implies_can_allocate` - trivial from definition
+11. `lemma_allocated_implies_can_deallocate` - trivial from definition
+12. `lemma_dealloc_from_full_enables_alloc` - complex liveness proof
+13. `lemma_new_slab_freshly_initialized` - proves fresh slab is empty
+14. `lemma_fresh_slab_max_free` - proves fresh slab has max free
+15. `lemma_metadata_data_disjoint` - proves metadata/data disjoint
+16. `lemma_addr_block_idx_inverse` - proves bijection property
+17. `lemma_block_addr_inverse` - proves inverse bijection property
+18. `lemma_allocated_blocks_in_range` - redundant with inv() which includes allocated_blocks_in_range()
+19. `lemma_no_memory_aliasing` - proves no_memory_aliasing property
+20. `lemma_div_mod_identity` - arithmetic lemma never called
+21. `lemma_pos_mul_pos` - arithmetic lemma never called
+
+Let me check more about the test proof functions and identify truly redundant ones:
+
+● Read verus/slab.rs lines 760-800
+  └ 46 lines read
+
+● Read verus/slab.rs lines 2760-2810
+  └ 56 lines read
+
+Now I can identify the truly redundant lemmas:
+
+**TRULY REDUNDANT LEMMAS (prove the SAME property as something else):**
+
+1. `test_liveness_can_allocate` - proves EXACTLY the same property as `lemma_free_implies_can_allocate` (free() > 0 ==> can_allocate())
+2. `test_liveness_can_deallocate` - proves EXACTLY the same property as `lemma_allocated_implies_can_deallocate` 
+3. `test_allocated_blocks_in_range_property` - just restates the definition of `allocated_blocks_in_range()` which is already proven by `lemma_allocated_blocks_in_range`
+4. `test_no_memory_aliasing_property` - just restates the definition of `no_memory_aliasing()` which is already proven by `lemma_no_memory_aliasing`
+5. `test_block_conservation_property` - proves used + free == capacity, same as `lemma_block_conservation`
+6. `test_fresh_initialization_property` - proves used() == 0 and free() == capacity(), same as `lemma_fresh_slab_max_free`
+
+Let me also check for redundant arithmetic lemmas:
+
+● Check if these are ever called
+  $ grep -n "lemma_div_mod_identity\|lemma_pos_mul_pos" /home/ubuntu/nanvix/verus/slab.rs
+  └ 3 lines...
+
+These two arithmetic lemmas are never called. But since they prove simple arithmetic properties, they may be useful for future proofs or external use. However, they are not used anywhere - let me check if they're truly redundant with vstd library functions:
+
+● Check vstd arithmetic usage
+  $ grep -n "vstd::arithmetic" /home/ubuntu/nanvix/verus/slab.rs | head -20
+  └ 11 lines...
+
+Now, let me also look for redundant postconditions. Let me check one specific case - `lemma_deallocate_removes_block`:
+
+● Read verus/slab.rs lines 696-735
+  └ 44 lines read
+
+I can see some redundancies:
+
+1. `lemma_deallocate_removes_block` - the ensures clauses are just restating the requires clauses (`!new_self@.is_allocated(block_idx)` and `self@.is_allocated(block_idx)` are already in requires)
+
+2. `lemma_deallocate_enables_reallocation` - both ensures clauses are just restating requires clauses
+
+3. `lemma_allocate_adds_block` similarly restates requires as ensures
+
+Let me also check `test_error_conditions_prevented`:
+
+● Read verus/slab.rs lines 2669-2692
+  └ 29 lines read
+
+`test_error_conditions_prevented` is just a documentation comment inside a proof fn. It has no requires/ensures and proves nothing - it's purely documentation.
+
+Now let me look at the axiom usage:
+
+● Check axiom usage
+  $ grep -n "axiom_set_remove_len" /home/ubuntu/nanvix/verus/slab.rs
+  └ 3 lines...
+
+● Check for local axiom definitions
+  $ grep -n "^spec fn axiom\|^pub spec fn axiom\|^axiom\|^pub axiom"
+  /home/ubuntu/nanvix/verus/slab.rs
+  └ 1 line...
+
+Let me check where `axiom_set_remove_len` is defined:
+
+● Find axiom definition
+  $ grep -rn "axiom_set_remove_len" /home/ubuntu/nanvix/verus/ --include="*.rs" | head -10
+  └ 3 lines...
+
+● Check imports
+  $ grep -n "use " /home/ubuntu/nanvix/verus/slab.rs | head -30
+  └ 7 lines...
+
+● Find axiom definition
+  $ grep -rn "fn axiom_set_remove_len\|axiom_set_remove_len" /home/ubuntu/nanvix/verus/
+  --include="*.rs" | head -10
+  └ 3 lines...
+
+● Search all files
+  $ grep -rn "axiom_set_remove_len" /home/ubuntu/nanvix/verus/ | head -10
+  └ 3 lines...
+
+● Check lib.rs structure
+  $ head -35 /home/ubuntu/nanvix/verus/lib.rs
+  └ 36 lines...
+
+The `axiom_set_remove_len` must be from vstd. Let me now create a comprehensive simplification plan and execute it:
+
+● Create ~/.copilot/session-state/100bfe7c-5572-475b-ba76-f57076fbd7c6/plan.md (+48)
+
+Now let me make the changes. First, let me remove the truly redundant test proof functions at the end of the file:
+
+● Read verus/slab.rs lines 2755-2977
+  └ 228 lines read
+
+Now I need to analyze more carefully which lemmas I should remove. `test_liveness_dealloc_enables_alloc` is NOT redundant - it proves a complex property about set manipulation that's different from `lemma_dealloc_from_full_enables_alloc`. Let me check:
+
+● Read verus/slab.rs lines 1015-1130
+  └ 121 lines read
+
+I see - `test_liveness_dealloc_enables_alloc` operates on views directly (without requiring slab.inv()), while `lemma_dealloc_from_full_enables_alloc` requires slab.inv(). They are different properties - the test operates at a higher abstraction level. However, they prove very similar things and the test version is less useful since it works on views rather than real slabs.
+
+Let me now make targeted changes to remove truly redundant parts:
+
+1. Remove simpler redundant test proof functions that prove nothing new
+2. Remove trivial lemmas where ensures just restate requires
+3. Keep `test_liveness_dealloc_enables_alloc` since it's a different but complementary property
+
+● Edit verus/slab.rs (-56)
+
+● Read verus/slab.rs lines 2830-2920
+  └ 95 lines read
+
+Now let me also remove `test_fresh_initialization_property` and `test_block_conservation_property` which are redundant with `lemma_fresh_slab_max_free` and `lemma_block_conservation`:
+
+● Edit verus/slab.rs (-26)
+
+Now let me update the test summary comment to reflect the removed tests:
+
+● Read verus/slab.rs lines 2840-2920
+  └ 61 lines read
+
+● Edit verus/slab.rs (+12 -18)
+
+Now let me also address the `test_error_conditions_prevented` which is an empty proof function that just contains documentation comments. Let me convert it to a regular comment:
+
+● Read verus/slab.rs lines 2612-2660
+  └ 54 lines read
+
+● Read verus/slab.rs lines 2660-2700
+  └ 46 lines read
+
+● Edit verus/slab.rs (+15 -20)
+
+Now let me verify the changes still pass:
+
+● Verify slab after changes
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh slab 2>&1 | head -50
+  └ 23 lines...
+
+Verification passes. We reduced from 89 verified items to 82. Now let me also look at the lemmas with trivial ensures that just restate the requires clauses:
+
+● Read verus/slab.rs lines 676-735
+  └ 64 lines read
+
+These three lemmas have ensures that just restate the requires. However, they document the transition semantics for allocate/deallocate operations. While technically redundant, they serve as documentation of these operations. Let me check if they are ever called:
+
+● Check if these lemmas are called
+  $ grep -n
+  "lemma_allocate_adds_block\|lemma_deallocate_removes_block\|lemma_deallocate_enables_reallocation"
+   /home/ubuntu/nanvix/verus/slab.rs
+  └ 4 lines...
+
+They are never called. However, they document important transition properties. Even though their ensures are trivially implied by requires, they prove that those properties are indeed derivable from the requires. These are "self-documenting proofs" - they state the property formally and Verus verifies it.
+
+Looking at them more carefully:
+- `lemma_allocate_adds_block`: Documents that after allocation, block is in allocated set
+- `lemma_deallocate_removes_block`: Documents that after deallocation, block is not in allocated set  
+- `lemma_deallocate_enables_reallocation`: Documents liveness - freed block can be reallocated
+
+These are actually valuable as they formally document the state transition semantics, even if trivial. Let me leave them as they serve as formal documentation.
+
+Let me now look for truly unnecessary asserts/debug artifacts in the code:
+
+● Search for debug artifacts
+  $ grep -n "// TODO\|// FIXME\|// DEBUG\|// TEMP\|// HACK" /home/ubuntu/nanvix/verus/slab.rs
+  └ 1 line...
+
+Good, no debug comments. Now let me check the line count:
+
+● Get current line count
+  $ wc -l /home/ubuntu/nanvix/verus/slab.rs
+  └ 2 lines...
+
+Now let me look at the arithmetic helper lemmas that are never used. These could potentially be removed, but they prove generally useful properties:
+
+● Read verus/slab.rs lines 1402-1435
+  └ 38 lines read
+
+`lemma_distributive` is used (grep showed it at line 1689). `lemma_div_mod_identity` and `lemma_pos_mul_pos` are never called.
+
+However, removing these would be risky - they prove useful arithmetic properties that may be needed for future proofs or by external callers. Since these are fundamental arithmetic lemmas, they should be kept as they expand the proof library.
+
+Let me also check for unused power-of-two lemmas:
+
+● Check external usage of power of two lemmas
+  $ grep -n "lemma_power_of_two_8\|lemma_power_of_two_16\|lemma_power_of_two_32\|lemma_power_of_two_
+  64\|lemma_power_of_two_128\|lemma_power_of_two_256\|lemma_power_of_two_512\|lemma_power_of_two_102
+  4\|lemma_power_of_two_2048\|lemma_power_of_two_4096" /home/ubuntu/nanvix/verus/slab.rs | grep -v
+  "^[0-9]*:    pub proof fn\|^[0-9]*:    proof fn\|^[0-9]*:        Self::lemma_power_of_two"
+  └ 1 line...
+
+These power-of-two lemmas are only called internally (within themselves to build up the chain). They are `pub` so they're intended for external use to help callers establish that specific block sizes (8, 16, 32, ... 4096) are powers of two. These are useful utilities for verifying code that uses common block sizes.
+
+Now let me look at `lemma_allocated_in_range` which might be redundant with `lemma_allocated_blocks_in_range`:
+
+● Read verus/slab.rs lines 570-620
+  └ 56 lines read
+
+`lemma_allocated_in_range` is a version that takes a specific index `i`, while `lemma_allocated_blocks_in_range` (line 1328) proves the universal statement that all allocated blocks are in range. Let me check `lemma_allocated_blocks_in_range`:
+
+● Read verus/slab.rs lines 1325-1370
+  └ 51 lines read
+
+`lemma_allocated_in_range` and `lemma_allocated_blocks_in_range` prove related but different properties:
+- `lemma_allocated_in_range`: Given a specific `i` that is allocated, proves `0 <= i < num_data_blocks`
+- `lemma_allocated_blocks_in_range`: Proves the spec function `allocated_blocks_in_range()` holds
+
+`lemma_allocated_blocks_in_range` actually proves the more complete property. But `lemma_allocated_in_range` could be used in cases where you have a specific allocated index. These are complementary, not redundant.
+
+Let me update the TODO and provide the summary:
+
+● update_todo
+  └ TODO list updated
+
+● Count proof functions
+  $ grep -c "^proof fn\|^pub proof fn\|proof fn test_\|proof fn lemma_"
+  /home/ubuntu/nanvix/verus/slab.rs
+  └ 2 lines...
+
+● Count all proof fn
+  $ grep -n "^proof fn\|proof fn " /home/ubuntu/nanvix/verus/slab.rs | wc -l
+  └ 2 lines...
+
+● Check for cheating
+  $ grep -c "assume\|admit\|external_body\|external[^_]" /home/ubuntu/nanvix/verus/slab.rs
+  └ 2 lines...
+
+● Find the cheating line
+  $ grep -n "assume\|admit\|external_body\|#\[verifier::external\]"
+  /home/ubuntu/nanvix/verus/slab.rs
+  └ 2 lines...
+
+That's just a comment saying "assumes" in the documentation, not actual cheating. Let me verify this more carefully:
+
+● Check for assume macro
+  $ grep -n "assume(" /home/ubuntu/nanvix/verus/slab.rs
+  └ 1 line...
+
+● Check verifier annotations
+  $ grep -n "#\[verifier::" /home/ubuntu/nanvix/verus/slab.rs
+  └ 3 lines...
+
+Good - `#[verifier::ext_equal]` is for extensional equality (legitimate) and `#[verifier::rlimit(60)]` is just a resource limit hint (legitimate). No cheating.
+
+Let me provide the final summary:
+
+● Show before/after line count
+  $ echo "Before: 2977 lines" && wc -l /home/ubuntu/nanvix/verus/slab.rs
+  └ 3 lines...
+
+Now let me provide the final summary:
+
+## Summary
+
+### Lemmas Analyzed: 51 total proof functions
+
+### Lemmas Removed: 7 (with justification)
+
+1. **`test_allocated_blocks_in_range_property`** - Redundant with `lemma_allocated_blocks_in_range` (same property: is_allocated(i) ==> 0 <= i < num_data_blocks)
+
+2. **`test_no_memory_aliasing_property`** - Redundant with `lemma_no_memory_aliasing` (same property: disjoint memory for different blocks)
+
+3. **`test_liveness_can_allocate`** - Redundant with `lemma_free_implies_can_allocate` (same property: free() > 0 ==> can_allocate())
+
+4. **`test_liveness_can_deallocate`** - Redundant with `lemma_allocated_implies_can_deallocate` (same property: is_allocated && valid ==> can_deallocate())
+
+5. **`test_fresh_initialization_property`** - Redundant with `lemma_fresh_slab_max_free` (same property: fresh slab has used()==0, free()==capacity())
+
+6. **`test_block_conservation_property`** - Redundant with `lemma_block_conservation` (same property: used + free == capacity)
+
+7. **`test_error_conditions_prevented`** - Empty proof fn with only documentation comments; converted to regular comment block
+
+### Lemmas Kept: 44 (even if unused - they prove unique properties)
+All other lemmas were kept because they prove unique properties:
+- Power-of-two lemmas (8, 16, 32, ... 4096) - useful for callers
+- Arithmetic helper lemmas - fundamental properties  
+- Core structural lemmas - document slab semantics
+- Liveness and safety lemmas - prove critical allocator properties
+
+### Postconditions Removed: 0
+While some ensures clauses restate requires, they serve as formal documentation of state transition semantics.
+
+### Lines Reduced: 2977 → 2884 (93 lines removed, ~3%)
+
+### Verified Items: 89 → 82 (7 items removed)
+
+### Cheating Added: NONE
+No `assume`, `admit`, `external_body`, or unauthorized `external` annotations were added.
+
+
+Total usage est:        3 Premium requests
+API time spent:         5m 6.251s
+Total session time:     5m 46.329s
+Total code changes:     +75 -120
+Breakdown by AI model:
+ claude-opus-4.5         4.2m in, 14.4k out, 4.0m cached (Est. 3 Premium requests)
+
+=== End ===
