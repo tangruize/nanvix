@@ -2037,6 +2037,8 @@ impl Slab {
                 &&& self@.data_addr == old(self)@.data_addr
                 &&& forall|i: int| 0 <= i < self@.num_data_blocks && i != block_idx ==>
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
+                // Liveness: after deallocation, allocation is possible (at least one free block).
+                &&& self@.can_allocate()
             },
             result is Err ==> self@ == old(self)@,
             // Liveness: if preconditions are met (block is valid and allocated), deallocation succeeds.
