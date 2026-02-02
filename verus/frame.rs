@@ -912,6 +912,15 @@ impl FrameAllocator {
                 Ok(is_set) => {
                     if is_set {
                         // Frame is already allocated - return error (matches original).
+                        // Prove: since is_set, this frame IS allocated, so not all frames are free.
+                        proof {
+                            self.lemma_allocated_iff_bit_set(idx as int);
+                            // idx is in range and is_allocated(idx) is true.
+                            assert(self@.is_allocated(idx as int));
+                            // Therefore the antecedent of the postcondition is false.
+                            assert(!(forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+                                !old(self)@.is_allocated(i)));
+                        }
                         return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
                     }
                     // Frame is free, continue checking.
@@ -919,7 +928,11 @@ impl FrameAllocator {
                         self.lemma_allocated_iff_bit_set(idx as int);
                     }
                 },
-                Err(err) => return Err(err),
+                Err(err) => {
+                    // Error from bitmap.test - this shouldn't happen given our preconditions.
+                    // State unchanged.
+                    return Err(err);
+                },
             }
             idx = idx + 1;
         }
