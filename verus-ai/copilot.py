@@ -101,7 +101,7 @@ def run_copilot(
         f.write(f"Session: {session.session_id if session else 'new'}\n")
         f.write(f"Command: {' '.join(cmd[:5])}...\n")
         f.write(f"\n=== Prompt ===\n")
-        f.write(prompt[:500] + "..." if len(prompt) > 500 else prompt)
+        f.write(prompt)  # Write full prompt for reproducibility.
         f.write(f"\n\n=== Output (streaming) ===\n")
         f.flush()
 

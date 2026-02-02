@@ -203,48 +203,51 @@ Verified code: verus/{module_name}.rs
 Use the original source as reference to understand the intended behavior.
 The verified code should remain semantically equivalent to the original.
 
+== IMPORTANT: BE VERY CAREFUL WHEN REMOVING LEMMAS ==
+
+A `proof fn` lemma in Verus is verified by Verus regardless of whether it is called anywhere.
+This means:
+- A lemma that "is never called" may still be proving an important property
+- Removing it = Verus no longer verifies that property = you LOSE that proof
+
+**Only remove a lemma if you can prove it is TRULY redundant:**
+- The SAME property is already proven somewhere else (duplicate proof)
+- The lemma's postcondition is logically implied by another lemma's postcondition
+- The lemma was scaffolding during development and is now superseded
+
+**When in doubt, KEEP the lemma.** It's better to have a slightly verbose proof than to
+accidentally remove a critical safety or liveness property.
+
 == GOALS ==
-1. **Remove redundant lemmas**: If a lemma is never called or its result is already implied by
-   other postconditions, remove it.
-2. **Remove redundant specs**: If a postcondition is logically implied by other postconditions,
-   remove the redundant one. Example: if you have `ensures result >= 0` and `ensures result == x`
-   where x is known non-negative, the first is redundant.
-3. **Strengthen weak postconditions**: Especially for liveness properties. If a function can
-   guarantee a stronger result, make the postcondition stronger. Example: change `ensures
-   result.is_ok() ==> something` to also specify what happens on error.
-4. **Condense verbose proofs**: Replace long inline proofs with calls to reusable lemmas.
-   Move proof bodies into `proof fn lemma_xxx()` and call them from the exec function.
-5. **Remove debug artifacts**: Remove `assert` statements that are not needed for verification,
-   remove TODO/FIXME comments, remove commented-out code.
+1. **Remove truly redundant lemmas**: Only if the exact same property is proven elsewhere.
+   NOT just "unused" - must be "proves nothing new".
+2. **Remove redundant postconditions**: If a postcondition is logically implied by other
+   postconditions in the same function. Example: `ensures result >= 0` is redundant if
+   `ensures result == x` where x is known non-negative.
+3. **Condense verbose inline proofs**: Move repeated proof patterns into reusable lemmas.
+4. **Remove debug artifacts**: Unnecessary assert statements, TODO comments, commented code.
 
 == STRICT CONSTRAINTS ==
+- DO NOT remove a lemma just because it is "never called"
 - DO NOT change the semantics of any executable code
 - DO NOT weaken any existing postconditions
-- DO NOT remove postconditions that capture essential safety properties
-- DO NOT add any `assume` statements
-- DO NOT add any `admit` statements
-- DO NOT add any `#[verifier::external_body]` annotations
-- DO NOT add any `#[verifier::external]` annotations
-- If you cannot simplify without adding these, leave the code as-is
+- DO NOT add any `assume`, `admit`, `external_body`, or `external` annotations
 - Verification MUST still pass after simplification
 
 == PROCESS ==
-1. First, list all lemmas and identify which are actually used
-2. Analyze each spec function for redundancy
-3. Check postconditions for weakness (especially liveness: can we guarantee more?)
-4. Refactor verbose proofs into modular lemmas
-5. Run verification: ./verus-ai/scripts/verify.sh {module_name}
+1. List all `proof fn` lemmas and understand what property each one proves
+2. For each candidate removal, justify: "This is redundant because [X] already proves the same"
+3. Check postconditions for logical redundancy (not just textual similarity)
+4. Run verification: ./verus-ai/scripts/verify.sh {module_name}
 
 == OUTPUT ==
-After cleanup, provide a summary:
-- Removed N redundant lemmas: [list names]
-- Removed M redundant postconditions: [list them]
-- Strengthened K postconditions: [list before/after]
-- Condensed L proofs into lemmas: [list new lemma names]
+Summary:
+- Lemmas analyzed: N total
+- Lemmas removed: M (with justification for each: "redundant with [other lemma]")
+- Lemmas kept: K (even if unused - they prove unique properties)
+- Postconditions removed: L (with justification)
 - Lines reduced: before X -> after Y
 - Cheating added: NONE (must be none!)
-
-The goal is clean, auditable verification code that a human reviewer can read efficiently.
 """.strip()
 
 
