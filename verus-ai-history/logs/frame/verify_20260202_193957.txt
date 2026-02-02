@@ -1,0 +1,73 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:39:57 CST 2026
+Module: frame
+Command: verus --crate-type lib lib.rs --verify-module frame
+
+error: expected `,`
+   --> frame.rs:921:83
+    |
+921 | ...                   assert(start_frame as int <= idx as int < start_frame as int + count as int);
+    |                                                                             ^^
+
+error[E0432]: unresolved imports `crate::frame::FrameAllocator`, `crate::frame::FrameAllocatorView`
+  --> upool.rs:45:13
+   |
+45 |     frame::{FrameAllocator, FrameAllocatorView},
+   |             ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^ no `FrameAllocatorView` in `frame`
+   |             |
+   |             no `FrameAllocator` in `frame`
+
+error[E0432]: unresolved imports `crate::frame::FrameAllocator`, `crate::frame::FrameAllocatorView`
+  --> kpool.rs:76:13
+   |
+76 |     frame::{FrameAllocator, FrameAllocatorView},
+   |             ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^ no `FrameAllocatorView` in `frame`
+   |             |
+   |             no `FrameAllocator` in `frame`
+   |
+   = note: unresolved item `crate::upool::test::FrameAllocator` exists but is inaccessible
+   = note: unresolved item `crate::upool::test::FrameAllocatorView` exists but is inaccessible
+
+error[E0412]: cannot find type `FrameAllocator` in this scope
+    --> frame.rs:1352:44
+     |
+1352 |     proof fn test_alloc_valid_index(alloc: FrameAllocator, new_alloc: FrameAllocator, frame_idx: int)
+     |                                            ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `FrameAllocator` in this scope
+    --> frame.rs:1352:71
+     |
+1352 |     proof fn test_alloc_valid_index(alloc: FrameAllocator, new_alloc: FrameAllocator, frame_idx: int)
+     |                                                                       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `FrameAllocator` in this scope
+    --> frame.rs:1369:51
+     |
+1369 |     proof fn test_free_makes_available(old_alloc: FrameAllocator, new_alloc: FrameAllocator, frame_idx: int)
+     |                                                   ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `FrameAllocator` in this scope
+    --> frame.rs:1369:78
+     |
+1369 |     proof fn test_free_makes_available(old_alloc: FrameAllocator, new_alloc: FrameAllocator, frame_idx: int)
+     |                                                                              ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0433]: failed to resolve: use of undeclared type `FrameAllocator`
+    --> frame.rs:1392:13
+     |
+1392 |             FrameAllocator::lemma_frames_disjoint(i, j);
+     |             ^^^^^^^^^^^^^^ use of undeclared type `FrameAllocator`
+
+error: aborting due to 8 previous errors
+
+Some errors have detailed explanations: E0412, E0432, E0433.
+For more information about an error, try `rustc --explain E0412`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for frame (verified:0, errors:0)
