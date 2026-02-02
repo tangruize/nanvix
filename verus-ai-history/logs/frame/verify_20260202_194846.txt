@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:48:46 CST 2026
+Module: frame
+Command: verus --crate-type lib lib.rs --verify-module frame
+
+note: verifying module frame
+
+note: verifying module frame::test
+
+error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+   --> frame.rs:131:9
+    |
+131 | /         exists|start: int|
+132 | |             0 <= start
+133 | |             && start + count <= self.capacity
+134 | |             && forall|i: int| start <= i < start + count ==> !self.is_allocated(i)
+    | |__________________________________________________________________________________^
+
+error: aborting due to 1 previous error
+
+
+Duration: 5s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for frame (verified:0, errors:0)
