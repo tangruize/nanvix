@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:39:34 CST 2026
+Module: frame
+Command: verus --crate-type lib lib.rs --verify-module frame
+
+note: verifying module frame
+
+note: verifying module frame::test
+
+error: assertion failed
+   --> frame.rs:921:36
+    |
+921 |   ...                   assert(!(forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+    |  ______________________________^
+922 | | ...                       !old(self)@.is_allocated(i)));
+    | |______________________________________________________^ assertion failed
+
+verification results:: 29 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 29
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for frame (verified:29, errors:1)
