@@ -623,6 +623,17 @@ impl Bitmap {
                 &&& bitmap@.is_empty()
                 &&& forall|i: int| 0 <= i < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(i)
             },
+            // Error case: invalid arguments produce errors.
+            result is Err ==> (
+                number_of_bits == 0 ||
+                number_of_bits >= u32::MAX as usize ||
+                number_of_bits % (u8::BITS as usize) != 0
+            ),
+            // Liveness: valid inputs succeed.
+            (number_of_bits > 0 &&
+             number_of_bits < u32::MAX as usize &&
+             number_of_bits % (u8::BITS as usize) == 0 &&
+             number_of_bits <= (usize::MAX as int - 7) / 8 * 8) ==> result is Ok,
     {
         // Check if the length is invalid.
         if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
@@ -673,6 +684,8 @@ impl Bitmap {
                 &&& bmp@.is_empty()
                 &&& forall|i: int| 0 <= i < number_of_bits as int ==> !bmp.is_bit_set(i)
             },
+            // Liveness: with valid preconditions, allocation always succeeds.
+            result is Ok,
     {
         Self::new(number_of_bits)
     }
@@ -1400,6 +1413,9 @@ impl Bitmap {
                 &&& (index as int) < self@.number_of_bits()
                 &&& result->Ok_0 == self.is_bit_set(index as int)
             },
+            // Error case: out of bounds index produces error.
+            result is Err ==> (index as int) >= self@.number_of_bits(),
+            // Liveness: valid index always succeeds.
             (index as int) < self@.number_of_bits() ==> result is Ok,
             // test is read-only - no state changes
     {
@@ -1440,6 +1456,9 @@ impl Bitmap {
                 &&& bit == index % (u8::BITS as usize)
                 &&& index < self.bits@.len() * (u8::BITS as usize)
             },
+            // Error case: out of bounds index produces error.
+            result is Err ==> (index as int) >= self@.number_of_bits(),
+            // Liveness: valid index always succeeds.
             (index as int) < self@.number_of_bits() ==> result is Ok,
     {
         // Check if the index is out of bounds.
