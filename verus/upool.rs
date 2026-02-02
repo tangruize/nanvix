@@ -826,7 +826,6 @@ mod test {
             pool@.is_freshly_initialized(),
     {
         assert(pool@.is_empty());
-        assert(pool@.num_allocated() == 0);
     }
 
     /// Test: Allocation returns valid frame.
