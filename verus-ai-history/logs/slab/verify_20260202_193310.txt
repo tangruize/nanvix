@@ -1,0 +1,38 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:33:10 CST 2026
+Module: slab
+Command: verus --crate-type lib lib.rs --verify-module slab
+
+note: verifying module slab
+
+error: postcondition not satisfied
+    --> slab.rs:2032:13
+     |
+2032 | /             result is Ok ==> {
+2033 | |                 let block_idx = old(self)@.addr_to_block_idx(addr as int);
+2034 | |                 &&& !self@.is_allocated(block_idx)
+2035 | |                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
+...    |
+2041 | |                 &&& self@.can_allocate()
+2042 | |             },
+     | |_____________^ failed this postcondition
+...
+2141 | /         match self.index.clear(index) {
+2142 | |             Ok(()) => {
+2143 | |                 proof {
+...    |
+2186 | |         }
+     | |_________- at the end of the function body
+
+verification results:: 82 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 82
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for slab (verified:82, errors:1)
