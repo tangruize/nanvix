@@ -57,6 +57,8 @@ members = [
         "src/utils/nanvix-bench",
         "src/utils/nanvix-test",
         "src/utils/nanvixd",
+        "src/libs/verus_macro_stub",
+        "src/libs/verus_stub",
 ]
 
 [workspace.package]
@@ -147,8 +149,16 @@ type-safe = { path = "src/libs/type-safe", default-features = false }
 uservm = { path = "src/uservm", default-features = false }
 uuid = { version = "1.18.1", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
+verus_macro_stub = { path = "src/libs/verus_macro_stub", default-features = false }
+verus_stub = { path = "src/libs/verus_stub" }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 wasmi = { version = "1.0.0", default-features = false }
+
+# Verus verification dependencies (optional, only needed when verifying).
+# Versions must match the installed Verus tool (0.2025.12.05).
+verus_builtin = { version = "=0.0.0-2025-12-07-0054", default-features = false }
+verus_builtin_macros = { version = "=0.0.0-2025-12-07-0054", features = ["vpanic"], default-features = false }
+vstd = { version = "=0.0.0-2025-12-07-0054", features = ["alloc", "allow_panic"], default-features = false }
 
 [profile.dev]
 opt-level = 0
