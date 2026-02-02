@@ -251,7 +251,7 @@ impl VirtMemoryManager {
     /// # Returns
     ///
     /// True if the frame is within the upool's range and is currently allocated.
-    pub open spec fn spec_uframe_is_allocated(&self, frame_addr: int) -> bool {
+    pub closed spec fn spec_uframe_is_allocated(&self, frame_addr: int) -> bool {
         let frame_idx: int = frame_addr / FRAME_SIZE as int;
         &&& frame_addr % FRAME_SIZE as int == 0
         &&& 0 <= frame_idx < self.upool@.capacity()
@@ -259,7 +259,7 @@ impl VirtMemoryManager {
     }
 
     /// Spec function to get the upool capacity.
-    pub open spec fn spec_upool_capacity(&self) -> int {
+    pub closed spec fn spec_upool_capacity(&self) -> int {
         self.upool@.capacity()
     }
 
