@@ -387,18 +387,21 @@ impl<T> RawArray<T> {
     ///
     /// # Returns
     /// On success, a new zero-initialized array.
-    /// On failure, an error.
+    /// On failure, an error (only OutOfMemory is possible when preconditions are met).
     #[verifier::external_body]
     pub fn new(len: usize) -> (result: Result<RawArray<T>, Error>)
         requires
             len > 0,
             len < i32::MAX as usize,
         ensures
+            // Success case: array is properly initialized.
             result is Ok ==> {
                 &&& result->Ok_0.inv()
                 &&& result->Ok_0@.len() == len
                 &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
             },
+            // Error case: only OutOfMemory is possible when preconditions are met.
+            result is Err ==> result->Err_0.code == ErrorCode::OutOfMemory,
     {
         Ok(RawArray {
             storage: RawArrayStorage::new_managed(len)?,
@@ -417,11 +420,14 @@ impl<T> RawArray<T> {
             len > 0,
             len < i32::MAX as usize,
         ensures
+            // Success case: array is properly initialized.
             result is Ok ==> {
                 &&& result->Ok_0.inv()
                 &&& result->Ok_0@.len() == len
                 &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
             },
+            // Error case: only InvalidArgument is possible (null or wrapping pointer).
+            result is Err ==> result->Err_0.code == ErrorCode::InvalidArgument,
     {
         Ok(RawArray {
             storage: RawArrayStorage::new_unmanaged(ptr, len)?,
@@ -440,11 +446,14 @@ impl<T> RawArray<T> {
             len < i32::MAX as usize,
             addr > 0,
         ensures
+            // Success case: array is properly initialized.
             result is Ok ==> {
                 &&& result->Ok_0.inv()
                 &&& result->Ok_0@.len() == len
                 &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
             },
+            // Error case: only InvalidArgument is possible (wrapping pointer).
+            result is Err ==> result->Err_0.code == ErrorCode::InvalidArgument,
     {
         Self::from_raw_parts(addr as *mut T, len)
     }
