@@ -907,6 +907,7 @@ impl FrameAllocator {
                 self@.capacity == old(self)@.capacity,
                 start_frame <= idx <= end_frame,
                 end_frame as int <= self@.capacity,
+                end_frame == start_frame + count,
                 // All frames checked so far are free.
                 forall|i: int| start_frame as int <= i < idx as int ==>
                     !self@.is_allocated(i),
