@@ -678,8 +678,6 @@ impl Bitmap {
                 &&& bmp@.is_empty()
                 &&& forall|i: int| 0 <= i < number_of_bits as int ==> !bmp.is_bit_set(i)
             },
-            // Liveness: with valid preconditions, allocation always succeeds.
-            result is Ok,
     {
         Self::new(number_of_bits)
     }
