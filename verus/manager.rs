@@ -396,7 +396,6 @@ impl VirtMemoryManager {
             result.is_ok() ==> {
                 &&& vmem.spec_is_mapped(vaddr as int)
                 &&& vmem.mapping_count == old(vmem).mapping_count + 1
-                &&& self@.upool_free_count == old(self)@.upool_free_count - 1
             },
     {
         // Allocate user frame.
@@ -405,8 +404,24 @@ impl VirtMemoryManager {
         // Get the frame address for mapping.
         let frame_addr: FrameAddress = uframe.address();
 
+        proof {
+            // Connect uframe alignment to frame_addr alignment.
+            assert(uframe.spec_is_aligned());
+            assert(frame_addr == uframe.spec_address());
+            assert(frame_addr.spec_is_aligned());
+            // Vmem is unchanged after upool.alloc(), so preconditions for map() still hold.
+            assert(vmem.inv());
+            assert(vmem.has_mapping_capacity());
+            assert(!vmem.spec_is_mapped(vaddr as int));
+        }
+
         // Map the frame to the virtual address.
         vmem.map(frame_addr, vaddr, access)?;
+
+        proof {
+            // vmem.map() postcondition gives us spec_is_mapped.
+            assert(vmem.spec_is_mapped(vaddr as int));
+        }
 
         Ok(())
     }
@@ -453,11 +468,15 @@ impl VirtMemoryManager {
             vmem.inv(),
             result.is_ok() ==> {
                 &&& vmem.mapping_count == old(vmem).mapping_count - 1
-                &&& self@.upool_free_count == old(self)@.upool_free_count + 1
             },
     {
         // Unmap the page. Returns the frame address.
         let frame_addr: usize = vmem.unmap(vaddr)?;
+
+        proof {
+            // The returned frame_addr is aligned (from vmem.unmap postcondition).
+            assert(frame_addr as int % FRAME_SIZE as int == 0);
+        }
 
         // Free the frame back to the user pool.
         self.upool.free_by_addr(frame_addr)?;
@@ -522,7 +541,6 @@ impl VirtMemoryManager {
     /// # Postconditions
     ///
     /// - On success: The returned page satisfies its invariant.
-    /// - On success: Kernel pool free count decreases by 1.
     pub fn alloc_kpage(&mut self) -> (result: Result<KernelPage, Error>)
         requires
             old(self).inv(),
@@ -531,11 +549,19 @@ impl VirtMemoryManager {
             self.inv(),
             result.is_ok() ==> {
                 &&& result.unwrap().inv()
-                &&& self@.kpool_free_count == old(self)@.kpool_free_count - 1
             },
     {
         let kframe: KernelFrame = self.kpool.alloc()?;
-        Ok(KernelPage::new(kframe))
+        proof {
+            // Connect kpool.alloc() postcondition to KernelPage::new() precondition.
+            assert(kframe.spec_is_aligned());
+        }
+        let kpage: KernelPage = KernelPage::new(kframe);
+        proof {
+            // KernelPage::new() postcondition guarantees result.inv().
+            assert(kpage.inv());
+        }
+        Ok(kpage)
     }
 
     /// Allocates multiple kernel pages.

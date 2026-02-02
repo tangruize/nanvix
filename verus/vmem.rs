@@ -157,7 +157,7 @@
 
 use crate::{
     kpage::PAGE_SIZE,
-    frame_address::FrameAddress,
+    frame_address::{FrameAddress, FRAME_SIZE},
     error::{Error, ErrorCode},
 };
 use vstd::prelude::*;
@@ -462,6 +462,9 @@ impl Vmem {
         // All valid mappings have page-aligned vaddr.
         &&& forall|i: int| #![auto] 0 <= i < self.mapping_count as int ==>
                 self.mappings[i as int].vaddr as int % PAGE_SIZE as int == 0
+        // All valid mappings have frame-aligned frame_addr.
+        &&& forall|i: int| #![auto] 0 <= i < self.mapping_count as int ==>
+                self.mappings[i as int].frame_addr as int % FRAME_SIZE as int == 0
         // Uniqueness: Each virtual address is mapped at most once.
         &&& forall|i: int, j: int|
                 #![trigger self.mappings[i], self.mappings[j]]
@@ -890,11 +893,16 @@ impl Vmem {
         requires
             old(self).inv(),
             old(self).has_mapping_capacity(),
+            frame_addr.spec_is_aligned(),
+            // Liveness: require valid parameters for guaranteed success.
+            spec_is_user_addr(vaddr as int),
+            vaddr as int % PAGE_SIZE as int == 0,
+            !old(self).spec_is_mapped(vaddr as int),
         ensures
             self.inv(),
+            // LIVENESS: With all preconditions met, map always succeeds.
+            result.is_ok(),
             result.is_ok() ==> {
-                &&& spec_is_user_addr(vaddr as int)
-                &&& vaddr as int % PAGE_SIZE as int == 0
                 &&& self.spec_is_mapped(vaddr as int)
                 &&& self.mapping_count == old(self).mapping_count + 1
             },
@@ -915,6 +923,7 @@ impl Vmem {
         }
 
         // Check if already mapped by scanning existing entries.
+        // With precondition !old(self).spec_is_mapped(vaddr), this loop won't find a match.
         let mut i: usize = 0;
         let ghost old_mapping_count: usize = self.mapping_count;
         while i < self.mapping_count
@@ -923,11 +932,19 @@ impl Vmem {
                 self.mapping_count < MAX_USER_PAGES,
                 self.inv(),
                 self.mapping_count == old_mapping_count,
+                // No modification to mappings during scan.
+                !self.spec_is_mapped(vaddr as int),
                 forall|j: int| #![auto] 0 <= j < i as int ==>
                     !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
             decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
+                proof {
+                    // This branch contradicts the invariant !self.spec_is_mapped(vaddr).
+                    assert(self.mappings[i as int].spec_is_for_vaddr(vaddr as int));
+                    assert(self.spec_is_mapped(vaddr as int));
+                    assert(false);
+                }
                 return Err(Error::new(ErrorCode::ResourceBusy, "page already mapped"));
             }
             i = i + 1;
@@ -995,6 +1012,10 @@ impl Vmem {
                 &&& self.mapping_count == old(self).mapping_count - 1
                 // The returned value was a previously-mapped frame address.
                 &&& old(self).spec_is_mapped(vaddr as int)
+                // The returned frame address is frame-aligned.
+                &&& result.unwrap() as int % FRAME_SIZE as int == 0
+                // The returned frame address equals the one that was mapped.
+                &&& result.unwrap() as int == old(self).spec_get_frame_addr(vaddr as int)
             },
             result.is_err() ==> {
                 &&& self.mapping_count == old(self).mapping_count
@@ -1010,6 +1031,9 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "address is not page-aligned"));
         }
 
+        // Capture old self for proving postcondition about spec_get_frame_addr.
+        let ghost entry_self: Vmem = *self;
+
         // Find the mapping.
         let mut found_idx: usize = MAX_USER_PAGES;
         let mut frame_addr: usize = 0;
@@ -1019,10 +1043,17 @@ impl Vmem {
                 0 <= i <= self.mapping_count,
                 self.mapping_count <= MAX_USER_PAGES,
                 self.inv(),
+                // Entry state is unchanged during search.
+                self.mapping_count == entry_self.mapping_count,
+                forall|j: int| #![auto] 0 <= j < self.mapping_count as int ==>
+                    self.mappings[j as int] == entry_self.mappings[j as int],
                 found_idx == MAX_USER_PAGES || found_idx < self.mapping_count,
-                found_idx < MAX_USER_PAGES ==>
-                    self.mappings[found_idx as int].valid &&
-                    self.mappings[found_idx as int].vaddr == vaddr,
+                found_idx < MAX_USER_PAGES ==> {
+                    &&& self.mappings[found_idx as int].valid
+                    &&& self.mappings[found_idx as int].vaddr == vaddr
+                    &&& frame_addr as int % FRAME_SIZE as int == 0
+                    &&& frame_addr as int == self.mappings[found_idx as int].frame_addr as int
+                },
             decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
@@ -1035,6 +1066,14 @@ impl Vmem {
 
         if found_idx == MAX_USER_PAGES {
             return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
+        }
+
+        proof {
+            // entry_self has the same mappings as old(self) at function entry.
+            // The found mapping has frame_addr == entry_self.spec_get_frame_addr(vaddr).
+            assert(entry_self.mappings[found_idx as int].spec_is_for_vaddr(vaddr as int));
+            assert(entry_self.spec_is_mapped(vaddr as int));
+            assert(frame_addr as int == entry_self.mappings[found_idx as int].frame_addr as int);
         }
 
         // Remove the mapping by swapping with the last entry.
