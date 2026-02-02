@@ -1,0 +1,50 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:59:57 CST 2026
+Module: bitmap
+Command: verus --crate-type lib lib.rs --verify-module bitmap
+
+note: verifying module bitmap
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> bitmap.rs:617:5
+    |
+617 |     pub fn new(number_of_bits: usize) -> (result: Result<Self, Error>)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> bitmap.rs:627:13
+    |
+627 | /             result is Err ==> (
+628 | |                 number_of_bits == 0 ||
+629 | |                 number_of_bits >= u32::MAX as usize ||
+630 | |                 number_of_bits % (u8::BITS as usize) != 0
+631 | |             ),
+    | |_____________^ failed this postcondition
+...
+651 |           let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
+    |                                                                                      - at this exit
+
+error: postcondition not satisfied
+   --> bitmap.rs:633:13
+    |
+633 | /             (number_of_bits > 0 &&
+634 | |              number_of_bits < u32::MAX as usize &&
+635 | |              number_of_bits % (u8::BITS as usize) == 0 &&
+636 | |              number_of_bits <= (usize::MAX as int - 7) / 8 * 8) ==> result is Ok,
+    | |________________________________________________________________________________^ failed this postcondition
+...
+651 |           let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
+    |                                                                                      - at this exit
+
+verification results:: 69 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 69
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for bitmap (verified:69, errors:1)
