@@ -509,6 +509,8 @@ impl Kpool {
                 result@.is_allocated(i) == frame_allocator@.is_allocated(i),
             // Fresh initialization is preserved.
             frame_allocator@.is_freshly_initialized() ==> result@.is_freshly_initialized(),
+            // Allocation count is preserved from the frame allocator.
+            result.spec_num_allocated() == frame_allocator.spec_num_allocated(),
     {
         Kpool { frame_allocator, pool_id }
     }
@@ -749,6 +751,8 @@ impl Kpool {
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
             // On failure: state unchanged.
             result is Err ==> self@ == old(self)@,
+            // On failure: count unchanged.
+            result is Err ==> self.spec_num_allocated() == old(self).spec_num_allocated(),
             // Liveness for count=1.
             (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
     {
@@ -852,6 +856,10 @@ impl Kpool {
             },
             // EXPLICIT COUNT: exactly count more frames allocated.
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
+            // MONOTONICITY: previously allocated frames remain allocated.
+            forall|i: int| #![trigger self@.is_allocated(i)]
+                0 <= i < self@.capacity() && old(self)@.is_allocated(i) ==>
+                self@.is_allocated(i),
     {
         let ghost original_self: Kpool = *self;
         let ghost original_capacity: int = self.spec_capacity();
