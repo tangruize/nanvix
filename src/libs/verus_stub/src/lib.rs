@@ -14,7 +14,7 @@
 //! ## Features
 //!
 //! - `default`: Uses stub macros (for normal Rust builds)
-//! - `verus`: Would enable actual Verus verification (not yet implemented)
+//! - `disable`: Disables stub macros and enables real Verus verification
 //!
 //! ## Pattern
 //!
@@ -22,13 +22,14 @@
 //! with normal Rust builds through conditional compilation.
 
 #![no_std]
-#![allow(unexpected_cfgs)]
 
-// When verifying with Verus, we would use the real Verus macros.
-// #[cfg(feature = "verus")]
-// pub use verus_builtin_macros::*;
-// #[cfg(feature = "verus")]
-// pub use vstd::prelude::*;
+// When verifying with Verus (feature "disable" enabled), use the real Verus macros.
+#[cfg(feature = "disable")]
+pub use verus_builtin_macros::*;
 
-// For normal builds, use the stub macros.
+#[cfg(feature = "disable")]
+pub use vstd::prelude::*;
+
+// For normal builds (default), use the stub macros.
+#[cfg(not(feature = "disable"))]
 pub use verus_macro_stub::*;

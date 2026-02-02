@@ -20,6 +20,7 @@ compiler_builtins = { workspace = true, optional = true }
 [features]
 std = []
 kcall = []
+verus = []
 rustc-dep-of-std = [
     "core",
     "config/rustc-dep-of-std",

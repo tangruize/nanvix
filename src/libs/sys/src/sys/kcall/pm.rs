@@ -87,7 +87,7 @@ pub fn gettid() -> Result<ThreadIdentifier, Error> {
 /// Upon successful completion, this function does not return. Upon failure, an error is returned
 /// instead.
 ///
-pub fn exit(status: i32) -> Result<!, Error> {
+pub fn exit(status: i32) -> Result<crate::Never, Error> {
     let result: i64 = kcall1!(KcallNumber::Exit.into(), status as u32);
     Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate process"))
 }
@@ -168,7 +168,7 @@ pub fn create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdentifier, Er
 // Exit Thread
 //==================================================================================================
 
-pub fn exit_thread(status: usize) -> Result<!, Error> {
+pub fn exit_thread(status: usize) -> Result<crate::Never, Error> {
     let result: i64 = kcall1!(KcallNumber::ExitThread.into(), status as u32);
 
     Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate thread"))

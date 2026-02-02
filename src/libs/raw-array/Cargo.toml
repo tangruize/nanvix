@@ -21,6 +21,13 @@ verus_stub = { workspace = true }
 [features]
 default = []
 std = ["sys/std"]
+# Enable Verus verification for this crate.
+verus = ["verus_stub/disable", "sys/verus"]
+
+[build-dependencies]
+
+[package.metadata.verus]
+verify = true
 
 [lints]
 workspace = true

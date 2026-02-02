@@ -10,16 +10,13 @@ authors.workspace = true
 homepage.workspace = true
 
 [dependencies]
-verus_macro_stub = { workspace = true }
-
-# These would be enabled when actually verifying with Verus.
-# verus_builtin_macros = { workspace = true, optional = true }
-# vstd = { workspace = true, optional = true }
+verus_builtin_macros = { workspace = true, optional = true }
+vstd = { workspace = true, optional = true }
+verus_macro_stub = { workspace = true, optional = true }
 
 [features]
-default = []
-# Enable this feature when verifying with Verus.
-# verus = ["verus_builtin_macros", "vstd"]
+default = ["dep:verus_macro_stub"]
+disable = ["verus_builtin_macros", "vstd"]
 
 [lints]
 workspace = true

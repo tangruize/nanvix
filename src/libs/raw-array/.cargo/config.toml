@@ -1,0 +1,9 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Cargo configuration for raw-array crate verification.
+
+[alias]
+# Alias for running Verus verification.
+# Usage: cargo verify
+verify = "v --features verus"

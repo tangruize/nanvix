@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![allow(unexpected_cfgs)]
 
 //==================================================================================================
 // Modules
