@@ -16,6 +16,7 @@ crate-type = ["lib"]
 [dependencies]
 cfg-if = { workspace = true }
 sys = { workspace = true }
+verus_stub = { workspace = true }
 
 [features]
 default = []

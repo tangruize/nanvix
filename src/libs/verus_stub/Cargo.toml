@@ -1,0 +1,25 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "verus_stub"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+authors.workspace = true
+homepage.workspace = true
+
+[dependencies]
+verus_macro_stub = { workspace = true }
+
+# These would be enabled when actually verifying with Verus.
+# verus_builtin_macros = { workspace = true, optional = true }
+# vstd = { workspace = true, optional = true }
+
+[features]
+default = []
+# Enable this feature when verifying with Verus.
+# verus = ["verus_builtin_macros", "vstd"]
+
+[lints]
+workspace = true
