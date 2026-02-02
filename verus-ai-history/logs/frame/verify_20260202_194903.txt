@@ -1,0 +1,59 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 19:49:03 CST 2026
+Module: frame
+Command: verus --crate-type lib lib.rs --verify-module frame
+
+note: verifying module frame
+
+note: verifying module frame::test
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+    --> frame.rs:1001:5
+     |
+1001 |     pub fn alloc_contiguous_range(&mut self, count: usize) -> (result: Result<usize, Error>)
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+    --> frame.rs:1029:13
+     |
+1029 | /             result is Err ==> {
+1030 | |                 &&& self@ == old(self)@
+1031 | |                 // Strengthened: Error implies no suitable contiguous range existed.
+1032 | |                 &&& !old(self)@.has_contiguous_free_range(count as int)
+1033 | |             },
+     | |_____________^ failed this postcondition
+...
+1040 | /         match self.bitmap.alloc_range(count) {
+1041 | |             Ok(start) => {
+1042 | |                 proof {
+...    |
+1071 | |             Err(e) => Err(e),
+1072 | |         }
+     | |_________- at the end of the function body
+
+error: postcondition not satisfied
+    --> frame.rs:1035:13
+     |
+1035 |               old(self)@.has_contiguous_free_range(count as int) ==> result is Ok,
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+1040 | /         match self.bitmap.alloc_range(count) {
+1041 | |             Ok(start) => {
+1042 | |                 proof {
+...    |
+1071 | |             Err(e) => Err(e),
+1072 | |         }
+     | |_________- at the end of the function body
+
+verification results:: 24 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 24
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for frame (verified:24, errors:1)
