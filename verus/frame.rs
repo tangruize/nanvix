@@ -129,9 +129,11 @@ impl FrameAllocatorView {
     /// Property: There exists a contiguous range of `count` free frames starting at some index.
     pub open spec fn has_contiguous_free_range(&self, count: int) -> bool {
         exists|start: int|
+            #![trigger self.is_allocated(start)]
             0 <= start
             && start + count <= self.capacity
-            && forall|i: int| start <= i < start + count ==> !self.is_allocated(i)
+            && forall|i: int| #![trigger self.is_allocated(i)]
+                start <= i < start + count ==> !self.is_allocated(i)
     }
 
     //==============================================================================================
