@@ -126,6 +126,14 @@ impl FrameAllocatorView {
         self.is_allocated(frame_idx) && 0 <= frame_idx < self.capacity
     }
 
+    /// Property: There exists a contiguous range of `count` free frames starting at some index.
+    pub open spec fn has_contiguous_free_range(&self, count: int) -> bool {
+        exists|start: int|
+            0 <= start
+            && start + count <= self.capacity
+            && forall|i: int| start <= i < start + count ==> !self.is_allocated(i)
+    }
+
     //==============================================================================================
     // Initialization Properties
     //==============================================================================================
@@ -365,13 +373,13 @@ impl FrameAllocator {
             storage@.len() * (u8::BITS as usize) < u32::MAX as usize,
             forall|i: int| 0 <= i < storage@.len() ==> storage@[i] == 0,
         ensures
+            // LIVENESS: Always succeeds when preconditions are met.
             result is Ok,
-            result is Ok ==> {
-                let alloc = result->Ok_0;
-                &&& alloc.inv()
-                &&& alloc@.capacity == storage@.len() * (u8::BITS as int)
-                &&& alloc@.is_empty()
-            },
+            // Unconditional guarantees (success is guaranteed by liveness above).
+            result->Ok_0.inv(),
+            result->Ok_0@.capacity == storage@.len() * (u8::BITS as int),
+            result->Ok_0@.is_empty(),
+            result->Ok_0@.is_freshly_initialized(),
     {
         let bitmap = Bitmap::from_raw_array(storage);
         let alloc = FrameAllocator { bitmap };
@@ -1015,9 +1023,15 @@ impl FrameAllocator {
             },
             // Count tracking on success.
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
-            // On failure: state unchanged.
-            result is Err ==> self@ == old(self)@,
-            // Liveness for count=1.
+            // On failure: state unchanged AND no contiguous range exists.
+            result is Err ==> {
+                &&& self@ == old(self)@
+                // Strengthened: Error implies no suitable contiguous range existed.
+                &&& !old(self)@.has_contiguous_free_range(count as int)
+            },
+            // Liveness: If a contiguous free range exists, allocation succeeds.
+            old(self)@.has_contiguous_free_range(count as int) ==> result is Ok,
+            // Liveness for count=1 (special case - has_free_frame implies contiguous range of 1).
             (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
     {
         // Use bitmap's alloc_range which searches for and allocates a contiguous range.
