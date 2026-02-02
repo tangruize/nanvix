@@ -445,8 +445,11 @@ impl FrameAllocator {
             },
             // EXPLICIT COUNT: exactly one more frame allocated.
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + 1,
-            // On failure: state unchanged.
-            result is Err ==> self@ == old(self)@,
+            // On failure: state unchanged AND no free frame existed (contrapositive of liveness).
+            result is Err ==> {
+                &&& self@ == old(self)@
+                &&& !old(self)@.has_free_frame()
+            },
     {
         // Use lemma to connect has_free_frame to bitmap's has_free_bit.
         proof {
@@ -498,8 +501,11 @@ impl FrameAllocator {
             },
             // EXPLICIT COUNT: exactly one more frame allocated.
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + 1,
-            // On failure: state unchanged.
-            result is Err ==> self@ == old(self)@,
+            // On failure: state unchanged AND no free frame existed (contrapositive of liveness).
+            result is Err ==> {
+                &&& self@ == old(self)@
+                &&& !old(self)@.has_free_frame()
+            },
     {
         // Use lemma to connect has_free_frame to bitmap's has_free_bit.
         proof {
