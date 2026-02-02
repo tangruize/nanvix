@@ -439,15 +439,11 @@ impl Bitmap {
         ensures
             !self@.has_free_bit(),
     {
-        // is_full() means usage == number_of_bits.
-        // has_free_bit() on BitmapView means exists|i| 0 <= i < n && !bits[i].
-        // We prove by showing that all bits[i] are true.
+        // Prove all bits are true, which contradicts has_free_bit().
         self.lemma_is_full_means_all_bits_set();
-        // Now forall|i| is_bit_set(i), which means forall|i| self@.bits[i].
         assert forall|i: int| 0 <= i < self@.number_of_bits() implies self@.bits[i] by {
             assert(self.is_bit_set(i));
         }
-        // has_free_bit() = exists|i| !bits[i], which is now false.
     }
 
     /// Lemma: if bitmap is not full, there exists at least one unset bit
