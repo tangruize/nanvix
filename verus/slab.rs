@@ -455,27 +455,13 @@ impl Slab {
         Self::lemma_double_power_of_two(512);
     }
 
-    /// Lemma: 1024 is a power of two.
-    pub proof fn lemma_power_of_two_1024()
-        ensures Self::spec_is_power_of_two(1024),
-    {
-        Self::lemma_power_of_two_512();
-        Self::lemma_double_power_of_two(1024);
-    }
-
-    /// Lemma: 2048 is a power of two.
-    pub proof fn lemma_power_of_two_2048()
-        ensures Self::spec_is_power_of_two(2048),
-    {
-        Self::lemma_power_of_two_1024();
-        Self::lemma_double_power_of_two(2048);
-    }
-
     /// Lemma: 4096 is a power of two.
     pub proof fn lemma_power_of_two_4096()
         ensures Self::spec_is_power_of_two(4096),
     {
-        Self::lemma_power_of_two_2048();
+        Self::lemma_power_of_two_512();
+        Self::lemma_double_power_of_two(1024);
+        Self::lemma_double_power_of_two(2048);
         Self::lemma_double_power_of_two(4096);
     }
 
@@ -675,75 +661,6 @@ impl Slab {
         }
     }
 
-    /// Lemma: After allocation, the allocated block is in the set.
-    proof fn lemma_allocate_adds_block(&self, new_self: &Self, block_idx: int)
-        requires
-            self.inv(),
-            new_self.inv(),
-            0 <= block_idx < self@.num_data_blocks,
-            !self@.is_allocated(block_idx),
-            new_self@.is_allocated(block_idx),
-            self@.num_data_blocks == new_self@.num_data_blocks,
-            self@.block_size == new_self@.block_size,
-            self@.data_addr == new_self@.data_addr,
-        ensures
-            new_self@.is_allocated(block_idx),
-            !self@.is_allocated(block_idx),
-    {
-        // Follows from definition of view and is_allocated.
-    }
-
-    /// Lemma: After deallocation, the deallocated block is not in the set.
-    proof fn lemma_deallocate_removes_block(&self, new_self: &Self, block_idx: int)
-        requires
-            self.inv(),
-            new_self.inv(),
-            0 <= block_idx < self@.num_data_blocks,
-            self@.is_allocated(block_idx),
-            !new_self@.is_allocated(block_idx),
-            self@.num_data_blocks == new_self@.num_data_blocks,
-            self@.block_size == new_self@.block_size,
-            self@.data_addr == new_self@.data_addr,
-        ensures
-            !new_self@.is_allocated(block_idx),
-            self@.is_allocated(block_idx),
-    {
-        // Follows from definition of view and is_allocated.
-    }
-
-    /// Lemma (Liveness): After deallocating a block, it can be allocated again.
-    /// This ensures the allocator doesn't "lose" freed blocks.
-    proof fn lemma_deallocate_enables_reallocation(&self, new_self: &Self, block_idx: int)
-        requires
-            self.inv(),
-            new_self.inv(),
-            0 <= block_idx < self@.num_data_blocks,
-            self@.is_allocated(block_idx),
-            !new_self@.is_allocated(block_idx),
-            new_self@.used() < new_self@.capacity(),  // After dealloc, there's capacity
-        ensures
-            // The deallocated block is now free and can be allocated.
-            !new_self@.is_allocated(block_idx),
-            // There's at least one free block (the one we just freed).
-            new_self@.used() < new_self@.capacity(),
-    {
-        // After deallocate:
-        // - The block's bit is cleared in the bitmap.
-        // - used count decremented.
-        // - The block is now in the free set and can be returned by next alloc.
-    }
-
-    /// Lemma (Conservation): Total blocks = used blocks + free blocks.
-    proof fn lemma_block_conservation(&self)
-        requires
-            self.inv(),
-        ensures
-            self@.used() + self@.free() == self@.capacity(),
-    {
-        // From SlabView definition: free() = capacity - used.
-        // Therefore: used + (capacity - used) = capacity.
-    }
-
     /// Lemma: Invariant implies positive capacity.
     ///
     /// This lemma reveals the `num_data_blocks > 0` property that is
@@ -762,29 +679,6 @@ impl Slab {
     //==============================================================================================
     // Liveness Lemmas
     //==============================================================================================
-
-    /// Lemma (Liveness): If free() > 0, then can_allocate() is true.
-    proof fn lemma_free_implies_can_allocate(&self)
-        requires
-            self.inv(),
-            self@.free() > 0,
-        ensures
-            self@.can_allocate(),
-    {
-        // can_allocate() <==> free() > 0, by definition.
-    }
-
-    /// Lemma (Liveness): If block is allocated, it can be deallocated.
-    proof fn lemma_allocated_implies_can_deallocate(&self, block_idx: int)
-        requires
-            self.inv(),
-            self@.is_allocated(block_idx),
-            0 <= block_idx < self@.num_data_blocks,
-        ensures
-            self@.can_deallocate(block_idx),
-    {
-        // can_deallocate() <==> is_allocated(block_idx) && valid index, by definition.
-    }
 
     /// Helper lemma: allocated_blocks is a subset of set_int_range(0, num_data_blocks).
     /// This follows from allocated_blocks_in_range: forall|i| is_allocated(i) ==> 0 <= i < num_data_blocks.
@@ -1401,32 +1295,11 @@ impl Slab {
             requires b > 0, a >= 0;
     }
 
-    /// Lemma: for integer division, (a / b) * b + (a % b) == a.
-    proof fn lemma_div_mod_identity(a: int, b: int)
-        requires b > 0, a >= 0,
-        ensures (a / b) * b + (a % b) == a,
-    {
-        assert((a / b) * b + (a % b) == a) by(nonlinear_arith)
-            requires b > 0, a >= 0;
-    }
-
     /// Lemma: distributive property (a + b) * c == a * c + b * c.
     proof fn lemma_distributive(a: int, b: int, c: int)
         ensures (a + b) * c == a * c + b * c,
     {
         assert((a + b) * c == a * c + b * c) by(nonlinear_arith);
-    }
-
-    /// Lemma: Product of two positive integers is positive.
-    proof fn lemma_pos_mul_pos(a: int, b: int)
-        requires
-            a > 0,
-            b > 0,
-        ensures
-            a * b > 0,
-    {
-        assert(a * b > 0) by(nonlinear_arith)
-            requires a > 0, b > 0;
     }
 
     //==============================================================================================
@@ -2068,6 +1941,8 @@ impl Slab {
                 &&& self@.data_addr == old(self)@.data_addr
                 &&& forall|i: int| 0 <= i < self@.num_data_blocks && i != block_idx ==>
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
+                // Strengthened liveness: after deallocation, allocation is always possible.
+                &&& self@.can_allocate()
             },
             result is Err ==> self@ == old(self)@,
     {
@@ -2192,6 +2067,74 @@ impl Slab {
                     }
 
                     Self::lemma_inv_from_components(self);
+
+                    // Prove can_allocate(): after clearing a bit, there's at least one free slot.
+                    // The cleared bit (block_idx_spec) is now free.
+                    assert(!self@.is_allocated(block_idx_spec));
+                    assert(0 <= block_idx_spec < self@.num_data_blocks);
+
+                    // Prove allocated_blocks is finite.
+                    self.lemma_allocated_blocks_finite();
+                    assert(self@.allocated_blocks.finite());
+
+                    // Prove allocated_blocks is a subset of set_int_range(0, num_data_blocks).
+                    self.lemma_allocated_blocks_subset_of_range();
+                    let num_data: int = self@.num_data_blocks;
+                    let full_range: Set<int> = set_int_range(0, num_data);
+                    assert(self@.allocated_blocks.subset_of(full_range));
+
+                    // full_range is finite.
+                    lemma_int_range(0, num_data);
+                    assert(full_range.finite());
+                    assert(full_range.len() == num_data);
+
+                    // block_idx_spec is in full_range but not in allocated_blocks.
+                    assert(full_range.contains(block_idx_spec));
+                    assert(!self@.allocated_blocks.contains(block_idx_spec));
+
+                    // Use subset length lemma: A subset of B ==> |A| <= |B|.
+                    lemma_len_subset(self@.allocated_blocks, full_range);
+                    assert(self@.allocated_blocks.len() <= full_range.len());
+
+                    // Since block_idx_spec is in full_range but not in allocated_blocks,
+                    // allocated_blocks is a proper subset. Prove strict inequality.
+                    // Consider: allocated_blocks union {block_idx_spec} is a subset of full_range.
+                    // And allocated_blocks does not contain block_idx_spec.
+                    // So |allocated_blocks| + 1 <= |full_range| = num_data.
+                    // Therefore |allocated_blocks| < num_data.
+                    let alloc_plus_one: Set<int> = self@.allocated_blocks.insert(block_idx_spec);
+                    assert(alloc_plus_one.finite()) by {
+                        // Inserting into a finite set is finite.
+                        assert(self@.allocated_blocks.finite());
+                    }
+                    // alloc_plus_one is a subset of full_range.
+                    assert forall|i: int| alloc_plus_one.contains(i) implies full_range.contains(i) by {
+                        if i == block_idx_spec {
+                            assert(full_range.contains(block_idx_spec));
+                        } else {
+                            assert(self@.allocated_blocks.contains(i));
+                            assert(self@.allocated_blocks.subset_of(full_range));
+                        }
+                    }
+                    assert(alloc_plus_one.subset_of(full_range));
+
+                    // |alloc_plus_one| = |allocated_blocks| + 1 (since block_idx_spec not in allocated_blocks).
+                    axiom_set_insert_len(self@.allocated_blocks, block_idx_spec);
+                    assert(alloc_plus_one.len() == self@.allocated_blocks.len() + 1);
+
+                    // |alloc_plus_one| <= |full_range|.
+                    lemma_len_subset(alloc_plus_one, full_range);
+                    assert(alloc_plus_one.len() <= full_range.len());
+
+                    // Therefore: |allocated_blocks| + 1 <= num_data.
+                    // So: |allocated_blocks| < num_data.
+                    assert(self@.allocated_blocks.len() < num_data);
+
+                    // Now: used() < capacity(), so can_allocate().
+                    assert(self@.num_allocated() < self@.num_data_blocks);
+                    assert(self@.used() < self@.capacity());
+                    assert(self@.free() > 0);
+                    assert(self@.can_allocate());
                 }
                 Ok(())
             },
@@ -2666,27 +2609,6 @@ fn test_fresh_slab_all_free_verified(addr: usize, len: usize, block_size: usize)
     }
 }
 
-/// Test: Error conditions are prevented by preconditions.
-/// This test documents what the original error tests check, but in Verus
-/// style where preconditions prevent invalid calls.
-proof fn test_error_conditions_prevented()
-{
-    // In the original code:
-    // - test_slab_creation_invalid_length: len == 0 returns InvalidArgument
-    // - test_slab_creation_invalid_block_size: block_size == 0 returns InvalidArgument
-    //
-    // In Verus, our from_raw_parts requires:
-    //   len > 0, block_size > 0
-    // Therefore, calling with len == 0 or block_size == 0 is NOT allowed by
-    // the type system. This is a stronger guarantee than runtime error checking:
-    // invalid inputs are prevented at compile time.
-    //
-    // Similarly for double_deallocate and out_of_bounds:
-    // - deallocate requires is_allocated(addr_to_block_idx(addr))
-    // - deallocate requires is_valid_addr(addr)
-    // Violating these preconditions is a compile-time error.
-}
-
 /// Test: Invariant about index blocks - they are always marked as used.
 /// This test verifies the lemma_index_blocks_always_set property.
 fn test_index_blocks_always_used_verified(addr: usize, len: usize, block_size: usize)
@@ -2752,62 +2674,6 @@ proof fn test_addr_block_bijection_property(
     // For i >= 0 and block_size > 0: (i * block_size) / block_size == i
     Slab::lemma_div_cancel(block_idx, view.block_size);
     assert(back_to_idx == block_idx);
-}
-
-/// Test: All Allocated Blocks Are In Range
-/// Original: Implicitly assumed
-/// Verified: Proves allocated_blocks are within [0, num_data_blocks)
-proof fn test_allocated_blocks_in_range_property(view: SlabView)
-    requires
-        view.allocated_blocks_in_range(),
-{
-    // From allocated_blocks_in_range():
-    // forall |i| is_allocated(i) ==> (0 <= i < num_data_blocks)
-    assert forall |i: int| view.is_allocated(i)
-        implies 0 <= i < view.num_data_blocks
-    by {
-        // This follows directly from the precondition.
-    }
-}
-
-/// Test: No Memory Aliasing Property
-/// Original: Not tested
-/// Verified: Proves different allocated blocks have disjoint memory regions
-proof fn test_no_memory_aliasing_property(view: SlabView)
-    requires
-        view.no_memory_aliasing(),
-{
-    // From no_memory_aliasing():
-    // forall |i, j| (is_allocated(i) && is_allocated(j) && i != j) ==> blocks_are_disjoint(i, j)
-    assert forall |i: int, j: int|
-        (view.is_allocated(i) && view.is_allocated(j) && i != j)
-        implies view.blocks_are_disjoint(i, j)
-    by {
-        // This follows directly from the precondition.
-    }
-}
-
-/// Test: Liveness - Can Allocate Property
-/// Verified: If free > 0, allocation is possible
-proof fn test_liveness_can_allocate(view: SlabView)
-    requires
-        view.free() > 0,
-    ensures
-        view.can_allocate(),
-{
-    // By definition: can_allocate() <==> free() > 0.
-}
-
-/// Test: Liveness - Can Deallocate Property
-/// Verified: If block is allocated, it can be deallocated
-proof fn test_liveness_can_deallocate(view: SlabView, block_idx: int)
-    requires
-        view.is_allocated(block_idx),
-        0 <= block_idx < view.num_data_blocks,
-    ensures
-        view.can_deallocate(block_idx),
-{
-    // By definition: can_deallocate(i) <==> is_allocated(i) && valid index.
 }
 
 /// Test: Liveness - Deallocation Enables Reallocation
@@ -2896,82 +2762,14 @@ proof fn test_liveness_dealloc_enables_alloc(view: SlabView, freed_view: SlabVie
     assert(freed_view.can_allocate());
 }
 
-/// Test: Fresh Initialization Property
-/// Verified: Freshly initialized slab has no allocated blocks
-proof fn test_fresh_initialization_property(view: SlabView)
-    requires
-        view.is_freshly_initialized(),
-    ensures
-        view.used() == 0,
-        view.free() == view.capacity(),
-{
-    // is_freshly_initialized() ==> allocated_blocks is empty
-    // ==> used() = |allocated_blocks| = 0
-    // ==> free() = capacity - 0 = capacity
-}
-
-/// Test: Block Conservation Across Operations
-/// Verified: Total blocks remain constant after alloc/dealloc
-proof fn test_block_conservation_property(view: SlabView)
-    requires
-        view.capacity() > 0,
-    ensures
-        view.used() + view.free() == view.capacity(),
-{
-    // By definition: free() = capacity - used
-    // Therefore: used + free() = used + (capacity - used) = capacity
-}
-
 //==================================================================================================
 // Test Comparison Summary
 //==================================================================================================
 
-// Summary of test coverage comparison (28 verified tests total):
-//
-// Original Runtime Tests (6):
-// | Original Test                      | Verified Equivalent                        | Improvement |
-// |------------------------------------|--------------------------------------------|-------------|
-// | test_slab_creation                 | test_slab_creation_verified                | Universal   |
-// | test_slab_creation_invalid_length  | Precondition prevents (compile-time)      | Stronger    |
-// | test_slab_creation_invalid_block   | Precondition prevents (compile-time)      | Stronger    |
-// | test_allocate_deallocate           | test_allocate_deallocate_verified          | Universal   |
-// | test_double_deallocate             | test_double_deallocate_verified            | Precondition|
-// | test_allocate_out_of_bounds        | test_allocate_out_of_bounds_verified       | Precondition|
-//
-// Additional Verified Tests (22 new):
-// | New Verified Test                            | Property Proven                            |
-// |----------------------------------------------|--------------------------------------------|
-// | test_slab_allocate_verified                  | Allocation succeeds on valid slab          |
-// | test_slab_allocate_deallocate_verified       | Alloc/dealloc round-trip works             |
-// | test_slab_multiple_allocations_verified      | Multiple allocations succeed               |
-// | test_slab_creation_empty_verified            | Fresh slab is empty                        |
-// | test_slab_invariant_preserved_verified       | Invariant preserved after operations       |
-// | test_slab_properties_preserved_verified      | Properties preserved after alloc           |
-// | test_slab_from_raw_parts_verified            | from_raw_parts succeeds                    |
-// | test_slab_from_raw_parts_allocate_verified   | Alloc after from_raw_parts works           |
-// | test_multiple_allocations_verified           | Different allocs get different addrs       |
-// | test_address_computation_verified            | Addresses are correctly computed           |
-// | test_allocation_reuse_verified               | Deallocated blocks can be reused           |
-// | test_memory_block_alignment_verified         | Blocks are properly aligned                |
-// | test_no_data_corruption_verified             | Allocations don't corrupt each other       |
-// | test_fresh_slab_all_free_verified            | All data blocks initially free             |
-// | test_error_conditions_prevented              | Invalid inputs prevented at compile-time   |
-// | test_index_blocks_always_used_verified       | Index blocks always marked as used         |
-// | test_addr_block_bijection_property           | addr<->idx conversion is bijective         |
-// | test_allocated_blocks_in_range_property      | Allocated blocks are in valid range        |
-// | test_no_memory_aliasing_property             | Different blocks don't overlap             |
-// | test_liveness_can_allocate                   | Free > 0 implies allocation possible       |
-// | test_liveness_can_deallocate                 | Allocated block can be deallocated         |
-// | test_liveness_dealloc_enables_alloc          | Deallocation enables reallocation          |
-// | test_fresh_initialization_property           | New slab has no allocated blocks           |
-// | test_block_conservation_property             | used + free = capacity                     |
-//
-// Key improvements:
-// 1. Runtime error tests -> Compile-time precondition enforcement
-// 2. Single case tests -> Universal quantification over all valid inputs
-// 3. No memory safety tests -> Explicit disjointness and bounds proofs
-// 4. No liveness tests -> Explicit liveness properties (alloc/dealloc availability)
-// 5. No initialization tests -> Explicit fresh slab initialization properties
-// 6. 6 original tests -> 28 verified tests + stronger guarantees
+// Summary of test coverage:
+// - Core verified tests for slab creation, allocation, deallocation
+// - Property tests for address bijection and liveness
+// - Trivial tautological tests removed for clarity
+// - Preconditions prevent invalid inputs at compile time
 
 } // verus!
