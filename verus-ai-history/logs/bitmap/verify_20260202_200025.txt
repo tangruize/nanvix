@@ -1,0 +1,28 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  2 20:00:25 CST 2026
+Module: bitmap
+Command: verus --crate-type lib lib.rs --verify-module bitmap
+
+note: verifying module bitmap
+
+error: postcondition not satisfied
+   --> bitmap.rs:682:13
+    |
+682 |             result is Ok,
+    |             ^^^^^^^^^^^^ failed this postcondition
+683 |     {
+684 |         Self::new(number_of_bits)
+    |         ------------------------- at the end of the function body
+
+verification results:: 69 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 69
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for bitmap (verified:69, errors:1)
