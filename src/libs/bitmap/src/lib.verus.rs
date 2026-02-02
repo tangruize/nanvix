@@ -37,6 +37,15 @@ impl Bitmap {
         &&& self.usage as int == self@.usage()
     }
 
+    /// Weak invariant for use during allocation loop (usage field not yet updated).
+    pub closed spec fn inv_weak(&self) -> bool {
+        &&& self@.number_of_bits() > 0
+        &&& self@.number_of_bits() == self.bits@.len() * (u8::BITS as int)
+        &&& self@.number_of_bits() < u32::MAX as int
+        &&& self@.usage() <= self@.number_of_bits()
+        &&& self.number_of_bits as int == self@.number_of_bits()
+    }
+
     /// Spec function: check if a bit at the given bit index is set.
     pub open spec fn is_bit_set_spec(&self, bit_index: int) -> bool {
         &&& 0 <= bit_index < self@.number_of_bits()
@@ -401,6 +410,19 @@ pub(crate) proof fn lemma_view_bits_equals_bit_at(bm: &Bitmap, index: int)
     // So bm@.bits[index] = bits_to_seq(bm.bits@, bm.number_of_bits)[index] = bit_at(bm.bits@, index)
 }
 
+/// Lemma: view bits equals bit_at for valid indices (weak invariant version).
+/// This connects the abstract view with the concrete byte representation.
+pub(crate) proof fn lemma_view_bits_equals_bit_at_weak(bm: &Bitmap, index: int)
+    requires
+        bm.inv_weak(),
+        0 <= index < bm@.number_of_bits(),
+    ensures
+        bm@.bits[index] == bit_at(bm.bits@, index),
+{
+    // By definition of bits_to_seq: bits_to_seq(bytes, n) = Seq::new(n, |i| bit_at(bytes, i))
+    // So bm@.bits[index] = bits_to_seq(bm.bits@, bm.number_of_bits)[index] = bit_at(bm.bits@, index)
+}
+
 /// Lemma: is_bit_set_spec equals bit_at for valid indices.
 pub(crate) proof fn lemma_is_bit_set_equals_bit_at(bm: &Bitmap, index: int)
     requires
@@ -410,6 +432,36 @@ pub(crate) proof fn lemma_is_bit_set_equals_bit_at(bm: &Bitmap, index: int)
         bm.is_bit_set_spec(index) == bit_at(bm.bits@, index),
 {
     lemma_view_bits_equals_bit_at(bm, index);
+}
+
+/// Lemma: is_bit_set_spec equals bit_at for valid indices (weak invariant version).
+pub(crate) proof fn lemma_is_bit_set_equals_bit_at_weak(bm: &Bitmap, index: int)
+    requires
+        bm.inv_weak(),
+        0 <= index < bm@.number_of_bits(),
+    ensures
+        bm.is_bit_set_spec(index) == bit_at(bm.bits@, index),
+{
+    lemma_view_bits_equals_bit_at_weak(bm, index);
+}
+
+/// Lemma: is_bit_set_spec equals bit_at for valid indices (minimal version).
+/// This only requires basic structural properties, not the full invariant.
+pub(crate) proof fn lemma_is_bit_set_equals_bit_at_basic(
+    bits_seq: Seq<u8>,
+    number_of_bits: int,
+    index: int,
+)
+    requires
+        number_of_bits > 0,
+        number_of_bits == bits_seq.len() * 8,
+        0 <= index < number_of_bits,
+    ensures
+        // bits_to_seq(bits_seq, number_of_bits)[index] == bit_at(bits_seq, index)
+        bits_to_seq(bits_seq, number_of_bits)[index] == bit_at(bits_seq, index),
+{
+    // By definition: bits_to_seq(bytes, n) = Seq::new(n, |i| bit_at(bytes, i))
+    // So bits_to_seq[index] = bit_at(bytes, index) by Seq::new property.
 }
 
 /// Lemma: Helper for proving bit operations on bytes (OR sets bit).
@@ -525,6 +577,70 @@ pub proof fn lemma_bit_and_not_effects(old_byte: u8, bit_pos: int, new_byte: u8)
                 0 <= other_shift < 8,
                 shift != other_shift,
         ;
+    }
+}
+
+/// Lemma: After setting a bit in a byte array, bit_at reflects the change.
+/// This connects RawArray::set to the bit-level view.
+pub proof fn lemma_set_byte_updates_bit_at(
+    old_bytes: Seq<u8>,
+    new_bytes: Seq<u8>,
+    word_idx: int,
+    bit_in_word: int,
+    num_bits: int,
+)
+    requires
+        0 <= word_idx < old_bytes.len(),
+        0 <= bit_in_word < 8,
+        new_bytes.len() == old_bytes.len(),
+        new_bytes[word_idx] == (old_bytes[word_idx] | (1u8 << bit_in_word)),
+        forall|i: int| 0 <= i < old_bytes.len() && i != word_idx ==> new_bytes[i] == old_bytes[i],
+        num_bits > 0,
+        num_bits <= old_bytes.len() * 8,
+    ensures
+        // The target bit is now set
+        bit_at(new_bytes, word_idx * 8 + bit_in_word),
+        // All other bits unchanged
+        forall|i: int| #![trigger bit_at(new_bytes, i), bit_at(old_bytes, i)]
+            0 <= i < num_bits && i != word_idx * 8 + bit_in_word ==>
+            bit_at(new_bytes, i) == bit_at(old_bytes, i),
+{
+    let target_idx: int = word_idx * 8 + bit_in_word;
+
+    // Prove the target bit is set
+    let shift: u8 = bit_in_word as u8;
+    let old_byte: u8 = old_bytes[word_idx];
+    let new_byte: u8 = new_bytes[word_idx];
+    assert((new_byte & (1u8 << shift)) != 0) by (bit_vector)
+        requires
+            new_byte == (old_byte | (1u8 << shift)),
+            shift < 8,
+    ;
+
+    // Prove other bits unchanged
+    assert forall|i: int| #![trigger bit_at(new_bytes, i), bit_at(old_bytes, i)]
+        0 <= i < num_bits && i != target_idx implies
+        bit_at(new_bytes, i) == bit_at(old_bytes, i)
+    by {
+        let w: int = i / 8;
+        let b: int = i % 8;
+        let other_shift: u8 = b as u8;
+
+        if w == word_idx {
+            // Same word, different bit
+            assert(b != bit_in_word);
+            assert(other_shift != shift);
+            assert((new_byte & (1u8 << other_shift)) == (old_byte & (1u8 << other_shift))) by (bit_vector)
+                requires
+                    new_byte == (old_byte | (1u8 << shift)),
+                    shift < 8,
+                    other_shift < 8,
+                    shift != other_shift,
+            ;
+        } else {
+            // Different word, unchanged
+            assert(new_bytes[w] == old_bytes[w]);
+        }
     }
 }
 
