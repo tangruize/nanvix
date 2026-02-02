@@ -393,14 +393,23 @@ impl Vmem {
     pub open spec fn spec_get_frame_addr(&self, vaddr: int) -> int
         recommends self.spec_is_mapped(vaddr)
     {
-        // Choose the frame address from the first mapping that matches vaddr.
+        // Find the mapping for vaddr and return its frame address.
         // Since mappings are unique per vaddr (enforced by map()), this is deterministic.
-        choose|frame_addr: int|
-            exists|i: int|
+        // We return 0 if not found (should not happen when recommends is satisfied).
+        if exists|i: int|
+            #![trigger self.mappings[i]]
+            0 <= i < self.mapping_count as int &&
+            self.mappings[i as int].spec_is_for_vaddr(vaddr)
+        {
+            // Use choose on the index, not the frame address.
+            let idx: int = choose|i: int|
                 #![trigger self.mappings[i]]
                 0 <= i < self.mapping_count as int &&
-                self.mappings[i as int].spec_is_for_vaddr(vaddr) &&
-                self.mappings[i as int].frame_addr as int == frame_addr
+                self.mappings[i as int].spec_is_for_vaddr(vaddr);
+            self.mappings[idx].frame_addr as int
+        } else {
+            0 // Default (unreachable when recommends is satisfied).
+        }
     }
 
     /// Spec function to check if a page at vaddr is mapped.
