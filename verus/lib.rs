@@ -21,7 +21,7 @@
 //! - `kstack` - Kernel stack (uses error)
 //! - `ustack` - User stack (uses error)
 //! - `kredzone` - Kernel red zone (uses error)
-//! - `manager` - Physical memory manager (uses kpool, upool)
+//! - `manager` - Virtual memory manager (uses kpool, upool, vmem)
 //! - `vmem` - Virtual memory space (uses kpage, frame_address, error)
 
 pub mod error;

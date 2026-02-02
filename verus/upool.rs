@@ -776,6 +776,57 @@ impl Upool {
     {
         self.frame_allocator.free(uframe.address())
     }
+
+    /// Frees a frame by raw address.
+    ///
+    /// # Description
+    ///
+    /// Frees a frame identified by its raw physical address. This is used when
+    /// the frame address is returned from operations like vmem.unmap() which
+    /// returns a raw usize rather than a UserFrame.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Raw physical address (must be page-aligned).
+    ///
+    /// # Returns
+    ///
+    /// Upon success, Ok(()). Upon failure, an error.
+    ///
+    /// # Preconditions
+    ///
+    /// - Address must be page-aligned.
+    /// - Frame index (addr / FRAME_SIZE) must be within capacity.
+    /// - Frame must be currently allocated.
+    ///
+    /// # Postconditions
+    ///
+    /// - The frame is now free.
+    /// - All other frames are unchanged.
+    /// - Free count increases by 1.
+    pub fn free_by_addr(&mut self, addr: usize) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            addr as int % FRAME_SIZE as int == 0,
+            addr as int / FRAME_SIZE as int < old(self)@.capacity(),
+            old(self)@.is_allocated(addr as int / FRAME_SIZE as int),
+        ensures
+            self.inv(),
+            // LIVENESS: free always succeeds when preconditions are met.
+            result is Ok,
+            self@.capacity() == old(self)@.capacity(),
+            // Frame is now free.
+            !self@.is_allocated(addr as int / FRAME_SIZE as int),
+            // All other frames unchanged.
+            forall|i: int| #![trigger self@.is_allocated(i)]
+                0 <= i < self@.capacity() && i != addr as int / FRAME_SIZE as int ==>
+                self@.is_allocated(i) == old(self)@.is_allocated(i),
+            // Count decreases by exactly 1.
+            self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
+    {
+        let frame_addr: FrameAddress = FrameAddress { raw_addr: addr };
+        self.frame_allocator.free(frame_addr)
+    }
 }
 
 } // verus!

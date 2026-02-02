@@ -379,6 +379,30 @@ impl Vmem {
         self.mappings[i as int].frame_addr as int
     }
 
+    /// Spec function to get the frame address for a mapped virtual address.
+    ///
+    /// # Description
+    ///
+    /// Returns the physical frame address backing a given virtual address.
+    /// If multiple mappings exist for the same vaddr (not expected in well-formed vmem),
+    /// returns the first one found.
+    ///
+    /// # Recommends
+    ///
+    /// The vaddr should be mapped (spec_is_mapped(vaddr) is true).
+    pub open spec fn spec_get_frame_addr(&self, vaddr: int) -> int
+        recommends self.spec_is_mapped(vaddr)
+    {
+        // Choose the frame address from the first mapping that matches vaddr.
+        // Since mappings are unique per vaddr (enforced by map()), this is deterministic.
+        choose|frame_addr: int|
+            exists|i: int|
+                #![trigger self.mappings[i]]
+                0 <= i < self.mapping_count as int &&
+                self.mappings[i as int].spec_is_for_vaddr(vaddr) &&
+                self.mappings[i as int].frame_addr as int == frame_addr
+    }
+
     /// Spec function to check if a page at vaddr is mapped.
     /// Returns true if there exists a mapping for the page containing vaddr.
     pub open spec fn spec_page_is_mapped(&self, vaddr: int) -> bool {

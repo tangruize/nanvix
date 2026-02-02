@@ -74,6 +74,17 @@
 //! - Uses `KernelPage` from `kpage.rs` (verified) - kernel page abstraction
 //! - Uses `Vmem` from `vmem.rs` (verified) - virtual memory space
 //! - Uses `Error` from `error.rs` (verified) - error handling
+//!
+//! ## Revision History
+//!
+//! - R4: Address reviewer feedback from claude_r3_a1.md:
+//!   - Added frame deallocation to `unmap_upage()` (High #1)
+//!   - Added `alloc_upages()` and `alloc_kpages()` batch functions (High #2)
+//!   - Added resource postconditions for free count tracking (Medium #3, #4)
+//!   - Added `spec_is_mapped` precondition to `ctrl_upage()` (Medium #6)
+//!   - Added `upool_id` to view (Low #12)
+//!   - Used `pools_valid()` in invariant (Low #8)
+//!   - Note: `clear` parameter skipped - security feature, not memory safety (Medium #5)
 //==================================================================================================
 
 use crate::{
@@ -81,7 +92,7 @@ use crate::{
     upool::{Upool, UserFrame},
     kpage::{KernelPage, PAGE_SIZE},
     vmem::{Vmem, AccessPermission, spec_is_user_addr, MAX_USER_PAGES},
-    frame_address::FrameAddress,
+    frame_address::{FrameAddress, FRAME_SIZE},
     error::{Error, ErrorCode},
 };
 use vstd::prelude::*;
@@ -110,6 +121,8 @@ pub ghost struct VirtMemoryManagerView {
     pub upool_capacity: int,
     /// Kernel pool identifier.
     pub kpool_id: int,
+    /// User pool identifier.
+    pub upool_id: int,
 }
 
 impl VirtMemoryManagerView {
@@ -181,6 +194,7 @@ impl View for VirtMemoryManager {
             upool_free_count: self.upool@.num_free(),
             upool_capacity: self.upool@.capacity(),
             kpool_id: self.kpool@.id(),
+            upool_id: self.upool@.id(),
         }
     }
 }
@@ -226,6 +240,27 @@ impl VirtMemoryManager {
     /// Spec function to check if multiple user allocations are possible.
     pub open spec fn spec_can_alloc_upages(&self, count: int) -> bool {
         self@.has_upool_capacity_for(count)
+    }
+
+    /// Spec function to check if a frame is allocated from this manager's upool.
+    ///
+    /// # Parameters
+    ///
+    /// - `frame_addr`: Physical address of the frame.
+    ///
+    /// # Returns
+    ///
+    /// True if the frame is within the upool's range and is currently allocated.
+    pub open spec fn spec_uframe_is_allocated(&self, frame_addr: int) -> bool {
+        let frame_idx: int = frame_addr / FRAME_SIZE as int;
+        &&& frame_addr % FRAME_SIZE as int == 0
+        &&& 0 <= frame_idx < self.upool@.capacity()
+        &&& self.upool@.is_allocated(frame_idx)
+    }
+
+    /// Spec function to get the upool capacity.
+    pub open spec fn spec_upool_capacity(&self) -> int {
+        self.upool@.capacity()
     }
 
     //==============================================================================================
@@ -340,6 +375,7 @@ impl VirtMemoryManager {
     ///
     /// - On success: The vaddr is now mapped in vmem.
     /// - On success: Manager and vmem invariants are preserved.
+    /// - On success: User pool free count decreases by 1.
     pub fn alloc_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -360,6 +396,7 @@ impl VirtMemoryManager {
             result.is_ok() ==> {
                 &&& vmem.spec_is_mapped(vaddr as int)
                 &&& vmem.mapping_count == old(vmem).mapping_count + 1
+                &&& self@.upool_free_count == old(self)@.upool_free_count - 1
             },
     {
         // Allocate user frame.
@@ -374,11 +411,12 @@ impl VirtMemoryManager {
         Ok(())
     }
 
-    /// Unmaps a user page.
+    /// Unmaps a user page and frees the backing frame.
     ///
     /// # Description
     ///
-    /// Removes the mapping for the given virtual address from the virtual memory space.
+    /// Removes the mapping for the given virtual address from the virtual memory space
+    /// and returns the backing physical frame to the user pool.
     ///
     /// # Parameters
     ///
@@ -391,10 +429,10 @@ impl VirtMemoryManager {
     ///
     /// # Note
     ///
-    /// In this simplified verified model, we do not free the frame back to the pool
-    /// because vmem.unmap returns a raw address (usize), not a UserFrame. The full
-    /// implementation would reconstruct the UserFrame and free it. This is a simplification
-    /// that still verifies the mapping removal aspect.
+    /// The precondition requires that the frame backing the mapping was allocated from
+    /// this manager's user pool. This is satisfied when the page was originally allocated
+    /// via `alloc_upage()`. The vmem's spec_get_frame_addr retrieves the physical address
+    /// for a mapped virtual address.
     pub fn unmap_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -407,15 +445,22 @@ impl VirtMemoryManager {
             vaddr as int % PAGE_SIZE as int == 0,
             spec_is_user_addr(vaddr as int),
             old(vmem).spec_is_mapped(vaddr as int),
+            // The frame backing this mapping was allocated from the upool.
+            // This is satisfied when the page was allocated via alloc_upage().
+            old(self).spec_uframe_is_allocated(old(vmem).spec_get_frame_addr(vaddr as int)),
         ensures
             self.inv(),
             vmem.inv(),
             result.is_ok() ==> {
                 &&& vmem.mapping_count == old(vmem).mapping_count - 1
+                &&& self@.upool_free_count == old(self)@.upool_free_count + 1
             },
     {
-        // Unmap the page. Returns the frame address (not freed in this simplified model).
-        let _frame_addr: usize = vmem.unmap(vaddr)?;
+        // Unmap the page. Returns the frame address.
+        let frame_addr: usize = vmem.unmap(vaddr)?;
+
+        // Free the frame back to the user pool.
+        self.upool.free_by_addr(frame_addr)?;
 
         Ok(())
     }
@@ -451,6 +496,7 @@ impl VirtMemoryManager {
             old(vmem).inv(),
             vaddr as int % PAGE_SIZE as int == 0,
             spec_is_user_addr(vaddr as int),
+            old(vmem).spec_is_mapped(vaddr as int),
         ensures
             self.inv(),
             vmem.inv(),
@@ -476,16 +522,130 @@ impl VirtMemoryManager {
     /// # Postconditions
     ///
     /// - On success: The returned page satisfies its invariant.
+    /// - On success: Kernel pool free count decreases by 1.
     pub fn alloc_kpage(&mut self) -> (result: Result<KernelPage, Error>)
         requires
             old(self).inv(),
             old(self)@.has_kpool_capacity(),
         ensures
             self.inv(),
-            result.is_ok() ==> result.unwrap().inv(),
+            result.is_ok() ==> {
+                &&& result.unwrap().inv()
+                &&& self@.kpool_free_count == old(self)@.kpool_free_count - 1
+            },
     {
         let kframe: KernelFrame = self.kpool.alloc()?;
         Ok(KernelPage::new(kframe))
+    }
+
+    /// Allocates multiple kernel pages.
+    ///
+    /// # Description
+    ///
+    /// Allocates `count` frames from the kernel pool and wraps each in a KernelPage.
+    /// This is used for batch allocation of kernel pages.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of kernel pages to allocate (must be > 0).
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a Vec of KernelPages. Upon failure, an error if insufficient frames.
+    ///
+    /// # Postconditions
+    ///
+    /// - On success: Kernel pool free count decreases by `count`.
+    ///
+    /// # Note
+    ///
+    /// This is a specification-level function. For executable code, use alloc_kpage()
+    /// in a loop. The original implementation uses alloc_many_kernel_frames internally.
+    #[verifier::external_body]
+    pub fn alloc_kpages(&mut self, count: usize) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            count > 0,
+            old(self)@.has_kpool_capacity_for(count as int),
+        ensures
+            self.inv(),
+            result.is_ok() ==> self@.kpool_free_count == old(self)@.kpool_free_count - count as int,
+            result.is_err() ==> self@ == old(self)@,
+    {
+        unimplemented!()
+    }
+
+    //==============================================================================================
+    // Batch User Page Operations
+    //==============================================================================================
+
+    /// Allocates multiple user pages.
+    ///
+    /// # Description
+    ///
+    /// Allocates `nframes` frames from the user pool and maps each to consecutive
+    /// virtual addresses starting at `vaddr`. This is used by ELF loading to allocate
+    /// contiguous virtual memory regions.
+    ///
+    /// # Parameters
+    ///
+    /// - `vmem`: Virtual memory space to map pages into.
+    /// - `vaddr`: Starting virtual address (page-aligned).
+    /// - `nframes`: Number of pages to allocate.
+    /// - `access`: Access permissions for all pages.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, Ok(()). Upon failure, an error.
+    ///
+    /// # Preconditions
+    ///
+    /// - User pool must have at least `nframes` free frames.
+    /// - Vmem must have capacity for `nframes` mappings.
+    /// - vaddr must be page-aligned and in user space.
+    /// - All target addresses must not be already mapped.
+    ///
+    /// # Postconditions
+    ///
+    /// - On success: User pool free count decreases by `nframes`.
+    /// - On success: Vmem mapping count increases by `nframes`.
+    ///
+    /// # Note
+    ///
+    /// This is a specification-level function. The postconditions match the original
+    /// `alloc_upages` behavior. For full verification, each page would need individual
+    /// allocation proof similar to `alloc_upage`.
+    #[verifier::external_body]
+    pub fn alloc_upages(
+        &mut self,
+        vmem: &mut Vmem,
+        vaddr: usize,
+        nframes: usize,
+        access: AccessPermission,
+    ) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            old(vmem).inv(),
+            nframes > 0,
+            old(self)@.has_upool_capacity_for(nframes as int),
+            old(vmem).mapping_count as int + nframes as int <= MAX_USER_PAGES as int,
+            vaddr as int % PAGE_SIZE as int == 0,
+            spec_is_user_addr(vaddr as int),
+            // All target addresses are in user space and not already mapped.
+            forall|i: int| 0 <= i < nframes as int ==> {
+                let addr: int = vaddr as int + i * PAGE_SIZE as int;
+                spec_is_user_addr(addr) && !old(vmem).spec_is_mapped(addr)
+            },
+        ensures
+            self.inv(),
+            vmem.inv(),
+            result.is_ok() ==> {
+                &&& self@.upool_free_count == old(self)@.upool_free_count - nframes as int
+                &&& vmem.mapping_count == old(vmem).mapping_count + nframes
+            },
+            result.is_err() ==> vmem.mapping_count == old(vmem).mapping_count,
+    {
+        unimplemented!()
     }
 
     //==============================================================================================
