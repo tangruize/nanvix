@@ -468,10 +468,7 @@ impl Bitmap {
         ensures
             self@.has_free_bit(),
     {
-        // has_free_bit() = exists|j| 0 <= j < n && !bits[j]
-        // We have 0 <= i < n and !is_bit_set(i).
-        // is_bit_set(i) implies bits[i], so !is_bit_set(i) implies !bits[i].
-        // Therefore the existential is satisfied with witness i.
+        // Witness i satisfies the existential in has_free_bit().
         assert(!self@.bits[i]);
     }
 
@@ -576,7 +573,6 @@ impl Bitmap {
     }
 
     /// Lemma: If bits sequences are equal, then is_bit_set returns the same result.
-    /// This connects the closed is_bit_set predicate to the bits sequence equality.
     pub proof fn lemma_bits_equal_implies_is_bit_set_equal(&self, other: &Self, i: int)
         requires
             self.inv(),
@@ -586,11 +582,7 @@ impl Bitmap {
         ensures
             self.is_bit_set(i) == other.is_bit_set(i),
     {
-        // is_bit_set(i) is defined as self@.bits[i].
-        // If bits are equal, then bits[i] is equal.
-        assert(self@.bits[i] == other@.bits[i]);
-        assert(self.is_bit_set(i) == self@.bits[i]);
-        assert(other.is_bit_set(i) == other@.bits[i]);
+        // Both is_bit_set definitions reduce to bits[i].
     }
 
     //==================================================================================================
