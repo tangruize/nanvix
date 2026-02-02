@@ -707,9 +707,13 @@ def run_simplify(module_name: str, source_path: Optional[str] = None) -> bool:
     print(f"Verified: verus/{module_name}.rs")
     print(f"{'#'*60}")
 
+    # Generate timestamp for report filename.
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     prompt = SIMPLIFY_PROOF_PROMPT.format(
         module_name=module_name,
         source_path=source_path,
+        timestamp=timestamp,
     )
 
     # Commit before simplification.
@@ -771,12 +775,16 @@ def run_consistency_check(module_name: str, source_path: Optional[str] = None) -
     print(f"Verified: verus/{module_name}.rs")
     print(f"{'#'*60}")
 
+    # Generate timestamp for report filename.
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # Commit before consistency check/fix.
     git_commit_module(module_name, f"[verus-ai] Consistency check START: {module_name}")
 
     prompt = CHECK_CONSISTENCY_PROMPT.format(
         module_name=module_name,
         source_path=source_path,
+        timestamp=timestamp,
     )
 
     output, session = run_copilot(
@@ -845,7 +853,14 @@ def run_strengthen_liveness(module_name: str, source_path: Optional[str] = None)
     print(f"Source: {source_path}")
     print(f"{'#'*60}")
 
-    prompt = STRENGTHEN_SPECS_PROMPT.format(module_name=module_name, source_path=source_path)
+    # Generate timestamp for report filename.
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    prompt = STRENGTHEN_SPECS_PROMPT.format(
+        module_name=module_name,
+        source_path=source_path,
+        timestamp=timestamp,
+    )
 
     # Commit before strengthening.
     git_commit_module(module_name, f"[verus-ai] Strengthen specs START: {module_name}")

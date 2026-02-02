@@ -194,97 +194,37 @@ Write justifications as comments in the code or in a separate TRUST_BOUNDARY.md 
 #==================================================================================================
 
 SIMPLIFY_PROOF_PROMPT = """
-Simplify and clean up the Verus verification in verus/{module_name}.rs
+Simplify the Verus verification in verus/{module_name}.rs
 
-== REFERENCE ==
-Original source code: {source_path}
-Verified code: verus/{module_name}.rs
+Reference: {source_path}
 
-Use the original source as reference to understand the intended behavior.
-The verified code should remain semantically equivalent to the original.
+== WHAT TO SIMPLIFY ==
+1. Remove truly redundant lemmas (duplicate proofs of the same property)
+2. Remove redundant postconditions implied by others in the same function
+3. Condense verbose inline proofs into reusable lemmas
+4. Remove debug artifacts (unnecessary asserts, TODO comments, dead code)
 
-== CRITICAL: WHEN ARE TWO LEMMAS TRULY REDUNDANT? ==
+== CRITICAL: WHAT IS "REDUNDANT"? ==
+A lemma is redundant ONLY if another lemma proves the EXACT same thing:
+- Same requires (preconditions)
+- Same ensures (postconditions)
 
-Two lemmas are ONLY redundant if they prove the EXACT SAME property under the EXACT SAME conditions.
+WARNING: "Never called" does NOT mean redundant! Verus verifies all lemmas regardless.
+WARNING: Different requires = different property, even if ensures looks similar.
 
-**Check BOTH requires AND ensures:**
-- Lemma A: requires P, ensures Q
-- Lemma B: requires P', ensures Q'
-- Redundant ONLY IF: P ≡ P' AND Q ≡ Q'
+When in doubt, KEEP the lemma.
 
-**Common mistake - these are NOT redundant:**
-- `lemma_foo`: requires inv(), free() > 0; ensures can_allocate()
-- `test_foo`:  requires free() > 0; ensures can_allocate()
-These prove DIFFERENT things! One requires inv(), one doesn't.
-
-**Also NOT redundant - opposite directions:**
-- `lemma_A`: requires inv(); ensures property_X()
-- `lemma_B`: requires property_X(); ensures some_consequence
-These are DIFFERENT! One proves inv ==> X, the other proves X ==> consequence.
-
-**When in doubt, KEEP the lemma.** It's better to have a slightly verbose proof than to
-accidentally remove a critical safety or liveness property.
-
-== GOALS ==
-1. **Remove truly redundant lemmas**: Only if BOTH requires AND ensures are logically equivalent.
-2. **Remove redundant postconditions**: If a postcondition is logically implied by other
-   postconditions in the SAME function.
-3. **Condense verbose inline proofs**: Move repeated proof patterns into reusable lemmas.
-4. **Remove debug artifacts**: Unnecessary assert statements, TODO comments, commented code.
-
-== STRICT CONSTRAINTS ==
-- DO NOT remove a lemma just because it is "never called"
-- DO NOT remove a lemma if its requires clause is WEAKER (fewer preconditions)
-- DO NOT change the semantics of any executable code
-- DO NOT weaken any existing postconditions
-- DO NOT add any `assume`, `admit`, `external_body`, or `external` annotations
-- Verification MUST still pass after simplification
+== CONSTRAINTS ==
+- Do NOT add assume, admit, external_body
+- Verification must still pass
 
 == PROCESS ==
-1. List all `proof fn` lemmas with their FULL requires and ensures
-2. For each candidate removal, show side-by-side comparison:
-   ```
-   CANDIDATE: test_foo
-   requires: free() > 0
-   ensures: can_allocate()
-   
-   COMPARE TO: lemma_foo
-   requires: inv(), free() > 0    <-- DIFFERENT! Has extra inv()
-   ensures: can_allocate()
-   
-   VERDICT: NOT REDUNDANT - different preconditions
-   ```
-3. Only remove if verdict is "REDUNDANT - identical requires and ensures"
-4. Run verification: ./verus-ai/scripts/verify.sh {module_name}
+1. For each removal candidate, compare requires+ensures with existing lemmas
+2. Remove only if truly identical
+3. Run: ./verus-ai/scripts/verify.sh {module_name}
 
 == OUTPUT ==
-Write a report to verus-ai-history/simplify/{module_name}.md:
-
-```markdown
-# Simplify Report: {module_name}
-
-## Summary
-- Lemmas analyzed: N total
-- Lemmas removed: M
-- Lemmas kept: K
-- Lines: before X -> after Y
-
-## Redundancy Analysis
-
-### Removed (with justification)
-| Lemma | Redundant With | Requires Match | Ensures Match |
-|-------|----------------|----------------|---------------|
-| test_foo | lemma_foo | ✅ identical | ✅ identical |
-
-### Kept (even if unused)
-| Lemma | Reason Kept |
-|-------|-------------|
-| lemma_bar | Unique property: proves X under weaker conditions |
-
-## Verification
-- Before: PASS (N verified)
-- After: PASS (M verified)
-```
+Write report to verus-ai-history/simplify/{module_name}_{timestamp}.md showing what was removed and why.
 """.strip()
 
 
@@ -338,7 +278,7 @@ Some things cannot be fixed due to Verus/verification constraints. Document thes
 
 == OUTPUT ==
 
-After making fixes, write a report to verus-ai-history/consistency/{module_name}.md:
+After making fixes, write a report to verus-ai-history/consistency/{module_name}_{timestamp}.md:
 
 ```markdown
 # Consistency Check: {module_name}
@@ -376,102 +316,34 @@ After making fixes, write a report to verus-ai-history/consistency/{module_name}
 
 
 STRENGTHEN_SPECS_PROMPT = """
-Review and strengthen specifications in verus/{module_name}.rs
+Strengthen weak specifications in verus/{module_name}.rs
 
-== REFERENCE ==
-Original source code: {source_path}
-Verified code: verus/{module_name}.rs
+Reference: {source_path}
 
-Use the original source as reference to understand the intended behavior.
+== WHAT TO STRENGTHEN ==
+Find and fix WEAK postconditions that don't fully capture what the function guarantees.
 
-== GOAL ==
-Identify and fix WEAK postconditions that don't fully capture the function's guarantees.
-A strong spec makes verification more useful by catching more bugs.
+Common weaknesses:
+1. One-sided: `ensures ok ==> P` - what about error case?
+2. Trivial: `ensures x >= 0` for usize (always true)
+3. Missing state change: `ensures ok` without saying what changed
+4. Vague error: `ensures err ==> true` (says nothing)
 
-== COMMON WEAKNESS PATTERNS ==
+Look for liveness properties (good things happen when preconditions met):
+- `has_capacity() ==> result.is_ok()` not just "may succeed"
+- `is_allocated(i) ==> can_deallocate(i)` not just "may work"
 
-1. **One-sided conditionals** (most common):
-   - Weak: `ensures result.is_ok() ==> some_property`
-   - Problem: Says nothing about the error case!
-   - Strong: `ensures result.is_ok() <==> precondition_for_success`
-
-2. **Trivially true specs**:
-   - Weak: `ensures self.count >= 0` (always true for usize)
-   - Strong: `ensures self.count == old(self).count + 1`
-
-3. **Missing state change specs**:
-   - Weak: `ensures result.is_ok()` (what changed?)
-   - Strong: `ensures result.is_ok() ==> self@.contains(new_item)`
-
-4. **Incomplete error specs**:
-   - Weak: `ensures result.is_err() ==> true`
-   - Strong: `ensures result.is_err() ==> specific_error_condition`
-
-== CATEGORIES TO CHECK ==
-
-### Liveness Properties (something good happens)
-- Allocation: `has_capacity() ==> result.is_ok()` (not just "may succeed")
-- Search: `contains(key) ==> result.is_some()` (not just "may find")
-- Deallocation: `free_count == old(free_count) + 1` (resource returned)
-
-### Safety Properties (nothing bad happens)
-- Bounds: `index < len() ==> no_panic`
-- Invariant preservation: `old(self).inv() ==> self.inv()`
-- No aliasing: `result.addr != other.addr`
-
-### Functional Correctness
-- Getters: `result == self@.field` (exact value, not just "some value")
-- Setters: `self@.field == new_value` (actually changed)
-- Conversions: `result@ == self@` (no information loss)
+== CONSTRAINTS ==
+- Do NOT add assume, admit, external_body
+- Verification must still pass
 
 == PROCESS ==
-
-1. List all functions with their current postconditions
-2. For each function, check:
-   - Is success condition bidirectional (<==> not just ==>)?
-   - Is error condition specified?
-   - Are state changes fully described?
-   - Can the spec be made more precise?
-3. Strengthen weak specs and add proof if needed
-4. Run verification: ./verus-ai/scripts/verify.sh {module_name}
+1. Review each function's ensures clauses
+2. Identify weak specs and strengthen them
+3. Run: ./verus-ai/scripts/verify.sh {module_name}
 
 == OUTPUT ==
-
-Write a report to verus-ai-history/strengthen/{module_name}.md:
-
-```markdown
-# Strengthen Report: {module_name}
-
-## Summary
-- Functions analyzed: N
-- Specs strengthened: M
-- Specs unchanged: K (already strong)
-
-## Strengthened Specs
-
-### Function: alloc()
-- **Before**: `ensures result.is_ok() ==> frame.inv()`
-- **Issue**: One-sided conditional, missing error case
-- **After**:
-  ```
-  ensures
-      old(self)@.has_capacity() ==> result.is_ok(),
-      result.is_ok() ==> frame.inv(),
-      result.is_err() ==> !old(self)@.has_capacity()
-  ```
-
-### Function: dealloc()
-...
-
-## Unchanged (Already Strong)
-| Function | Reason |
-|----------|--------|
-| new() | Already has bidirectional ensures |
-
-## Verification
-- Before: PASS (N verified)
-- After: PASS (M verified)
-```
+Write report to verus-ai-history/strengthen/{module_name}_{timestamp}.md showing before/after for each change.
 """.strip()
 
 
