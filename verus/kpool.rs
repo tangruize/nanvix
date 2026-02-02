@@ -751,8 +751,6 @@ impl Kpool {
             result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
             // On failure: state unchanged.
             result is Err ==> self@ == old(self)@,
-            // On failure: count unchanged.
-            result is Err ==> self.spec_num_allocated() == old(self).spec_num_allocated(),
             // Liveness for count=1.
             (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
     {
