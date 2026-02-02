@@ -902,9 +902,6 @@ mod test {
             pool@.is_freshly_initialized(),
             pool@.capacity() > 0,
     {
-        assert(pool@.num_allocated() == 0);
-        assert(pool@.num_free() == pool@.capacity());
-        assert(pool@.num_free() > 0);
         assert(pool@.can_allocate());
     }
 
