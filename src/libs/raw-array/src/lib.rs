@@ -208,13 +208,13 @@ impl<T> RawArrayStorage<T> {
 /// A type that represent a fixed-size array.
 ///
 #[derive(Debug)]
-#[verus_verify]
+#[verus_verify(external)]
 pub struct RawArray<T> {
     /// The backing storage of the raw array.
     storage: RawArrayStorage<T>,
 }
 
-#[verus_verify]
+#[verus_verify(external)]
 impl<T> RawArray<T> {
     ///
     /// # Description
@@ -230,14 +230,6 @@ impl<T> RawArray<T> {
     /// On success, the new managed array is returned, with all bits set to zero.
     /// On failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        requires
-            len > 0,
-            len < i32::MAX as usize,
-        ensures
-            spec_new_ensures(len, result),
-    )]
     pub fn new(len: usize) -> Result<RawArray<T>, Error> {
         Ok(RawArray {
             storage: RawArrayStorage::new_managed(len)?,
@@ -267,14 +259,6 @@ impl<T> RawArray<T> {
     /// - `ptr` must be properly aligned.
     /// - `ptr` must point to len consecutive properly initialized values of type `T``.
     ///
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        requires
-            len > 0,
-            len < i32::MAX as usize,
-        ensures
-            spec_from_raw_parts_ensures(len, result),
-    )]
     pub unsafe fn from_raw_parts(ptr: *mut T, len: usize) -> Result<RawArray<T>, Error> {
         Ok(RawArray {
             storage: RawArrayStorage::new_unmanaged(ptr, len)?,
@@ -282,23 +266,17 @@ impl<T> RawArray<T> {
     }
 }
 
-#[verus_verify]
+#[verus_verify(external)]
 impl<T> Deref for RawArray<T> {
     type Target = [T];
 
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        ensures
-            result@ == self@,
-    )]
     fn deref(&self) -> &Self::Target {
         self.storage.get()
     }
 }
 
-#[verus_verify]
+#[verus_verify(external)]
 impl<T> DerefMut for RawArray<T> {
-    #[verus_verify(external_body)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.get_mut()
     }

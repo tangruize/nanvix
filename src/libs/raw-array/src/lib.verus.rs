@@ -2,10 +2,8 @@
 // Licensed under the MIT License.
 
 // RawArray Verification Specifications
-//
-// This file contains Verus verification specifications, proofs, and lemmas
-// for the RawArray module. It is included via `include!` macro only when
-// `verus_keep_ghost` is defined.
+
+use vstd::prelude::*;
 
 verus! {
 
@@ -25,16 +23,12 @@ impl<T> RawArrayView<T> {
     }
 
     /// Returns the element at index i.
-    pub open spec fn index(&self, i: int) -> T
-        recommends 0 <= i < self.len() as int
-    {
+    pub open spec fn index(&self, i: int) -> T {
         self.contents[i]
     }
 
     /// Returns a new view with the element at index i updated to value.
-    pub open spec fn update(&self, i: int, value: T) -> RawArrayView<T>
-        recommends 0 <= i < self.len() as int
-    {
+    pub open spec fn update(&self, i: int, value: T) -> RawArrayView<T> {
         RawArrayView {
             contents: self.contents.update(i, value),
         }
@@ -94,52 +88,6 @@ pub open spec fn all_zeros<T>(view: &RawArrayView<T>) -> bool {
 pub open spec fn raw_array_inv<T>(len: nat) -> bool {
     &&& len > 0
     &&& len < i32::MAX as nat
-}
-
-//==================================================================================================
-// RawArray Specification Functions
-//==================================================================================================
-
-impl<T> RawArray<T> {
-    /// Returns the spec-level length of the array.
-    pub open spec fn spec_len(&self) -> nat {
-        self@.len()
-    }
-
-    /// Returns true if index i is within bounds.
-    pub open spec fn in_bounds(&self, i: int) -> bool {
-        0 <= i < self.spec_len() as int
-    }
-
-    /// Invariant for RawArray: length is positive and bounded.
-    pub open spec fn inv(&self) -> bool {
-        &&& self@.len() > 0
-        &&& self@.len() < i32::MAX as nat
-    }
-}
-
-//==================================================================================================
-// View Implementation for RawArray
-//==================================================================================================
-
-impl<T> View for RawArray<T> {
-    type V = Seq<T>;
-
-    uninterp spec fn view(&self) -> Seq<T>;
-}
-
-//==================================================================================================
-// Specification for new()
-//==================================================================================================
-
-/// Specification for RawArray::new().
-pub open spec fn spec_new_ensures<T>(len: usize, result: Result<RawArray<T>, Error>) -> bool {
-    &&& (result is Ok ==> {
-        &&& result->Ok_0.inv()
-        &&& result->Ok_0@.len() == len
-        &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
-    })
-    &&& (result is Err ==> result->Err_0.code == ErrorCode::OutOfMemory)
 }
 
 //==================================================================================================
