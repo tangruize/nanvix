@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from config import (
+    CONSISTENCY_DIR,
     GRADE_THRESHOLD,
     HISTORY_DIR,
     INITIAL_PROVER_RETRIES,
@@ -47,12 +48,15 @@ from guardrails import (
 )
 from prompts import (
     CHEATING_JUSTIFICATION_PROMPT,
+    CHECK_CONSISTENCY_PROMPT,
     PROVER_FIX_PROMPT,
     PROVER_FIX_FRESH_PROMPT,
     PROVER_PROMPT,
     PROVER_RETRY_PROMPT,
     REVIEW_FOLLOWUP_PROMPT,
     REVIEWER_PROMPT,
+    SIMPLIFY_PROOF_PROMPT,
+    STRENGTHEN_SPECS_PROMPT,
 )
 
 
@@ -563,6 +567,13 @@ def run_workflow(
 
     # Outer loop: rounds where all reviewers participate.
     start_round = state.outer_iteration if resume else 1
+
+    # If fresh_prover and resuming, clear the session at the very start.
+    if fresh_prover and resume and state.prover_session_id is not None:
+        print(f"\n[FRESH PROVER] Clearing previous prover session for fresh start")
+        state.prover_session_id = None
+        save_workflow_state(state)
+
     for outer_round in range(start_round, config.MAX_OUTER_ITERATIONS + 1):
         state.outer_iteration = outer_round
 
@@ -630,6 +641,294 @@ def run_workflow(
     return False
 
 
+#==================================================================================================
+# Post-Processing Commands: Simplify, Consistency Check, Strengthen
+#==================================================================================================
+
+def find_source_path(module_name: str) -> Optional[str]:
+    """
+    Try to find the original source file for a module.
+
+    Searches common patterns in the Nanvix codebase.
+    Returns the relative path if found, None otherwise.
+    """
+    # Common patterns for source files in Nanvix.
+    possible_paths = [
+        # Libraries (most common for verified modules).
+        f"src/libs/{module_name}/src/lib.rs",
+        f"src/libs/{module_name}/src/{module_name}.rs",
+        # Physical memory management.
+        f"src/kernel/src/mm/phys/{module_name}.rs",
+        f"src/kernel/src/mm/phys/{module_name}/mod.rs",
+        # Virtual memory management.
+        f"src/kernel/src/mm/virt/{module_name}.rs",
+        f"src/kernel/src/mm/virt/{module_name}/mod.rs",
+        # General mm.
+        f"src/kernel/src/mm/{module_name}.rs",
+        f"src/kernel/src/mm/{module_name}/mod.rs",
+        # Kernel libs.
+        f"src/kernel/src/libs/{module_name}.rs",
+        f"src/kernel/src/libs/{module_name}/mod.rs",
+        # HAL/arch.
+        f"src/kernel/src/hal/{module_name}.rs",
+        f"src/kernel/src/hal/arch/x86/mem/{module_name}.rs",
+    ]
+
+    for path in possible_paths:
+        if (PROJECT_ROOT / path).exists():
+            return path
+
+    return None
+
+
+def run_simplify(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Run proof simplification on a verified module.
+
+    Removes redundant lemmas/specs, condenses verbose proofs, removes debug artifacts.
+    Requires original source as reference and prohibits adding assume/external_body.
+    """
+    verus_file = VERUS_DIR / f"{module_name}.rs"
+    if not verus_file.exists():
+        print(f"ERROR: Verus file not found: {verus_file}")
+        return False
+
+    # Find source path if not provided.
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"WARNING: Could not auto-detect source for {module_name}")
+            print("Tip: Use --source <path> to specify the original source file")
+            source_path = f"(unknown - please check verus/{module_name}.rs comments for reference)"
+
+    print(f"\n{'#'*60}")
+    print(f"SIMPLIFY: {module_name}")
+    print(f"Original: {source_path}")
+    print(f"Verified: verus/{module_name}.rs")
+    print(f"{'#'*60}")
+
+    prompt = SIMPLIFY_PROOF_PROMPT.format(
+        module_name=module_name,
+        source_path=source_path,
+    )
+
+    # Commit before simplification.
+    git_commit_module(module_name, f"[verus-ai] Simplify START: {module_name}")
+
+    output, session = run_copilot(
+        prompt,
+        PROVER_MODEL,
+        timeout=PROVER_TIMEOUT,
+        log_prefix="simplify",
+        module_name=module_name,
+    )
+
+    # Commit after simplification.
+    git_commit_module(module_name, f"[verus-ai] Simplify END: {module_name}")
+
+    # Check for cheating patterns introduced.
+    print("\n[GUARDRAILS] Checking for new assume/external_body...")
+    cheating_report = detect_cheating_in_module(module_name)
+    if cheating_report.has_cheating():
+        print(f"[GUARDRAILS] ⚠️ WARNING: Cheating patterns detected!")
+        print(cheating_report.summary())
+
+    # Run verification to ensure it still passes.
+    print("\n[VERUS] Verifying after simplification...")
+    verus_success, verus_output = run_verus(module_name)
+    print(f"[VERUS] {'PASSED' if verus_success else 'FAILED'}")
+
+    if not verus_success:
+        print(f"[WARNING] Verification failed after simplification!")
+        print(f"[VERUS] Output: {verus_output[:1000]}")
+
+    return verus_success
+
+
+def run_consistency_check(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Check and fix semantic consistency between original source and verified code.
+
+    Identifies missing functions, loop transformations, invented functions, etc.
+    Attempts to fix issues where possible, documents unfixable issues (Verus limitations).
+    """
+    verus_file = VERUS_DIR / f"{module_name}.rs"
+    if not verus_file.exists():
+        print(f"ERROR: Verus file not found: {verus_file}")
+        return False
+
+    # Try to find source path if not provided.
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"ERROR: Could not find original source for {module_name}")
+            print("Please specify with --source <path>")
+            return False
+
+    print(f"\n{'#'*60}")
+    print(f"CONSISTENCY CHECK & FIX: {module_name}")
+    print(f"Original: {source_path}")
+    print(f"Verified: verus/{module_name}.rs")
+    print(f"{'#'*60}")
+
+    # Commit before consistency check/fix.
+    git_commit_module(module_name, f"[verus-ai] Consistency check START: {module_name}")
+
+    prompt = CHECK_CONSISTENCY_PROMPT.format(
+        module_name=module_name,
+        source_path=source_path,
+    )
+
+    output, session = run_copilot(
+        prompt,
+        PROVER_MODEL,
+        timeout=PROVER_TIMEOUT,
+        log_prefix="consistency",
+        module_name=module_name,
+    )
+
+    # Commit after consistency check/fix.
+    git_commit_module(module_name, f"[verus-ai] Consistency check END: {module_name}")
+
+    # Check for cheating patterns introduced.
+    print("\n[GUARDRAILS] Checking for assume/external_body...")
+    cheating_report = detect_cheating_in_module(module_name)
+    if cheating_report.has_cheating():
+        print(f"[GUARDRAILS] ⚠️ WARNING: Cheating patterns detected!")
+        print(cheating_report.summary())
+
+    # Run verification to ensure it still passes.
+    print("\n[VERUS] Verifying after consistency fixes...")
+    verus_success, verus_output = run_verus(module_name)
+    print(f"[VERUS] {'PASSED' if verus_success else 'FAILED'}")
+
+    if not verus_success:
+        print(f"[WARNING] Verification failed after consistency fixes!")
+        print(f"[VERUS] Output: {verus_output[:1000]}")
+
+    # Check if report was created.
+    CONSISTENCY_DIR.mkdir(parents=True, exist_ok=True)
+    report_file = CONSISTENCY_DIR / f"{module_name}.md"
+    if report_file.exists():
+        print(f"\n[REPORT] Consistency report saved to: {report_file}")
+        content = report_file.read_text()
+        # Count issues.
+        if "Unfixable Issues" in content:
+            print("[INFO] Some issues could not be fixed due to Verus limitations - see report")
+    else:
+        print(f"[WARNING] No report file created at {report_file}")
+
+    return verus_success
+
+
+def run_strengthen_liveness(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Review and strengthen specifications in a verified module.
+
+    Fixes weak postconditions: one-sided conditionals, missing error specs,
+    incomplete state change specs, etc. Includes liveness, safety, and functional correctness.
+    """
+    verus_file = VERUS_DIR / f"{module_name}.rs"
+    if not verus_file.exists():
+        print(f"ERROR: Verus file not found: {verus_file}")
+        return False
+
+    # Find source path if not provided.
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"WARNING: Could not find source path for {module_name}")
+            source_path = "(source not found - use original implementation as reference)"
+
+    print(f"\n{'#'*60}")
+    print(f"STRENGTHEN SPECS: {module_name}")
+    print(f"Source: {source_path}")
+    print(f"{'#'*60}")
+
+    prompt = STRENGTHEN_SPECS_PROMPT.format(module_name=module_name, source_path=source_path)
+
+    # Commit before strengthening.
+    git_commit_module(module_name, f"[verus-ai] Strengthen specs START: {module_name}")
+
+    output, session = run_copilot(
+        prompt,
+        PROVER_MODEL,
+        timeout=PROVER_TIMEOUT,
+        log_prefix="strengthen",
+        module_name=module_name,
+    )
+
+    # Commit after strengthening.
+    git_commit_module(module_name, f"[verus-ai] Strengthen specs END: {module_name}")
+
+    # Run verification to ensure it still passes.
+    print("\n[VERUS] Verifying after strengthening...")
+    verus_success, verus_output = run_verus(module_name)
+    print(f"[VERUS] {'PASSED' if verus_success else 'FAILED'}")
+
+    if not verus_success:
+        print(f"[WARNING] Verification failed after strengthening!")
+        print(f"[VERUS] Output: {verus_output[:1000]}")
+
+    return verus_success
+
+
+def run_polish(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Run full polish pipeline: consistency check -> simplify -> strengthen specs.
+
+    This is the recommended post-processing after initial verification.
+    """
+    # Find source path early so we can use it for all steps.
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"ERROR: Could not find original source for {module_name}")
+            print("Please specify with --source <path>")
+            return False
+
+    print(f"\n{'#'*60}")
+    print(f"POLISH PIPELINE: {module_name}")
+    print(f"Original: {source_path}")
+    print(f"Verified: verus/{module_name}.rs")
+    print(f"{'#'*60}")
+    print("Steps: 1) Consistency Check  2) Simplify  3) Strengthen Specs")
+
+    # Step 1: Consistency check.
+    print(f"\n[STEP 1/3] Consistency Check...")
+    if not run_consistency_check(module_name, source_path):
+        print("[POLISH] ⚠️ Consistency issues found. Review before continuing.")
+        response = input("Continue anyway? [y/N]: ")
+        if response.lower() != 'y':
+            return False
+
+    # Step 2: Simplify.
+    print(f"\n[STEP 2/3] Simplify Proofs...")
+    if not run_simplify(module_name, source_path):
+        print("[POLISH] ❌ Simplification broke verification!")
+        return False
+
+    # Step 3: Strengthen specs.
+    print(f"\n[STEP 3/3] Strengthen Specs...")
+    if not run_strengthen_liveness(module_name, source_path):
+        print("[POLISH] ⚠️ Strengthening failed - some liveness improvements may not verify.")
+        # Don't fail the whole pipeline for this.
+
+    print(f"\n{'#'*60}")
+    print(f"POLISH COMPLETE: {module_name}")
+    print(f"{'#'*60}")
+
+    # Final verification.
+    verus_success, _ = run_verus(module_name)
+    if verus_success:
+        print("[RESULT] ✅ All steps completed, verification passes!")
+        git_commit_module(module_name, f"[verus-ai] Polish complete: {module_name}")
+        return True
+    else:
+        print("[RESULT] ❌ Final verification failed!")
+        return False
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -643,6 +942,13 @@ Examples:
   %(prog)s continue kstack --rounds 2                       # Continue for 2 more outer rounds
   %(prog)s status                                           # Show verified modules
   %(prog)s check bitmap                                     # Check for cheating
+
+Post-processing commands:
+  %(prog)s simplify slab                                    # Remove redundant lemmas/specs
+  %(prog)s consistency slab                                 # Check semantic equivalence with original
+  %(prog)s consistency slab --source path/to/slab.rs        # Specify original source path
+  %(prog)s strengthen slab                                  # Strengthen liveness postconditions
+  %(prog)s polish slab                                      # Run all post-processing steps
         """,
     )
 
@@ -667,6 +973,23 @@ Examples:
     # Check command.
     check_parser = subparsers.add_parser("check", help="Check for cheating patterns")
     check_parser.add_argument("module", nargs="?", help="Module name (or all if not specified)")
+
+    # Post-processing commands.
+    simplify_parser = subparsers.add_parser("simplify", help="Simplify proofs: remove redundant lemmas/specs")
+    simplify_parser.add_argument("module", help="Module name to simplify")
+    simplify_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
+    consistency_parser = subparsers.add_parser("consistency", help="Check semantic consistency with original source")
+    consistency_parser.add_argument("module", help="Module name to check")
+    consistency_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
+    strengthen_parser = subparsers.add_parser("strengthen", help="Strengthen weak postconditions")
+    strengthen_parser.add_argument("module", help="Module name to strengthen")
+    strengthen_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
+    polish_parser = subparsers.add_parser("polish", help="Run full post-processing pipeline (consistency + simplify + strengthen)")
+    polish_parser.add_argument("module", help="Module name to polish")
+    polish_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
 
     args = parser.parse_args()
 
@@ -742,6 +1065,22 @@ Examples:
                 if report.has_cheating():
                     print(f"\n{report.file_path.name}: {report.summary()}")
         return 0
+
+    elif args.command == "simplify":
+        success = run_simplify(args.module, args.source)
+        return 0 if success else 1
+
+    elif args.command == "consistency":
+        success = run_consistency_check(args.module, args.source)
+        return 0 if success else 1
+
+    elif args.command == "strengthen":
+        success = run_strengthen_liveness(args.module, args.source)
+        return 0 if success else 1
+
+    elif args.command == "polish":
+        success = run_polish(args.module, args.source)
+        return 0 if success else 1
 
     else:
         parser.print_help()

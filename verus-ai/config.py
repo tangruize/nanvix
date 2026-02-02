@@ -24,6 +24,7 @@ VERUS_DIR = PROJECT_ROOT / "verus"
 HISTORY_DIR = PROJECT_ROOT / "verus-ai-history"
 LOGS_DIR = HISTORY_DIR / "logs"
 REVIEWS_DIR = HISTORY_DIR / "reviews"
+CONSISTENCY_DIR = HISTORY_DIR / "consistency"
 
 # Verification command.
 VERUS_CMD = "verus --crate-type lib lib.rs"

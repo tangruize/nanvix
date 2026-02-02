@@ -187,3 +187,234 @@ For each pattern, explain:
 
 Write justifications as comments in the code or in a separate TRUST_BOUNDARY.md file.
 """.strip()
+
+
+#==================================================================================================
+# Post-Processing Prompts: Simplification and Consistency Checking
+#==================================================================================================
+
+SIMPLIFY_PROOF_PROMPT = """
+Simplify and clean up the Verus verification in verus/{module_name}.rs
+
+== REFERENCE ==
+Original source code: {source_path}
+Verified code: verus/{module_name}.rs
+
+Use the original source as reference to understand the intended behavior.
+The verified code should remain semantically equivalent to the original.
+
+== GOALS ==
+1. **Remove redundant lemmas**: If a lemma is never called or its result is already implied by
+   other postconditions, remove it.
+2. **Remove redundant specs**: If a postcondition is logically implied by other postconditions,
+   remove the redundant one. Example: if you have `ensures result >= 0` and `ensures result == x`
+   where x is known non-negative, the first is redundant.
+3. **Strengthen weak postconditions**: Especially for liveness properties. If a function can
+   guarantee a stronger result, make the postcondition stronger. Example: change `ensures
+   result.is_ok() ==> something` to also specify what happens on error.
+4. **Condense verbose proofs**: Replace long inline proofs with calls to reusable lemmas.
+   Move proof bodies into `proof fn lemma_xxx()` and call them from the exec function.
+5. **Remove debug artifacts**: Remove `assert` statements that are not needed for verification,
+   remove TODO/FIXME comments, remove commented-out code.
+
+== STRICT CONSTRAINTS ==
+- DO NOT change the semantics of any executable code
+- DO NOT weaken any existing postconditions
+- DO NOT remove postconditions that capture essential safety properties
+- DO NOT add any `assume` statements
+- DO NOT add any `admit` statements
+- DO NOT add any `#[verifier::external_body]` annotations
+- DO NOT add any `#[verifier::external]` annotations
+- If you cannot simplify without adding these, leave the code as-is
+- Verification MUST still pass after simplification
+
+== PROCESS ==
+1. First, list all lemmas and identify which are actually used
+2. Analyze each spec function for redundancy
+3. Check postconditions for weakness (especially liveness: can we guarantee more?)
+4. Refactor verbose proofs into modular lemmas
+5. Run verification: ./verus-ai/scripts/verify.sh {module_name}
+
+== OUTPUT ==
+After cleanup, provide a summary:
+- Removed N redundant lemmas: [list names]
+- Removed M redundant postconditions: [list them]
+- Strengthened K postconditions: [list before/after]
+- Condensed L proofs into lemmas: [list new lemma names]
+- Lines reduced: before X -> after Y
+- Cheating added: NONE (must be none!)
+
+The goal is clean, auditable verification code that a human reviewer can read efficiently.
+""".strip()
+
+
+CHECK_CONSISTENCY_PROMPT = """
+Check and FIX semantic consistency between the original source and verified Verus code.
+
+Original source: {source_path}
+Verified code: verus/{module_name}.rs
+
+== YOUR TASK ==
+1. Identify all inconsistencies between original and verified code
+2. FIX inconsistencies that CAN be fixed (missing functions, wrong logic, etc.)
+3. DOCUMENT inconsistencies that CANNOT be fixed (Verus limitations)
+4. Run verification after fixes: ./verus-ai/scripts/verify.sh {module_name}
+
+== CRITICAL CHECKS ==
+
+1. **Function Coverage**: Every public AND private function in the original source must have
+   a corresponding verified function.
+   - **ACTION**: Add missing functions with proper verification
+   - Do NOT skip complex functions
+
+2. **Loop Transformations**: LLMs often transform `for` loops to `while` loops.
+   - **ACTION**: Verify they are semantically equivalent (same iteration count, termination, side effects)
+   - If not equivalent, FIX the loop logic
+
+3. **Invented Functions**: Functions in Verus code that do NOT exist in original source.
+   - spec fn / proof fn: OK (needed for verification)
+   - New exec functions: REMOVE or justify why they preserve semantics
+
+4. **Type Mismatches**: Check for silent type changes.
+   - **FIXABLE**: Wrong integer types (u32 vs u64) → Fix to match original
+   - **UNFIXABLE**: Pointer to usize (Verus limitation) → Document in report
+
+5. **Control Flow Changes**: Early returns, error handling differences.
+   - **ACTION**: Fix to match original control flow where possible
+
+6. **Skipped Complexity**: Comments like "TODO: verify later" or "simplified for verification".
+   - **ACTION**: Implement the skipped code properly
+
+== UNFIXABLE ISSUES (Verus Limitations) ==
+Some things cannot be fixed due to Verus/verification constraints. Document these:
+- Raw pointers must be converted to usize (Verus doesn't support raw pointers well)
+- Some unsafe code must use external_body
+- Certain Rust features not supported in Verus
+
+== CONSTRAINTS ==
+- DO NOT add `assume`, `admit`, or unjustified `external_body`
+- DO NOT change the semantic meaning of functions
+- Verification MUST pass after your fixes
+
+== OUTPUT ==
+
+After making fixes, write a report to verus-ai-history/consistency/{module_name}.md:
+
+```markdown
+# Consistency Check: {module_name}
+
+## Summary
+- Issues Found: N
+- Issues Fixed: M
+- Unfixable Issues: K
+
+## Fixed Issues
+| Issue | Location | Fix Applied |
+|-------|----------|-------------|
+| Missing function bar() | line 42 | Added verified implementation |
+| Wrong loop bounds | alloc() | Fixed iteration count |
+
+## Unfixable Issues (Verus Limitations)
+| Issue | Location | Reason Cannot Fix |
+|-------|----------|-------------------|
+| Pointer as usize | Frame.addr | Verus doesn't support raw pointers |
+
+## Function Coverage
+| Original Function | Verified Function | Status |
+|-------------------|-------------------|--------|
+| fn foo()          | fn foo()          | ✅ OK  |
+| fn bar()          | fn bar()          | ✅ FIXED |
+
+## Verification Status
+- Before fixes: [PASS/FAIL]
+- After fixes: [PASS/FAIL]
+
+## Remaining Concerns
+[Any issues that need human review]
+```
+""".strip()
+
+
+STRENGTHEN_SPECS_PROMPT = """
+Review and strengthen specifications in verus/{module_name}.rs
+
+== REFERENCE ==
+Original source code: {source_path}
+Verified code: verus/{module_name}.rs
+
+Use the original source as reference to understand the intended behavior.
+
+== GOAL ==
+Identify and fix WEAK postconditions that don't fully capture the function's guarantees.
+A strong spec makes verification more useful by catching more bugs.
+
+== COMMON WEAKNESS PATTERNS ==
+
+1. **One-sided conditionals** (most common):
+   - Weak: `ensures result.is_ok() ==> some_property`
+   - Problem: Says nothing about the error case!
+   - Strong: `ensures result.is_ok() <==> precondition_for_success`
+
+2. **Trivially true specs**:
+   - Weak: `ensures self.count >= 0` (always true for usize)
+   - Strong: `ensures self.count == old(self).count + 1`
+
+3. **Missing state change specs**:
+   - Weak: `ensures result.is_ok()` (what changed?)
+   - Strong: `ensures result.is_ok() ==> self@.contains(new_item)`
+
+4. **Incomplete error specs**:
+   - Weak: `ensures result.is_err() ==> true`
+   - Strong: `ensures result.is_err() ==> specific_error_condition`
+
+== CATEGORIES TO CHECK ==
+
+### Liveness Properties (something good happens)
+- Allocation: `has_capacity() ==> result.is_ok()` (not just "may succeed")
+- Search: `contains(key) ==> result.is_some()` (not just "may find")
+- Deallocation: `free_count == old(free_count) + 1` (resource returned)
+
+### Safety Properties (nothing bad happens)
+- Bounds: `index < len() ==> no_panic`
+- Invariant preservation: `old(self).inv() ==> self.inv()`
+- No aliasing: `result.addr != other.addr`
+
+### Functional Correctness
+- Getters: `result == self@.field` (exact value, not just "some value")
+- Setters: `self@.field == new_value` (actually changed)
+- Conversions: `result@ == self@` (no information loss)
+
+== PROCESS ==
+
+1. List all functions with their current postconditions
+2. For each function, check:
+   - Is success condition bidirectional (<==> not just ==>)?
+   - Is error condition specified?
+   - Are state changes fully described?
+   - Can the spec be made more precise?
+3. Strengthen weak specs and add proof if needed
+4. Run verification: ./verus-ai/scripts/verify.sh {module_name}
+
+== OUTPUT FORMAT ==
+
+For each strengthened spec:
+```
+Function: alloc()
+Before: ensures result.is_ok() ==> frame.inv()
+Issue: One-sided conditional, missing error case
+After: ensures
+    old(self)@.has_capacity() ==> result.is_ok(),
+    result.is_ok() ==> frame.inv(),
+    result.is_err() ==> !old(self)@.has_capacity()
+```
+
+Summary:
+- Strengthened N specs: [list function names]
+- Added M error conditions
+- Verification: PASS/FAIL
+""".strip()
+
+
+# Keep old name as alias for backwards compatibility.
+STRENGTHEN_LIVENESS_PROMPT = STRENGTHEN_SPECS_PROMPT
+
