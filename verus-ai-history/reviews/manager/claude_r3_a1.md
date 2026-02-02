@@ -1,12 +1,15 @@
 # Review: manager (claude-opus-4.5)
 
+**Verification Status**: PASSED (10 verified, 0 errors)  
+**Cheating Patterns**: None (no assume, no external_body)
+
 ## Grade: B+
 
 ## Issues Found
 
 ### Critical
 
-None.
+(None)
 
 ### High
 
@@ -15,7 +18,8 @@ None.
   1. Frames are properly returned to the pool (no memory leaks).
   2. The user pool free count increases after unmap.
   3. Double-free prevention is correctly modeled.
-- **Suggested Fix**: The `Upool` should have a `free()` method that the `unmap_upage()` calls after `vmem.unmap()`. Add postcondition ensuring `self@.upool_free_count == old(self)@.upool_free_count + 1` on success.
+  The comment on lines 393-397 admits this is a "simplification" but this is a significant semantic gap that breaks the key property of resource conservation.
+- **Suggested Fix**: Either (a) modify `vmem.unmap()` to return a `UserFrame` instead of `usize`, allowing `upool.free()` to be called, or (b) add explicit frame tracking and prove that `self@.upool_free_count == old(self)@.upool_free_count + 1` on successful unmap.
 
 ---
 
@@ -24,6 +28,7 @@ None.
   1. Multi-page allocation atomicity (or lack thereof - failure rollback).
   2. Correct address arithmetic (line 302: `vaddr.into_raw_value() + mem::PAGE_SIZE`).
   3. Pool capacity checks for batch operations.
+  Batch allocation has different failure semantics - partial failure leaves some pages allocated.
 - **Suggested Fix**: Add a verified `alloc_upages()` function that allocates and maps multiple frames with appropriate preconditions for batch capacity.
 
 ---
