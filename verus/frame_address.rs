@@ -5,8 +5,11 @@
 // Frame Address and Frame Number (Trusted Dependencies)
 //==================================================================================================
 
+use crate::error::{
+    Error,
+    ErrorCode,
+};
 use vstd::prelude::*;
-use crate::error::{Error, ErrorCode};
 
 verus! {
 
@@ -175,6 +178,111 @@ impl PageAlignedPhysAddr {
         ensures result.spec_raw_value() == self.spec_frame_number()
     {
         FrameNumber { value: self.raw_addr / FRAME_SIZE }
+    }
+}
+
+//==================================================================================================
+// TruncatedMemoryRegion (Simplified for Verification)
+//==================================================================================================
+
+/// A simplified memory region where both start and size are page-aligned.
+///
+/// # Description
+///
+/// This is a simplified version of the Nanvix `TruncatedMemoryRegion<PhysicalAddress>` type.
+/// The key invariants are:
+/// - `start` is page-aligned (multiple of FRAME_SIZE).
+/// - `size` is page-aligned (multiple of FRAME_SIZE).
+/// - `size > 0` (non-empty region).
+///
+/// For verification purposes, we only track the start address and size,
+/// omitting name, type, and permissions which are not relevant to allocation.
+#[derive(Debug, Clone, Copy)]
+pub struct TruncatedMemoryRegion {
+    /// The page-aligned start address.
+    pub start: PageAlignedPhysAddr,
+    /// The page-aligned size in bytes.
+    pub size: usize,
+}
+
+impl TruncatedMemoryRegion {
+    /// Spec function to get the start address.
+    pub open spec fn spec_start(&self) -> int {
+        self.start.spec_raw_value()
+    }
+
+    /// Spec function to get the size in bytes.
+    pub open spec fn spec_size(&self) -> int {
+        self.size as int
+    }
+
+    /// Spec function to get the start frame number.
+    pub open spec fn spec_start_frame(&self) -> int {
+        self.start.spec_frame_number()
+    }
+
+    /// Spec function to get the number of frames in this region.
+    pub open spec fn spec_frame_count(&self) -> int {
+        self.size as int / FRAME_SIZE as int
+    }
+
+    /// Spec function: invariant that size is page-aligned and positive.
+    pub open spec fn inv(&self) -> bool {
+        &&& self.size as int % FRAME_SIZE as int == 0
+        &&& self.size > 0
+    }
+
+    /// Creates a new TruncatedMemoryRegion.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Page-aligned start address.
+    /// - `size`: Size in bytes (will be validated to be page-aligned and positive).
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the region is returned. Upon failure, an error is returned.
+    pub fn new(start: PageAlignedPhysAddr, size: usize) -> (result: Result<TruncatedMemoryRegion, Error>)
+        ensures
+            result is Ok ==> {
+                let region = result->Ok_0;
+                &&& region.inv()
+                &&& region.spec_start() == start.spec_raw_value()
+                &&& region.spec_size() == size as int
+                &&& region.spec_start_frame() == start.spec_frame_number()
+                &&& region.spec_frame_count() == size as int / FRAME_SIZE as int
+            },
+            result is Err ==> (size == 0 || size % FRAME_SIZE != 0),
+    {
+        if size == 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "size must be positive"));
+        }
+        if size % FRAME_SIZE != 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "size must be page-aligned"));
+        }
+        Ok(TruncatedMemoryRegion { start, size })
+    }
+
+    /// Returns the page-aligned start address.
+    pub fn start(&self) -> (result: PageAlignedPhysAddr)
+        ensures result.spec_raw_value() == self.spec_start()
+    {
+        self.start
+    }
+
+    /// Returns the size of the region in bytes.
+    pub fn size(&self) -> (result: usize)
+        ensures result as int == self.spec_size()
+    {
+        self.size
+    }
+
+    /// Returns the number of frames in this region.
+    pub fn frame_count(&self) -> (result: usize)
+        requires self.inv(),
+        ensures result as int == self.spec_frame_count()
+    {
+        self.size / FRAME_SIZE
     }
 }
 
