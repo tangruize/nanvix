@@ -1478,13 +1478,29 @@ impl Bitmap {
     fn index_unchecked(&self, index: usize) -> (result: (usize, usize))
         requires
             self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
+            self.number_of_bits as int == self@.number_of_bits(),
             index < self.number_of_bits,
+            self.bits@.len() > 0,
         ensures
             result.0 == index / (u8::BITS as usize),
             result.1 == index % (u8::BITS as usize),
             result.0 < self.bits@.len(),
             result.1 < u8::BITS as usize,
     {
+        proof {
+            // index < number_of_bits = bits.len() * 8
+            // We need: index / 8 < bits.len()
+            // This follows from: if a < b * c and c > 0, then a / c < b
+            let idx = index as int;
+            let len = self.bits@.len() as int;
+            let bits = u8::BITS as int;
+            assert(idx < len * bits);
+            assert(bits > 0);
+            // Use nonlinear arithmetic
+            assert(idx / bits < len) by (nonlinear_arith)
+                requires idx < len * bits, bits > 0, len > 0
+            {}
+        }
         let word: usize = index / u8::BITS as usize;
         let bit: usize = index % u8::BITS as usize;
         (word, bit)

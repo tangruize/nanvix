@@ -445,6 +445,23 @@ pub(crate) proof fn lemma_is_bit_set_equals_bit_at_weak(bm: &Bitmap, index: int)
     lemma_view_bits_equals_bit_at_weak(bm, index);
 }
 
+/// Lemma: is_bit_set_spec equals bit_at without requiring invariant.
+/// Only requires structural properties that hold in the allocation loop.
+pub(crate) proof fn lemma_is_bit_set_spec_equals_bit_at_minimal(bm: &Bitmap, index: int)
+    requires
+        bm@.number_of_bits() > 0,
+        bm@.number_of_bits() == bm.bits@.len() * 8,
+        bm.number_of_bits as int == bm@.number_of_bits(),
+        0 <= index < bm@.number_of_bits(),
+    ensures
+        bm.is_bit_set_spec(index) == bit_at(bm.bits@, index),
+{
+    // is_bit_set_spec(index) = (0 <= index < number_of_bits) && self@.bits[index]
+    // self@.bits = bits_to_seq(self.bits@, number_of_bits)
+    // bits_to_seq[index] = bit_at(self.bits@, index)
+    // So is_bit_set_spec(index) <=> bit_at(self.bits@, index) (given index in bounds)
+}
+
 /// Lemma: is_bit_set_spec equals bit_at for valid indices (minimal version).
 /// This only requires basic structural properties, not the full invariant.
 pub(crate) proof fn lemma_is_bit_set_equals_bit_at_basic(
@@ -462,6 +479,30 @@ pub(crate) proof fn lemma_is_bit_set_equals_bit_at_basic(
 {
     // By definition: bits_to_seq(bytes, n) = Seq::new(n, |i| bit_at(bytes, i))
     // So bits_to_seq[index] = bit_at(bytes, index) by Seq::new property.
+}
+
+/// Lemma: If bit_at is true, then the raw byte has that bit set.
+/// This connects the abstract bit_at to the concrete byte representation.
+pub(crate) proof fn lemma_is_bit_set_implies_byte_bit_set(
+    bits_seq: Seq<u8>,
+    number_of_bits: int,
+    bit_index: int,
+)
+    requires
+        number_of_bits > 0,
+        number_of_bits == bits_seq.len() * 8,
+        0 <= bit_index < number_of_bits,
+        bit_at(bits_seq, bit_index),
+    ensures
+        ({
+            let word: int = bit_index / 8;
+            let bit: int = bit_index % 8;
+            (bits_seq[word] & (1u8 << (bit as u8))) != 0
+        }),
+{
+    // By definition of bit_at:
+    // bit_at(bytes, i) = (bytes[i/8] & (1 << (i%8))) != 0
+    // Since bit_at is true, the byte has the bit set.
 }
 
 /// Lemma: Helper for proving bit operations on bytes (OR sets bit).
@@ -485,6 +526,25 @@ pub proof fn lemma_bit_or_preserves_others(old_byte: u8, new_byte: u8, shift: u8
     ensures
         (new_byte & (1u8 << other_shift)) == (old_byte & (1u8 << other_shift)),
 {
+}
+
+/// Lemma: bit_at only depends on the byte at index i/8.
+/// If two byte sequences have the same byte at position i/8, then bit_at gives the same result.
+pub proof fn lemma_bit_at_depends_only_on_relevant_byte(
+    bytes1: Seq<u8>,
+    bytes2: Seq<u8>,
+    bit_index: int,
+)
+    requires
+        bit_index >= 0,
+        bit_index / 8 < bytes1.len() as int,
+        bit_index / 8 < bytes2.len() as int,
+        bytes1[bit_index / 8] == bytes2[bit_index / 8],
+    ensures
+        bit_at(bytes1, bit_index) == bit_at(bytes2, bit_index),
+{
+    // By definition: bit_at(bytes, i) = (bytes[i/8] & (1 << (i%8))) != 0
+    // Since bytes1[i/8] == bytes2[i/8], the expressions are identical.
 }
 
 /// Lemma: Helper for proving bit clear operations on bytes (AND NOT clears bit).

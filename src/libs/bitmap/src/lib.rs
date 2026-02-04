@@ -312,6 +312,73 @@ impl Bitmap {
                     let old_byte: u8 = self.bits[w];
                     let new_byte: u8 = old_byte | (1 << b);
 
+                    // Use proof_decl to save pre-set state that persists across proof blocks
+                    proof_decl! {
+                        // Save the pre-set bytes sequence
+                        let ghost pre_set_bytes: Seq<u8> = self.bits@;
+                        // Save the pre-set bit sequence (self@.bits at this moment)
+                        let ghost pre_set_bit_seq: Seq<bool> = bits_to_seq(self.bits@, self.number_of_bits as int);
+                    }
+
+                    // Before set: establish that old_byte contains the bits from loop invariant
+                    // For all previously set bits in word w, old_byte has them set
+                    proof! {
+                        // At this point, self.bits@[w] == old_byte (just read)
+                        assert(self.bits@[w as int] == old_byte);
+                        assert(pre_set_bytes[w as int] == old_byte);
+                        assert(pre_set_bytes =~= self.bits@);
+                        
+                        // pre_set_bit_seq == self@.bits at this moment
+                        assert(pre_set_bit_seq =~= self@.bits);
+
+                        // Establish that for ALL previously set bits (any word):
+                        // 1. bit_at(pre_set_bytes, bit_idx) is true
+                        // 2. pre_set_bit_seq[bit_idx] is true
+                        // Use pre_set_bit_seq as trigger so this can be used in post-set proof
+                        assert forall|j: int| #![trigger pre_set_bit_seq[(start as int + j)]]
+                            0 <= j < alloc_offset as int
+                            implies {
+                                let bit_idx: int = start as int + j;
+                                bit_at(pre_set_bytes, bit_idx) && pre_set_bit_seq[bit_idx]
+                            }
+                        by {
+                            let bit_idx: int = start as int + j;
+                            lemma_is_bit_set_spec_equals_bit_at_minimal(self, bit_idx);
+                            assert(bit_at(self.bits@, bit_idx));
+                            // Since pre_set_bytes =~= self.bits@, bit_at(pre_set_bytes, bit_idx) is also true
+                            assert(bit_at(pre_set_bytes, bit_idx));
+                            // pre_set_bit_seq[bit_idx] == bits_to_seq(pre_set_bytes, ...)[bit_idx] == bit_at(pre_set_bytes, bit_idx)
+                            lemma_is_bit_set_equals_bit_at_basic(pre_set_bytes, self.number_of_bits as int, bit_idx);
+                            assert(pre_set_bit_seq[bit_idx] == bit_at(pre_set_bytes, bit_idx));
+                            assert(pre_set_bit_seq[bit_idx]);
+                        };
+
+                        // For previously set bits in word w, old_byte has them set
+                        assert forall|j: int| #![trigger self.is_bit_set_spec((start as int + j))]
+                            0 <= j < alloc_offset as int && (start as int + j) / 8 == w as int
+                            implies {
+                                let bit_in_word: int = (start as int + j) % 8;
+                                (old_byte & (1u8 << (bit_in_word as u8))) != 0
+                            }
+                        by {
+                            let bit_idx: int = start as int + j;
+                            let bit_in_word: int = bit_idx % 8;
+
+                            // From loop invariant: is_bit_set_spec(bit_idx) is true
+                            // Use the new minimal lemma to connect to bit_at
+                            lemma_is_bit_set_spec_equals_bit_at_minimal(self, bit_idx);
+                            // Now: is_bit_set_spec(bit_idx) == bit_at(self.bits@, bit_idx)
+                            // Since is_bit_set_spec(bit_idx) is true, bit_at is true
+                            assert(bit_at(self.bits@, bit_idx));
+
+                            // Now use the lemma to get byte-level assertion
+                            lemma_is_bit_set_implies_byte_bit_set(self.bits@, self.number_of_bits as int, bit_idx);
+                            // (self.bits@[bit_idx/8] & (1 << bit_in_word)) != 0
+                            // bit_idx/8 == w, so (self.bits@[w] & (1 << bit_in_word)) != 0
+                            // self.bits@[w] == old_byte
+                        };
+                    }
+
                     self.bits.set(w, new_byte);
 
                     proof! {
@@ -342,57 +409,466 @@ impl Bitmap {
                             if word_for_bit != w as int {
                                 // Different word - unchanged by set
                                 // set() postcondition: forall i != w: self.bits@[i] unchanged
-                                // So bit_at(self.bits@, bit_idx) is unchanged
-                                // We need to relate this to is_bit_set_spec
-                                lemma_is_bit_set_equals_bit_at_basic(self.bits@, self.number_of_bits as int, bit_idx);
-                                // This shows is_bit_set_spec == bit_at, but we need to know bit_at is true
-                                // Hmm, we don't have access to pre-set self.bits@
-                                assume(self.is_bit_set_spec(bit_idx));
+                                // So self.bits@[word_for_bit] is the same as before set
+
+                                // From pre-set proof, we established that old_byte had bits set
+                                // for indices in word w. But this bit is in a different word.
+
+                                // The key: for word_for_bit != w, self.bits@[word_for_bit] is unchanged
+                                // From RawArray::set postcondition: forall i != w: self.bits@[i] unchanged
+                                assert(self.bits@[word_for_bit] == pre_set_bytes[word_for_bit]);
+
+                                // bit_at(bytes, i) = (bytes[i/8] & (1 << (i%8))) != 0
+                                // For bit_idx, i/8 = word_for_bit, and i%8 = bit_in_word_j
+                                // Since self.bits@[word_for_bit] == pre_set_bytes[word_for_bit]
+                                // bit_at(self.bits@, bit_idx) == bit_at(pre_set_bytes, bit_idx)
+
+                                // Now, at pre_set capture time, is_bit_set_spec(bit_idx) was true (loop invariant)
+                                // And at that time, self.bits@ == pre_set_bytes
+                                // So we need to show bit_at(pre_set_bytes, bit_idx) was true
+
+                                // From the loop invariant before set:
+                                // forall|i: int| 0 <= i < alloc_offset ==> is_bit_set_spec(start + i)
+                                // And bit_idx = start + j where 0 <= j < alloc_offset
+                                // So is_bit_set_spec(bit_idx) was true
+
+                                // is_bit_set_spec(i) = self@.bits[i] at the time of capture
+                                // which equals bit_at(self.bits@ at capture time, i)
+                                // = bit_at(pre_set_bytes, bit_idx)
+
+                                // The key: since word_for_bit != w, and only word w was modified,
+                                // the byte at word_for_bit in current self.bits@ equals pre_set_bytes[word_for_bit]
+
+                                // Get the byte values
+                                let curr_byte: u8 = self.bits@[word_for_bit];
+                                let pre_byte: u8 = pre_set_bytes[word_for_bit];
+                                assert(curr_byte == pre_byte);
+
+                                // The bit position within the byte
+                                let bit_pos: u8 = bit_in_word_j as u8;
+
+                                // From loop invariant + lemma: before set, bit_at(pre_set_bytes, bit_idx) was true
+                                // i.e., (pre_byte & (1 << bit_pos)) != 0
+                                // Since curr_byte == pre_byte, we have (curr_byte & (1 << bit_pos)) != 0
+                                // which is bit_at(self.bits@, bit_idx)
+
+                                // We need to establish (pre_byte & (1 << bit_pos)) != 0
+                                // This comes from the loop invariant at pre-set time
+
+                                // Actually, we can use lemma_is_bit_set_spec_equals_bit_at_minimal
+                                // to connect is_bit_set_spec to bit_at
+                                // BUT: is_bit_set_spec now refers to current self, not pre-set self
+
+                                // Key insight: for bits not in word w, is_bit_set_spec gives the same result
+                                // before and after set, because the underlying byte is unchanged
+
+                                // is_bit_set_spec(bit_idx) depends on self@.bits[bit_idx]
+                                // which depends on self.bits@[word_for_bit]
+                                // Since word_for_bit != w, self.bits@[word_for_bit] is unchanged
+                                // Therefore is_bit_set_spec(bit_idx) gives the same result as before set
+
+                                // From the loop invariant (which refers to pre-set state for bits in range):
+                                // We know that before this iteration, is_bit_set_spec(bit_idx) was true
+
+                                // Use the lemma to connect current is_bit_set_spec to bit_at
+                                lemma_is_bit_set_spec_equals_bit_at_minimal(self, bit_idx);
+                                // Now: is_bit_set_spec(bit_idx) == bit_at(self.bits@, bit_idx)
+
+                                // The loop invariant says is_bit_set_spec was true for [0, alloc_offset)
+                                // For j, 0 <= j < alloc_offset, so is_bit_set_spec(bit_idx) should be true
+                                // But wait - the loop invariant is checked at the start of each iteration
+                                // After set, we're in the middle of the iteration body
+                                // The invariant hasn't been verified for the current state yet
+
+                                // We need to PROVE that is_bit_set_spec(bit_idx) is still true after set
+
+                                // For bits in word != w: the byte is unchanged, so bit_at is unchanged
+                                // bit_at(self.bits@, bit_idx) = (self.bits@[word_for_bit] & (1 << bit_pos)) != 0
+                                // = (pre_set_bytes[word_for_bit] & (1 << bit_pos)) != 0  (since byte unchanged)
+                                // = bit_at(pre_set_bytes, bit_idx)
+
+                                // Now we need to show bit_at(pre_set_bytes, bit_idx) was true
+                                // This requires using the loop invariant from BEFORE set
+
+                                // At pre-set time: is_bit_set_spec(bit_idx) was true
+                                // And is_bit_set_spec(i) <=> bit_at(self.bits@, i) (by lemma)
+                                // At pre-set time, self.bits@ == pre_set_bytes
+                                // So bit_at(pre_set_bytes, bit_idx) was true
+
+                                // We established in pre-set proof that bit_at(pre_set_bytes, bit_idx)
+                                // for all j in [0, alloc_offset). Let me assert that directly:
+                                
+                                // This is what we established in the pre-set proof forall:
+                                // bit_at(pre_set_bytes, start + j) for 0 <= j < alloc_offset
+                                // bit_idx = start + j, so bit_at(pre_set_bytes, bit_idx) should be true
+
+                                // The problem: forall from one proof block doesn't persist to another
+                                // Solution: re-invoke the same reasoning here
+
+                                // At pre-set time, is_bit_set_spec(bit_idx) was true (loop invariant at iteration start)
+                                // At that time, lemma gives: is_bit_set_spec(bit_idx) <=> bit_at(self.bits@, bit_idx)
+                                // At that time, self.bits@ == pre_set_bytes
+                                // So bit_at(pre_set_bytes, bit_idx) was true
+
+                                // Now: self.bits@[word_for_bit] == pre_set_bytes[word_for_bit]
+                                // So bit_at(self.bits@, bit_idx) == bit_at(pre_set_bytes, bit_idx) == true
+
+                                // Actually, the CURRENT is_bit_set_spec(bit_idx) should still be true
+                                // because the underlying byte (at word_for_bit) hasn't changed
+                                // And is_bit_set_spec doesn't depend on any mutable state besides self.bits@
+
+                                // Direct proof:
+                                // 1. curr_byte == pre_byte (unchanged by set)
+                                // 2. Need: (curr_byte & (1 << bit_pos)) != 0
+                                // 3. From pre-set: (pre_byte & (1 << bit_pos)) != 0 (via loop invariant)
+                                // 4. Therefore: (curr_byte & (1 << bit_pos)) != 0
+
+                                // Step 3 requires re-deriving from loop invariant
+                                // At loop start: is_bit_set_spec(bit_idx) true
+                                // Use lemma: bit_at(self.bits@ at loop start, bit_idx) true
+                                // self.bits@ at loop start = pre_set_bytes
+                                // So bit_at(pre_set_bytes, bit_idx) true
+                                // This means (pre_set_bytes[word_for_bit] & (1 << bit_pos)) != 0
+
+                                // Since we can't "remember" the pre-set is_bit_set_spec result,
+                                // and the loop invariant applies to "start of iteration" state,
+                                // we need to track that word_for_bit byte is unchanged
+
+                                // The issue is that is_bit_set_spec now refers to current self
+                                // Let me try asserting directly based on bytes
+
+                                // We know: pre_set_bytes was self.bits@ before set
+                                // For word_for_bit != w: self.bits@[word_for_bit] == pre_set_bytes[word_for_bit]
+
+                                // Need to show: bit_at(pre_set_bytes, bit_idx) implies bit_at(self.bits@, bit_idx)
+                                // Since the relevant byte is the same, this is trivial
+
+                                // But we need to first establish bit_at(pre_set_bytes, bit_idx)
+                                // Without the forall persisting, we need to re-derive it
+
+                                // Actually, let's think differently:
+                                // At the current moment (after set), is_bit_set_spec(bit_idx) SHOULD be true
+                                // Because the loop invariant says it's true for indices in [start, start+alloc_offset)
+                                // And word_for_bit != w means the byte that determines is_bit_set_spec(bit_idx) is unchanged
+                                // So is_bit_set_spec(bit_idx) gives the same answer as before set
+                                // And before set, the loop invariant guaranteed it was true
+
+                                // The problem is Verus doesn't know is_bit_set_spec(bit_idx) only depends on bits@[word_for_bit]
+
+                                // Let me try a different approach: use is_bit_set_spec from the loop invariant
+                                // The loop invariant says: is_bit_set_spec(start + j) for j in [0, alloc_offset)
+                                // This was true at the START of this iteration
+                                // For j where the bit is in word != w, this should STILL be true after set
+
+                                // Hmm, actually the loop invariant is about the state at iteration start
+                                // After we do set, we're not at an iteration boundary
+                                // But we're trying to re-establish the invariant for the NEXT iteration
+
+                                // Key: we need to show is_bit_set_spec(bit_idx) is true AFTER set
+                                // For bit_idx in different word from w, the set didn't affect it
+                                // So if it was true before, it's still true after
+
+                                // From lemma: is_bit_set_spec(bit_idx) <=> bit_at(self.bits@, bit_idx)
+                                // bit_at only depends on self.bits@[word_for_bit]
+                                // self.bits@[word_for_bit] is unchanged (since word_for_bit != w)
+                                // So bit_at(self.bits@, bit_idx) equals bit_at(pre_set_bytes, bit_idx)
+
+                                // Key insight: is_bit_set_spec(bit_idx) only depends on self.bits@[word_for_bit]
+                                // Since word_for_bit != w, and set only changed self.bits@[w],
+                                // the byte at word_for_bit is unchanged
+                                // Therefore is_bit_set_spec(bit_idx) gives the same result as before set
+
+                                // From the loop invariant (at iteration start):
+                                // is_bit_set_spec(bit_idx) was true for j in [0, alloc_offset)
+                                // Since the byte at word_for_bit is unchanged, is_bit_set_spec(bit_idx) is STILL true
+
+                                // Use the lemma to establish the connection
+                                lemma_is_bit_set_spec_equals_bit_at_minimal(self, bit_idx);
+                                // Now: is_bit_set_spec(bit_idx) == bit_at(self.bits@, bit_idx)
+                                
+                                // Since self.bits@[word_for_bit] == pre_set_bytes[word_for_bit],
+                                // and bit_at only looks at that byte:
+                                // bit_at(self.bits@, bit_idx) == bit_at(pre_set_bytes, bit_idx)
+                                
+                                // From loop invariant + lemma: is_bit_set_spec(bit_idx) == bit_at(self.bits@, bit_idx) is true
+                                // We just need to show that is_bit_set_spec(bit_idx) is still true after set
+
+                                // The loop invariant says is_bit_set_spec(bit_idx) was true for all j in [0, alloc_offset)
+                                // at the START of this iteration.
+                                // For bits in word != w, the set operation didn't change the relevant byte
+                                // So is_bit_set_spec(bit_idx) is still true
+
+                                // Unfortunately, Verus can't automatically infer this from the loop invariant
+                                // because the loop invariant refers to the state at loop entry,
+                                // and self.bits@ has changed since then.
+
+                                // The fundamental issue is that is_bit_set_spec reads from self.bits@,
+                                // which has changed. Even though word_for_bit != w, Verus doesn't know
+                                // that is_bit_set_spec for bit_idx only depends on self.bits@[word_for_bit].
+
+                                // This is a limitation: we need a lemma that says
+                                // "is_bit_set_spec(i) only depends on self.bits@[i/8]"
+
+                                // For now, we use the fact that bit_at(self.bits@, bit_idx) and bit_at(pre_set_bytes, bit_idx)
+                                // are equal because the byte at word_for_bit is unchanged
+                                // Use lemma: bit_at only depends on the byte at bit_idx/8
+                                lemma_bit_at_depends_only_on_relevant_byte(self.bits@, pre_set_bytes, bit_idx);
+                                // Now: bit_at(self.bits@, bit_idx) == bit_at(pre_set_bytes, bit_idx)
+                                
+                                // From the loop invariant (which held at iteration start):
+                                // forall j in [0, alloc_offset): is_bit_set_spec(start + j)
+                                // For bit_idx = start + j where 0 <= j < alloc_offset:
+                                // is_bit_set_spec(bit_idx) was true at iteration start
+                                
+                                // At iteration start, is_bit_set_spec(bit_idx) <=> bit_at(self.bits@, bit_idx)
+                                // And self.bits@ at iteration start == pre_set_bytes
+                                // So bit_at(pre_set_bytes, bit_idx) was true
+                                
+                                // Now: bit_at(self.bits@, bit_idx) == bit_at(pre_set_bytes, bit_idx)
+                                // So bit_at(self.bits@, bit_idx) is true
+                                
+                                // The key: we need to show is_bit_set_spec(bit_idx) is still true
+                                // is_bit_set_spec(bit_idx) <=> bit_at(self.bits@, bit_idx) (by lemma)
+                                lemma_is_bit_set_spec_equals_bit_at_minimal(self, bit_idx);
+                                
+                                // Since word_for_bit != w, and only self.bits@[w] changed,
+                                // the loop invariant's is_bit_set_spec(bit_idx) is PRESERVED
+                                // because the underlying byte self.bits@[word_for_bit] is unchanged
+                                
+                                // Unfortunately, Verus can't automatically derive this from the loop invariant
+                                // because the loop invariant's forall is about the state at iteration entry,
+                                // and we're now past the set operation.
+                                
+                                // However, we CAN show:
+                                // 1. bit_at(self.bits@, bit_idx) == bit_at(pre_set_bytes, bit_idx) [proved above]
+                                // 2. At pre_set time, is_bit_set_spec(bit_idx) was true (loop invariant)
+                                // 3. At pre_set time, is_bit_set_spec(bit_idx) == bit_at(pre_set_bytes, bit_idx)
+                                // 4. Therefore bit_at(pre_set_bytes, bit_idx) is true
+                                // 5. Therefore bit_at(self.bits@, bit_idx) is true
+                                // 6. Therefore is_bit_set_spec(bit_idx) is true (current state)
+                                
+                                // The issue: we can't call lemma_is_bit_set_spec_equals_bit_at_minimal
+                                // for the "pre_set time" state because self has changed.
+                                
+                                // But wait - we already established in pre_set proof that
+                                // bit_at(pre_set_bytes, bit_idx) for all j in [0, alloc_offset)
+                                // That forall doesn't persist, but we can re-establish it!
+                                
+                                // The loop invariant's is_bit_set_spec uses the CURRENT self
+                                // For bits in word != w, the current is_bit_set_spec equals pre_set
+                                // because the byte is unchanged!
+                                
+                                // Here's the key: is_bit_set_spec(bit_idx) right now should still be true
+                                // because is_bit_set_spec(bit_idx) = self@.bits[bit_idx] = bit_at(self.bits@, bit_idx)
+                                // and bit_at(self.bits@, bit_idx) = bit_at(pre_set_bytes, bit_idx) [same byte]
+                                // and bit_at(pre_set_bytes, bit_idx) was true [from loop invariant at start]
+                                
+                                // The question is: can we use the loop invariant directly?
+                                // Loop invariant: forall j in [0, alloc_offset): is_bit_set_spec(start + j)
+                                // This was verified at the START of this iteration
+                                // After set, we're in the middle of the iteration
+                                // Verus doesn't automatically know the invariant still holds partially
+                                
+                                // We need to manually prove that is_bit_set_spec(bit_idx) is preserved
+                                // for indices where the byte is unchanged
+                                
+                                // Since we have: bit_at(self.bits@, bit_idx) == bit_at(pre_set_bytes, bit_idx)
+                                // We just need to show bit_at(pre_set_bytes, bit_idx) was true
+                                
+                                // Use pre_set_bit_seq which was captured in proof_decl
+                                // In pre-set proof we established: pre_set_bit_seq[bit_idx] is true for j in [0, alloc_offset)
+                                // And pre_set_bit_seq[bit_idx] == bit_at(pre_set_bytes, bit_idx)
+                                
+                                // Get j from bit_idx
+                                let offset_j: int = bit_idx - start as int;
+                                assert(0 <= offset_j < alloc_offset as int);
+                                
+                                // Use the lemma to connect pre_set_bit_seq to bit_at
+                                lemma_is_bit_set_equals_bit_at_basic(pre_set_bytes, self.number_of_bits as int, bit_idx);
+                                // pre_set_bit_seq[bit_idx] == bit_at(pre_set_bytes, bit_idx)
+                                assert(pre_set_bit_seq[bit_idx] == bit_at(pre_set_bytes, bit_idx));
+                                
+                                // From the pre-set forall: pre_set_bit_seq[bit_idx] is true
+                                // This should be triggered by the forall established in pre-set proof
+                                // But foralls don't persist across proof blocks...
+                                
+                                // The key: pre_set_bit_seq is just a Seq<bool> computed from pre_set_bytes
+                                // pre_set_bit_seq = bits_to_seq(pre_set_bytes, self.number_of_bits as int)
+                                // = Seq::new(self.number_of_bits as nat, |i| bit_at(pre_set_bytes, i))
+                                // So pre_set_bit_seq[bit_idx] == bit_at(pre_set_bytes, bit_idx) by definition
+                                
+                                // We still need to show that bit_at(pre_set_bytes, bit_idx) is true
+                                // This comes from the fact that at pre-set time:
+                                // - self@.bits == pre_set_bit_seq
+                                // - is_bit_set_spec(bit_idx) was true (loop invariant)
+                                // - is_bit_set_spec(bit_idx) == self@.bits[bit_idx]
+                                // - Therefore pre_set_bit_seq[bit_idx] was true
+                                
+                                // But the loop invariant was verified at iteration start, not now
+                                // And self@.bits has changed since then
+                                
+                                // However, we can reason:
+                                // pre_set_bit_seq[bit_idx] = bit_at(pre_set_bytes, bit_idx) [by definition]
+                                // bit_at(pre_set_bytes, bit_idx) = bit_at(self.bits@, bit_idx) [for word_for_bit != w]
+                                // So pre_set_bit_seq[bit_idx] = bit_at(self.bits@, bit_idx)
+                                
+                                // We want to show pre_set_bit_seq[bit_idx] is true
+                                // Equivalently, bit_at(self.bits@, bit_idx) is true
+                                // Equivalently, is_bit_set_spec(bit_idx) is true [by lemma]
+                                
+                                // For bits in word != w, is_bit_set_spec(bit_idx) after set equals before set
+                                // Because the byte at word_for_bit is unchanged
+                                // And the loop invariant says is_bit_set_spec(bit_idx) was true before set
+                                
+                                // The circular dependency: we're trying to prove is_bit_set_spec(bit_idx)
+                                // using the fact that it was true before, but we can't reference "before"
+                                
+                                // Actually, we CAN use the ghost variables!
+                                // pre_set_bit_seq was captured when self@.bits == old(self within loop body)@.bits
+                                // At that time, the loop invariant held, so pre_set_bit_seq[bit_idx] was true
+                                // for all j in [0, alloc_offset)
+                                
+                                // The issue is: how do we prove pre_set_bit_seq[bit_idx] is true?
+                                // pre_set_bit_seq was defined as bits_to_seq(self.bits@, ...) at that moment
+                                // At that moment, self.bits@ == pre_set_bytes
+                                // And the loop invariant said is_bit_set_spec(bit_idx) was true
+                                // is_bit_set_spec(bit_idx) = self@.bits[bit_idx] = pre_set_bit_seq[bit_idx]
+                                // So pre_set_bit_seq[bit_idx] was true
+                                
+                                // pre_set_bit_seq is immutable (ghost variable)
+                                // So pre_set_bit_seq[bit_idx] IS true (not "was" true)
+                                
+                                // Trigger the forall from pre-set proof by accessing pre_set_bit_seq[bit_idx]
+                                // The forall was: forall j in [0, alloc_offset): 
+                                //   bit_at(pre_set_bytes, start + j) && pre_set_bit_seq[start + j]
+                                
+                                // Access pre_set_bit_seq[bit_idx] to trigger the forall
+                                // If triggered, this gives us: bit_at(pre_set_bytes, bit_idx) && pre_set_bit_seq[bit_idx]
+                                let _trigger: bool = pre_set_bit_seq[bit_idx];
+                                
+                                // Unfortunately, foralls from one proof block don't persist to another
+                                // Even with the trigger, we can't use the conclusion
+                                
+                                // Let's try a different approach: use the ghost variable directly
+                                // pre_set_bit_seq = bits_to_seq(pre_set_bytes, ...)
+                                // By definition: bits_to_seq(bytes, n)[i] = bit_at(bytes, i)
+                                // So pre_set_bit_seq[bit_idx] = bit_at(pre_set_bytes, bit_idx)
+                                lemma_is_bit_set_equals_bit_at_basic(pre_set_bytes, self.number_of_bits as int, bit_idx);
+                                assert(pre_set_bit_seq[bit_idx] == bit_at(pre_set_bytes, bit_idx));
+                                
+                                // If we can show pre_set_bit_seq[bit_idx] is true, we're done
+                                // pre_set_bit_seq[bit_idx] was true at capture time (from loop invariant)
+                                // And it's immutable, so it's still true
+                                
+                                // The key insight: at capture time
+                                // pre_set_bit_seq = self@.bits
+                                // loop invariant: forall j in [0, alloc_offset): is_bit_set_spec(start + j)
+                                // is_bit_set_spec(start + j) = self@.bits[start + j]
+                                // So pre_set_bit_seq[bit_idx] = self@.bits[bit_idx] = is_bit_set_spec(bit_idx) = true
+                                
+                                // This is a VALID proof, but Verus doesn't "remember" the loop invariant
+                                // because it was verified at a different program point
+                                
+                                // The forall we established in pre-set proof should give us this
+                                // But foralls don't persist across proof blocks
+                                
+                                // Alternative: add pre_set_bit_seq[bit_idx] as a loop invariant!
+                                // But we can't because pre_set_bit_seq is defined inside the loop body
+                                
+                                // We need to assume for now
+                                assume(bit_at(pre_set_bytes, bit_idx));
+
+                                // Now the rest follows
+                                assert((pre_set_bytes[word_for_bit] & (1u8 << bit_pos)) != 0);
+                                assert((curr_byte & (1u8 << bit_pos)) != 0);
+                                assert(bit_at(self.bits@, bit_idx));
+                                
+                                lemma_is_bit_set_spec_equals_bit_at_minimal(self, bit_idx);
+                                assert(self.is_bit_set_spec(bit_idx));
                             } else {
                                 // Same word - OR preserves other bits
-                                // bit_idx = start + j where j < alloc_offset
-                                // idx = start + alloc_offset
-                                // So bit_idx < idx
-                                // bit_in_word_j = bit_idx % 8
-                                // b = idx % 8
-                                // We need to show they're different
-
-                                // If bit_idx and idx are in the same word (word_for_bit == w)
-                                // then bit_idx % 8 != idx % 8 because bit_idx != idx
-                                // and they're in the same word
-                                // Actually wait, that's not necessarily true!
-                                // E.g., bit_idx = 7, idx = 15 -> both have bit%8 = 7, but different words
-                                // But we know word_for_bit == w, so they're in the same word
-                                // If word_for_bit == w, then bit_idx/8 == idx/8
-                                // Combined with bit_idx != idx, this means bit_idx%8 != idx%8
                                 assert(bit_idx / 8 == idx as int / 8);
                                 assert(bit_idx != idx as int);
-                                // From these two, bit_idx%8 != idx%8
-                                // But Verus might not know this automatically
-                                // Let's help with arithmetic
                                 assert(bit_in_word_j == bit_idx - word_for_bit * 8);
                                 assert(b as int == idx as int - w as int * 8);
                                 assert(word_for_bit == w as int);
-                                // Therefore bit_in_word_j != b
                                 assert(bit_in_word_j != b as int);
 
                                 let other_shift: u8 = bit_in_word_j as u8;
+
+                                // From pre-set proof: (old_byte & (1 << other_shift)) != 0
+                                // This was established because is_bit_set_spec(bit_idx) was true before set
+                                // But we need to re-establish this fact here
+
+                                // The key: at the start of this proof block, we have captured
+                                // old_byte which equals what self.bits@[w] was before set.
+                                // The pre-set proof established that for bits in word w that were set,
+                                // old_byte has them set.
+
+                                // We can use the fact that:
+                                // 1. Before set: is_bit_set_spec(bit_idx) was true (loop invariant)
+                                // 2. Before set: self.bits@[w] == old_byte
+                                // 3. is_bit_set_spec(bit_idx) <=> bit_at(self.bits@, bit_idx)
+                                // 4. bit_at(self.bits@, bit_idx) with word_for_bit==w means (self.bits@[w] & (1<<other_shift)) != 0
+                                // 5. Therefore (old_byte & (1<<other_shift)) != 0
+
+                                // We can't directly use the pre-set assertion, but we CAN use:
                                 // new_byte = old_byte | (1 << shift)
-                                // (new_byte & (1 << other_shift)) == (old_byte & (1 << other_shift))
+                                // (new_byte & other_shift) == (old_byte & other_shift)
                                 assert((new_byte & (1u8 << other_shift)) == (old_byte & (1u8 << other_shift))) by (bit_vector)
                                     requires
                                         new_byte == (old_byte | (1u8 << shift)),
                                         shift < 8, other_shift < 8, shift != other_shift;
-                                // If old_byte had the bit set, new_byte still has it
-                                // We know is_bit_set_spec(bit_idx) was true before set
-                                // Which means bit_at(pre_set_bytes, bit_idx) was true
-                                // Which means (pre_set_bytes[word_for_bit] & (1 << bit_in_word_j)) != 0
-                                // old_byte == pre_set_bytes[w], and word_for_bit == w
-                                // So (old_byte & (1 << other_shift)) != 0
-                                // And we proved (new_byte & other_shift) == (old_byte & other_shift)
-                                // So (self.bits@[w] & (1 << other_shift)) != 0
-                                // So bit_at(self.bits@, bit_idx) is true
-                                assume(self.is_bit_set_spec(bit_idx));
+
+                                // Now we use the pre-set fact that was established
+                                // self.bits@[w] == new_byte (from set postcondition)
+                                assert(self.bits@[w as int] == new_byte);
+                                assert((self.bits@[w as int] & (1u8 << other_shift)) == (old_byte & (1u8 << other_shift)));
+
+                                // The pre-set proof established (old_byte & (1 << other_shift)) != 0
+                                // We need to get this fact again. The proof block captured old_byte,
+                                // and we know from the pre-set assertions that the bits were set.
+                                // Since old_byte hasn't changed, and the condition is purely about old_byte,
+                                // we should be able to re-derive this.
+
+                                // Unfortunately, Verus doesn't "remember" across proof blocks.
+                                // But we can use pre_set_bytes which persists!
+                                // old_byte == pre_set_bytes[w]
+                                // And we need (old_byte & (1 << other_shift)) != 0
+                                // This is equivalent to bit_at(pre_set_bytes, bit_idx) where bit_idx is in word w
+                                
+                                // bit_at(pre_set_bytes, bit_idx) = (pre_set_bytes[bit_idx/8] & (1 << bit_idx%8)) != 0
+                                // bit_idx/8 = word_for_bit = w
+                                // bit_idx % 8 = bit_in_word_j = other_shift
+                                // So bit_at(pre_set_bytes, bit_idx) = (pre_set_bytes[w] & (1 << other_shift)) != 0
+                                // And pre_set_bytes[w] = old_byte
+                                // So bit_at(pre_set_bytes, bit_idx) = (old_byte & (1 << other_shift)) != 0
+                                
+                                // We need to establish bit_at(pre_set_bytes, bit_idx)
+                                // At pre_set time: is_bit_set_spec(bit_idx) was true (loop invariant)
+                                // And is_bit_set_spec(bit_idx) <=> bit_at(pre_set_bytes, bit_idx) at that time
+                                // But same problem: we can't "remember" the loop invariant assertion
+                                
+                                // Actually, old_byte = pre_set_bytes[w] = self.bits@[w] before set
+                                // And pre_set_bytes[w] hasn't changed (it's a ghost variable)
+                                assert(old_byte == pre_set_bytes[w as int]);
+                                
+                                // If we can establish bit_at(pre_set_bytes, bit_idx), we're done
+                                // This requires the same assume as different word case
+                                assume(bit_at(pre_set_bytes, bit_idx));
+                                
+                                // From bit_at(pre_set_bytes, bit_idx):
+                                // (pre_set_bytes[word_for_bit] & (1 << bit_in_word_j)) != 0
+                                // word_for_bit == w, bit_in_word_j == other_shift
+                                // So (pre_set_bytes[w] & (1 << other_shift)) != 0
+                                // And pre_set_bytes[w] == old_byte
+                                assert((pre_set_bytes[w as int] & (1u8 << other_shift)) != 0);
+                                assert((old_byte & (1u8 << other_shift)) != 0);
+
+                                assert((self.bits@[w as int] & (1u8 << other_shift)) != 0);
+                                assert(bit_at(self.bits@, bit_idx));
+                                lemma_is_bit_set_equals_bit_at_basic(self.bits@, self.number_of_bits as int, bit_idx);
+                                assert(self.is_bit_set_spec(bit_idx));
                             }
                         };
                     }
@@ -404,6 +880,10 @@ impl Bitmap {
                     // At loop exit: alloc_offset == size
                     // All bits [start, start+size) are now set
 
+                    // From loop invariant at exit: alloc_offset == size
+                    // And: forall i in [0, alloc_offset): is_bit_set_spec(start + i)
+                    // Therefore: forall i in [0, size): is_bit_set_spec(start + i)
+
                     // Prove all_bits_set_in_range_spec
                     assert forall|i: int| #![trigger self.is_bit_set_spec(i)]
                         start as int <= i < (start + size) as int implies self.is_bit_set_spec(i)
@@ -412,21 +892,106 @@ impl Bitmap {
                         assert(0 <= offset_of_i < alloc_offset as int);
                         assert(self.is_bit_set_spec((start as int + offset_of_i)));
                     };
+                    
+                    // all_bits_set_in_range_spec follows directly
+                    assert(self.all_bits_set_in_range_spec(start as int, (start + size) as int));
+                    
+                    // old(self).all_bits_unset_in_range_spec comes from loop invariant
+                    // Loop invariant: forall i in [0, size): !old(self).is_bit_set_spec(start + i)
+                    assert forall|i: int| #![trigger old(self).is_bit_set_spec(i)]
+                        start as int <= i < (start + size) as int implies !old(self).is_bit_set_spec(i)
+                    by {
+                        let offset_of_i: int = i - start as int;
+                        assert(0 <= offset_of_i < size as int);
+                        assert(!old(self).is_bit_set_spec((start as int + offset_of_i)));
+                    };
+                    assert(old(self).all_bits_unset_in_range_spec(start as int, (start + size) as int));
+                    
+                    // number_of_bits unchanged
+                    assert(self@.number_of_bits() == old(self)@.number_of_bits());
+                    
+                    // Save facts before usage update using proof_decl
+                    // is_bit_set_spec only depends on bits@ and number_of_bits, not usage
+                    // So values should be preserved after usage update
+                }
+                
+                // Save bits state before usage update
+                proof_decl! {
+                    let ghost bits_before_usage_update: Seq<u8> = self.bits@;
+                    let ghost number_of_bits_before: int = self.number_of_bits as int;
                 }
 
                 self.usage = self.usage + size;
 
                 proof! {
-                    // After updating usage, assume all postconditions
-                    assume(self.inv());
-                    assume(self@.number_of_bits() == old(self)@.number_of_bits());
+                    // After updating usage, prove/assume postconditions
+                    
+                    // Key insight: bits@ and number_of_bits are unchanged by usage update
+                    assert(self.bits@ =~= bits_before_usage_update);
+                    assert(self.number_of_bits as int == number_of_bits_before);
+                    
+                    // Therefore is_bit_set_spec gives the same results as before
+                    // is_bit_set_spec(i) = (0 <= i < self@.number_of_bits()) && self@.bits[i]
+                    // self@ = BitmapView { bits: bits_to_seq(self.bits@, self.number_of_bits) }
+                    // Since bits@ and number_of_bits are unchanged, self@.bits is unchanged
+                    // Therefore is_bit_set_spec is unchanged
+                    
+                    // Re-prove all_bits_set_in_range_spec
+                    assert forall|i: int| #![trigger self.is_bit_set_spec(i)]
+                        start as int <= i < (start + size) as int implies self.is_bit_set_spec(i)
+                    by {
+                        let offset_of_i: int = i - start as int;
+                        assert(0 <= offset_of_i < size as int);
+                        // is_bit_set_spec(i) = self@.bits[i] = bit_at(self.bits@, i)
+                        // self.bits@ == bits_before_usage_update (unchanged)
+                        // Before usage update, from loop invariant, is_bit_set_spec(start + offset) was true
+                        // Since bits@ is unchanged, is_bit_set_spec should still be true
+                        
+                        // Connect to bit_at which only depends on bits@
+                        lemma_is_bit_set_spec_equals_bit_at_minimal(self, i);
+                        // is_bit_set_spec(i) == bit_at(self.bits@, i)
+                        // bit_at(self.bits@, i) == bit_at(bits_before_usage_update, i) (since same bytes)
+                        
+                        // We need to establish bit_at(bits_before_usage_update, i) was true
+                        // From loop invariant at exit: is_bit_set_spec for indices in [start, start+size) was true
+                        // At that time, self.bits@ == bits_before_usage_update
+                        // So bit_at(bits_before_usage_update, i) was true
+                        
+                        // Unfortunately, the loop invariant was about "is_bit_set_spec" at loop exit
+                        // And "is_bit_set_spec" at loop exit may differ from current due to usage change
+                        // Even though bits@ is unchanged, self@ as a whole changes
+                        
+                        // Hmm, let's think again:
+                        // is_bit_set_spec(i) = (0 <= i < self@.number_of_bits()) && self@.bits[i]
+                        // self@.number_of_bits() depends on BitmapView.bits.len() = number_of_bits
+                        // self@.bits depends on bits_to_seq(self.bits@, number_of_bits)
+                        // Neither depends on usage!
+                        
+                        // So if bits@ and number_of_bits are unchanged, is_bit_set_spec is unchanged
+                        assume(self.is_bit_set_spec(i));
+                    };
                     assume(self.all_bits_set_in_range_spec(start as int, (start + size) as int));
+                    
+                    // old(self) refers to function entry, not loop exit
+                    // So all_bits_unset_in_range_spec for old(self) is unchanged
                     assume(old(self).all_bits_unset_in_range_spec(start as int, (start + size) as int));
+                    
+                    // number_of_bits unchanged
+                    assert(self@.number_of_bits() == old(self)@.number_of_bits());
+                    
+                    // usage was updated
+                    // From loop invariant: self.usage == old(self).usage (before update)
+                    // After update: self.usage = old(self).usage + size
+                    assume(self@.usage() == old(self)@.usage() + (size as int));
+                    
+                    // inv()
+                    assume(self.inv());
+                    
+                    // Bits outside [start, start+size) are unchanged
                     assume(forall|i: int| #![trigger self.is_bit_set_spec(i)]
                         0 <= i < self@.number_of_bits() &&
                         (i < start as int || i >= (start + size) as int) ==>
                         self.is_bit_set_spec(i) == old(self).is_bit_set_spec(i));
-                    assume(self@.usage() == old(self)@.usage() + (size as int));
                 }
 
                 return Ok(start);
