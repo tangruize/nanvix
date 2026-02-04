@@ -75,11 +75,6 @@ impl FrameAllocatorView {
         frame_idx * FRAME_SIZE as int
     }
 
-    /// Returns the frame index for a given physical address.
-    pub open spec fn addr_to_frame_idx(&self, addr: int) -> int {
-        addr / FRAME_SIZE as int
-    }
-
     //==============================================================================================
     // Memory Safety Properties
     //==============================================================================================
@@ -110,13 +105,6 @@ impl FrameAllocatorView {
             self.frames_are_disjoint(i, j)
     }
 
-    /// Property: Address-to-index and index-to-address are inverse operations.
-    pub open spec fn addr_frame_idx_inverse(&self, i: int) -> bool
-        recommends 0 <= i < self.capacity
-    {
-        self.addr_to_frame_idx(self.frame_addr(i)) == i
-    }
-
     //==============================================================================================
     // Liveness Properties
     //==============================================================================================
@@ -135,16 +123,6 @@ impl FrameAllocatorView {
     /// Property (Liveness): If a frame is allocated, it can be deallocated.
     pub open spec fn can_deallocate(&self, frame_idx: int) -> bool {
         self.is_allocated(frame_idx) && 0 <= frame_idx < self.capacity
-    }
-
-    /// Property: There exists a contiguous range of `count` free frames starting at some index.
-    pub open spec fn has_contiguous_free_range(&self, count: int) -> bool {
-        exists|start: int|
-            #![trigger self.is_allocated(start)]
-            0 <= start
-            && start + count <= self.capacity
-            && forall|i: int| #![trigger self.is_allocated(i)]
-                start <= i < start + count ==> !self.is_allocated(i)
     }
 
     //==============================================================================================
@@ -219,17 +197,6 @@ impl FrameAllocator {
     /// Returns the number of allocated frames (delegated to bitmap's count).
     pub closed spec fn spec_num_allocated(&self) -> int {
         self.bitmap@.usage()
-    }
-
-    /// Returns true if a frame at the given index is allocated.
-    pub open spec fn spec_is_allocated(&self, frame_idx: int) -> bool {
-        self@.is_allocated(frame_idx)
-    }
-
-    /// Returns true if a frame's bit is set in the bitmap.
-    /// This is exposed for verification purposes.
-    pub closed spec fn spec_is_bit_set(&self, idx: int) -> bool {
-        self.bitmap.is_bit_set(idx)
     }
 
     //==============================================================================================
@@ -562,8 +529,8 @@ impl FrameAllocator {
             frame.spec_is_aligned(),
             // Frame index must be within capacity.
             frame.spec_frame_number() < old(self)@.capacity,
-            // Frame must be currently allocated.
-            old(self)@.is_allocated(frame.spec_frame_number()),
+            // Use can_deallocate for clearer specification.
+            old(self)@.can_deallocate(frame.spec_frame_number()),
         ensures
             self.inv(),
             // LIVENESS: free always succeeds when preconditions are met.
