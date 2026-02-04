@@ -127,11 +127,6 @@ impl PageAddress {
         self.raw_addr as int % PAGE_SIZE as int == 0
     }
 
-    /// Spec function to get the page number.
-    pub open spec fn spec_page_number(&self) -> int {
-        self.raw_addr as int / PAGE_SIZE as int
-    }
-
     /// Spec function to get the page table entry index.
     /// This extracts bits [12:21] of the address, giving a value 0-1023.
     /// The formula models: (addr & (PGTAB_MASK ^ PAGE_MASK)) >> PAGE_SHIFT
@@ -337,16 +332,6 @@ impl KernelPageView {
         self.pool_id
     }
 
-    /// Returns the page number (index).
-    pub open spec fn page_number(&self) -> int {
-        self.page_addr / PAGE_SIZE as int
-    }
-
-    /// Returns the frame number (index).
-    pub open spec fn frame_number(&self) -> int {
-        self.frame_addr / FRAME_SIZE as int
-    }
-
     //==============================================================================================
     // Alignment Properties
     //==============================================================================================
@@ -369,11 +354,6 @@ impl KernelPageView {
     /// This is the fundamental invariant for kernel memory.
     pub open spec fn is_identity_mapped(&self) -> bool {
         self.page_addr == self.frame_addr
-    }
-
-    /// Property: Page and frame numbers are equal for identity-mapped pages.
-    pub open spec fn consistent_numbering(&self) -> bool {
-        self.page_number() == self.frame_number()
     }
 
     //==============================================================================================
@@ -450,11 +430,6 @@ impl KernelPage {
     //==============================================================================================
     // Specification Functions
     //==============================================================================================
-
-    /// Spec function to get the underlying frame.
-    pub closed spec fn spec_kframe(&self) -> KernelFrame {
-        self.kframe
-    }
 
     /// Spec function to get the pool ID of the underlying frame.
     pub closed spec fn spec_pool_id(&self) -> int {
