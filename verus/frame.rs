@@ -493,8 +493,13 @@ impl FrameAllocator {
         // Allocate a bit from the bitmap.
         match self.bitmap.alloc() {
             Ok(frame_idx) => {
-                // frame_idx < capacity <= MAX_FRAME_NUMBER + 1, so frame_idx <= MAX_FRAME_NUMBER.
-                // Thus the conversion to FrameAddress always succeeds.
+                // VERIFIED OPTIMIZATION: The original Nanvix code uses:
+                //   let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) { ... }
+                // which includes a runtime bounds check (frame_number <= MAX_FRAME_NUMBER).
+                // Here we bypass that check by directly constructing FrameNumber, because we have
+                // proven that frame_idx <= MAX_FRAME_NUMBER via the invariant:
+                //   capacity <= MAX_FRAME_NUMBER + 1  AND  frame_idx < capacity
+                // This is safe and eliminates an unnecessary runtime check.
                 proof {
                     // By invariant: capacity <= MAX_FRAME_NUMBER + 1.
                     // By bitmap postcondition: frame_idx < capacity.
@@ -1002,6 +1007,11 @@ impl FrameAllocator {
             (forall|i: int| region.spec_start_frame() <= i < region.spec_start_frame() + region.spec_frame_count() ==>
                 !old(self)@.is_allocated(i)) ==> result is Ok,
     {
+        // Use lemma to reveal that inv() implies frame_count > 0.
+        proof {
+            region.lemma_inv_implies_frame_count_positive();
+        }
+
         let start_frame: usize = region.start().into_frame_number().into_raw_value();
         let count: usize = region.frame_count();
 

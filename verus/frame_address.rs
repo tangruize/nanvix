@@ -200,34 +200,34 @@ impl PageAlignedPhysAddr {
 #[derive(Debug, Clone, Copy)]
 pub struct TruncatedMemoryRegion {
     /// The page-aligned start address.
-    pub start: PageAlignedPhysAddr,
+    start: PageAlignedPhysAddr,
     /// The page-aligned size in bytes.
-    pub size: usize,
+    size: usize,
 }
 
 impl TruncatedMemoryRegion {
     /// Spec function to get the start address.
-    pub open spec fn spec_start(&self) -> int {
+    pub closed spec fn spec_start(&self) -> int {
         self.start.spec_raw_value()
     }
 
     /// Spec function to get the size in bytes.
-    pub open spec fn spec_size(&self) -> int {
+    pub closed spec fn spec_size(&self) -> int {
         self.size as int
     }
 
     /// Spec function to get the start frame number.
-    pub open spec fn spec_start_frame(&self) -> int {
+    pub closed spec fn spec_start_frame(&self) -> int {
         self.start.spec_frame_number()
     }
 
     /// Spec function to get the number of frames in this region.
-    pub open spec fn spec_frame_count(&self) -> int {
+    pub closed spec fn spec_frame_count(&self) -> int {
         self.size as int / FRAME_SIZE as int
     }
 
     /// Spec function: invariant that size is page-aligned and positive.
-    pub open spec fn inv(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         &&& self.size as int % FRAME_SIZE as int == 0
         &&& self.size > 0
     }
@@ -251,6 +251,9 @@ impl TruncatedMemoryRegion {
                 &&& region.spec_size() == size as int
                 &&& region.spec_start_frame() == start.spec_frame_number()
                 &&& region.spec_frame_count() == size as int / FRAME_SIZE as int
+                // Explicit guarantees for callers (since inv() is closed).
+                &&& region.spec_frame_count() > 0
+                &&& region.spec_size() > 0
             },
             result is Err ==> (size == 0 || size % FRAME_SIZE != 0),
     {
@@ -263,10 +266,32 @@ impl TruncatedMemoryRegion {
         Ok(TruncatedMemoryRegion { start, size })
     }
 
+    /// Lemma: If inv() holds, then frame_count > 0.
+    ///
+    /// # Description
+    ///
+    /// This lemma reveals the key property that inv() implies frame_count > 0,
+    /// which is needed by callers since inv() is closed.
+    pub proof fn lemma_inv_implies_frame_count_positive(&self)
+        requires self.inv(),
+        ensures
+            self.spec_frame_count() > 0,
+            self.spec_size() > 0,
+    {
+        // From inv(): size > 0 and size % FRAME_SIZE == 0.
+        // Therefore size >= FRAME_SIZE, so size / FRAME_SIZE >= 1.
+    }
+
     /// Returns the page-aligned start address.
     pub fn start(&self) -> (result: PageAlignedPhysAddr)
-        ensures result.spec_raw_value() == self.spec_start()
+        ensures
+            result.spec_raw_value() == self.spec_start(),
+            result.spec_frame_number() == self.spec_start_frame(),
     {
+        proof {
+            // Reveal that spec_start_frame() == start.spec_frame_number().
+            // This is trivially true by definition.
+        }
         self.start
     }
 
