@@ -135,11 +135,6 @@ impl SlabView {
         (addr - self.data_addr) / self.block_size
     }
 
-    /// Alias for addr_to_block_idx for compatibility.
-    pub open spec fn data_addr_to_block_idx(&self, addr: int) -> int {
-        self.addr_to_block_idx(addr)
-    }
-
     /// Returns true if the data address is aligned to block size.
     pub open spec fn is_aligned(&self) -> bool {
         self.data_addr % self.block_size == 0
@@ -155,15 +150,6 @@ impl SlabView {
     /// Returns true if an address is within the overall buffer.
     pub open spec fn is_within_buffer(&self, addr: int) -> bool {
         addr >= self.base_addr && addr < self.base_addr + self.total_len
-    }
-
-    /// Property: All valid data addresses are within the buffer.
-    /// Issue 9 FIX: Added explicit trigger for quantifier.
-    pub open spec fn all_data_addrs_within_buffer(&self) -> bool {
-        forall|i: int|
-            #![trigger self.block_addr(i)]
-            0 <= i < self.num_data_blocks ==>
-            self.is_within_buffer(self.block_addr(i))
     }
 
     //==============================================================================================
@@ -244,20 +230,6 @@ impl SlabView {
     /// This is the initial condition for a new slab.
     pub open spec fn is_freshly_initialized(&self) -> bool {
         self.allocated_blocks =~= Set::<int>::empty()
-    }
-
-    /// Property: Index region is properly initialized (all index blocks marked as used).
-    /// This ensures the index blocks are reserved and won't be handed out as data blocks.
-    /// The bitmap tracks both index blocks (first num_index_blocks bits) and data blocks.
-    /// Index blocks must always be marked as "allocated" so they're never handed out.
-    /// Issue 9 FIX: Added explicit trigger for quantifier.
-    pub open spec fn index_region_initialized(&self, num_index_blocks: int, bitmap_bits: Seq<bool>) -> bool {
-        // All index block bits (0..num_index_blocks) are set in the bitmap.
-        &&& num_index_blocks > 0
-        &&& num_index_blocks <= bitmap_bits.len()
-        &&& forall|i: int|
-            #![trigger bitmap_bits[i]]
-            0 <= i < num_index_blocks ==> bitmap_bits[i] == true
     }
 
     //==============================================================================================
@@ -502,11 +474,6 @@ impl Slab {
         let data_region_start = self.data_addr as int;
         // Data region starts at or after index region ends.
         data_region_start >= index_region_end
-    }
-
-    /// Returns true if block at given data block index is allocated.
-    pub closed spec fn is_block_allocated(&self, data_block_idx: int) -> bool {
-        self.index.is_bit_set(self.num_index_blocks as int + data_block_idx)
     }
 
     //==============================================================================================
@@ -2031,7 +1998,8 @@ impl Slab {
         requires
             old(self).inv(),
             old(self)@.is_valid_addr(addr as int),
-            old(self)@.is_allocated(old(self)@.addr_to_block_idx(addr as int)),
+            // Use can_deallocate for clearer specification.
+            old(self)@.can_deallocate(old(self)@.addr_to_block_idx(addr as int)),
         ensures
             self.inv(),
             result is Ok ==> {

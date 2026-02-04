@@ -1206,7 +1206,7 @@ impl Kheap {
                 // Address is valid in the selected slab (post-state).
                 &&& self@.get_slab(slab_size).is_valid_addr(addr)
                 // Block is now allocated in the slab.
-                &&& self@.get_slab(slab_size).is_allocated(self@.get_slab(slab_size).data_addr_to_block_idx(addr))
+                &&& self@.get_slab(slab_size).is_allocated(self@.get_slab(slab_size).addr_to_block_idx(addr))
                 // Key postcondition: block_size >= requested size.
                 &&& slab_size.spec_as_int() >= size as int
                 // Alignment: address is aligned to block size.
@@ -1319,7 +1319,7 @@ impl Kheap {
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
                 let slab = old(self)@.get_slab(slab_size);
                 &&& slab.is_valid_addr(addr as int)
-                &&& slab.is_allocated(slab.data_addr_to_block_idx(addr as int))
+                &&& slab.is_allocated(slab.addr_to_block_idx(addr as int))
             }),
         ensures
             self.inv(),
@@ -1327,7 +1327,7 @@ impl Kheap {
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
                 let old_slab = old(self)@.get_slab(slab_size);
                 let new_slab = self@.get_slab(slab_size);
-                let block_idx = old_slab.data_addr_to_block_idx(addr as int);
+                let block_idx = old_slab.addr_to_block_idx(addr as int);
                 &&& !new_slab.is_allocated(block_idx)
                 // Frame: base_addr and total_size are unchanged.
                 &&& self@.base_addr == old(self)@.base_addr
@@ -2202,7 +2202,7 @@ proof fn test_allocation_postconditions_verified(
             &&& post_heap@.is_valid_heap_addr(addr)
             &&& post_heap@.get_slab(slab_size).is_valid_addr(addr)
             &&& post_heap@.get_slab(slab_size).is_allocated(
-                    post_heap@.get_slab(slab_size).data_addr_to_block_idx(addr))
+                    post_heap@.get_slab(slab_size).addr_to_block_idx(addr))
             &&& slab_size.spec_as_int() >= size
             &&& addr % slab_size.spec_as_int() == 0
         }),
@@ -2310,8 +2310,8 @@ proof fn test_double_allocation_different_addresses_verified(
     requires
         slab.is_valid_addr(addr1),
         slab.is_valid_addr(addr2),
-        idx1 == slab.data_addr_to_block_idx(addr1),
-        idx2 == slab.data_addr_to_block_idx(addr2),
+        idx1 == slab.addr_to_block_idx(addr1),
+        idx2 == slab.addr_to_block_idx(addr2),
         slab.is_allocated(idx1),
         slab.is_allocated(idx2),
         idx1 != idx2,
@@ -2340,7 +2340,7 @@ proof fn test_allocation_deallocation_roundtrip_verified(
         // After allocation: block is allocated.
         slab_after_alloc.is_allocated(idx),
         slab_after_alloc.is_valid_addr(addr),
-        idx == slab_after_alloc.data_addr_to_block_idx(addr),
+        idx == slab_after_alloc.addr_to_block_idx(addr),
         // After deallocation: block is free again.
         !slab_after_dealloc.is_allocated(idx),
         // Block counts are consistent.
