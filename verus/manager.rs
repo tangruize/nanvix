@@ -88,12 +88,32 @@
 //==================================================================================================
 
 use crate::{
-    kpool::{Kpool, KernelFrame},
-    upool::{Upool, UserFrame},
-    kpage::{KernelPage, PAGE_SIZE},
-    vmem::{Vmem, AccessPermission, spec_is_user_addr, MAX_USER_PAGES},
-    frame_address::{FrameAddress, FRAME_SIZE},
-    error::{Error, ErrorCode},
+    error::{
+        Error,
+        ErrorCode,
+    },
+    frame_address::{
+        FrameAddress,
+        FRAME_SIZE,
+    },
+    kpage::{
+        KernelPage,
+        PAGE_SIZE,
+    },
+    kpool::{
+        KernelFrame,
+        Kpool,
+    },
+    upool::{
+        Upool,
+        UserFrame,
+    },
+    vmem::{
+        spec_is_user_addr,
+        AccessPermission,
+        Vmem,
+        MAX_USER_PAGES,
+    },
 };
 use vstd::prelude::*;
 
@@ -222,26 +242,6 @@ impl VirtMemoryManager {
     // Specification Functions
     //==============================================================================================
 
-    /// Spec function to check if kernel allocation is possible.
-    pub open spec fn spec_can_alloc_kpage(&self) -> bool {
-        self@.has_kpool_capacity()
-    }
-
-    /// Spec function to check if user allocation is possible.
-    pub open spec fn spec_can_alloc_upage(&self) -> bool {
-        self@.has_upool_capacity()
-    }
-
-    /// Spec function to check if multiple kernel allocations are possible.
-    pub open spec fn spec_can_alloc_kpages(&self, count: int) -> bool {
-        self@.has_kpool_capacity_for(count)
-    }
-
-    /// Spec function to check if multiple user allocations are possible.
-    pub open spec fn spec_can_alloc_upages(&self, count: int) -> bool {
-        self@.has_upool_capacity_for(count)
-    }
-
     /// Spec function to check if a frame is allocated from this manager's upool.
     ///
     /// # Parameters
@@ -256,11 +256,6 @@ impl VirtMemoryManager {
         &&& frame_addr % FRAME_SIZE as int == 0
         &&& 0 <= frame_idx < self.upool@.capacity()
         &&& self.upool@.is_allocated(frame_idx)
-    }
-
-    /// Spec function to get the upool capacity.
-    pub closed spec fn spec_upool_capacity(&self) -> int {
-        self.upool@.capacity()
     }
 
     //==============================================================================================

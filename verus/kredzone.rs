@@ -252,11 +252,6 @@ pub open spec fn spec_is_valid_index(index: int) -> bool {
     0 <= index < SPEC_NUM_ENTRIES
 }
 
-/// Computes the number of entries.
-pub open spec fn spec_num_entries() -> int {
-    SPEC_NUM_ENTRIES
-}
-
 //==================================================================================================
 // KernelRedZoneView - Abstract Specification
 //==================================================================================================

@@ -156,9 +156,15 @@
 //==================================================================================================
 
 use crate::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    frame_address::{
+        FrameAddress,
+        FRAME_SIZE,
+    },
     kpage::PAGE_SIZE,
-    frame_address::{FrameAddress, FRAME_SIZE},
-    error::{Error, ErrorCode},
 };
 use vstd::prelude::*;
 
@@ -221,7 +227,7 @@ pub const MAX_USER_PAGES: usize = 65536;
 /// caching flags. This simplified enum captures the essential permission
 /// categories for verification purposes. The mapping is:
 /// - `ReadOnly` -> original's read-only mode
-/// - `ReadWrite` -> original's read-write mode  
+/// - `ReadWrite` -> original's read-write mode
 /// - `Execute` -> original's read-execute mode
 ///
 /// # Scope Limitation
@@ -357,26 +363,12 @@ impl Vmem {
     // Specification Functions
     //==============================================================================================
 
-    /// Spec function to check that a mapping at index i is valid and for the given vaddr.
-    pub open spec fn spec_mapping_for_vaddr(&self, i: int, vaddr: int) -> bool {
-        0 <= i < self.mapping_count as int &&
-        self.mappings[i as int].valid &&
-        self.mappings[i as int].vaddr as int == vaddr
-    }
-
     /// Spec function to check if a vaddr is mapped (exists in some slot).
     pub open spec fn spec_is_mapped(&self, vaddr: int) -> bool {
         exists|i: int|
             #![trigger self.mappings[i]]
             0 <= i < self.mapping_count as int &&
             self.mappings[i as int].spec_is_for_vaddr(vaddr)
-    }
-
-    /// Spec function to get the frame address for a mapped vaddr at a given index.
-    pub open spec fn spec_get_frame_at(&self, i: int) -> int
-        recommends 0 <= i < self.mapping_count as int
-    {
-        self.mappings[i as int].frame_addr as int
     }
 
     /// Spec function to get the frame address for a mapped virtual address.

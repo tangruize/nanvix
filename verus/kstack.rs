@@ -103,7 +103,10 @@
 //!
 //==================================================================================================
 
-use crate::error::{Error, ErrorCode};
+use crate::error::{
+    Error,
+    ErrorCode,
+};
 use vstd::prelude::*;
 
 verus! {
@@ -182,11 +185,6 @@ impl KernelStackView {
     /// Returns true if the base address is page-aligned.
     pub open spec fn is_base_aligned(&self) -> bool {
         spec_is_page_aligned(self.base_addr)
-    }
-
-    /// Returns true if the stack has at least one page.
-    pub open spec fn is_non_empty(&self) -> bool {
-        self.num_pages > 0
     }
 
     /// Returns true if the number of pages is within valid bounds.
