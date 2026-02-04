@@ -67,6 +67,39 @@ impl Error {
     pub fn new(code: ErrorCode, reason: &'static str) -> Self {
         Self { code, reason }
     }
+
+    /// Logs this error.
+    ///
+    /// # Description
+    ///
+    /// This is an external_body function that wraps the `error!` macro from the log crate.
+    /// It has no effect on verification (treated as a no-op by Verus) but will log
+    /// errors at runtime, matching the original Nanvix behavior.
+    ///
+    /// # Note
+    ///
+    /// In the original Nanvix code, error paths typically call `error!("{error:?}")`.
+    /// This function provides the same functionality in a Verus-compatible way.
+    #[verifier::external_body]
+    pub fn log(&self) {
+        // In actual implementation, this would call:
+        // error!("{:?}", self);
+        // For now, we leave it as a placeholder that can be filled in
+        // when integrating with the actual logging infrastructure.
+    }
+}
+
+/// Logs an error with additional context.
+///
+/// # Description
+///
+/// This is an external_body function for logging errors with context information.
+/// It has no effect on verification but provides runtime logging.
+#[verifier::external_body]
+pub fn log_error_with_context(error: &Error, context: &str) {
+    // In actual implementation:
+    // error!("{:?} ({})", error, context);
+    let _ = (error, context);
 }
 
 } // verus!

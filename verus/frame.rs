@@ -437,7 +437,11 @@ impl FrameAllocator {
         // Allocate a bit from the bitmap.
         match self.bitmap.alloc() {
             Ok(frame_number) => Ok(frame_number),
-            Err(error) => Err(error),
+            Err(error) => {
+                // NOTE: Original Nanvix code has: error!("{error:?}");
+                error.log();
+                Err(error)
+            },
         }
     }
 
@@ -510,7 +514,11 @@ impl FrameAllocator {
                 let frame_addr = FrameAddress::from_frame_number(frame_number);
                 frame_addr
             },
-            Err(error) => Err(error),
+            Err(error) => {
+                // NOTE: Original Nanvix code has: error!("{error:?}");
+                error.log();
+                Err(error)
+            },
         }
     }
 
@@ -563,7 +571,12 @@ impl FrameAllocator {
 
         match self.bitmap.clear(frame_number) {
             Ok(()) => Ok(()),
-            Err(error) => Err(error),
+            Err(error) => {
+                // NOTE: Original Nanvix code has: error!("{error:?} (frame={frame:?})");
+                // The frame parameter provides context about which frame failed.
+                error.log();
+                Err(error)
+            },
         }
     }
 
@@ -629,6 +642,8 @@ impl FrameAllocator {
             Ok(()) => Ok(()),
             Err(error) => {
                 // This should not happen since we checked test() above.
+                // NOTE: Original Nanvix code has: error!("{error:?} (phys_addr={phys_addr:?})");
+                error.log();
                 Err(error)
             },
         }
@@ -638,7 +653,13 @@ impl FrameAllocator {
     // Range Allocation
     //==============================================================================================
 
-    /// Allocates a contiguous range of frames by marking them as allocated.
+    /// Allocates a contiguous range of frames without runtime checking.
+    ///
+    /// # Description
+    ///
+    /// This is a "seL4-style" version that requires the caller to prove all frames
+    /// are free as a precondition, eliminating runtime checks. For the version that
+    /// matches the original Nanvix behavior (with runtime checking), use `alloc_range`.
     ///
     /// # Parameters
     ///
@@ -651,14 +672,12 @@ impl FrameAllocator {
     ///
     /// # Liveness
     ///
-    /// This operation always succeeds when preconditions are met (all frames in range
-    /// are free and range is within capacity). The underlying bitmap operations have
-    /// liveness guarantees.
+    /// This operation always succeeds when preconditions are met.
     ///
     /// # Precondition
     ///
-    /// All frames in the range must be initially free.
-    pub fn alloc_range(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+    /// All frames in the range must be initially free (proven by caller).
+    pub fn alloc_range_unchecked(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
             count > 0,
@@ -729,7 +748,13 @@ impl FrameAllocator {
         }
     }
 
-    /// Helper function for alloc_range that handles the loop.
+    /// Helper function for range allocation that handles the loop.
+    ///
+    /// # Note
+    ///
+    /// This is an internal helper extracted for proof modularity. Marked inline
+    /// to avoid performance implications of an extra function call.
+    #[inline]
     fn alloc_range_inner(
         &mut self,
         start_frame: usize,
@@ -793,7 +818,10 @@ impl FrameAllocator {
             decreases
                 end_frame - idx,
         {
-            // bitmap.set always succeeds when preconditions are met.
+            // VERIFIED: bitmap.set always succeeds when preconditions are met.
+            // NOTE: Original Nanvix code has: error!("{error:?} (region={region:?})");
+            // This error path is proven unreachable by Verus, so no logging is needed here.
+            // The preconditions guarantee idx is in range and the bit is currently unset.
             let _ = self.bitmap.set(idx);
             idx = idx + 1;
         }
@@ -805,12 +833,12 @@ impl FrameAllocator {
     ///
     /// # Description
     ///
-    /// This function matches the original source behavior exactly:
+    /// This function matches the original Nanvix `alloc_range` behavior exactly:
     /// 1. First checks if ALL frames in the range are free (runtime check).
     /// 2. If any frame is already allocated, returns OutOfMemory error.
     /// 3. If all frames are free, allocates them all.
     ///
-    /// This differs from `alloc_range` which requires frames to be free as a precondition.
+    /// For a version without runtime checks (requiring caller proof), use `alloc_range_unchecked`.
     ///
     /// # Parameters
     ///
@@ -821,7 +849,7 @@ impl FrameAllocator {
     ///
     /// Upon success, all frames in [start_frame, start_frame + count) are allocated.
     /// Upon failure (any frame already allocated), an error is returned.
-    pub fn alloc_range_checked(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+    pub fn alloc_range(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
             count > 0,
