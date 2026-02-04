@@ -171,8 +171,8 @@ impl KheapView {
 
     /// Returns total allocated blocks across all slabs.
     pub open spec fn total_allocated(&self) -> int {
-        self.slab_8.num_allocated() + self.slab_16.num_allocated() + self.slab_32.num_allocated() + self.slab_64.num_allocated()
-            + self.slab_128.num_allocated() + self.slab_256.num_allocated() + self.slab_512.num_allocated() + self.slab_4096.num_allocated()
+        self.slab_8.used() + self.slab_16.used() + self.slab_32.used() + self.slab_64.used()
+            + self.slab_128.used() + self.slab_256.used() + self.slab_512.used() + self.slab_4096.used()
     }
 
     /// Returns total capacity across all slabs.
@@ -1155,14 +1155,14 @@ impl Kheap {
             assert(heap.slab_512_bytes@.is_empty());
             assert(heap.slab_4096_bytes@.is_empty());
 
-            assert(heap@.slab_8.num_allocated() == 0);
-            assert(heap@.slab_16.num_allocated() == 0);
-            assert(heap@.slab_32.num_allocated() == 0);
-            assert(heap@.slab_64.num_allocated() == 0);
-            assert(heap@.slab_128.num_allocated() == 0);
-            assert(heap@.slab_256.num_allocated() == 0);
-            assert(heap@.slab_512.num_allocated() == 0);
-            assert(heap@.slab_4096.num_allocated() == 0);
+            assert(heap@.slab_8.used() == 0);
+            assert(heap@.slab_16.used() == 0);
+            assert(heap@.slab_32.used() == 0);
+            assert(heap@.slab_64.used() == 0);
+            assert(heap@.slab_128.used() == 0);
+            assert(heap@.slab_256.used() == 0);
+            assert(heap@.slab_512.used() == 0);
+            assert(heap@.slab_4096.used() == 0);
 
             assert(heap@.total_allocated() == 0);
             assert(heap@.is_empty());
@@ -2241,9 +2241,9 @@ proof fn test_allocation_frame_condition_verified(
         post_heap@.slab_4096 == pre_heap@.slab_4096,
     ensures
         // Other slabs are truly unaffected.
-        post_heap@.slab_16.num_allocated() == pre_heap@.slab_16.num_allocated(),
-        post_heap@.slab_32.num_allocated() == pre_heap@.slab_32.num_allocated(),
-        post_heap@.slab_4096.num_allocated() == pre_heap@.slab_4096.num_allocated(),
+        post_heap@.slab_16.used() == pre_heap@.slab_16.used(),
+        post_heap@.slab_32.used() == pre_heap@.slab_32.used(),
+        post_heap@.slab_4096.used() == pre_heap@.slab_4096.used(),
 {
     // Follows from frame condition in preconditions.
 }
@@ -2268,9 +2268,9 @@ proof fn test_deallocation_frame_condition_verified(
         post_heap@.slab_4096 == pre_heap@.slab_4096,
     ensures
         // Other slabs are truly unaffected.
-        post_heap@.slab_8.num_allocated() == pre_heap@.slab_8.num_allocated(),
-        post_heap@.slab_16.num_allocated() == pre_heap@.slab_16.num_allocated(),
-        post_heap@.slab_4096.num_allocated() == pre_heap@.slab_4096.num_allocated(),
+        post_heap@.slab_8.used() == pre_heap@.slab_8.used(),
+        post_heap@.slab_16.used() == pre_heap@.slab_16.used(),
+        post_heap@.slab_4096.used() == pre_heap@.slab_4096.used(),
 {
     // Follows from frame condition in preconditions.
 }
@@ -2344,11 +2344,11 @@ proof fn test_allocation_deallocation_roundtrip_verified(
         // After deallocation: block is free again.
         !slab_after_dealloc.is_allocated(idx),
         // Block counts are consistent.
-        slab_after_alloc.num_allocated() == slab_before_alloc.num_allocated() + 1,
-        slab_after_dealloc.num_allocated() == slab_after_alloc.num_allocated() - 1,
+        slab_after_alloc.used() == slab_before_alloc.used() + 1,
+        slab_after_dealloc.used() == slab_after_alloc.used() - 1,
     ensures
         // Net effect: same allocation count as before.
-        slab_after_dealloc.num_allocated() == slab_before_alloc.num_allocated(),
+        slab_after_dealloc.used() == slab_before_alloc.used(),
 {
     // By arithmetic.
 }
