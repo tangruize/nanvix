@@ -21,13 +21,16 @@
 //! array contents. The spec functions and lemmas are fully verified, while exec
 //! functions that touch raw memory are marked `external_body` with verified specs.
 
-use crate::error::{Error, ErrorCode};
+use crate::error::{
+    Error,
+    ErrorCode,
+};
 use vstd::prelude::*;
 
-use std::slice;
 use std::{
     alloc::*,
     ptr,
+    slice,
 };
 
 verus! {
@@ -211,11 +214,6 @@ pub axiom fn axiom_i64_zero_is_0(t: i64)
 pub axiom fn axiom_isize_zero_is_0(t: isize)
     requires is_zero(t)
     ensures t == 0;
-
-/// Predicate: All elements in the array are zero-initialized.
-pub open spec fn all_zeros<T>(view: &RawArrayView<T>) -> bool {
-    forall|i: int| 0 <= i < view.len() as int ==> is_zero(#[trigger] view.index(i))
-}
 
 //==================================================================================================
 // RawArray Invariant - Verified
