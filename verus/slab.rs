@@ -1807,9 +1807,11 @@ impl Slab {
                 &&& 0 <= block_idx < self@.num_data_blocks
                 &&& !old(self)@.is_allocated(block_idx)
                 &&& self@.is_allocated(block_idx)
+                // Frame: static fields unchanged.
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
                 &&& self@.block_size == old(self)@.block_size
                 &&& self@.data_addr == old(self)@.data_addr
+                // Frame: other blocks unchanged.
                 &&& forall|i: int| 0 <= i < self@.num_data_blocks && i != block_idx ==>
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
                 // Explicit postcondition that address is within buffer bounds.
@@ -2005,9 +2007,11 @@ impl Slab {
             result is Ok ==> {
                 let block_idx = old(self)@.addr_to_block_idx(addr as int);
                 &&& !self@.is_allocated(block_idx)
+                // Frame: static fields unchanged.
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
                 &&& self@.block_size == old(self)@.block_size
                 &&& self@.data_addr == old(self)@.data_addr
+                // Frame: other blocks unchanged.
                 &&& forall|i: int| 0 <= i < self@.num_data_blocks && i != block_idx ==>
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
                 // Liveness: after deallocation, allocation is possible (at least one free block).
