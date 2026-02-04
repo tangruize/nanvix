@@ -109,7 +109,10 @@
 //!
 //==================================================================================================
 
-use crate::error::{Error, ErrorCode};
+use crate::error::{
+    Error,
+    ErrorCode,
+};
 use vstd::prelude::*;
 
 verus! {
@@ -216,16 +219,6 @@ pub open spec fn spec_compute_top(base: int, size: int) -> int {
 //   - Precondition spec_is_page_aligned(base) <==> caller has PageAligned<VirtualAddress>
 //   - Postcondition spec_is_page_aligned(result) <==> result could be PageAligned
 //==================================================================================================
-
-/// Models the invariant of PageAligned<VirtualAddress>.
-///
-/// A value satisfies this spec iff it could be validly wrapped in PageAligned<T>.
-pub open spec fn spec_models_page_aligned(addr: int) -> bool {
-    &&& addr >= 0
-    &&& spec_is_page_aligned(addr)
-}
-
-
 
 //==================================================================================================
 // PageAlignedAddr - Type-Level Alignment Wrapper

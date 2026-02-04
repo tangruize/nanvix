@@ -42,9 +42,18 @@
 //==================================================================================================
 
 use crate::{
-    frame::{FrameAllocator, FrameAllocatorView},
-    frame_address::{FrameAddress, FRAME_SIZE},
-    error::{Error, ErrorCode},
+    error::{
+        Error,
+        ErrorCode,
+    },
+    frame::{
+        FrameAllocator,
+        FrameAllocatorView,
+    },
+    frame_address::{
+        FrameAddress,
+        FRAME_SIZE,
+    },
 };
 use vstd::prelude::*;
 
@@ -69,10 +78,10 @@ pub enum FramePermission {
 //==================================================================================================
 
 /// A type that represents a user frame.
-/// 
+///
 /// UserFrame is a simple wrapper around a FrameAddress that represents an allocated
 /// frame from the user frame pool. The address is guaranteed to be page-aligned.
-/// 
+///
 /// # Zero-Initialization and Permissions
 ///
 /// Per the kernel contract, freshly allocated frames are zero-initialized and have
@@ -115,7 +124,7 @@ impl UserFrame {
 
     /// Spec function to check if the frame was allocated from a specific pool.
     /// This ties the frame to its originating pool for ownership tracking.
-    /// 
+    ///
     /// Note: In the verified model, this is established by the alloc() postcondition
     /// which guarantees the returned frame's index is within the pool's capacity
     /// and is marked as allocated.
@@ -265,16 +274,6 @@ impl UpoolView {
         self.base_addr + self.capacity() * FRAME_SIZE as int
     }
 
-    /// Property: A frame address is within the pool region.
-    pub open spec fn addr_in_region(&self, addr: int) -> bool {
-        self.base_addr <= addr && addr < self.limit()
-    }
-
-    /// Property: A frame index corresponds to a valid address in the region.
-    pub open spec fn frame_in_region(&self, frame_idx: int) -> bool {
-        0 <= frame_idx && frame_idx < self.capacity()
-    }
-
     //==============================================================================================
     // Memory Safety Properties
     //==============================================================================================
@@ -351,11 +350,6 @@ impl Upool {
     /// Returns the capacity (total number of frames).
     pub open spec fn spec_capacity(&self) -> int {
         self@.capacity()
-    }
-
-    /// Returns true if a frame is allocated.
-    pub open spec fn spec_is_allocated(&self, frame_idx: int) -> bool {
-        self@.is_allocated(frame_idx)
     }
 
     /// Returns the number of allocated frames (bitmap-based, closed).
@@ -592,10 +586,10 @@ impl Upool {
         let ghost original_self: Upool = *self;
         let ghost original_capacity: int = self.spec_capacity();
         let ghost original_num_allocated: int = self.spec_num_allocated();
-        
+
         let ghost mut frame_indices: Seq<int> = Seq::empty();
         let mut allocated_count: usize = 0;
-        
+
         while allocated_count < count
             invariant
                 self.inv(),
@@ -634,17 +628,17 @@ impl Upool {
             let ghost prev_self: Upool = *self;
             let ghost prev_frame_indices: Seq<int> = frame_indices;
             let ghost prev_len: int = prev_frame_indices.len() as int;
-            
+
             // Prove has_free_frame() for alloc to succeed.
             proof {
                 assert(self.spec_num_allocated() < self@.capacity());
                 self.frame_allocator.lemma_can_allocate_implies_has_free_frame();
             }
-            
+
             // Allocate a frame. By the lemma above, has_free_frame() is true,
             // so alloc() is guaranteed to succeed.
             let alloc_result: Result<UserFrame, Error> = self.alloc();
-            
+
             // Extract the frame. Use match with proof that Err is unreachable.
             let uframe: UserFrame = match alloc_result {
                 Ok(f) => f,
@@ -654,16 +648,16 @@ impl Upool {
                     return Ghost(Seq::empty());  // Never executed.
                 },
             };
-            
+
             let ghost new_frame_idx: int = uframe.spec_frame_number();
-            
+
             proof {
                 // Contrapositive of monotonicity: !prev_self@.is_allocated(i) ==> !original_self@.is_allocated(i).
                 if original_self@.is_allocated(new_frame_idx) {
                     assert(prev_self@.is_allocated(new_frame_idx));
                     assert(false);
                 }
-                
+
                 // The new frame is distinct from all previously collected frames.
                 assert forall|k: int| 0 <= k < prev_len
                     implies prev_frame_indices[k] != new_frame_idx
@@ -671,10 +665,10 @@ impl Upool {
                     assert(prev_self@.is_allocated(prev_frame_indices[k]));
                     assert(!prev_self@.is_allocated(new_frame_idx));
                 }
-                
+
                 // Update frame_indices.
                 frame_indices = prev_frame_indices.push(new_frame_idx);
-                
+
                 // For old elements (i < prev_len):
                 assert forall|i: int| #![trigger frame_indices[i]]
                     0 <= i < prev_len
@@ -693,7 +687,7 @@ impl Upool {
             }
             allocated_count = allocated_count + 1;
         }
-        
+
         proof {
             // Prove disjointness of all pairs.
             assert forall|i: int, j: int|
@@ -707,7 +701,7 @@ impl Upool {
                 Self::lemma_frames_disjoint(idx_i, idx_j);
             }
         }
-        
+
         Ghost(frame_indices)
     }
 
