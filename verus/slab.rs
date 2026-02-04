@@ -509,11 +509,6 @@ impl Slab {
         self.index.is_bit_set(self.num_index_blocks as int + data_block_idx)
     }
 
-    /// Returns the number of allocated data blocks.
-    pub open spec fn num_allocated_blocks(&self) -> int {
-        self@.num_allocated()
-    }
-
     //==============================================================================================
     // Arithmetic Lemmas
     //==============================================================================================

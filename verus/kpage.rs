@@ -71,8 +71,11 @@
 //==================================================================================================
 
 use crate::{
+    frame_address::{
+        FrameAddress,
+        FRAME_SIZE,
+    },
     kpool::KernelFrame,
-    frame_address::{FrameAddress, FRAME_SIZE},
 };
 use vstd::prelude::*;
 
@@ -451,16 +454,6 @@ impl KernelPage {
     /// Spec function to get the underlying frame.
     pub closed spec fn spec_kframe(&self) -> KernelFrame {
         self.kframe
-    }
-
-    /// Spec function to get the page address.
-    pub closed spec fn spec_page_address(&self) -> int {
-        self@.page_address()
-    }
-
-    /// Spec function to get the frame address.
-    pub closed spec fn spec_frame_address(&self) -> int {
-        self@.frame_address()
     }
 
     /// Spec function to get the pool ID of the underlying frame.

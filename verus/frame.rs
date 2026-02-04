@@ -218,12 +218,7 @@ impl FrameAllocator {
 
     /// Returns the number of allocated frames (delegated to bitmap's count).
     pub closed spec fn spec_num_allocated(&self) -> int {
-        self.bitmap@.count_allocated()
-    }
-
-    /// Returns the capacity (total number of frames).
-    pub open spec fn spec_capacity(&self) -> int {
-        self@.capacity
+        self.bitmap@.usage()
     }
 
     /// Returns true if a frame at the given index is allocated.
@@ -307,7 +302,7 @@ impl FrameAllocator {
         ensures
             self@.has_free_frame()
     {
-        // spec_num_allocated = bitmap.count_allocated().
+        // spec_num_allocated = bitmap.usage().
         // capacity = bitmap.number_of_bits() (by invariant).
         // So count_allocated < number_of_bits, meaning bitmap is NOT full.
         assert(!self.bitmap@.is_full());

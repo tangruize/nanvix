@@ -53,14 +53,9 @@ impl BitmapView {
         Bitmap::count_set_bits_in_seq(self.bits, 0, self.bits.len() as int)
     }
 
-    /// Alias for usage() - returns the count of allocated (set) bits.
-    pub open spec fn count_allocated(&self) -> int {
-        self.usage()
-    }
-
     /// Returns the count of free (unset) bits.
     pub open spec fn count_free(&self) -> int {
-        self.number_of_bits() - self.count_allocated()
+        self.number_of_bits() - self.usage()
     }
 
     /// Returns true if there exists at least one unset bit.
