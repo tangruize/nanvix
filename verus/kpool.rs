@@ -73,9 +73,20 @@
 //==================================================================================================
 
 use crate::{
-    frame::{FrameAllocator, FrameAllocatorView},
-    frame_address::{FrameAddress, FrameNumber, FRAME_SIZE, MAX_FRAME_NUMBER},
-    error::{Error, ErrorCode},
+    error::{
+        Error,
+        ErrorCode,
+    },
+    frame::{
+        FrameAllocator,
+        FrameAllocatorView,
+    },
+    frame_address::{
+        FrameAddress,
+        FrameNumber,
+        FRAME_SIZE,
+        MAX_FRAME_NUMBER,
+    },
 };
 use vstd::prelude::*;
 
@@ -328,16 +339,6 @@ impl KpoolView {
         self.base_addr + self.capacity() * FRAME_SIZE as int
     }
 
-    /// Property: A frame address is within the pool region.
-    pub open spec fn addr_in_region(&self, addr: int) -> bool {
-        self.base_addr <= addr && addr < self.limit()
-    }
-
-    /// Property: A frame index corresponds to a valid address in the region.
-    pub open spec fn frame_in_region(&self, frame_idx: int) -> bool {
-        0 <= frame_idx && frame_idx < self.capacity()
-    }
-
     //==============================================================================================
     // Memory Safety Properties
     //==============================================================================================
@@ -436,11 +437,6 @@ impl Kpool {
     /// Returns the capacity (total number of frames).
     pub open spec fn spec_capacity(&self) -> int {
         self@.capacity()
-    }
-
-    /// Returns true if a frame is allocated.
-    pub open spec fn spec_is_allocated(&self, frame_idx: int) -> bool {
-        self@.is_allocated(frame_idx)
     }
 
     /// Returns the number of allocated frames (bitmap-based, closed).
@@ -769,13 +765,13 @@ impl Kpool {
                     by {
                         assert(!old(self).frame_allocator@.is_allocated(i));
                     }
-                    
+
                     assert forall|i: int| start as int <= i < start as int + count as int
                         implies self@.is_allocated(i)
                     by {
                         assert(self.frame_allocator@.is_allocated(i));
                     }
-                    
+
                     assert forall|i: int|
                         (0 <= i < start as int || start as int + count as int <= i < self@.capacity())
                         implies self@.is_allocated(i) == old(self)@.is_allocated(i)
@@ -868,10 +864,10 @@ impl Kpool {
         let ghost original_self: Kpool = *self;
         let ghost original_capacity: int = self.spec_capacity();
         let ghost original_num_allocated: int = self.spec_num_allocated();
-        
+
         let ghost mut frame_indices: Seq<int> = Seq::empty();
         let mut allocated_count: usize = 0;
-        
+
         while allocated_count < count
             invariant
                 self.inv(),
@@ -913,13 +909,13 @@ impl Kpool {
             let ghost prev_self: Kpool = *self;
             let ghost prev_frame_indices: Seq<int> = frame_indices;
             let ghost prev_len: int = prev_frame_indices.len() as int;
-            
+
             // We need has_free_frame() for alloc to succeed.
             proof {
                 assert(self.spec_num_allocated() < self@.capacity());
                 self.frame_allocator.lemma_can_allocate_implies_has_free_frame();
             }
-            
+
             let kframe: KernelFrame = match self.alloc() {
                 Ok(f) => f,
                 Err(_) => {
@@ -927,9 +923,9 @@ impl Kpool {
                     return Err(Error::new(ErrorCode::OutOfMemory, "unexpected"));
                 },
             };
-            
+
             let ghost new_frame_idx: int = kframe.spec_frame_number();
-            
+
             proof {
                 // The new frame is distinct from all previously allocated frames.
                 assert forall|k: int| 0 <= k < prev_len
@@ -938,10 +934,10 @@ impl Kpool {
                     assert(prev_self@.is_allocated(prev_frame_indices[k]));
                     assert(!prev_self@.is_allocated(new_frame_idx));
                 }
-                
+
                 // Update frame_indices.
                 frame_indices = prev_frame_indices.push(new_frame_idx);
-                
+
                 // For old elements (i < prev_len):
                 assert forall|i: int| #![trigger frame_indices[i]]
                     0 <= i < prev_len
@@ -956,7 +952,7 @@ impl Kpool {
                     assert(idx == prev_frame_indices[i]);
                     assert(prev_self@.is_allocated(idx));
                 }
-                
+
                 // For the new element (i == prev_len):
                 assert({
                     let idx: int = frame_indices[prev_len as int];
@@ -970,7 +966,7 @@ impl Kpool {
             }
             allocated_count = allocated_count + 1;
         }
-        
+
         Ok(Ghost(frame_indices))
     }
 
@@ -1393,7 +1389,7 @@ mod test {
             assert(!pool_after_free@.is_allocated(i));
             assert(!pool_initial@.is_allocated(i));
         }
-        
+
         // Frames outside range also match initial.
         assert forall|i: int|
             (0 <= i < start || start + count <= i < pool_initial@.capacity())
@@ -1481,12 +1477,12 @@ mod test {
     }
 
     /// Test: Capacity is always positive when invariant holds.
-    /// 
+    ///
     /// Note: This test documents the intent but cannot directly assert the
     /// property due to closed invariant details. The property is guaranteed
     /// by FrameAllocator::inv() which requires bitmap@.number_of_bits() > 0.
     proof fn test_capacity_positive_intent(pool: Kpool)
-        requires 
+        requires
             pool.inv(),
             // We add capacity > 0 as a precondition to document the property,
             // since the closed invariant prevents direct proof.
