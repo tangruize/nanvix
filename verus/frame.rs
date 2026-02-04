@@ -1043,8 +1043,8 @@ impl FrameAllocator {
         let start_frame: usize = region.start().into_frame_number().into_raw_value();
         let count: usize = region.frame_count();
 
-        // Delegate to alloc_range_checked which has the same semantics.
-        self.alloc_range_checked(start_frame, count)
+        // Delegate to alloc_range which matches original Nanvix behavior.
+        self.alloc_range(start_frame, count)
     }
 
     //==============================================================================================
