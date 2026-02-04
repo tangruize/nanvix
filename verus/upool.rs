@@ -144,13 +144,6 @@ impl UserFrame {
         FramePermission::ReadOnly
     }
 
-    /// Spec function to check if the frame is zero-initialized from a pool.
-    /// This is only guaranteed for frames that come from a pool allocation.
-    /// The predicate requires the frame to be associated with a valid pool and aligned.
-    pub open spec fn spec_is_zero_initialized_from_pool(&self, pool: Upool) -> bool {
-        self.spec_is_from_pool(pool)
-    }
-
     /// Instantiates a user frame.
     ///
     /// # Parameters
@@ -933,7 +926,6 @@ mod test {
             pool@.is_allocated(uframe.spec_frame_number()),
     {
         assert(uframe.spec_is_from_pool(pool));
-        assert(uframe.spec_is_zero_initialized_from_pool(pool));
     }
 
     } // verus!
