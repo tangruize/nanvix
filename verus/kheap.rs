@@ -187,6 +187,12 @@ impl KheapView {
     }
 
     /// Returns true if a specific slab can allocate.
+    ///
+    /// # Note
+    ///
+    /// This function appears to be a simple delegate to `get_slab(size).can_allocate()`.
+    /// However, it is essential for SMT term sharing optimization. Removing it causes
+    /// verification rlimit to increase by ~250% due to quantifier instantiation explosion.
     pub open spec fn can_allocate_in_slab(&self, size: SlabSize) -> bool {
         self.get_slab(size).can_allocate()
     }
@@ -436,6 +442,11 @@ impl View for Kheap {
 
 impl Kheap {
     /// Returns the base address of the heap (spec).
+    ///
+    /// # Note
+    ///
+    /// This function is essential for SMT term sharing optimization.
+    /// Removing it causes verification rlimit to increase significantly.
     pub closed spec fn spec_base_addr(&self) -> int {
         self.base_addr@
     }
