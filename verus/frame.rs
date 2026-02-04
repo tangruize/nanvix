@@ -7,12 +7,23 @@
 
 use crate::{
     bitmap::Bitmap,
+    error::{
+        Error,
+        ErrorCode,
+    },
+    frame_address::{
+        FrameAddress,
+        FrameNumber,
+        PageAlignedPhysAddr,
+        FRAME_SIZE,
+        MAX_FRAME_NUMBER,
+    },
     raw_array::RawArray,
-    error::{Error, ErrorCode},
-    frame_address::{FrameAddress, FrameNumber, PageAlignedPhysAddr, FRAME_SIZE, MAX_FRAME_NUMBER},
 };
-use vstd::prelude::*;
-use vstd::set::*;
+use vstd::{
+    prelude::*,
+    set::*,
+};
 
 verus! {
 
@@ -300,18 +311,18 @@ impl FrameAllocator {
         // capacity = bitmap.number_of_bits() (by invariant).
         // So count_allocated < number_of_bits, meaning bitmap is NOT full.
         assert(!self.bitmap@.is_full());
-        
+
         // Use bitmap lemma: if not full, there exists an unset bit.
         self.bitmap.lemma_not_full_means_exists_unset_bit();
-        
+
         // Now we have: exists|i| 0 <= i < number_of_bits && !is_bit_set(i).
         let i: int = choose|i: int| 0 <= i < self.bitmap@.number_of_bits() && !self.bitmap.is_bit_set(i);
         assert(0 <= i < self@.capacity);
-        
+
         // By invariant: is_allocated(i) <==> is_bit_set(i).
         self.lemma_allocated_iff_bit_set(i);
         assert(!self@.is_allocated(i));
-        
+
         // Therefore, has_free_frame.
         assert(self@.has_free_frame());
     }
@@ -706,7 +717,7 @@ impl FrameAllocator {
         let end_frame: usize = start_frame + count;
         let ghost original_self: FrameAllocator = *self;
         let ghost original_capacity: int = self@.capacity;
-        
+
         // Prove preconditions for inner function.
         proof {
             assert(original_capacity == old(self)@.capacity);
@@ -729,7 +740,7 @@ impl FrameAllocator {
                         assert(self.bitmap.is_bit_set(i));
                         self.lemma_allocated_iff_bit_set(i);
                     }
-                    
+
                     // All frames outside range unchanged.
                     assert forall|i: int|
                         (0 <= i < start_frame as int || end_frame as int <= i < self@.capacity)
@@ -752,8 +763,8 @@ impl FrameAllocator {
 
     /// Helper function for alloc_range that handles the loop.
     fn alloc_range_inner(
-        &mut self, 
-        start_frame: usize, 
+        &mut self,
+        start_frame: usize,
         end_frame: usize,
         Ghost(original_self): Ghost<FrameAllocator>,
         Ghost(original_capacity): Ghost<int>,
@@ -786,7 +797,7 @@ impl FrameAllocator {
             self.spec_num_allocated() == old(self).spec_num_allocated() + (end_frame - start_frame) as int,
     {
         let mut idx: usize = start_frame;
-        
+
         while idx < end_frame
             invariant
                 // Core invariant preserved.
@@ -873,7 +884,7 @@ impl FrameAllocator {
             },
     {
         let end_frame: usize = start_frame + count;
-        
+
         // Step 1: Check if all frames in the range are free (matches original).
         let mut idx: usize = start_frame;
         while idx < end_frame
@@ -928,7 +939,7 @@ impl FrameAllocator {
             }
             idx = idx + 1;
         }
-        
+
         // Step 2: All frames are free, allocate them (matches original).
         // At this point we have proven all frames are free.
         proof {
@@ -939,10 +950,10 @@ impl FrameAllocator {
                 self.lemma_allocated_iff_bit_set(i);
             }
         }
-        
+
         let ghost original_self: FrameAllocator = *self;
         let ghost original_capacity: int = self@.capacity;
-        
+
         match self.alloc_range_inner(start_frame, end_frame, Ghost(original_self), Ghost(original_capacity)) {
             Ok(()) => {
                 proof {
@@ -953,7 +964,7 @@ impl FrameAllocator {
                         assert(self.bitmap.is_bit_set(i));
                         self.lemma_allocated_iff_bit_set(i);
                     }
-                    
+
                     // All frames outside range unchanged.
                     assert forall|i: int|
                         (0 <= i < start_frame as int || end_frame as int <= i < self@.capacity)
@@ -1036,6 +1047,16 @@ impl FrameAllocator {
             // Liveness for count=1 (has_free_frame implies a contiguous range of size 1 exists).
             (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
     {
+        proof {
+            // For liveness: if count == 1 && has_free_frame, then bitmap.exists_contiguous_free_range(1).
+            if count == 1 && old(self)@.has_free_frame() {
+                // has_free_frame implies bitmap.has_free_bit by existing lemma.
+                old(self).lemma_has_free_frame_implies_bitmap_has_free_bit();
+                // bitmap.has_free_bit implies bitmap.exists_contiguous_free_range(1).
+                old(self).bitmap.lemma_has_free_bit_implies_exists_free_range_1();
+            }
+        }
+
         // Use bitmap's alloc_range which searches for and allocates a contiguous range.
         match self.bitmap.alloc_range(count) {
             Ok(start) => {
@@ -1048,7 +1069,7 @@ impl FrameAllocator {
                         assert(!old(self).bitmap.is_bit_set(i));
                         old(self).lemma_allocated_iff_bit_set(i);
                     }
-                    
+
                     assert forall|i: int| start as int <= i < start as int + count as int
                         implies self@.is_allocated(i)
                     by {
@@ -1056,7 +1077,7 @@ impl FrameAllocator {
                         assert(self.bitmap.is_bit_set(i));
                         self.lemma_allocated_iff_bit_set(i);
                     }
-                    
+
                     assert forall|i: int|
                         (0 <= i < start as int || start as int + count as int <= i < self@.capacity)
                         implies self@.is_allocated(i) == old(self)@.is_allocated(i)
@@ -1120,7 +1141,7 @@ impl FrameAllocator {
     {
         let end_frame: usize = start_frame + count;
         let ghost original_self: FrameAllocator = *self;
-        
+
         // Prove preconditions for inner function: connect is_allocated to is_bit_set.
         proof {
             assert forall|i: int| start_frame as int <= i < end_frame as int
@@ -1129,7 +1150,7 @@ impl FrameAllocator {
                 self.lemma_allocated_iff_bit_set(i);
             }
         }
-        
+
         match self.free_range_inner(start_frame, end_frame, Ghost(original_self)) {
             Ok(()) => {
                 // Connect helper's bitmap postconditions to caller's is_allocated postconditions.
@@ -1141,7 +1162,7 @@ impl FrameAllocator {
                         assert(!self.bitmap.is_bit_set(i));
                         self.lemma_allocated_iff_bit_set(i);
                     }
-                    
+
                     // All frames outside range unchanged.
                     assert forall|i: int|
                         (0 <= i < start_frame as int || end_frame as int <= i < self@.capacity)
@@ -1198,7 +1219,7 @@ impl FrameAllocator {
             self.spec_num_allocated() == old(self).spec_num_allocated() - (end_frame - start_frame) as int,
     {
         let mut idx: usize = start_frame;
-        
+
         while idx < end_frame
             invariant
                 // Core invariant preserved.

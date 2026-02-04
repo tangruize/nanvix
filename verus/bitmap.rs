@@ -5,8 +5,17 @@
 // Bitmap Allocator (Verified Implementation)
 //==================================================================================================
 
-use crate::error::{Error, ErrorCode};
-use crate::raw_array::{RawArray, is_zero, axiom_u8_zero_is_0};
+use crate::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    raw_array::{
+        axiom_u8_zero_is_0,
+        is_zero,
+        RawArray,
+    },
+};
 use vstd::prelude::*;
 
 verus! {
@@ -68,7 +77,7 @@ impl BitmapView {
     pub open spec fn is_empty(&self) -> bool {
         self.usage() == 0
     }
-    
+
     /// Returns true if a specific bit is set.
     pub open spec fn is_bit_set(&self, index: int) -> bool {
         self.bits[index]
@@ -206,6 +215,168 @@ impl Bitmap {
             Self::lemma_count_set_bits_in_seq_bounded(bits, start + 1, end);
         } else {
             Self::lemma_bit_unset_in_seq_implies_count_lt_size(bits, start + 1, end, index);
+        }
+    }
+
+    //==================================================================================================
+    // Lemmas: Free Range Properties
+    //==================================================================================================
+
+    /// Lemma: if a free range of size n exists starting at p, then usage <= number_of_bits - n
+    proof fn lemma_free_range_implies_usage_bound(&self, p: int, n: int)
+        requires
+            self.inv(),
+            self.has_free_range_at(p, n),
+            n > 0,
+        ensures
+            self@.usage() <= self@.number_of_bits() - n,
+    {
+        // has_free_range_at(p, n) means all bits in [p, p+n) are unset.
+        // Therefore, at least n bits are unset.
+        // So usage (count of set bits) <= number_of_bits - n.
+
+        // We prove this by showing that count_free >= n.
+        // count_free = number_of_bits - usage.
+        // If forall i in [p, p+n): !is_bit_set(i), then there are at least n unset bits.
+
+        Self::lemma_unset_range_implies_count_free_geq(&self, p, n);
+    }
+
+    /// Lemma: if a range [p, p+n) is all unset, then count_free >= n
+    proof fn lemma_unset_range_implies_count_free_geq(&self, p: int, n: int)
+        requires
+            self.inv(),
+            0 <= p,
+            p + n <= self@.number_of_bits(),
+            n > 0,
+            self.all_bits_unset_in_range(p, p + n),
+        ensures
+            self@.count_free() >= n,
+    {
+        // count_free = number_of_bits - usage.
+        // usage = count_set_bits_in_seq(bits, 0, number_of_bits).
+        // We need to show: number_of_bits - usage >= n.
+        // Equivalently: usage <= number_of_bits - n.
+
+        // Split the range [0, number_of_bits) into three parts:
+        // [0, p), [p, p+n), [p+n, number_of_bits).
+        // In [p, p+n), all bits are unset, so contribution to usage is 0.
+        // usage = count in [0, p) + count in [p, p+n) + count in [p+n, number_of_bits).
+        //       = count in [0, p) + 0 + count in [p+n, number_of_bits).
+        //       <= p + (number_of_bits - (p+n))
+        //       = number_of_bits - n.
+
+        Self::lemma_count_split(self@.bits, 0, p, self@.number_of_bits());
+        Self::lemma_count_split(self@.bits, p, p + n, self@.number_of_bits());
+
+        // Count in [p, p+n) is 0 because all bits are unset.
+        assert forall|i: int| p <= i < p + n implies !self@.bits[i]
+        by {
+            assert(self.all_bits_unset_in_range(p, p + n));
+            assert(!self.is_bit_set(i));
+        }
+        Self::lemma_all_zero_in_seq_implies_count_zero(self@.bits, p, p + n);
+
+        // Count in [0, p) is at most p.
+        Self::lemma_count_set_bits_in_seq_bounded(self@.bits, 0, p);
+
+        // Count in [p+n, number_of_bits) is at most number_of_bits - (p+n).
+        Self::lemma_count_set_bits_in_seq_bounded(self@.bits, p + n, self@.number_of_bits());
+    }
+
+    /// Lemma: count can be split across ranges
+    proof fn lemma_count_split(bits: Seq<bool>, start: int, mid: int, end: int)
+        requires
+            0 <= start <= mid <= end,
+            end <= bits.len(),
+        ensures
+            Self::count_set_bits_in_seq(bits, start, end) ==
+                Self::count_set_bits_in_seq(bits, start, mid) +
+                Self::count_set_bits_in_seq(bits, mid, end),
+        decreases mid - start
+    {
+        if start >= mid {
+            // Empty first range.
+        } else {
+            Self::lemma_count_split(bits, start + 1, mid, end);
+        }
+    }
+
+    /// Lemma: has_free_bit implies exists_contiguous_free_range(1)
+    pub proof fn lemma_has_free_bit_implies_exists_free_range_1(&self)
+        requires
+            self.inv(),
+            self@.has_free_bit(),
+        ensures
+            self.exists_contiguous_free_range(1),
+    {
+        // has_free_bit means exists i: 0 <= i < number_of_bits && !bits[i].
+        // This means !is_bit_set(i).
+        // For exists_contiguous_free_range(1), we need exists start: has_free_range_at(start, 1).
+        // has_free_range_at(i, 1) requires:
+        //   - 0 <= i
+        //   - i + 1 <= number_of_bits
+        //   - all_bits_unset_in_range(i, i+1)
+        // Since !is_bit_set(i), all_bits_unset_in_range(i, i+1) holds.
+
+        let i = choose|i: int| 0 <= i < self@.number_of_bits() && !self@.bits[i];
+        assert(!self.is_bit_set(i));
+        assert(self.all_bits_unset_in_range(i, i + 1));
+        assert(self.has_free_range_at(i, 1));
+    }
+
+    /// Lemma: if bits are equal, has_free_range_at returns the same result
+    pub proof fn lemma_bits_equal_has_free_range_at_equal(&self, other: &Self, p: int, n: int)
+        requires
+            self.inv(),
+            other.inv(),
+            self@.bits =~= other@.bits,
+            self@.number_of_bits() == other@.number_of_bits(),
+        ensures
+            self.has_free_range_at(p, n) == other.has_free_range_at(p, n),
+    {
+        // has_free_range_at depends on number_of_bits and all_bits_unset_in_range.
+        // all_bits_unset_in_range depends on is_bit_set.
+        // is_bit_set depends on bits[i].
+        // Since bits are equal, is_bit_set returns the same result for both.
+        assert forall|i: int| 0 <= i < self@.number_of_bits() implies
+            self.is_bit_set(i) == other.is_bit_set(i)
+        by {
+            assert(self@.bits[i] == other@.bits[i]);
+        }
+        // Therefore all_bits_unset_in_range returns the same result.
+        // Therefore has_free_range_at returns the same result.
+    }
+
+    /// Lemma: if bits are equal, exists_contiguous_free_range returns the same result
+    pub proof fn lemma_bits_equal_exists_free_range_equal(&self, other: &Self, n: int)
+        requires
+            self.inv(),
+            other.inv(),
+            self@.bits =~= other@.bits,
+            self@.number_of_bits() == other@.number_of_bits(),
+        ensures
+            self.exists_contiguous_free_range(n) == other.exists_contiguous_free_range(n),
+    {
+        // exists_contiguous_free_range(n) = exists|start| has_free_range_at(start, n).
+        // By the previous lemma, has_free_range_at returns the same result for both.
+        assert forall|p: int| #![trigger self.has_free_range_at(p, n)]
+            self.has_free_range_at(p, n) == other.has_free_range_at(p, n)
+        by {
+            self.lemma_bits_equal_has_free_range_at_equal(other, p, n);
+        }
+
+        // Now prove the existentials are equal.
+        // If self.exists_contiguous_free_range(n), then there exists a p such that self.has_free_range_at(p, n).
+        // By the above, other.has_free_range_at(p, n) is also true, so other.exists_contiguous_free_range(n).
+        // Symmetrically for the other direction.
+        if self.exists_contiguous_free_range(n) {
+            let p = choose|p: int| #[trigger] self.has_free_range_at(p, n);
+            assert(other.has_free_range_at(p, n));
+        }
+        if other.exists_contiguous_free_range(n) {
+            let p = choose|p: int| #[trigger] other.has_free_range_at(p, n);
+            assert(self.has_free_range_at(p, n));
         }
     }
 
@@ -805,6 +976,12 @@ impl Bitmap {
             // Liveness: if there's a free bit, allocation succeeds.
             old(self)@.has_free_bit() ==> result is Ok,
     {
+        proof {
+            // Prove that has_free_bit implies exists_contiguous_free_range(1).
+            if old(self)@.has_free_bit() {
+                old(self).lemma_has_free_bit_implies_exists_free_range_1();
+            }
+        }
         self.alloc_range(1)
     }
 
@@ -842,13 +1019,42 @@ impl Bitmap {
                 &&& self@.usage() == old(self)@.usage() + (size as int)
             },
             result is Err ==> self@ == old(self)@,
-            // Liveness for size=1: if there's a free bit, allocation succeeds.
-            (size == 1 && old(self)@.has_free_bit()) ==> result is Ok,
+            // Liveness: if a contiguous free range of the requested size exists (and size > 0), allocation succeeds.
+            // Note: size must be > 0 because exists_contiguous_free_range(0) is trivially true for any bitmap.
+            (size > 0 && old(self).exists_contiguous_free_range(size as int)) ==> result is Ok,
     {
         let ghost old_self = *self;
 
         // Check if the size is valid.
         if size == 0 || size > self.number_of_bits {
+            proof {
+                // Case 1: size == 0
+                // The postcondition is: (size > 0 && exists_free_range) ==> Ok.
+                // Since size == 0, the antecedent (size > 0 && ...) is false.
+                // So the postcondition is vacuously true.
+
+                // Case 2: size > number_of_bits
+                // has_free_range_at(start, size) requires start + size <= number_of_bits.
+                // For any start >= 0: start + size >= size > number_of_bits.
+                // So start + size > number_of_bits, violating the condition.
+                // Therefore !has_free_range_at(start, size) for all start >= 0.
+                // Hence !exists_contiguous_free_range(size).
+                if size > self.number_of_bits {
+                    assert forall|start: int| #![trigger old_self.has_free_range_at(start, size as int)]
+                        0 <= start implies !old_self.has_free_range_at(start, size as int)
+                    by {
+                        // start + size >= size > number_of_bits
+                        assert(start + (size as int) >= size as int);
+                        assert((size as int) > self@.number_of_bits());
+                        // Therefore start + size > number_of_bits.
+                    }
+                    assert(!old_self.exists_contiguous_free_range(size as int));
+                    assert(!old(self).exists_contiguous_free_range(size as int));
+                }
+                // In either case, the postcondition (size > 0 && exists_free_range ==> Ok) is satisfied:
+                // - For size == 0: antecedent is false.
+                // - For size > number_of_bits: !exists_free_range, so antecedent is false.
+            }
             let reason: &str = "invalid size";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -856,9 +1062,47 @@ impl Bitmap {
         // Check if allocation exceeds the bitmap capacity.
         if self.usage > self.number_of_bits - size {
             proof {
-                // For size=1: usage > number_of_bits - 1 means usage >= number_of_bits.
-                // Since inv() ensures usage <= number_of_bits, we have usage == number_of_bits.
-                // This means is_full().
+                // If usage > number_of_bits - size, then there are fewer than `size` free bits.
+                // Therefore, no contiguous range of `size` free bits can exist.
+                // count_free = number_of_bits - usage < size.
+                assert(self@.count_free() < size as int);
+                // old_self == old(self) at this point (no mutations yet).
+                assert(old_self@ == self@);
+
+                // Any contiguous free range of size `size` would require at least `size` free bits.
+                // Since count_free < size, no such range exists.
+                // We need to prove: !exists_contiguous_free_range(size).
+                // This is implied by count_free < size.
+
+                // To prove this formally, assume exists a free range [p, p+size).
+                // Then all size bits in that range are unset (free).
+                // This means usage() would be at most number_of_bits - size.
+                // But we have usage > number_of_bits - size, contradiction.
+                assert forall|p: int| #![trigger old_self.has_free_range_at(p, size as int)]
+                    0 <= p <= old_self@.number_of_bits() - (size as int) implies !old_self.has_free_range_at(p, size as int)
+                by {
+                    // Suppose has_free_range_at(p, size) were true.
+                    // Then all_bits_unset_in_range(p, p+size) would be true.
+                    // This means forall i in [p, p+size): !is_bit_set(i).
+                    // So at least `size` bits are unset, meaning count_free >= size.
+                    // But count_free < size, contradiction.
+                    if old_self.has_free_range_at(p, size as int) {
+                        // has_free_range_at implies all_bits_unset_in_range.
+                        assert(old_self.all_bits_unset_in_range(p, p + (size as int)));
+                        // Use the lemma on old_self.
+                        old_self.lemma_free_range_implies_usage_bound(p, size as int);
+                        // This gives: old_self@.usage() <= old_self@.number_of_bits() - size.
+                        // But old_self@.usage() == self.usage > self.number_of_bits - size.
+                        assert(false); // Contradiction.
+                    }
+                }
+
+                assert(!old_self.exists_contiguous_free_range(size as int));
+
+                // old_self == old(self).
+                assert(!old(self).exists_contiguous_free_range(size as int));
+
+                // For size=1: also prove the has_free_bit implication.
                 if size == 1 {
                     assert(self.usage as int > self.number_of_bits as int - 1);
                     assert(self.usage as int >= self.number_of_bits as int);
@@ -869,11 +1113,6 @@ impl Bitmap {
                     // is_full() implies !has_free_bit() by our lemma.
                     self.lemma_is_full_implies_no_free_bit();
                     assert(!self@.has_free_bit());
-                    // Since self@.bits == old(self)@.bits and self == old(self), we have
-                    // old(self)@.is_full() and !old(self)@.has_free_bit().
-                    assert(self@.bits =~= old(self)@.bits);
-                    // The postcondition (size == 1 && old(self)@.has_free_bit()) ==> result is Ok
-                    // is vacuously true because !has_free_bit().
                 }
             }
             let reason: &str = "allocation exceeds bitmap capacity";
@@ -895,6 +1134,9 @@ impl Bitmap {
                 self.usage <= self.number_of_bits - size,
                 // For size=1: all bits before start are set (checked and found occupied).
                 size == 1 ==> forall|i: int| 0 <= i < start as int ==> self.is_bit_set(i),
+                // General invariant: no contiguous free range of size `size` starts before `start`.
+                forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                    0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
         {
             // Check for fast skip/ path.
             let is_aligned: bool = start % (u8::BITS as usize) == 0;
@@ -905,17 +1147,36 @@ impl Bitmap {
                     proof {
                         // When a byte is 0xFF (u8::MAX), all 8 bits are set.
                         // Prove that bits start..start+8 are all set.
-                        if size == 1 {
-                            assert forall|i: int| start as int <= i < start as int + 8 implies
-                                self.is_bit_set(i)
-                            by {
-                                let bit_pos: int = i % 8;
-                                let bit_pos_u8: u8 = bit_pos as u8;
-                                // u8::MAX = 0xFF. For any bit position 0-7, (0xFF & (1 << b)) != 0.
-                                assert((0xFFu8 & (1u8 << bit_pos_u8)) != 0) by (bit_vector)
-                                    requires 0 <= bit_pos_u8 < 8;
+                        assert forall|i: int| start as int <= i < start as int + 8 implies
+                            self.is_bit_set(i)
+                        by {
+                            let bit_pos: int = i % 8;
+                            let bit_pos_u8: u8 = bit_pos as u8;
+                            // u8::MAX = 0xFF. For any bit position 0-7, (0xFF & (1 << b)) != 0.
+                            assert((0xFFu8 & (1u8 << bit_pos_u8)) != 0) by (bit_vector)
+                                requires 0 <= bit_pos_u8 < 8;
+                        }
+
+                        // Prove: no contiguous free range of size `size` starts in [start, start+8).
+                        // For any p in [start, start+8), the bit at p is set, so the range [p, p+size) contains a set bit.
+                        assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                            start as int <= p < (start + 8) as int implies !self.has_free_range_at(p, size as int)
+                        by {
+                            // p is in [start, start+8), and we know is_bit_set(p).
+                            assert(self.is_bit_set(p));
+                            // A free range at p requires all bits in [p, p+size) to be unset.
+                            // But bit p is set, so it's not a free range.
+                        }
+
+                        // Combined with the loop invariant, no free range starts in [0, start+8).
+                        assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                            0 <= p < (start + 8) as int implies !self.has_free_range_at(p, size as int)
+                        by {
+                            if p < start as int {
+                                // From loop invariant.
+                            } else {
+                                // From above assertion.
                             }
-                            // Combined with the loop invariant, all bits [0, start+8) are set.
                         }
                     }
                     // Jump to next byte boundary.
@@ -942,6 +1203,9 @@ impl Bitmap {
                     self@.bits == old(self)@.bits,
                     // For size=1: all bits before start_before_inner are set.
                     size == 1 ==> forall|i: int| 0 <= i < start_before_inner as int ==> self.is_bit_set(i),
+                    // General invariant: no contiguous free range of size `size` starts before start_before_inner.
+                    forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                        0 <= p < start_before_inner as int ==> !self.has_free_range_at(p, size as int),
                 ensures
                     start <= self.number_of_bits,
                     free ==> start <= self.number_of_bits - size &&
@@ -949,6 +1213,9 @@ impl Bitmap {
                             !#[trigger] self.is_bit_set((start + i) as int),
                     // On break (!free): all bits before new start are set (for size=1).
                     (size == 1 && !free) ==> forall|i: int| 0 <= i < start as int ==> self.is_bit_set(i),
+                    // On break (!free): no contiguous free range of size `size` starts before new start.
+                    !free ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                        0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
             {
                 let idx: usize = start + offset;
                 let (w, b): (usize, usize) = self.index_unchecked(idx);
@@ -958,6 +1225,7 @@ impl Bitmap {
                         let bit_pos: u8 = b as u8;
                         assert((self.bits@[w as int] & (1u8 << bit_pos)) != 0);
                         assert(self.is_bit_set(idx as int));
+
                         // For size=1: offset=0, so idx = start.
                         // After break, start = start + 1.
                         // Invariant gives: forall|i| 0 <= i < start ==> is_bit_set(i).
@@ -966,6 +1234,31 @@ impl Bitmap {
                             assert(offset == 0);
                             assert(idx as int == start as int);
                             assert(self.is_bit_set(start as int));
+                        }
+
+                        // General case: The bit at idx = start + offset is set.
+                        // Any range [p, p+size) where start_before_inner <= p <= start + offset
+                        // must include idx (since p <= start + offset < p + size),
+                        // hence cannot be a free range.
+                        // After break, start = start + offset + 1.
+                        // We need to prove: forall p in [0, start + offset + 1): !has_free_range_at(p, size).
+                        let new_start = start + offset + 1;
+                        assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                            0 <= p < new_start as int implies !self.has_free_range_at(p, size as int)
+                        by {
+                            if p < start_before_inner as int {
+                                // From loop invariant: no free range before start_before_inner.
+                            } else {
+                                // p is in [start_before_inner, start + offset].
+                                // The range [p, p+size) would include idx = start + offset if p <= idx < p + size.
+                                // Since p <= start + offset and size >= 1, we have p + size > start + offset.
+                                // Thus idx is in the range [p, p+size), which means the range includes the set bit at idx.
+                                let idx_int: int = idx as int;
+                                let size_int: int = size as int;
+                                assert(p <= idx_int);
+                                assert(idx_int < p + size_int);
+                                // Therefore the range [p, p+size) contains a set bit and is not free.
+                            }
                         }
                     }
                     free = false;
@@ -1110,6 +1403,37 @@ impl Bitmap {
         // Combined with start <= number_of_bits (invariant), we have start == number_of_bits.
         // So all bits in [0, number_of_bits) are set, meaning !has_free_bit().
         proof {
+            // General case: Loop exit condition is start > number_of_bits - size.
+            // Any valid starting position p for a contiguous free range of size `size`
+            // must satisfy 0 <= p <= number_of_bits - size.
+            // But loop invariant tells us: forall p in [0, start): !has_free_range_at(p, size).
+            // Since start > number_of_bits - size, all valid starting positions have been checked.
+            // Therefore, there is no contiguous free range of size `size` in old(self).
+            assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                0 <= p <= self@.number_of_bits() - (size as int) implies !self.has_free_range_at(p, size as int)
+            by {
+                // p < start (since start > number_of_bits - size >= p), so covered by invariant.
+                assert(p < start as int);
+            }
+
+            // Prove !exists_contiguous_free_range(size).
+            // exists_contiguous_free_range(n) = exists|start| has_free_range_at(start, n).
+            // has_free_range_at requires start + n <= number_of_bits, so start <= number_of_bits - n.
+            // We just proved all such positions don't have a free range.
+            assert(!self.exists_contiguous_free_range(size as int));
+
+            // Since bits are unchanged from old_self (which equals old(self)), transfer the result.
+            assert(self@.bits =~= old_self@.bits);
+            assert(self@.number_of_bits() == old_self@.number_of_bits());
+
+            // Use the lemma to connect self and old_self.
+            self.lemma_bits_equal_exists_free_range_equal(&old_self, size as int);
+            assert(!old_self.exists_contiguous_free_range(size as int));
+
+            // old_self == old(self), so the postcondition is satisfied.
+            assert(!old(self).exists_contiguous_free_range(size as int));
+
+            // For size=1, also prove the old postcondition for compatibility.
             if size == 1 {
                 // Loop exit condition: start > number_of_bits - 1, so start >= number_of_bits.
                 // Loop invariant: start <= number_of_bits.
@@ -1122,9 +1446,6 @@ impl Bitmap {
                 }
                 // This means !has_free_bit().
                 assert(!self@.has_free_bit());
-                // Since bits are unchanged, same applies to old(self).
-                assert(self@.bits =~= old(self)@.bits);
-                // Therefore the postcondition (size==1 && has_free_bit() ==> Ok) is vacuously true.
             }
         }
         let reason: &str = "bitmap is full";
