@@ -171,8 +171,8 @@ impl KheapView {
 
     /// Returns total allocated blocks across all slabs.
     pub open spec fn total_allocated(&self) -> int {
-        self.slab_8.used() + self.slab_16.used() + self.slab_32.used() + self.slab_64.used()
-            + self.slab_128.used() + self.slab_256.used() + self.slab_512.used() + self.slab_4096.used()
+        self.slab_8.num_allocated() + self.slab_16.num_allocated() + self.slab_32.num_allocated() + self.slab_64.num_allocated()
+            + self.slab_128.num_allocated() + self.slab_256.num_allocated() + self.slab_512.num_allocated() + self.slab_4096.num_allocated()
     }
 
     /// Returns total capacity across all slabs.
@@ -1155,14 +1155,14 @@ impl Kheap {
             assert(heap.slab_512_bytes@.is_empty());
             assert(heap.slab_4096_bytes@.is_empty());
 
-            assert(heap@.slab_8.used() == 0);
-            assert(heap@.slab_16.used() == 0);
-            assert(heap@.slab_32.used() == 0);
-            assert(heap@.slab_64.used() == 0);
-            assert(heap@.slab_128.used() == 0);
-            assert(heap@.slab_256.used() == 0);
-            assert(heap@.slab_512.used() == 0);
-            assert(heap@.slab_4096.used() == 0);
+            assert(heap@.slab_8.num_allocated() == 0);
+            assert(heap@.slab_16.num_allocated() == 0);
+            assert(heap@.slab_32.num_allocated() == 0);
+            assert(heap@.slab_64.num_allocated() == 0);
+            assert(heap@.slab_128.num_allocated() == 0);
+            assert(heap@.slab_256.num_allocated() == 0);
+            assert(heap@.slab_512.num_allocated() == 0);
+            assert(heap@.slab_4096.num_allocated() == 0);
 
             assert(heap@.total_allocated() == 0);
             assert(heap@.is_empty());
