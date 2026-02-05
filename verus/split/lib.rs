@@ -16,3 +16,4 @@
 //! are not inlined in the code.
 
 pub mod libs;
+pub mod kernel;

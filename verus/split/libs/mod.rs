@@ -13,3 +13,6 @@ pub mod raw_array;
 
 #[path = "bitmap/lib.rs"]
 pub mod bitmap;
+
+#[path = "slab/lib.rs"]
+pub mod slab;
