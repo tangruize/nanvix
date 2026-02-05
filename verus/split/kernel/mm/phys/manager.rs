@@ -117,72 +117,15 @@ use crate::{
 };
 use vstd::prelude::*;
 
+// Include specifications.
+include!("manager.spec.rs");
+
+// Include proofs.
+include!("manager.proof.rs");
+
+
 verus! {
 
-//==================================================================================================
-// VirtMemoryManagerView - Abstract Specification
-//==================================================================================================
-
-/// Abstract view of the virtual memory manager for specification purposes.
-///
-/// The view captures:
-/// - Kernel pool state (available kernel frames)
-/// - User pool state (available user frames)
-/// - Pool identifiers for provenance tracking
-#[verifier::ext_equal]
-pub ghost struct VirtMemoryManagerView {
-    /// Number of free kernel frames.
-    pub kpool_free_count: int,
-    /// Total kernel pool capacity.
-    pub kpool_capacity: int,
-    /// Number of free user frames.
-    pub upool_free_count: int,
-    /// Total user pool capacity.
-    pub upool_capacity: int,
-    /// Kernel pool identifier.
-    pub kpool_id: int,
-    /// User pool identifier.
-    pub upool_id: int,
-}
-
-impl VirtMemoryManagerView {
-    //==============================================================================================
-    // Capacity Properties
-    //==============================================================================================
-
-    /// Returns true if the kernel pool has at least one free frame.
-    pub open spec fn has_kpool_capacity(&self) -> bool {
-        self.kpool_free_count > 0
-    }
-
-    /// Returns true if the user pool has at least one free frame.
-    pub open spec fn has_upool_capacity(&self) -> bool {
-        self.upool_free_count > 0
-    }
-
-    /// Returns true if the kernel pool has at least `count` free frames.
-    pub open spec fn has_kpool_capacity_for(&self, count: int) -> bool {
-        self.kpool_free_count >= count && count > 0
-    }
-
-    /// Returns true if the user pool has at least `count` free frames.
-    pub open spec fn has_upool_capacity_for(&self, count: int) -> bool {
-        self.upool_free_count >= count && count > 0
-    }
-
-    //==============================================================================================
-    // Invariant Properties
-    //==============================================================================================
-
-    /// Returns true if the pool counts are within valid bounds.
-    pub open spec fn pools_valid(&self) -> bool {
-        &&& 0 <= self.kpool_free_count <= self.kpool_capacity
-        &&& 0 <= self.upool_free_count <= self.upool_capacity
-    }
-}
-
-//==================================================================================================
-// VirtMemoryManager - Verified Implementation
 //==================================================================================================
 
 /// A type that represents the virtual memory manager.
@@ -204,62 +147,7 @@ pub struct VirtMemoryManager {
     upool: Upool,
 }
 
-impl View for VirtMemoryManager {
-    type V = VirtMemoryManagerView;
-
-    closed spec fn view(&self) -> VirtMemoryManagerView {
-        VirtMemoryManagerView {
-            kpool_free_count: self.kpool@.num_free(),
-            kpool_capacity: self.kpool@.capacity(),
-            upool_free_count: self.upool@.num_free(),
-            upool_capacity: self.upool@.capacity(),
-            kpool_id: self.kpool@.id(),
-            upool_id: self.upool@.id(),
-        }
-    }
-}
-
 impl VirtMemoryManager {
-    //==============================================================================================
-    // Invariant
-    //==============================================================================================
-
-    /// Invariant for the virtual memory manager.
-    ///
-    /// Ensures:
-    /// - Both pools satisfy their invariants
-    ///
-    /// The underlying pool invariants guarantee:
-    /// - Capacity > 0
-    /// - num_free() >= 0
-    /// - num_allocated() <= capacity
-    pub closed spec fn inv(&self) -> bool {
-        &&& self.kpool.inv()
-        &&& self.upool.inv()
-    }
-
-    //==============================================================================================
-    // Specification Functions
-    //==============================================================================================
-
-    /// Spec function to check if a frame is allocated from this manager's upool.
-    ///
-    /// # Parameters
-    ///
-    /// - `frame_addr`: Physical address of the frame.
-    ///
-    /// # Returns
-    ///
-    /// True if the frame is within the upool's range and is currently allocated.
-    pub closed spec fn spec_uframe_is_allocated(&self, frame_addr: int) -> bool {
-        let frame_idx: int = frame_addr / FRAME_SIZE as int;
-        &&& frame_addr % FRAME_SIZE as int == 0
-        &&& 0 <= frame_idx < self.upool@.capacity()
-        &&& self.upool@.is_allocated(frame_idx)
-    }
-
-    //==============================================================================================
-    // Constructor
     //==============================================================================================
 
     /// Creates a new virtual memory manager from initialized pools.
@@ -301,8 +189,6 @@ impl VirtMemoryManager {
     }
 
     //==============================================================================================
-    // Virtual Memory Space Operations
-    //==============================================================================================
 
     /// Creates a new virtual address space based on an existing one.
     ///
@@ -336,8 +222,6 @@ impl VirtMemoryManager {
         Vmem::clone(vmem)
     }
 
-    //==============================================================================================
-    // User Page Operations
     //==============================================================================================
 
     /// Allocates and maps a single user page.
@@ -421,6 +305,7 @@ impl VirtMemoryManager {
         Ok(())
     }
 
+
     /// Unmaps a user page and frees the backing frame.
     ///
     /// # Description
@@ -479,6 +364,7 @@ impl VirtMemoryManager {
         Ok(())
     }
 
+
     /// Changes access permissions on a user page.
     ///
     /// # Description
@@ -520,8 +406,6 @@ impl VirtMemoryManager {
     }
 
     //==============================================================================================
-    // Kernel Page Operations
-    //==============================================================================================
 
     /// Allocates a kernel page.
     ///
@@ -558,6 +442,7 @@ impl VirtMemoryManager {
         }
         Ok(kpage)
     }
+
 
     /// Allocates multiple kernel pages.
     ///
@@ -596,8 +481,6 @@ impl VirtMemoryManager {
         unimplemented!()
     }
 
-    //==============================================================================================
-    // Batch User Page Operations
     //==============================================================================================
 
     /// Allocates multiple user pages.
@@ -671,8 +554,6 @@ impl VirtMemoryManager {
     }
 
     //==============================================================================================
-    // Accessor Functions
-    //==============================================================================================
 
     /// Returns the kernel pool capacity.
     pub fn kpool_capacity(&self) -> (result: usize)
@@ -684,6 +565,7 @@ impl VirtMemoryManager {
         self.kpool.capacity()
     }
 
+
     /// Returns the user pool capacity.
     pub fn upool_capacity(&self) -> (result: usize)
         requires
@@ -693,33 +575,6 @@ impl VirtMemoryManager {
     {
         self.upool.capacity()
     }
-}
-
-//==================================================================================================
-// Proofs: Manager Properties
-//==================================================================================================
-
-/// Proof that a newly created manager has valid invariant.
-proof fn proof_new_manager_invariant(kpool: Kpool, upool: Upool)
-    requires
-        kpool.inv(),
-        upool.inv(),
-    ensures
-        (VirtMemoryManager { kpool, upool }).inv(),
-{
-    // Direct from constructor postconditions.
-}
-
-/// Proof that allocation decreases free count.
-proof fn proof_alloc_decreases_free(old_manager: VirtMemoryManager, new_manager: VirtMemoryManager)
-    requires
-        old_manager.inv(),
-        new_manager.inv(),
-        new_manager@.upool_free_count == old_manager@.upool_free_count - 1,
-    ensures
-        new_manager@.upool_free_count < old_manager@.upool_free_count,
-{
-    // Trivial arithmetic.
 }
 
 } // verus!

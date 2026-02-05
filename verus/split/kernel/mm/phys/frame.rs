@@ -28,10 +28,15 @@ use vstd::{
     set::*,
 };
 
+// Include specifications.
+include!("frame.spec.rs");
+
+// Include proofs.
+include!("frame.proof.rs");
+
+
 verus! {
 
-//==================================================================================================
-// FrameAllocatorView - Abstract Specification
 //==================================================================================================
 
 /// Abstract view of the frame allocator for specification purposes.
@@ -43,103 +48,6 @@ pub struct FrameAllocatorView {
     pub capacity: int,
 }
 
-impl FrameAllocatorView {
-    //==============================================================================================
-    // Basic Properties
-    //==============================================================================================
-
-    /// Returns the number of allocated frames.
-    pub open spec fn num_allocated(&self) -> int {
-        self.allocated_frames.len() as int
-    }
-
-    /// Returns the number of free frames.
-    pub open spec fn num_free(&self) -> int {
-        self.capacity - self.num_allocated()
-    }
-
-    /// Returns true if a frame at the given index is allocated.
-    pub open spec fn is_allocated(&self, frame_idx: int) -> bool {
-        self.allocated_frames.contains(frame_idx)
-    }
-
-    /// Returns true if the allocator is full (no free frames).
-    pub open spec fn is_full(&self) -> bool {
-        self.num_allocated() == self.capacity
-    }
-
-    /// Returns true if the allocator is empty (all frames free).
-    pub open spec fn is_empty(&self) -> bool {
-        self.allocated_frames.len() == 0
-    }
-
-    /// Returns the physical address of a frame given its index.
-    pub open spec fn frame_addr(&self, frame_idx: int) -> int {
-        frame_idx * FRAME_SIZE as int
-    }
-
-    //==============================================================================================
-    // Memory Safety Properties
-    //==============================================================================================
-
-    /// Property: All allocated frame indices are within valid range [0, capacity).
-    pub open spec fn allocated_frames_in_range(&self) -> bool {
-        forall|i: int|
-            #![trigger self.is_allocated(i)]
-            self.is_allocated(i) ==> (0 <= i < self.capacity)
-    }
-
-    /// Property: Memory regions of different frames are disjoint.
-    /// Two frames with different indices have non-overlapping memory regions.
-    pub open spec fn frames_are_disjoint(&self, i: int, j: int) -> bool
-        recommends 0 <= i < self.capacity, 0 <= j < self.capacity, i != j
-    {
-        let addr_i = self.frame_addr(i);
-        let addr_j = self.frame_addr(j);
-        // Frame i's region [addr_i, addr_i + FRAME_SIZE) does not overlap with frame j's region.
-        addr_i + FRAME_SIZE as int <= addr_j || addr_j + FRAME_SIZE as int <= addr_i
-    }
-
-    /// Property: All allocated frames have disjoint memory regions (no aliasing).
-    pub open spec fn no_memory_aliasing(&self) -> bool {
-        forall|i: int, j: int|
-            #![trigger self.is_allocated(i), self.is_allocated(j)]
-            (self.is_allocated(i) && self.is_allocated(j) && i != j) ==>
-            self.frames_are_disjoint(i, j)
-    }
-
-    //==============================================================================================
-    // Liveness Properties
-    //==============================================================================================
-
-    /// Property (Liveness): If there's free capacity, allocation can succeed.
-    pub open spec fn can_allocate(&self) -> bool {
-        self.num_free() > 0
-    }
-
-    /// Property (Liveness): There exists at least one unallocated frame.
-    /// This mirrors bitmap's has_free_bit and is easier to connect.
-    pub open spec fn has_free_frame(&self) -> bool {
-        exists|i: int| 0 <= i < self.capacity && !self.is_allocated(i)
-    }
-
-    /// Property (Liveness): If a frame is allocated, it can be deallocated.
-    pub open spec fn can_deallocate(&self, frame_idx: int) -> bool {
-        self.is_allocated(frame_idx) && 0 <= frame_idx < self.capacity
-    }
-
-    //==============================================================================================
-    // Initialization Properties
-    //==============================================================================================
-
-    /// Property: A freshly initialized allocator has no allocated frames.
-    pub open spec fn is_freshly_initialized(&self) -> bool {
-        self.allocated_frames =~= Set::<int>::empty()
-    }
-}
-
-//==================================================================================================
-// FrameAllocator - Concrete Implementation
 //==================================================================================================
 
 /// Frame allocator that manages physical memory frames using a bitmap.
@@ -152,148 +60,7 @@ pub struct FrameAllocator {
     bitmap: Bitmap,
 }
 
-impl View for FrameAllocator {
-    type V = FrameAllocatorView;
-
-    closed spec fn view(&self) -> FrameAllocatorView {
-        FrameAllocatorView {
-            allocated_frames: Set::new(|i: int|
-                0 <= i < self.bitmap@.number_of_bits() &&
-                self.bitmap.is_bit_set(i)
-            ),
-            capacity: self.bitmap@.number_of_bits(),
-        }
-    }
-}
-
 impl FrameAllocator {
-    //==============================================================================================
-    // Invariant
-    //==============================================================================================
-
-    /// Invariant for the frame allocator.
-    /// Ensures internal consistency and memory safety guarantees.
-    pub closed spec fn inv(&self) -> bool {
-        // Bitmap must satisfy its own invariant.
-        &&& self.bitmap.inv()
-        // Capacity must be positive.
-        &&& self.bitmap@.number_of_bits() > 0
-        // Capacity must not exceed maximum addressable frames.
-        &&& self.bitmap@.number_of_bits() <= MAX_FRAME_NUMBER as int + 1
-        // View consistency.
-        &&& self@.capacity == self.bitmap@.number_of_bits()
-        // All allocated frames are in valid range.
-        &&& self@.allocated_frames_in_range()
-        // Connection between bitmap and view: a frame is allocated iff its bit is set.
-        &&& forall|i: int| #![trigger self@.is_allocated(i), self.bitmap.is_bit_set(i)]
-            0 <= i < self.bitmap@.number_of_bits() ==>
-            (self@.is_allocated(i) <==> self.bitmap.is_bit_set(i))
-        // MEMORY SAFETY: All allocated frames have disjoint memory regions (no aliasing).
-        // This is a first-class invariant, automatically preserved by all operations.
-        &&& self@.no_memory_aliasing()
-    }
-
-    //==============================================================================================
-    // Specification Functions
-    //==============================================================================================
-
-    /// Returns the number of allocated frames (delegated to bitmap's count).
-    pub closed spec fn spec_num_allocated(&self) -> int {
-        self.bitmap@.usage()
-    }
-
-    //==============================================================================================
-    // Lemmas
-    //==============================================================================================
-
-    /// Lemma: Reveals the connection between bitmap state and allocation state.
-    /// When invariant holds, is_allocated(i) iff is_bit_set(i).
-    proof fn lemma_allocated_iff_bit_set(&self, i: int)
-        requires
-            self.inv(),
-            0 <= i < self@.capacity,
-        ensures
-            self@.is_allocated(i) <==> self.bitmap.is_bit_set(i)
-    {
-        // This follows from the invariant.
-    }
-
-    /// Lemma: Frames are disjoint by construction (addresses differ by at least FRAME_SIZE).
-    pub proof fn lemma_frames_disjoint(i: int, j: int)
-        requires
-            0 <= i,
-            0 <= j,
-            i != j,
-        ensures
-            i * FRAME_SIZE as int + FRAME_SIZE as int <= j * FRAME_SIZE as int ||
-            j * FRAME_SIZE as int + FRAME_SIZE as int <= i * FRAME_SIZE as int
-    {
-        // If i < j, then i + 1 <= j, so i * FRAME_SIZE + FRAME_SIZE <= j * FRAME_SIZE.
-        // If i > j, then j + 1 <= i, so j * FRAME_SIZE + FRAME_SIZE <= i * FRAME_SIZE.
-        if i < j {
-            assert(i + 1 <= j);
-            assert((i + 1) * FRAME_SIZE as int <= j * FRAME_SIZE as int);
-            assert(i * FRAME_SIZE as int + FRAME_SIZE as int <= j * FRAME_SIZE as int);
-        } else {
-            assert(j + 1 <= i);
-            assert((j + 1) * FRAME_SIZE as int <= i * FRAME_SIZE as int);
-            assert(j * FRAME_SIZE as int + FRAME_SIZE as int <= i * FRAME_SIZE as int);
-        }
-    }
-
-    /// Lemma: Connects has_free_frame to bitmap's has_free_bit.
-    /// When invariant holds, has_free_frame implies bitmap has_free_bit.
-    proof fn lemma_has_free_frame_implies_bitmap_has_free_bit(&self)
-        requires
-            self.inv(),
-            self@.has_free_frame(),
-        ensures
-            self.bitmap@.has_free_bit()
-    {
-        // By has_free_frame, there exists i such that 0 <= i < capacity && !is_allocated(i).
-        let i = choose|i: int| 0 <= i < self@.capacity && !self@.is_allocated(i);
-        // By invariant, capacity == bitmap.number_of_bits().
-        assert(0 <= i < self.bitmap@.number_of_bits());
-        // By invariant, is_allocated(i) <==> is_bit_set(i).
-        self.lemma_allocated_iff_bit_set(i);
-        // Since !is_allocated(i), we have !is_bit_set(i).
-        assert(!self.bitmap.is_bit_set(i));
-        // Therefore, has_free_bit is satisfied.
-        assert(self.bitmap@.has_free_bit());
-    }
-
-    /// Lemma: If `spec_num_allocated() < capacity`, then `has_free_frame()`.
-    /// This connects the bitmap count to the existential predicate.
-    pub proof fn lemma_can_allocate_implies_has_free_frame(&self)
-        requires
-            self.inv(),
-            // Use spec_num_allocated (bitmap-based) directly.
-            self.spec_num_allocated() < self@.capacity,
-        ensures
-            self@.has_free_frame()
-    {
-        // spec_num_allocated = bitmap.usage().
-        // capacity = bitmap.number_of_bits() (by invariant).
-        // So count_allocated < number_of_bits, meaning bitmap is NOT full.
-        assert(!self.bitmap@.is_full());
-
-        // Use bitmap lemma: if not full, there exists an unset bit.
-        self.bitmap.lemma_not_full_means_exists_unset_bit();
-
-        // Now we have: exists|i| 0 <= i < number_of_bits && !is_bit_set(i).
-        let i: int = choose|i: int| 0 <= i < self.bitmap@.number_of_bits() && !self.bitmap.is_bit_set(i);
-        assert(0 <= i < self@.capacity);
-
-        // By invariant: is_allocated(i) <==> is_bit_set(i).
-        self.lemma_allocated_iff_bit_set(i);
-        assert(!self@.is_allocated(i));
-
-        // Therefore, has_free_frame.
-        assert(self@.has_free_frame());
-    }
-
-    //==============================================================================================
-    // Constructor
     //==============================================================================================
 
     /// Instantiates a new frame allocator with a given bitmap.
@@ -328,6 +95,7 @@ impl FrameAllocator {
 
         frame_allocator
     }
+
 
     /// Instantiates a frame allocator from raw storage.
     ///
@@ -374,6 +142,7 @@ impl FrameAllocator {
         Ok(alloc)
     }
 
+
     /// Returns the capacity (number of frames managed).
     pub fn capacity(&self) -> (result: usize)
         requires self.inv(),
@@ -385,8 +154,6 @@ impl FrameAllocator {
         self.bitmap.number_of_bits()
     }
 
-    //==============================================================================================
-    // Allocation
     //==============================================================================================
 
     /// Allocates a frame and returns its frame index.
@@ -446,6 +213,7 @@ impl FrameAllocator {
             },
         }
     }
+
 
     /// Allocates a frame.
     ///
@@ -525,8 +293,6 @@ impl FrameAllocator {
     }
 
     //==============================================================================================
-    // Deallocation
-    //==============================================================================================
 
     /// Frees a frame.
     ///
@@ -582,8 +348,6 @@ impl FrameAllocator {
         }
     }
 
-    //==============================================================================================
-    // Booking (Reserve Specific Frame)
     //==============================================================================================
 
     /// Books a specific frame (marks it as allocated without first allocating it).
@@ -651,8 +415,6 @@ impl FrameAllocator {
         }
     }
 
-    //==============================================================================================
-    // Range Allocation
     //==============================================================================================
 
     /// Allocates a contiguous range of frames without runtime checking.
@@ -750,6 +512,7 @@ impl FrameAllocator {
         }
     }
 
+
     /// Helper function for range allocation that handles the loop.
     ///
     /// # Note
@@ -830,6 +593,7 @@ impl FrameAllocator {
 
         Ok(())
     }
+
 
     /// Allocates a contiguous range of frames with runtime checking.
     ///
@@ -984,8 +748,6 @@ impl FrameAllocator {
     }
 
     //==============================================================================================
-    // Range Allocation from TruncatedMemoryRegion
-    //==============================================================================================
 
     /// Allocates all frames in a memory region.
     ///
@@ -1049,8 +811,6 @@ impl FrameAllocator {
         self.alloc_range(start_frame, count)
     }
 
-    //==============================================================================================
-    // Contiguous Range Allocation with Search
     //==============================================================================================
 
     /// Allocates a contiguous range of frames by searching for a free range.
@@ -1158,8 +918,6 @@ impl FrameAllocator {
     }
 
     //==============================================================================================
-    // Range Deallocation
-    //==============================================================================================
 
     /// Frees a contiguous range of frames.
     ///
@@ -1247,6 +1005,7 @@ impl FrameAllocator {
         }
     }
 
+
     /// Helper function for free_range that handles the loop.
     fn free_range_inner(
         &mut self,
@@ -1319,136 +1078,4 @@ impl FrameAllocator {
     }
 }
 
-//==================================================================================================
-// Additional Lemmas for Memory Safety
-//==================================================================================================
-
-/// Lemma: After allocation, no memory aliasing is preserved.
-proof fn lemma_alloc_preserves_no_aliasing(old_alloc: &FrameAllocator, new_alloc: &FrameAllocator, new_idx: int)
-    requires
-        old_alloc.inv(),
-        new_alloc.inv(),
-        old_alloc@.no_memory_aliasing(),
-        0 <= new_idx < new_alloc@.capacity,
-        !old_alloc@.is_allocated(new_idx),
-        new_alloc@.is_allocated(new_idx),
-        forall|i: int| #![trigger new_alloc@.is_allocated(i)]
-            0 <= i < new_alloc@.capacity && i != new_idx ==>
-            new_alloc@.is_allocated(i) == old_alloc@.is_allocated(i),
-    ensures
-        new_alloc@.no_memory_aliasing()
-{
-    // For any two allocated frames i, j with i != j in new_alloc:
-    // Case 1: Both i and j were in old_alloc -> they're disjoint by old_alloc.no_memory_aliasing().
-    // Case 2: One is new_idx, other was in old_alloc -> disjoint by lemma_frames_disjoint.
-    assert forall|i: int, j: int|
-        new_alloc@.is_allocated(i) && new_alloc@.is_allocated(j) && i != j
-    implies
-        new_alloc@.frames_are_disjoint(i, j)
-    by {
-        if i == new_idx {
-            // j was in old_alloc.
-            assert(old_alloc@.is_allocated(j));
-            assert(0 <= j < new_alloc@.capacity);
-            FrameAllocator::lemma_frames_disjoint(i, j);
-        } else if j == new_idx {
-            // i was in old_alloc.
-            assert(old_alloc@.is_allocated(i));
-            assert(0 <= i < new_alloc@.capacity);
-            FrameAllocator::lemma_frames_disjoint(i, j);
-        } else {
-            // Both in old_alloc.
-            assert(old_alloc@.is_allocated(i));
-            assert(old_alloc@.is_allocated(j));
-            assert(old_alloc@.frames_are_disjoint(i, j));
-        }
-    }
-}
-
-/// Lemma: After deallocation, no memory aliasing is preserved.
-proof fn lemma_dealloc_preserves_no_aliasing(old_alloc: &FrameAllocator, new_alloc: &FrameAllocator, freed_idx: int)
-    requires
-        old_alloc.inv(),
-        new_alloc.inv(),
-        old_alloc@.no_memory_aliasing(),
-        0 <= freed_idx < new_alloc@.capacity,
-        old_alloc@.is_allocated(freed_idx),
-        !new_alloc@.is_allocated(freed_idx),
-        forall|i: int| #![trigger new_alloc@.is_allocated(i)]
-            0 <= i < new_alloc@.capacity && i != freed_idx ==>
-            new_alloc@.is_allocated(i) == old_alloc@.is_allocated(i),
-    ensures
-        new_alloc@.no_memory_aliasing()
-{
-    // The set of allocated frames is a subset of old_alloc's allocated frames.
-    // Since old_alloc had no aliasing, new_alloc (with fewer allocations) also has no aliasing.
-    assert forall|i: int, j: int|
-        new_alloc@.is_allocated(i) && new_alloc@.is_allocated(j) && i != j
-    implies
-        new_alloc@.frames_are_disjoint(i, j)
-    by {
-        assert(old_alloc@.is_allocated(i));
-        assert(old_alloc@.is_allocated(j));
-        assert(old_alloc@.frames_are_disjoint(i, j));
-    }
-}
-
 } // verus!
-
-//==================================================================================================
-// Tests (for Verification)
-//==================================================================================================
-
-#[cfg(verus_keep_ghost)]
-mod test {
-    use super::*;
-
-    verus! {
-
-    /// Test: Allocation returns valid frame index.
-    proof fn test_alloc_valid_index(alloc: FrameAllocator, new_alloc: FrameAllocator, frame_idx: int)
-        requires
-            alloc.inv(),
-            new_alloc.inv(),
-            alloc@.can_allocate(),
-            new_alloc@.capacity == alloc@.capacity,
-            0 <= frame_idx < new_alloc@.capacity,
-            new_alloc@.is_allocated(frame_idx),
-            !alloc@.is_allocated(frame_idx),
-    {
-        // Frame index is valid.
-        assert(0 <= frame_idx < new_alloc@.capacity);
-        // Frame address would be correctly computed.
-        assert(frame_idx * FRAME_SIZE as int >= 0);
-    }
-
-    /// Test: Free makes frame available again.
-    proof fn test_free_makes_available(old_alloc: FrameAllocator, new_alloc: FrameAllocator, frame_idx: int)
-        requires
-            old_alloc.inv(),
-            new_alloc.inv(),
-            0 <= frame_idx < old_alloc@.capacity,
-            old_alloc@.is_allocated(frame_idx),
-            !new_alloc@.is_allocated(frame_idx),
-            new_alloc@.capacity == old_alloc@.capacity,
-    {
-        // After freeing, the frame is no longer allocated.
-        assert(!new_alloc@.is_allocated(frame_idx));
-    }
-
-    /// Test: Frames are always disjoint.
-    proof fn test_frames_disjoint()
-    {
-        // Any two distinct frames have disjoint memory regions.
-        assert forall|i: int, j: int|
-            #![trigger i * FRAME_SIZE as int, j * FRAME_SIZE as int]
-            i >= 0 && j >= 0 && i != j implies
-            i * FRAME_SIZE as int + FRAME_SIZE as int <= j * FRAME_SIZE as int ||
-            j * FRAME_SIZE as int + FRAME_SIZE as int <= i * FRAME_SIZE as int
-        by {
-            FrameAllocator::lemma_frames_disjoint(i, j);
-        }
-    }
-
-    } // verus!
-}

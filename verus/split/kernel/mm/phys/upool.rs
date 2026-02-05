@@ -57,10 +57,15 @@ use crate::{
 };
 use vstd::prelude::*;
 
+// Include specifications.
+include!("upool.spec.rs");
+
+// Include proofs.
+include!("upool.proof.rs");
+
+
 verus! {
 
-//==================================================================================================
-// Permission Model
 //==================================================================================================
 
 /// Abstract permission type for frame access control.
@@ -73,8 +78,6 @@ pub enum FramePermission {
     ReadWrite,
 }
 
-//==================================================================================================
-// UserFrame - Wrapper for allocated frame
 //==================================================================================================
 
 /// A type that represents a user frame.
@@ -102,47 +105,6 @@ pub struct UserFrame {
 }
 
 impl UserFrame {
-    /// Spec function to get the frame address.
-    pub open spec fn spec_address(&self) -> FrameAddress {
-        self.addr
-    }
-
-    /// Spec function to get the frame number (index).
-    pub open spec fn spec_frame_number(&self) -> int {
-        self.addr.spec_frame_number()
-    }
-
-    /// Spec function to check if the address is page-aligned.
-    pub open spec fn spec_is_aligned(&self) -> bool {
-        self.addr.spec_is_aligned()
-    }
-
-    /// Spec function to get the raw address value.
-    pub open spec fn spec_raw_address(&self) -> int {
-        self.addr.spec_raw_value()
-    }
-
-    /// Spec function to check if the frame was allocated from a specific pool.
-    /// This ties the frame to its originating pool for ownership tracking.
-    ///
-    /// Note: In the verified model, this is established by the alloc() postcondition
-    /// which guarantees the returned frame's index is within the pool's capacity
-    /// and is marked as allocated.
-    pub open spec fn spec_is_from_pool(&self, pool: Upool) -> bool {
-        &&& self.spec_is_aligned()  // Frame must be aligned.
-        &&& pool.inv()
-        &&& 0 <= self.spec_frame_number() < pool@.capacity()
-        &&& pool@.is_allocated(self.spec_frame_number())
-    }
-
-    /// Spec function to get the permission level of the frame from a pool.
-    /// Per kernel contract, frames allocated from the pool have read-only permissions.
-    /// The permission is only meaningful for frames that are from the pool.
-    pub open spec fn spec_permission_from_pool(&self, pool: Upool) -> FramePermission
-        recommends self.spec_is_from_pool(pool)
-    {
-        FramePermission::ReadOnly
-    }
 
     /// Instantiates a user frame.
     ///
@@ -164,6 +126,7 @@ impl UserFrame {
         UserFrame { addr }
     }
 
+
     /// Returns the physical address of the target user frame.
     ///
     /// # Returns
@@ -176,8 +139,6 @@ impl UserFrame {
     }
 }
 
-//==================================================================================================
-// UpoolView - Abstract Specification
 //==================================================================================================
 
 /// Abstract view of the user frame pool for specification purposes.
@@ -198,106 +159,6 @@ pub struct UpoolView {
     pub base_addr: int,
 }
 
-impl UpoolView {
-    //==============================================================================================
-    // Basic Properties
-    //==============================================================================================
-
-    /// Returns the capacity (total number of frames in the pool).
-    pub open spec fn capacity(&self) -> int {
-        self.allocator_view.capacity
-    }
-
-    /// Returns true if a frame at the given index is allocated.
-    pub open spec fn is_allocated(&self, frame_idx: int) -> bool {
-        self.allocator_view.is_allocated(frame_idx)
-    }
-
-    /// Returns the number of allocated frames.
-    pub open spec fn num_allocated(&self) -> int {
-        self.allocator_view.num_allocated()
-    }
-
-    /// Returns the number of free frames.
-    pub open spec fn num_free(&self) -> int {
-        self.allocator_view.num_free()
-    }
-
-    /// Returns true if the pool has at least one free frame (existential).
-    pub open spec fn has_free_frame(&self) -> bool {
-        self.allocator_view.has_free_frame()
-    }
-
-    /// Returns true if the pool can allocate (num_free > 0).
-    pub open spec fn can_allocate(&self) -> bool {
-        self.allocator_view.can_allocate()
-    }
-
-    /// Returns true if the pool is empty (no allocated frames).
-    pub open spec fn is_empty(&self) -> bool {
-        self.allocator_view.is_empty()
-    }
-
-    /// Returns true if the pool is full (all frames allocated).
-    pub open spec fn is_full(&self) -> bool {
-        self.allocator_view.is_full()
-    }
-
-    //==============================================================================================
-    // Region Properties
-    //==============================================================================================
-
-    /// Returns the base address of the pool region.
-    pub open spec fn base(&self) -> int {
-        self.base_addr
-    }
-
-    /// Returns the pool identifier (uses base address as ID).
-    pub open spec fn id(&self) -> int {
-        self.base_addr
-    }
-
-    /// Computes the physical address of a frame given its index.
-    pub open spec fn frame_addr(&self, frame_idx: int) -> int {
-        self.base_addr + frame_idx * FRAME_SIZE as int
-    }
-
-    /// Returns the limit address (one past the last valid address).
-    pub open spec fn limit(&self) -> int {
-        self.base_addr + self.capacity() * FRAME_SIZE as int
-    }
-
-    //==============================================================================================
-    // Memory Safety Properties
-    //==============================================================================================
-
-    /// Property: All allocated frame indices are within valid range [0, capacity).
-    pub open spec fn allocated_frames_in_range(&self) -> bool {
-        self.allocator_view.allocated_frames_in_range()
-    }
-
-    /// Property: Memory regions of different frames are disjoint.
-    pub open spec fn frames_are_disjoint(&self, i: int, j: int) -> bool {
-        self.allocator_view.frames_are_disjoint(i, j)
-    }
-
-    /// Property: All allocated frames have disjoint memory regions (no aliasing).
-    pub open spec fn no_memory_aliasing(&self) -> bool {
-        self.allocator_view.no_memory_aliasing()
-    }
-
-    //==============================================================================================
-    // Initialization Properties
-    //==============================================================================================
-
-    /// Property: A freshly initialized pool has no allocated frames.
-    pub open spec fn is_freshly_initialized(&self) -> bool {
-        self.allocator_view.is_freshly_initialized()
-    }
-}
-
-//==================================================================================================
-// Upool - User Frame Pool Implementation
 //==================================================================================================
 
 /// A structure that describes a pool of user frames.
@@ -310,81 +171,7 @@ pub struct Upool {
     frame_allocator: FrameAllocator,
 }
 
-impl View for Upool {
-    type V = UpoolView;
-
-    closed spec fn view(&self) -> UpoolView {
-        UpoolView {
-            allocator_view: self.frame_allocator@,
-            // Base address is abstract (default 0).
-            base_addr: 0,
-        }
-    }
-}
-
 impl Upool {
-    //==============================================================================================
-    // Invariant
-    //==============================================================================================
-
-    /// Invariant for the user frame pool.
-    /// Ensures internal consistency and memory safety guarantees.
-    pub closed spec fn inv(&self) -> bool {
-        // The underlying frame allocator must satisfy its invariant.
-        &&& self.frame_allocator.inv()
-        // View consistency.
-        &&& self@.allocator_view == self.frame_allocator@
-    }
-
-    //==============================================================================================
-    // Specification Functions
-    //==============================================================================================
-
-    /// Returns the capacity (total number of frames).
-    pub open spec fn spec_capacity(&self) -> int {
-        self@.capacity()
-    }
-
-    /// Returns the number of allocated frames (bitmap-based, closed).
-    /// This is used for counting postconditions.
-    pub closed spec fn spec_num_allocated(&self) -> int {
-        self.frame_allocator.spec_num_allocated()
-    }
-
-    //==============================================================================================
-    // Lemmas
-    //==============================================================================================
-
-    /// Lemma: Frames are disjoint by construction.
-    /// Two distinct frame indices have non-overlapping address ranges.
-    pub proof fn lemma_frames_disjoint(i: int, j: int)
-        requires
-            0 <= i,
-            0 <= j,
-            i != j,
-        ensures
-            i * FRAME_SIZE as int + FRAME_SIZE as int <= j * FRAME_SIZE as int ||
-            j * FRAME_SIZE as int + FRAME_SIZE as int <= i * FRAME_SIZE as int
-    {
-        FrameAllocator::lemma_frames_disjoint(i, j);
-    }
-
-    /// Lemma: A newly allocated frame is disjoint from all previously allocated frames.
-    /// This provides explicit no-aliasing guarantees for callers.
-    pub proof fn lemma_new_frame_disjoint_from_existing(&self, new_frame_idx: int, existing_frame_idx: int)
-        requires
-            self.inv(),
-            0 <= new_frame_idx < self@.capacity(),
-            0 <= existing_frame_idx < self@.capacity(),
-            new_frame_idx != existing_frame_idx,
-        ensures
-            self@.frames_are_disjoint(new_frame_idx, existing_frame_idx)
-    {
-        Self::lemma_frames_disjoint(new_frame_idx, existing_frame_idx);
-    }
-
-    //==============================================================================================
-    // Constructor
     //==============================================================================================
 
     /// Instantiates a user frame pool from a frame allocator.
@@ -411,6 +198,7 @@ impl Upool {
         Upool { frame_allocator }
     }
 
+
     /// Returns the capacity (number of frames managed).
     pub fn capacity(&self) -> (result: usize)
         requires self.inv(),
@@ -422,8 +210,6 @@ impl Upool {
         self.frame_allocator.capacity()
     }
 
-    //==============================================================================================
-    // Single Frame Allocation
     //==============================================================================================
 
     /// Allocates a frame from the user frame pool.
@@ -499,8 +285,6 @@ impl Upool {
         }
     }
 
-    //==============================================================================================
-    // Multiple Frame Allocation
     //==============================================================================================
 
     /// Allocates multiple frames from the user frame pool.
@@ -699,8 +483,6 @@ impl Upool {
     }
 
     //==============================================================================================
-    // Frame Deallocation
-    //==============================================================================================
 
     /// Frees a frame that was previously allocated from the user frame pool.
     ///
@@ -748,6 +530,7 @@ impl Upool {
     {
         self.frame_allocator.free(uframe.address())
     }
+
 
     /// Frees a frame by raw address.
     ///
@@ -802,131 +585,3 @@ impl Upool {
 }
 
 } // verus!
-
-//==================================================================================================
-// Tests (for Verification)
-//==================================================================================================
-
-#[cfg(verus_keep_ghost)]
-mod test {
-    use super::*;
-
-    verus! {
-
-    /// Test: Fresh pool is empty.
-    proof fn test_fresh_pool_empty(pool: Upool)
-        requires
-            pool.inv(),
-            pool@.is_freshly_initialized(),
-    {
-        assert(pool@.is_empty());
-    }
-
-    /// Test: Allocation returns valid frame.
-    proof fn test_alloc_valid_frame(
-        old_pool: Upool,
-        new_pool: Upool,
-        uframe: UserFrame,
-    )
-        requires
-            old_pool.inv(),
-            new_pool.inv(),
-            old_pool@.has_free_frame(),
-            new_pool@.capacity() == old_pool@.capacity(),
-            uframe.spec_is_aligned(),
-            0 <= uframe.spec_frame_number() < new_pool@.capacity(),
-            new_pool@.is_allocated(uframe.spec_frame_number()),
-            !old_pool@.is_allocated(uframe.spec_frame_number()),
-    {
-        assert(uframe.spec_raw_address() >= 0);
-    }
-
-    /// Test: Free makes frame available again.
-    proof fn test_free_makes_available(
-        old_pool: Upool,
-        new_pool: Upool,
-        uframe: UserFrame,
-    )
-        requires
-            old_pool.inv(),
-            new_pool.inv(),
-            0 <= uframe.spec_frame_number() < old_pool@.capacity(),
-            old_pool@.is_allocated(uframe.spec_frame_number()),
-            !new_pool@.is_allocated(uframe.spec_frame_number()),
-            new_pool@.capacity() == old_pool@.capacity(),
-    {
-        assert(new_pool@.has_free_frame());
-    }
-
-    /// Test: Frames are always disjoint.
-    proof fn test_frames_disjoint()
-    {
-        assert forall|i: int, j: int|
-            #![trigger i * FRAME_SIZE as int, j * FRAME_SIZE as int]
-            i >= 0 && j >= 0 && i != j implies
-            i * FRAME_SIZE as int + FRAME_SIZE as int <= j * FRAME_SIZE as int ||
-            j * FRAME_SIZE as int + FRAME_SIZE as int <= i * FRAME_SIZE as int
-        by {
-            Upool::lemma_frames_disjoint(i, j);
-        }
-    }
-
-    /// Test: Distinct frames have disjoint memory.
-    proof fn test_distinct_frames_disjoint_memory(frame_indices: Seq<int>)
-        requires
-            frame_indices.len() > 1,
-            forall|i: int| 0 <= i < frame_indices.len() ==> frame_indices[i] >= 0,
-            forall|i: int, j: int| #![trigger frame_indices[i], frame_indices[j]]
-                0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j ==>
-                frame_indices[i] != frame_indices[j],
-    {
-        Upool::lemma_frames_disjoint(frame_indices[0], frame_indices[1]);
-    }
-
-    /// Test: Fresh pool can allocate.
-    proof fn test_fresh_pool_can_allocate(pool: Upool)
-        requires
-            pool.inv(),
-            pool@.is_freshly_initialized(),
-            pool@.capacity() > 0,
-    {
-        assert(pool@.can_allocate());
-    }
-
-    /// Test: New frame is disjoint from existing.
-    proof fn test_new_frame_disjoint(pool: Upool, new_idx: int, existing_idx: int)
-        requires
-            pool.inv(),
-            0 <= new_idx < pool@.capacity(),
-            0 <= existing_idx < pool@.capacity(),
-            new_idx != existing_idx,
-    {
-        pool.lemma_new_frame_disjoint_from_existing(new_idx, existing_idx);
-        assert(pool@.frames_are_disjoint(new_idx, existing_idx));
-    }
-
-    /// Test: Frame permission is read-only when from pool.
-    proof fn test_frame_permission_from_pool(pool: Upool, uframe: UserFrame)
-        requires
-            pool.inv(),
-            uframe.spec_is_aligned(),
-            0 <= uframe.spec_frame_number() < pool@.capacity(),
-            pool@.is_allocated(uframe.spec_frame_number()),
-    {
-        assert(uframe.spec_is_from_pool(pool));
-        assert(uframe.spec_permission_from_pool(pool) == FramePermission::ReadOnly);
-    }
-
-    /// Test: Frame from pool is zero-initialized.
-    proof fn test_frame_zero_initialized(pool: Upool, uframe: UserFrame)
-        requires
-            pool.inv(),
-            uframe.spec_is_aligned(),
-            0 <= uframe.spec_frame_number() < pool@.capacity(),
-            pool@.is_allocated(uframe.spec_frame_number()),
-    {
-        assert(uframe.spec_is_from_pool(pool));
-    }
-
-    } // verus!
-}

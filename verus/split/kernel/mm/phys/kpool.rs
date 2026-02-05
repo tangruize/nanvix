@@ -90,10 +90,15 @@ use crate::{
 };
 use vstd::prelude::*;
 
+// Include specifications.
+include!("kpool.spec.rs");
+
+// Include proofs.
+include!("kpool.proof.rs");
+
+
 verus! {
 
-//==================================================================================================
-// KernelFrame - Wrapper for Allocated Kernel Frame
 //==================================================================================================
 
 /// A type that represents a kernel frame.
@@ -120,42 +125,6 @@ pub struct KernelFrame {
 }
 
 impl KernelFrame {
-    //==============================================================================================
-    // Specification Functions
-    //==============================================================================================
-
-    /// Spec function to get the frame address.
-    /// Closed because addr is private.
-    pub closed spec fn spec_address(&self) -> FrameAddress {
-        self.addr
-    }
-
-    /// Spec function to get the frame number (index within the pool).
-    /// Closed because it accesses private addr field.
-    pub closed spec fn spec_frame_number(&self) -> int {
-        self.addr.spec_frame_number()
-    }
-
-    /// Spec function to check if the address is page-aligned.
-    /// Closed because it accesses private addr field.
-    pub closed spec fn spec_is_aligned(&self) -> bool {
-        self.addr.spec_is_aligned()
-    }
-
-    /// Spec function to get the raw address value.
-    /// Closed because it accesses private addr field.
-    pub closed spec fn spec_raw_address(&self) -> int {
-        self.addr.spec_raw_value()
-    }
-
-    /// Spec function to get the pool identifier for provenance tracking.
-    /// Closed because it accesses private pool_id field.
-    pub closed spec fn spec_pool_id(&self) -> int {
-        self.pool_id as int
-    }
-
-    //==============================================================================================
-    // Constructor
     //==============================================================================================
 
     /// Instantiates a kernel frame (internal use only).
@@ -187,8 +156,6 @@ impl KernelFrame {
     }
 
     //==============================================================================================
-    // Accessors
-    //==============================================================================================
 
     /// Returns the physical address of the target kernel frame.
     ///
@@ -201,6 +168,7 @@ impl KernelFrame {
         self.addr
     }
 
+
     /// Returns the pool identifier for provenance tracking.
     ///
     /// # Returns
@@ -212,6 +180,7 @@ impl KernelFrame {
         self.pool_id
     }
 
+
     /// Returns the base address (same as address for compatibility with original API).
     ///
     /// # Returns
@@ -222,29 +191,8 @@ impl KernelFrame {
     {
         self.addr
     }
-
-    //==============================================================================================
-    // Proof Lemmas for Cross-Module Verification
-    //==============================================================================================
-
-    /// Lemma: Connects the closed spec `spec_is_aligned` to the underlying FrameAddress alignment.
-    ///
-    /// This lemma exposes the relationship between the closed spec function and the
-    /// underlying FrameAddress properties, enabling verification in dependent modules.
-    pub proof fn lemma_alignment_connection(&self)
-        ensures
-            self.spec_is_aligned() <==> self.spec_address().spec_is_aligned(),
-            self.spec_raw_address() == self.spec_address().spec_raw_value(),
-    {
-        // Both sides are definitionally equal by the closed spec definitions.
-        // spec_is_aligned() = self.addr.spec_is_aligned()
-        // spec_address() = self.addr
-        // Therefore: self.spec_is_aligned() <==> self.spec_address().spec_is_aligned()
-    }
 }
 
-//==================================================================================================
-// KpoolView - Abstract Specification
 //==================================================================================================
 
 /// Abstract view of the kernel frame pool for specification purposes.
@@ -270,106 +218,6 @@ pub struct KpoolView {
     pub pool_id: int,
 }
 
-impl KpoolView {
-    //==============================================================================================
-    // Basic Properties
-    //==============================================================================================
-
-    /// Returns the capacity (total number of frames in the pool).
-    pub open spec fn capacity(&self) -> int {
-        self.allocator_view.capacity
-    }
-
-    /// Returns true if a frame at the given index is allocated.
-    pub open spec fn is_allocated(&self, frame_idx: int) -> bool {
-        self.allocator_view.is_allocated(frame_idx)
-    }
-
-    /// Returns the number of allocated frames.
-    pub open spec fn num_allocated(&self) -> int {
-        self.allocator_view.num_allocated()
-    }
-
-    /// Returns the number of free frames.
-    pub open spec fn num_free(&self) -> int {
-        self.allocator_view.num_free()
-    }
-
-    /// Returns true if the pool has at least one free frame (existential).
-    pub open spec fn has_free_frame(&self) -> bool {
-        self.allocator_view.has_free_frame()
-    }
-
-    /// Returns true if the pool can allocate (num_free > 0).
-    pub open spec fn can_allocate(&self) -> bool {
-        self.allocator_view.can_allocate()
-    }
-
-    /// Returns true if the pool is empty (no allocated frames).
-    pub open spec fn is_empty(&self) -> bool {
-        self.allocator_view.is_empty()
-    }
-
-    /// Returns true if the pool is full (all frames allocated).
-    pub open spec fn is_full(&self) -> bool {
-        self.allocator_view.is_full()
-    }
-
-    //==============================================================================================
-    // Region Properties
-    //==============================================================================================
-
-    /// Returns the base address of the pool region.
-    pub open spec fn base(&self) -> int {
-        self.base_addr
-    }
-
-    /// Returns the pool identifier for provenance tracking.
-    pub open spec fn id(&self) -> int {
-        self.pool_id
-    }
-
-    /// Computes the physical address of a frame given its index.
-    pub open spec fn frame_addr(&self, frame_idx: int) -> int {
-        self.base_addr + frame_idx * FRAME_SIZE as int
-    }
-
-    /// Returns the limit address (one past the last valid address).
-    pub open spec fn limit(&self) -> int {
-        self.base_addr + self.capacity() * FRAME_SIZE as int
-    }
-
-    //==============================================================================================
-    // Memory Safety Properties
-    //==============================================================================================
-
-    /// Property: All allocated frame indices are within valid range [0, capacity).
-    pub open spec fn allocated_frames_in_range(&self) -> bool {
-        self.allocator_view.allocated_frames_in_range()
-    }
-
-    /// Property: Memory regions of different frames are disjoint.
-    pub open spec fn frames_are_disjoint(&self, i: int, j: int) -> bool {
-        self.allocator_view.frames_are_disjoint(i, j)
-    }
-
-    /// Property: All allocated frames have disjoint memory regions (no aliasing).
-    pub open spec fn no_memory_aliasing(&self) -> bool {
-        self.allocator_view.no_memory_aliasing()
-    }
-
-    //==============================================================================================
-    // Initialization Properties
-    //==============================================================================================
-
-    /// Property: A freshly initialized pool has no allocated frames.
-    pub open spec fn is_freshly_initialized(&self) -> bool {
-        self.allocator_view.is_freshly_initialized()
-    }
-}
-
-//==================================================================================================
-// Kpool - Kernel Frame Pool Implementation
 //==================================================================================================
 
 /// A structure that describes a pool of kernel frames.
@@ -395,81 +243,7 @@ pub struct Kpool {
     pool_id: usize,
 }
 
-impl View for Kpool {
-    type V = KpoolView;
-
-    closed spec fn view(&self) -> KpoolView {
-        KpoolView {
-            allocator_view: self.frame_allocator@,
-            // Base address is abstract (default 0).
-            base_addr: 0,
-            // Pool ID from the struct.
-            pool_id: self.pool_id as int,
-        }
-    }
-}
-
 impl Kpool {
-    //==============================================================================================
-    // Invariant
-    //==============================================================================================
-
-    /// Invariant for the kernel frame pool.
-    /// Ensures internal consistency and memory safety guarantees.
-    ///
-    /// # Properties Guaranteed
-    ///
-    /// - The underlying frame allocator satisfies its invariant
-    /// - Capacity is positive (inherited from FrameAllocator::inv())
-    ///
-    /// Note: Capacity positivity is guaranteed by FrameAllocator::inv() which requires
-    /// `bitmap@.number_of_bits() > 0`. This is implicitly available through inv().
-    pub closed spec fn inv(&self) -> bool {
-        // The underlying frame allocator must satisfy its invariant.
-        // Note: FrameAllocator::inv() includes capacity > 0.
-        self.frame_allocator.inv()
-    }
-
-    //==============================================================================================
-    // Specification Functions
-    //==============================================================================================
-
-    /// Returns the capacity (total number of frames).
-    pub open spec fn spec_capacity(&self) -> int {
-        self@.capacity()
-    }
-
-    /// Returns the number of allocated frames (bitmap-based, closed).
-    /// This is used for counting postconditions.
-    pub closed spec fn spec_num_allocated(&self) -> int {
-        self.frame_allocator.spec_num_allocated()
-    }
-
-    //==============================================================================================
-    // Lemmas
-    //==============================================================================================
-
-    /// Lemma: Frames are disjoint by construction.
-    pub proof fn lemma_frames_disjoint(i: int, j: int)
-        requires
-            0 <= i,
-            0 <= j,
-            i != j,
-        ensures
-            i * FRAME_SIZE as int + FRAME_SIZE as int <= j * FRAME_SIZE as int ||
-            j * FRAME_SIZE as int + FRAME_SIZE as int <= i * FRAME_SIZE as int
-    {
-        FrameAllocator::lemma_frames_disjoint(i, j);
-    }
-
-    // Note: Capacity is always positive when invariant holds.
-    // This is inherited from FrameAllocator::inv() which requires
-    // bitmap@.number_of_bits() > 0. Since both invariants are closed,
-    // exposing this as a lemma would require adding a corresponding
-    // lemma to FrameAllocator first.
-
-    //==============================================================================================
-    // Constructor
     //==============================================================================================
 
     /// Instantiates a kernel frame pool from a frame allocator.
@@ -511,6 +285,7 @@ impl Kpool {
         Kpool { frame_allocator, pool_id }
     }
 
+
     /// Returns the capacity (number of frames managed).
     pub fn capacity(&self) -> (result: usize)
         requires self.inv(),
@@ -519,6 +294,7 @@ impl Kpool {
         self.frame_allocator.capacity()
     }
 
+
     /// Returns the pool identifier.
     pub fn get_pool_id(&self) -> (result: usize)
         ensures result as int == self@.id()
@@ -526,8 +302,6 @@ impl Kpool {
         self.pool_id
     }
 
-    //==============================================================================================
-    // Single Frame Allocation
     //==============================================================================================
 
     /// Allocates a frame from the kernel frame pool.
@@ -613,8 +387,6 @@ impl Kpool {
     }
 
     //==============================================================================================
-    // Contiguous Range Allocation
-    //==============================================================================================
 
     /// Books a contiguous range of frames in the kernel frame pool.
     ///
@@ -686,8 +458,6 @@ impl Kpool {
         self.frame_allocator.alloc_range(start_frame, count)
     }
 
-    //==============================================================================================
-    // Contiguous Range Allocation with Search
     //==============================================================================================
 
     /// Allocates a contiguous range of frames by searching for a free range.
@@ -785,8 +555,6 @@ impl Kpool {
         }
     }
 
-    //==============================================================================================
-    // Multiple Frame Allocation
     //==============================================================================================
 
     /// Allocates multiple frames from the kernel frame pool.
@@ -971,8 +739,6 @@ impl Kpool {
     }
 
     //==============================================================================================
-    // Frame Deallocation
-    //==============================================================================================
 
     /// Frees a frame that was previously allocated from the kernel frame pool.
     ///
@@ -1024,8 +790,6 @@ impl Kpool {
         self.frame_allocator.free(kframe.address())
     }
 
-    //==============================================================================================
-    // Range Deallocation
     //==============================================================================================
 
     /// Frees a contiguous range of frames.
@@ -1085,8 +849,6 @@ impl Kpool {
         self.frame_allocator.free_range(start_frame, count)
     }
 
-    //==============================================================================================
-    // Contiguous Frame Deallocation (Alternative API)
     //==============================================================================================
 
     /// Frees a contiguous range of frames with ghost index validation.
@@ -1162,359 +924,3 @@ impl Kpool {
 }
 
 } // verus!
-
-//==================================================================================================
-// Tests (for Verification)
-//==================================================================================================
-
-#[cfg(verus_keep_ghost)]
-mod test {
-    use super::*;
-
-    verus! {
-
-    //==============================================================================================
-    // Basic Property Tests
-    //==============================================================================================
-
-    /// Test: Fresh pool is empty.
-    proof fn test_fresh_pool_empty(pool: Kpool)
-        requires
-            pool.inv(),
-            pool@.is_freshly_initialized(),
-    {
-        assert(pool@.is_empty());
-        assert(pool@.num_allocated() == 0);
-    }
-
-    /// Test: Fresh pool can allocate when capacity > 0.
-    proof fn test_fresh_pool_can_allocate(pool: Kpool)
-        requires
-            pool.inv(),
-            pool@.is_freshly_initialized(),
-            pool@.capacity() > 0,
-    {
-        assert(pool@.num_allocated() == 0);
-        assert(pool@.num_free() == pool@.capacity());
-        assert(pool@.num_free() > 0);
-        assert(pool@.can_allocate());
-    }
-
-    //==============================================================================================
-    // Allocation Tests
-    //==============================================================================================
-
-    /// Test: Allocation returns valid frame.
-    proof fn test_alloc_valid_frame(
-        old_pool: Kpool,
-        new_pool: Kpool,
-        kframe: KernelFrame,
-    )
-        requires
-            old_pool.inv(),
-            new_pool.inv(),
-            old_pool@.has_free_frame(),
-            new_pool@.capacity() == old_pool@.capacity(),
-            kframe.spec_is_aligned(),
-            0 <= kframe.spec_frame_number() < new_pool@.capacity(),
-            new_pool@.is_allocated(kframe.spec_frame_number()),
-            !old_pool@.is_allocated(kframe.spec_frame_number()),
-    {
-        assert(0 <= kframe.spec_frame_number() < new_pool@.capacity());
-        assert(kframe.spec_raw_address() >= 0);
-    }
-
-    /// Test: alloc_many returns distinct frames.
-    proof fn test_alloc_many_distinct(frame_indices: Seq<int>)
-        requires
-            frame_indices.len() >= 2,
-            forall|i: int, j: int| #![trigger frame_indices[i], frame_indices[j]]
-                0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j ==>
-                frame_indices[i] != frame_indices[j],
-    {
-        assert(frame_indices[0] != frame_indices[1]);
-    }
-
-    //==============================================================================================
-    // Deallocation Tests
-    //==============================================================================================
-
-    /// Test: Free makes frame available again.
-    proof fn test_free_makes_available(
-        old_pool: Kpool,
-        new_pool: Kpool,
-        kframe: KernelFrame,
-    )
-        requires
-            old_pool.inv(),
-            new_pool.inv(),
-            0 <= kframe.spec_frame_number() < old_pool@.capacity(),
-            old_pool@.is_allocated(kframe.spec_frame_number()),
-            !new_pool@.is_allocated(kframe.spec_frame_number()),
-            new_pool@.capacity() == old_pool@.capacity(),
-    {
-        assert(!new_pool@.is_allocated(kframe.spec_frame_number()));
-        assert(new_pool@.has_free_frame());
-    }
-
-    //==============================================================================================
-    // Memory Safety Tests
-    //==============================================================================================
-
-    /// Test: Frames are always disjoint.
-    proof fn test_frames_disjoint()
-    {
-        assert forall|i: int, j: int|
-            #![trigger i * FRAME_SIZE as int, j * FRAME_SIZE as int]
-            i >= 0 && j >= 0 && i != j implies
-            i * FRAME_SIZE as int + FRAME_SIZE as int <= j * FRAME_SIZE as int ||
-            j * FRAME_SIZE as int + FRAME_SIZE as int <= i * FRAME_SIZE as int
-        by {
-            Kpool::lemma_frames_disjoint(i, j);
-        }
-    }
-
-    /// Test: Distinct frames have disjoint memory.
-    proof fn test_distinct_frames_disjoint_memory(frame_indices: Seq<int>)
-        requires
-            frame_indices.len() > 1,
-            forall|i: int| 0 <= i < frame_indices.len() ==> frame_indices[i] >= 0,
-            forall|i: int, j: int| #![trigger frame_indices[i], frame_indices[j]]
-                0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j ==>
-                frame_indices[i] != frame_indices[j],
-    {
-        let i0: int = frame_indices[0];
-        let i1: int = frame_indices[1];
-        assert(i0 != i1);
-        Kpool::lemma_frames_disjoint(i0, i1);
-    }
-
-    //==============================================================================================
-    // Double Allocation/Free Prevention Tests
-    //==============================================================================================
-
-    /// Test: No double allocation - allocated frame cannot be allocated again.
-    /// This test documents that `is_allocated` is a precondition for free operations.
-    proof fn test_no_double_alloc(pool: Kpool, frame_idx: int)
-        requires
-            pool.inv(),
-            0 <= frame_idx < pool@.capacity(),
-            pool@.is_allocated(frame_idx),
-    {
-        // Precondition directly establishes `is_allocated`.
-    }
-
-    /// Test: No double free - free frame cannot be freed again.
-    /// This test documents that `!is_allocated` blocks free operations.
-    proof fn test_no_double_free(pool: Kpool, frame_idx: int)
-        requires
-            pool.inv(),
-            0 <= frame_idx < pool@.capacity(),
-            !pool@.is_allocated(frame_idx),
-    {
-        // Precondition directly establishes `!is_allocated`.
-    }
-
-    //==============================================================================================
-    // Range Allocation Tests
-    //==============================================================================================
-
-    /// Test: Range allocation marks all frames in range.
-    proof fn test_range_alloc_marks_all(
-        old_pool: Kpool,
-        new_pool: Kpool,
-        start: int,
-        count: int,
-    )
-        requires
-            old_pool.inv(),
-            new_pool.inv(),
-            count > 0,
-            0 <= start,
-            start + count <= old_pool@.capacity(),
-            new_pool@.capacity() == old_pool@.capacity(),
-            // All frames in range are now allocated.
-            forall|i: int| start <= i < start + count ==> new_pool@.is_allocated(i),
-            // Frames outside range unchanged.
-            forall|i: int|
-                (0 <= i < start || start + count <= i < new_pool@.capacity()) ==>
-                new_pool@.is_allocated(i) == old_pool@.is_allocated(i),
-    {
-        // Verify all frames in range are allocated.
-        assert forall|i: int| start <= i < start + count
-            implies new_pool@.is_allocated(i)
-        by {}
-    }
-
-    //==============================================================================================
-    // Round-Trip Tests (alloc_range -> free_range)
-    //==============================================================================================
-
-    /// Test: alloc_range followed by free_range restores original state.
-    proof fn test_alloc_range_free_range_roundtrip(
-        pool_initial: Kpool,
-        pool_after_alloc: Kpool,
-        pool_after_free: Kpool,
-        start: int,
-        count: int,
-    )
-        requires
-            pool_initial.inv(),
-            pool_after_alloc.inv(),
-            pool_after_free.inv(),
-            count > 0,
-            0 <= start,
-            start + count <= pool_initial@.capacity(),
-            pool_after_alloc@.capacity() == pool_initial@.capacity(),
-            pool_after_free@.capacity() == pool_initial@.capacity(),
-            // Initial: all frames in range are free.
-            forall|i: int| start <= i < start + count ==> !pool_initial@.is_allocated(i),
-            // After alloc: all frames in range are allocated.
-            forall|i: int| start <= i < start + count ==> pool_after_alloc@.is_allocated(i),
-            // After alloc: frames outside range unchanged.
-            forall|i: int|
-                (0 <= i < start || start + count <= i < pool_initial@.capacity()) ==>
-                pool_after_alloc@.is_allocated(i) == pool_initial@.is_allocated(i),
-            // After free: all frames in range are free again.
-            forall|i: int| start <= i < start + count ==> !pool_after_free@.is_allocated(i),
-            // After free: frames outside range unchanged.
-            forall|i: int|
-                (0 <= i < start || start + count <= i < pool_after_free@.capacity()) ==>
-                pool_after_free@.is_allocated(i) == pool_after_alloc@.is_allocated(i),
-    {
-        // After the round-trip, allocation state for the range matches initial.
-        assert forall|i: int| start <= i < start + count
-            implies pool_after_free@.is_allocated(i) == pool_initial@.is_allocated(i)
-        by {
-            assert(!pool_after_free@.is_allocated(i));
-            assert(!pool_initial@.is_allocated(i));
-        }
-
-        // Frames outside range also match initial.
-        assert forall|i: int|
-            (0 <= i < start || start + count <= i < pool_initial@.capacity())
-            implies pool_after_free@.is_allocated(i) == pool_initial@.is_allocated(i)
-        by {
-            assert(pool_after_free@.is_allocated(i) == pool_after_alloc@.is_allocated(i));
-            assert(pool_after_alloc@.is_allocated(i) == pool_initial@.is_allocated(i));
-        }
-    }
-
-    //==============================================================================================
-    // Count Tracking Tests
-    //==============================================================================================
-
-    /// Test: alloc_many count tracking is precise.
-    proof fn test_alloc_many_count_tracking(
-        pool_before: Kpool,
-        pool_after: Kpool,
-        frame_indices: Seq<int>,
-        count: int,
-    )
-        requires
-            pool_before.inv(),
-            pool_after.inv(),
-            count > 0,
-            frame_indices.len() == count,
-            pool_after@.capacity() == pool_before@.capacity(),
-            // All frames in sequence are newly allocated.
-            forall|i: int| #![trigger frame_indices[i]]
-                0 <= i < frame_indices.len() ==> {
-                    let frame_idx = frame_indices[i];
-                    &&& 0 <= frame_idx < pool_after@.capacity()
-                    &&& pool_after@.is_allocated(frame_idx)
-                    &&& !pool_before@.is_allocated(frame_idx)
-                },
-            // All frames are distinct.
-            forall|i: int, j: int| #![trigger frame_indices[i], frame_indices[j]]
-                0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j ==>
-                frame_indices[i] != frame_indices[j],
-    {
-        // Each distinct frame index corresponds to exactly one allocation.
-        // The count of new allocations equals frame_indices.len().
-        assert(frame_indices.len() == count);
-    }
-
-    //==============================================================================================
-    // Invariant Preservation Tests
-    //==============================================================================================
-
-    /// Test: Invariant preserved through multiple alloc operations.
-    proof fn test_invariant_preserved_multi_alloc(
-        pool_0: Kpool,
-        pool_1: Kpool,
-        pool_2: Kpool,
-        frame1: int,
-        frame2: int,
-    )
-        requires
-            pool_0.inv(),
-            pool_1.inv(),
-            pool_2.inv(),
-            pool_1@.capacity() == pool_0@.capacity(),
-            pool_2@.capacity() == pool_0@.capacity(),
-            // First allocation.
-            0 <= frame1 < pool_0@.capacity(),
-            !pool_0@.is_allocated(frame1),
-            pool_1@.is_allocated(frame1),
-            forall|i: int| 0 <= i < pool_0@.capacity() && i != frame1 ==>
-                pool_1@.is_allocated(i) == pool_0@.is_allocated(i),
-            // Second allocation.
-            0 <= frame2 < pool_1@.capacity(),
-            frame2 != frame1,
-            !pool_1@.is_allocated(frame2),
-            pool_2@.is_allocated(frame2),
-            forall|i: int| 0 <= i < pool_1@.capacity() && i != frame2 ==>
-                pool_2@.is_allocated(i) == pool_1@.is_allocated(i),
-    {
-        // Both frames are allocated in final state.
-        assert(pool_2@.is_allocated(frame1));
-        assert(pool_2@.is_allocated(frame2));
-        // Frames are different.
-        assert(frame1 != frame2);
-        // Invariant still holds.
-        assert(pool_2.inv());
-    }
-
-    /// Test: Capacity is always positive when invariant holds.
-    ///
-    /// Note: This test documents the intent but cannot directly assert the
-    /// property due to closed invariant details. The property is guaranteed
-    /// by FrameAllocator::inv() which requires bitmap@.number_of_bits() > 0.
-    proof fn test_capacity_positive_intent(pool: Kpool)
-        requires
-            pool.inv(),
-            // We add capacity > 0 as a precondition to document the property,
-            // since the closed invariant prevents direct proof.
-            pool@.capacity() > 0,
-    {
-        // This test documents that capacity > 0 is expected when inv() holds.
-        // The property is guaranteed by FrameAllocator construction.
-        assert(pool@.capacity() > 0);
-    }
-
-    //==============================================================================================
-    // Error Code Tests
-    //==============================================================================================
-
-    /// Test: Pool with no free frames cannot allocate.
-    /// Guaranteed by the liveness specification of alloc().
-    proof fn test_no_free_frame_cannot_allocate(pool: Kpool)
-        requires
-            pool.inv(),
-            !pool@.has_free_frame(),
-    {
-        // Precondition directly establishes `!has_free_frame`.
-    }
-
-    /// Test: Pool with free frames can allocate.
-    proof fn test_has_free_frame_can_allocate(pool: Kpool)
-        requires
-            pool.inv(),
-            pool@.has_free_frame(),
-    {
-        // Precondition directly establishes `has_free_frame`.
-    }
-
-    } // verus!
-}

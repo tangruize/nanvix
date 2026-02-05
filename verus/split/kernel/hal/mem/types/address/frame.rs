@@ -11,21 +11,25 @@ use crate::libs::error::{
 };
 use vstd::prelude::*;
 
+// Include specifications.
+include!("frame.spec.rs");
+
+// Include proofs.
+include!("frame.proof.rs");
+
+
 verus! {
 
-//==================================================================================================
-// Constants
 //==================================================================================================
 
 /// Frame size in bytes (4 KB).
 pub const FRAME_SIZE: usize = 4096;
 
+
 /// Maximum frame number (for a 32-bit address space with 4KB frames).
 /// This represents the upper bound of frame numbers.
 pub const MAX_FRAME_NUMBER: usize = 0xFFFF_FFFF / FRAME_SIZE;
 
-//==================================================================================================
-// FrameNumber
 //==================================================================================================
 
 /// A type that represents a frame number.
@@ -36,10 +40,6 @@ pub struct FrameNumber {
 }
 
 impl FrameNumber {
-    /// Spec function to get the raw value.
-    pub open spec fn spec_raw_value(&self) -> int {
-        self.value as int
-    }
 
     /// Constructs a FrameNumber from a raw value.
     /// Returns None if the value exceeds MAX_FRAME_NUMBER.
@@ -58,6 +58,7 @@ impl FrameNumber {
         Some(FrameNumber { value })
     }
 
+
     /// Converts a FrameNumber into a raw value.
     pub fn into_raw_value(self) -> (result: usize)
         ensures result as int == self.spec_raw_value()
@@ -66,8 +67,6 @@ impl FrameNumber {
     }
 }
 
-//==================================================================================================
-// FrameAddress
 //==================================================================================================
 
 /// A type that represents a frame address.
@@ -78,20 +77,6 @@ pub struct FrameAddress {
 }
 
 impl FrameAddress {
-    /// Spec function to get the raw address value.
-    pub open spec fn spec_raw_value(&self) -> int {
-        self.raw_addr as int
-    }
-
-    /// Spec function to get the frame number.
-    pub open spec fn spec_frame_number(&self) -> int {
-        self.raw_addr as int / FRAME_SIZE as int
-    }
-
-    /// Spec function to check if address is page-aligned.
-    pub open spec fn spec_is_aligned(&self) -> bool {
-        self.raw_addr as int % FRAME_SIZE as int == 0
-    }
 
     /// Constructs a FrameAddress from a frame number.
     /// Precondition: frame_number.value <= MAX_FRAME_NUMBER ensures no overflow.
@@ -119,6 +104,7 @@ impl FrameAddress {
         Ok(FrameAddress { raw_addr: addr })
     }
 
+
     /// Converts a FrameAddress into a frame number.
     pub fn into_frame_number(self) -> (result: FrameNumber)
         requires self.spec_is_aligned(),
@@ -126,6 +112,7 @@ impl FrameAddress {
     {
         FrameNumber { value: self.raw_addr / FRAME_SIZE }
     }
+
 
     /// Gets the raw address value.
     pub fn into_raw_value(self) -> (result: usize)
@@ -136,8 +123,6 @@ impl FrameAddress {
 }
 
 //==================================================================================================
-// PageAligned PhysicalAddress (Simplified Abstraction)
-//==================================================================================================
 
 /// A page-aligned physical address (simplified for verification).
 #[derive(Debug, Clone, Copy)]
@@ -146,15 +131,6 @@ pub struct PageAlignedPhysAddr {
 }
 
 impl PageAlignedPhysAddr {
-    /// Spec function to get the raw address value.
-    pub open spec fn spec_raw_value(&self) -> int {
-        self.raw_addr as int
-    }
-
-    /// Spec function to get the frame number.
-    pub open spec fn spec_frame_number(&self) -> int {
-        self.raw_addr as int / FRAME_SIZE as int
-    }
 
     /// Constructs from a raw address value.
     /// Returns error if not page-aligned.
@@ -173,6 +149,7 @@ impl PageAlignedPhysAddr {
         Ok(PageAlignedPhysAddr { raw_addr: addr })
     }
 
+
     /// Gets the frame number.
     pub fn into_frame_number(self) -> (result: FrameNumber)
         ensures result.spec_raw_value() == self.spec_frame_number()
@@ -181,8 +158,6 @@ impl PageAlignedPhysAddr {
     }
 }
 
-//==================================================================================================
-// TruncatedMemoryRegion (Simplified for Verification)
 //==================================================================================================
 
 /// A simplified memory region where both start and size are page-aligned.
@@ -206,31 +181,6 @@ pub struct TruncatedMemoryRegion {
 }
 
 impl TruncatedMemoryRegion {
-    /// Spec function to get the start address.
-    pub closed spec fn spec_start(&self) -> int {
-        self.start.spec_raw_value()
-    }
-
-    /// Spec function to get the size in bytes.
-    pub closed spec fn spec_size(&self) -> int {
-        self.size as int
-    }
-
-    /// Spec function to get the start frame number.
-    pub closed spec fn spec_start_frame(&self) -> int {
-        self.start.spec_frame_number()
-    }
-
-    /// Spec function to get the number of frames in this region.
-    pub closed spec fn spec_frame_count(&self) -> int {
-        self.size as int / FRAME_SIZE as int
-    }
-
-    /// Spec function: invariant that size is page-aligned and positive.
-    pub closed spec fn inv(&self) -> bool {
-        &&& self.size as int % FRAME_SIZE as int == 0
-        &&& self.size > 0
-    }
 
     /// Creates a new TruncatedMemoryRegion.
     ///
@@ -266,21 +216,6 @@ impl TruncatedMemoryRegion {
         Ok(TruncatedMemoryRegion { start, size })
     }
 
-    /// Lemma: If inv() holds, then frame_count > 0.
-    ///
-    /// # Description
-    ///
-    /// This lemma reveals the key property that inv() implies frame_count > 0,
-    /// which is needed by callers since inv() is closed.
-    pub proof fn lemma_inv_implies_frame_count_positive(&self)
-        requires self.inv(),
-        ensures
-            self.spec_frame_count() > 0,
-            self.spec_size() > 0,
-    {
-        // From inv(): size > 0 and size % FRAME_SIZE == 0.
-        // Therefore size >= FRAME_SIZE, so size / FRAME_SIZE >= 1.
-    }
 
     /// Returns the page-aligned start address.
     pub fn start(&self) -> (result: PageAlignedPhysAddr)
@@ -295,12 +230,14 @@ impl TruncatedMemoryRegion {
         self.start
     }
 
+
     /// Returns the size of the region in bytes.
     pub fn size(&self) -> (result: usize)
         ensures result as int == self.spec_size()
     {
         self.size
     }
+
 
     /// Returns the number of frames in this region.
     pub fn frame_count(&self) -> (result: usize)
