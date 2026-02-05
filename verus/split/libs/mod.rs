@@ -10,3 +10,6 @@ pub mod error;
 
 #[path = "raw_array/lib.rs"]
 pub mod raw_array;
+
+#[path = "bitmap/lib.rs"]
+pub mod bitmap;
