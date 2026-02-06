@@ -736,4 +736,105 @@ impl Bitmap {
 
 } // impl Bitmap
 
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+mod test {
+    use super::*;
+
+    /// Test: BitmapView usage calculation with Set<int>.
+    proof fn test_bitmap_view_usage() {
+        let view: BitmapView = BitmapView {
+            num_bits: 8,
+            set_bits: set![1, 3, 4],  // 3 bits set.
+        };
+
+        assert(view.number_of_bits() == 8);
+        assert(view.set_bits.contains(1));
+        assert(view.set_bits.contains(3));
+        assert(view.set_bits.contains(4));
+    }
+
+    /// Test: Empty view has no bits set.
+    proof fn test_empty_view() {
+        let view: BitmapView = BitmapView {
+            num_bits: 8,
+            set_bits: Set::empty(),
+        };
+
+        assert(view.is_empty());
+    }
+
+    /// Test: Full view has all bits set.
+    proof fn test_full_view() {
+        let view: BitmapView = BitmapView {
+            num_bits: 4,
+            set_bits: set![0, 1, 2, 3],
+        };
+
+        // All bits should be set.
+        assert(view.is_bit_set(0));
+        assert(view.is_bit_set(1));
+        assert(view.is_bit_set(2));
+        assert(view.is_bit_set(3));
+        assert(view.is_full());
+    }
+
+    /// Test: is_bit_set correctness.
+    proof fn test_is_bit_set() {
+        let view: BitmapView = BitmapView {
+            num_bits: 8,
+            set_bits: set![0, 2, 5],
+        };
+
+        assert(view.is_bit_set(0));
+        assert(!view.is_bit_set(1));
+        assert(view.is_bit_set(2));
+        assert(!view.is_bit_set(3));
+        assert(!view.is_bit_set(4));
+        assert(view.is_bit_set(5));
+    }
+
+    /// Test: has_free_bit when not full.
+    proof fn test_has_free_bit() {
+        let view: BitmapView = BitmapView {
+            num_bits: 4,
+            set_bits: set![0, 2],  // 2 bits set, 2 free.
+        };
+
+        // Bits 1 and 3 are free.
+        assert(!view.is_bit_set(1));
+        assert(!view.is_bit_set(3));
+        // Witness for has_free_bit.
+        assert(0 <= 1 < view.number_of_bits() && !view.set_bits.contains(1));
+        assert(view.has_free_bit());
+    }
+
+    /// Test: wf (well-formedness) property.
+    proof fn test_wf() {
+        let view: BitmapView = BitmapView {
+            num_bits: 8,
+            set_bits: set![0, 3, 7],  // All indices in [0, 8).
+        };
+
+        // All set bits are within bounds.
+        assert(view.wf());
+    }
+
+    /// Test: count_free calculation.
+    proof fn test_count_free() {
+        let view: BitmapView = BitmapView {
+            num_bits: 8,
+            set_bits: set![1, 3, 5],  // 3 bits set.
+        };
+
+        assume(view.set_bits.finite());
+        assume(view.set_bits.len() == 3);
+        assert(view.usage() == 3);
+        assert(view.count_free() == 5);  // 8 - 3 = 5 free.
+    }
+}
+
 } // verus!
