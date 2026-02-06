@@ -273,6 +273,8 @@ impl Bitmap {
                 start <= self.number_of_bits,
                 self@.set_bits =~= old(self)@.set_bits,
                 self.usage <= self.number_of_bits - size,
+                // number_of_bits is unchanged.
+                self.number_of_bits == old_self.number_of_bits,
                 // All positions before start don't have a free range.
                 forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
                     0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
@@ -348,10 +350,17 @@ impl Bitmap {
                             0 <= p < start as int implies !self.has_free_range_at(p, size as int)
                         by {
                             if p >= start_before_inner as int {
-                                // p + size > number_of_bits because start + offset >= number_of_bits
-                                // and offset < size, so start + size > number_of_bits
-                                // Thus p + size > number_of_bits for p >= start_before_inner.
-                                assume(p + (size as int) > self@.number_of_bits());
+                                // We have: idx = start_before_inner + offset >= number_of_bits.
+                                // And: offset < size.
+                                // For p >= start_before_inner:
+                                // p + size >= start_before_inner + size > start_before_inner + offset = idx >= number_of_bits.
+                                // So p + size > number_of_bits.
+                                assert(idx as int == (start_before_inner + offset) as int);
+                                assert(idx as int >= self@.number_of_bits());
+                                assert((offset as int) < (size as int));
+                                assert(p >= start_before_inner as int);
+                                // p + size >= start_before_inner + size > start_before_inner + offset >= number_of_bits.
+                                assert(p + (size as int) > self@.number_of_bits());
                             }
                         }
                     }
@@ -370,8 +379,21 @@ impl Bitmap {
                         by {
                             if self.has_free_range_at(p, size as int) {
                                 // Free range at p means all bits in [p, p+size) are unset.
-                                // But idx is in that range and is set, contradiction.
-                                assume(false);
+                                // We have: start_before_inner <= p <= idx.
+                                // And: idx = start_before_inner + offset, offset < size.
+                                // So: idx - p <= idx - start_before_inner = offset < size.
+                                // Therefore: p <= idx < p + size, meaning idx is in [p, p+size).
+                                assert(p <= idx as int);
+                                assert((idx as int) - p <= (offset as int));
+                                assert((offset as int) < (size as int));
+                                assert((idx as int) < p + (size as int));
+                                // So idx is in the range [p, p+size).
+                                // has_free_range_at(p, size) means all bits in [p, p+size) are unset.
+                                // But idx is set (self.is_bit_set(idx)).
+                                assert(self.is_bit_set(idx as int));
+                                assert(self.all_bits_unset_in_range(p, p + (size as int)));
+                                // This is a contradiction: idx in range, idx set, but range all unset.
+                                assert(!self.is_bit_set(idx as int));
                             }
                         }
                     }
@@ -404,9 +426,14 @@ impl Bitmap {
                         // !self@.set_bits.contains(i) <==> !old_self@.set_bits.contains(i).
                     };
                     
-                    // We need to prove all_bits_unset_in_range which uses !is_bit_set.
-                    // Assume for now.
-                    assume(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
+                    // old_self == old(self), so old_self.is_bit_set(i) == old(self).is_bit_set(i).
+                    assert forall|i: int| start as int <= i < start as int + (size as int) implies !#[trigger] old(self).is_bit_set(i)
+                    by {
+                        assert(!old_self.is_bit_set(i));
+                    };
+                    
+                    // This is the definition of all_bits_unset_in_range.
+                    assert(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
                 }
 
                 // Allocate the range.
@@ -415,14 +442,12 @@ impl Bitmap {
 
                 proof {
                     // At this point, self.inv() holds from the outer loop invariant.
-                    // self.number_of_bits hasn't changed, so:
-                    // self@.number_of_bits() = self.number_of_bits as int
-                    // old_self@.number_of_bits() = old_self.number_of_bits as int
-                    // old_self == old(self), so old_self.number_of_bits == old(self).number_of_bits
-                    // From outer loop: self.inv(), which requires self.number_of_bits == old(self).number_of_bits
-                    // Actually, we need to track this explicitly. Use assume for now.
-                    assume(self@.number_of_bits() == old_self@.number_of_bits());
-                    assume(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
+                    // From outer loop invariant: self.number_of_bits == old_self.number_of_bits.
+                    // self@.number_of_bits() = self.number_of_bits as int (from self.inv()).
+                    // old_self@.number_of_bits() = old_self.number_of_bits as int (from old_self.inv()).
+                    // Therefore self@.number_of_bits() == old_self@.number_of_bits().
+                    assert(self@.number_of_bits() == old_self@.number_of_bits());
+                    assert(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
                 }
 
                 while alloc_offset < size
@@ -531,9 +556,15 @@ impl Bitmap {
 
         // No free range found.
         proof {
-            // Outer loop invariant: self@.set_bits =~= old(self)@.set_bits
-            // So self@ == old(self)@ (set_bits and other fields unchanged).
-            assume(self@ == old(self)@);
+            // From outer loop invariant:
+            // - self@.set_bits =~= old(self)@.set_bits
+            // - self.number_of_bits == old_self.number_of_bits (and old_self == old(self))
+            // So self@.num_bits == self.number_of_bits as int == old(self).number_of_bits as int == old(self)@.num_bits.
+            assert(self@.num_bits == old(self)@.num_bits);
+            // And self@.set_bits =~= old(self)@.set_bits.
+            // BitmapView is a struct with two fields, so equality follows.
+            assert(self@ =~= old(self)@);
+            
             assert(!self.exists_contiguous_free_range(size as int));
             self.lemma_set_bits_equal_exists_free_range_equal(&old_self, size as int);
             assert(!old(self).exists_contiguous_free_range(size as int));
@@ -607,12 +638,11 @@ impl Bitmap {
             }
             
             // Prove usage bound: usage() <= number_of_bits().
-            // old_usage < number_of_bits (since there was an unset bit at index).
-            // new_usage = old_usage + 1 <= number_of_bits.
-            // The key insight: old_usage = old_set_bits.len() <= number_of_bits
-            // and since !old_set_bits.contains(index), we have room to add one.
-            // TODO: prove this properly using cardinality bounds.
-            assume(self@.usage() <= self@.number_of_bits());
+            // Use lemma: since !old_self@.set_bits.contains(index), inserting preserves bound.
+            old_self.lemma_insert_preserves_usage_bound(index as int);
+            // Now: old_self@.set_bits.insert(index).len() <= old_self@.number_of_bits().
+            // Since self@.set_bits =~= old_self@.set_bits.insert(index), they have same len.
+            assert(self@.usage() <= self@.number_of_bits());
         }
 
         self.usage = self.usage + 1;
