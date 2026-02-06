@@ -167,10 +167,17 @@ impl View for Slab {
     type V = SlabView;
 
     closed spec fn view(&self) -> SlabView {
+        // Performance optimization: directly use bitmap's set_bits with offset.
+        // Instead of is_bit_set(num_index_blocks + i), we use:
+        // set_bits.contains(num_index_blocks + i).
+        // The bounds check is implicit: by slab invariant, all set bits in the
+        // data block range [num_index_blocks, num_index_blocks + num_data_blocks)
+        // correspond to allocated data blocks.
+        let offset: int = self.num_index_blocks as int;
         SlabView {
             allocated_blocks: Set::new(|i: int|
                 0 <= i < self.num_data_blocks as int &&
-                self.index.is_bit_set(self.num_index_blocks as int + i)
+                self.index@.set_bits.contains(offset + i)
             ),
             num_data_blocks: self.num_data_blocks as int,
             block_size: self.block_size as int,
@@ -192,7 +199,9 @@ impl Slab {
         &&& self.num_index_blocks > 0
         &&& self.num_index_blocks + self.num_data_blocks == self.index@.number_of_bits()
         // Index blocks are always marked as allocated in the bitmap.
-        &&& forall|i: int| 0 <= i < self.num_index_blocks as int ==> self.index.is_bit_set(i)
+        // Performance: use set_bits.contains directly instead of is_bit_set.
+        &&& forall|i: int| #![trigger self.index@.set_bits.contains(i)]
+            0 <= i < self.num_index_blocks as int ==> self.index@.set_bits.contains(i)
         // Data block indices start after index blocks.
         &&& self.data_addr > 0
         // Memory region bounds - ensures no overflow in address calculations.

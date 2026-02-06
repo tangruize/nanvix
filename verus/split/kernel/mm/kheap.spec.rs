@@ -137,47 +137,41 @@ impl KheapView {
     // Slab Memory Region Disjointness
     //==============================================================================================
 
+    /// Returns true if s1's region ends before s2's region starts.
+    /// Used for ordered slab layout.
+    pub open spec fn slab_precedes(&self, s1: &SlabView, s2: &SlabView) -> bool {
+        s1.data_addr + s1.num_data_blocks * s1.block_size <= s2.data_addr
+    }
+
     /// Returns true if two slabs have disjoint memory regions.
     /// This ensures no two slabs can return overlapping addresses.
     pub open spec fn slabs_disjoint(&self, s1: &SlabView, s2: &SlabView) -> bool {
-        let s1_start = s1.data_addr;
-        let s1_end = s1.data_addr + s1.num_data_blocks * s1.block_size;
-        let s2_start = s2.data_addr;
-        let s2_end = s2.data_addr + s2.num_data_blocks * s2.block_size;
+        let s1_start: int = s1.data_addr;
+        let s1_end: int = s1.data_addr + s1.num_data_blocks * s1.block_size;
+        let s2_start: int = s2.data_addr;
+        let s2_end: int = s2.data_addr + s2.num_data_blocks * s2.block_size;
         s1_end <= s2_start || s2_end <= s1_start
     }
 
+    /// Returns true if slabs are laid out in order (8 < 16 < 32 < ... < 4096).
+    /// This is a simpler invariant than checking all 28 pairs.
+    pub open spec fn slabs_ordered(&self) -> bool {
+        &&& self.slab_precedes(&self.slab_8, &self.slab_16)
+        &&& self.slab_precedes(&self.slab_16, &self.slab_32)
+        &&& self.slab_precedes(&self.slab_32, &self.slab_64)
+        &&& self.slab_precedes(&self.slab_64, &self.slab_128)
+        &&& self.slab_precedes(&self.slab_128, &self.slab_256)
+        &&& self.slab_precedes(&self.slab_256, &self.slab_512)
+        &&& self.slab_precedes(&self.slab_512, &self.slab_4096)
+    }
+
     /// Returns true if all slabs have disjoint memory regions.
+    /// Uses slabs_ordered() for efficiency - only 7 checks instead of 28.
+    /// The disjointness of all pairs follows from transitivity.
     pub open spec fn all_slabs_disjoint(&self) -> bool {
-        // Check all pairs of slabs are disjoint.
-        &&& self.slabs_disjoint(&self.slab_8, &self.slab_16)
-        &&& self.slabs_disjoint(&self.slab_8, &self.slab_32)
-        &&& self.slabs_disjoint(&self.slab_8, &self.slab_64)
-        &&& self.slabs_disjoint(&self.slab_8, &self.slab_128)
-        &&& self.slabs_disjoint(&self.slab_8, &self.slab_256)
-        &&& self.slabs_disjoint(&self.slab_8, &self.slab_512)
-        &&& self.slabs_disjoint(&self.slab_8, &self.slab_4096)
-        &&& self.slabs_disjoint(&self.slab_16, &self.slab_32)
-        &&& self.slabs_disjoint(&self.slab_16, &self.slab_64)
-        &&& self.slabs_disjoint(&self.slab_16, &self.slab_128)
-        &&& self.slabs_disjoint(&self.slab_16, &self.slab_256)
-        &&& self.slabs_disjoint(&self.slab_16, &self.slab_512)
-        &&& self.slabs_disjoint(&self.slab_16, &self.slab_4096)
-        &&& self.slabs_disjoint(&self.slab_32, &self.slab_64)
-        &&& self.slabs_disjoint(&self.slab_32, &self.slab_128)
-        &&& self.slabs_disjoint(&self.slab_32, &self.slab_256)
-        &&& self.slabs_disjoint(&self.slab_32, &self.slab_512)
-        &&& self.slabs_disjoint(&self.slab_32, &self.slab_4096)
-        &&& self.slabs_disjoint(&self.slab_64, &self.slab_128)
-        &&& self.slabs_disjoint(&self.slab_64, &self.slab_256)
-        &&& self.slabs_disjoint(&self.slab_64, &self.slab_512)
-        &&& self.slabs_disjoint(&self.slab_64, &self.slab_4096)
-        &&& self.slabs_disjoint(&self.slab_128, &self.slab_256)
-        &&& self.slabs_disjoint(&self.slab_128, &self.slab_512)
-        &&& self.slabs_disjoint(&self.slab_128, &self.slab_4096)
-        &&& self.slabs_disjoint(&self.slab_256, &self.slab_512)
-        &&& self.slabs_disjoint(&self.slab_256, &self.slab_4096)
-        &&& self.slabs_disjoint(&self.slab_512, &self.slab_4096)
+        // Slabs are ordered: s8.end <= s16.start <= ... <= s4096.start.
+        // This implies all pairs are disjoint.
+        self.slabs_ordered()
     }
 
     //==============================================================================================

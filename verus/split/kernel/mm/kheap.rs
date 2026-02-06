@@ -462,75 +462,15 @@ impl Kheap {
             assert(heap.slab_4096_bytes@.data_addr >= base + 7 * sz);
             assert(heap.slab_4096_bytes@.data_addr + heap.slab_4096_bytes@.num_data_blocks * heap.slab_4096_bytes@.block_size <= base + 8 * sz);
 
-            // Prove disjointness for all 21 pairs.
-            assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_16_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_32_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_64_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_128_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_256_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_512_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_8_bytes@, &heap.slab_4096_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_16_bytes@, &heap.slab_32_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_16_bytes@, &heap.slab_64_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_16_bytes@, &heap.slab_128_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_16_bytes@, &heap.slab_256_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_16_bytes@, &heap.slab_512_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_16_bytes@, &heap.slab_4096_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_64_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_128_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_256_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_512_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_32_bytes@, &heap.slab_4096_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_128_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_256_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_512_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_64_bytes@, &heap.slab_4096_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_128_bytes@, &heap.slab_256_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_128_bytes@, &heap.slab_512_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_128_bytes@, &heap.slab_4096_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_256_bytes@, &heap.slab_512_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_256_bytes@, &heap.slab_4096_bytes@));
-            assert(Self::spec_slabs_disjoint(&heap.slab_512_bytes@, &heap.slab_4096_bytes@));
-
-            // Now show all_slabs_disjoint by using slabs_disjoint.
-            assert(heap@.slab_8 == heap.slab_8_bytes@);
-            assert(heap@.slab_16 == heap.slab_16_bytes@);
-            assert(heap@.slab_32 == heap.slab_32_bytes@);
-            assert(heap@.slab_64 == heap.slab_64_bytes@);
-            assert(heap@.slab_128 == heap.slab_128_bytes@);
-            assert(heap@.slab_256 == heap.slab_256_bytes@);
-            assert(heap@.slab_512 == heap.slab_512_bytes@);
-            assert(heap@.slab_4096 == heap.slab_4096_bytes@);
-
-            assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_16));
-            assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_32));
-            assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_64));
-            assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_128));
-            assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_256));
-            assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_512));
-            assert(heap@.slabs_disjoint(&heap@.slab_8, &heap@.slab_4096));
-            assert(heap@.slabs_disjoint(&heap@.slab_16, &heap@.slab_32));
-            assert(heap@.slabs_disjoint(&heap@.slab_16, &heap@.slab_64));
-            assert(heap@.slabs_disjoint(&heap@.slab_16, &heap@.slab_128));
-            assert(heap@.slabs_disjoint(&heap@.slab_16, &heap@.slab_256));
-            assert(heap@.slabs_disjoint(&heap@.slab_16, &heap@.slab_512));
-            assert(heap@.slabs_disjoint(&heap@.slab_16, &heap@.slab_4096));
-            assert(heap@.slabs_disjoint(&heap@.slab_32, &heap@.slab_64));
-            assert(heap@.slabs_disjoint(&heap@.slab_32, &heap@.slab_128));
-            assert(heap@.slabs_disjoint(&heap@.slab_32, &heap@.slab_256));
-            assert(heap@.slabs_disjoint(&heap@.slab_32, &heap@.slab_512));
-            assert(heap@.slabs_disjoint(&heap@.slab_32, &heap@.slab_4096));
-            assert(heap@.slabs_disjoint(&heap@.slab_64, &heap@.slab_128));
-            assert(heap@.slabs_disjoint(&heap@.slab_64, &heap@.slab_256));
-            assert(heap@.slabs_disjoint(&heap@.slab_64, &heap@.slab_512));
-            assert(heap@.slabs_disjoint(&heap@.slab_64, &heap@.slab_4096));
-            assert(heap@.slabs_disjoint(&heap@.slab_128, &heap@.slab_256));
-            assert(heap@.slabs_disjoint(&heap@.slab_128, &heap@.slab_512));
-            assert(heap@.slabs_disjoint(&heap@.slab_128, &heap@.slab_4096));
-            assert(heap@.slabs_disjoint(&heap@.slab_256, &heap@.slab_512));
-            assert(heap@.slabs_disjoint(&heap@.slab_256, &heap@.slab_4096));
-            assert(heap@.slabs_disjoint(&heap@.slab_512, &heap@.slab_4096));
-
+            // Prove slabs_ordered (7 adjacency checks instead of 28 pairwise).
+            assert(heap@.slab_precedes(&heap@.slab_8, &heap@.slab_16));
+            assert(heap@.slab_precedes(&heap@.slab_16, &heap@.slab_32));
+            assert(heap@.slab_precedes(&heap@.slab_32, &heap@.slab_64));
+            assert(heap@.slab_precedes(&heap@.slab_64, &heap@.slab_128));
+            assert(heap@.slab_precedes(&heap@.slab_128, &heap@.slab_256));
+            assert(heap@.slab_precedes(&heap@.slab_256, &heap@.slab_512));
+            assert(heap@.slab_precedes(&heap@.slab_512, &heap@.slab_4096));
+            assert(heap@.slabs_ordered());
             assert(heap@.all_slabs_disjoint());
 
             // Prove all_slabs_within_extent.

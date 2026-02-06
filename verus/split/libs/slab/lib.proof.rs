@@ -154,7 +154,9 @@ impl Slab {
             slab.num_data_blocks > 0,
             slab.num_index_blocks > 0,
             slab.num_index_blocks + slab.num_data_blocks == slab.index@.number_of_bits(),
-            forall|i: int| 0 <= i < slab.num_index_blocks as int ==> slab.index.is_bit_set(i),
+            // Index blocks are marked in set_bits.
+            forall|i: int| #![trigger slab.index@.set_bits.contains(i)]
+                0 <= i < slab.num_index_blocks as int ==> slab.index@.set_bits.contains(i),
             slab.data_addr > 0,
             // Memory bounds conditions.
             (slab.num_data_blocks as int) * (slab.block_size as int) <= usize::MAX as int,

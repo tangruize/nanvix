@@ -315,10 +315,12 @@ impl Slab {
                 num_index_blocks + num_data_blocks == total_num_blocks,
                 index@.number_of_bits() == total_num_blocks as int,
                 num_index_blocks as int + num_data_blocks as int == index@.number_of_bits(),
-                // All bits from 0 to i are set.
-                forall|j: int| 0 <= j < i as int ==> index.is_bit_set(j),
+                // All bits from 0 to i are set (using set_bits directly).
+                forall|j: int| #![trigger index@.set_bits.contains(j)]
+                    0 <= j < i as int ==> index@.set_bits.contains(j),
                 // All bits from i to end are not set (from initial state).
-                forall|j: int| i as int <= j < index@.number_of_bits() ==> !index.is_bit_set(j),
+                forall|j: int| #![trigger index@.set_bits.contains(j)]
+                    i as int <= j < index@.number_of_bits() ==> !index@.set_bits.contains(j),
             decreases num_index_blocks - i,
         {
             index.set(i)?;
