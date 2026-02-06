@@ -622,13 +622,13 @@ impl Kheap {
             result is Ok ==> ({
                 let addr = result->Ok_0 as int;
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
+                let slab_view = self@.get_slab(slab_size);
+                let block_idx = slab_view.addr_to_block_idx(addr);
                 &&& spec_layout_to_slab_size(size as int).is_some()
-                // Address is valid in the post-state heap.
-                &&& self@.is_valid_heap_addr(addr)
-                // Address is valid in the selected slab (post-state).
-                &&& self@.get_slab(slab_size).is_valid_addr(addr)
+                // Address is valid in the selected slab (implies valid in heap).
+                &&& slab_view.is_valid_addr(addr)
                 // Block is now allocated in the slab.
-                &&& self@.get_slab(slab_size).is_allocated(self@.get_slab(slab_size).addr_to_block_idx(addr))
+                &&& slab_view.is_allocated(block_idx)
                 // Key postcondition: block_size >= requested size.
                 &&& slab_size.spec_as_int() >= size as int
                 // Alignment: address is aligned to block size.
@@ -649,7 +649,7 @@ impl Kheap {
             // Liveness: if slab can allocate, allocation succeeds.
             // This propagates the liveness guarantee from Slab::allocate.
             (spec_layout_to_slab_size(size as int).is_some() &&
-             old(self)@.get_slab(spec_layout_to_slab_size(size as int).unwrap()).can_allocate())
+             old(self)@.can_allocate_in_slab(spec_layout_to_slab_size(size as int).unwrap()))
                 ==> result is Ok,
             // Frame on error.
             result is Err ==> self@ == old(self)@,
