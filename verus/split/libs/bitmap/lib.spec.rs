@@ -17,6 +17,8 @@ verus! {
 #[verifier::ext_equal]
 pub struct BitmapView {
     pub bits: Seq<bool>,
+    /// Set of indices where bits are set. Used for efficient frame conditions.
+    pub set_bits: Set<int>,
 }
 
 impl BitmapView {
@@ -54,6 +56,11 @@ impl BitmapView {
     pub open spec fn is_bit_set(&self, index: int) -> bool {
         self.bits[index]
     }
+
+    /// Helper: Create a set of indices in range [start, end).
+    pub open spec fn range_set(start: int, end: int) -> Set<int> {
+        Set::new(|i: int| start <= i < end)
+    }
 }
 
 //==================================================================================================
@@ -66,6 +73,7 @@ impl View for Bitmap {
     closed spec fn view(&self) -> BitmapView {
         BitmapView {
             bits: Self::bits_to_seq(self.bits@, self.number_of_bits as int),
+            set_bits: Set::new(|i: int| 0 <= i < self.number_of_bits as int && Self::bit_at(self.bits@, i)),
         }
     }
 }

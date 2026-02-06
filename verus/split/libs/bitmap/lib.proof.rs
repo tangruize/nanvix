@@ -526,7 +526,7 @@ impl Bitmap {
         }
     }
 
-    /// Lemma: setting a byte bit reflects in the boolean sequence
+    /// Lemma: setting a byte bit reflects in the boolean sequence and set_bits
     proof fn lemma_byte_or_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
             0 <= word < self.bits@.len(),
@@ -540,11 +540,22 @@ impl Bitmap {
             forall|i: int| 0 <= i < self@.number_of_bits() ==>
                 self@.bits[i] == new_self@.bits[i] || i == word * (u8::BITS as int) + bit,
             new_self@.bits[word * (u8::BITS as int) + bit],
+            // Set-based: new set_bits = old set_bits + the new bit index.
+            new_self@.set_bits =~= self@.set_bits.insert(word * (u8::BITS as int) + bit),
     {
         Self::lemma_bit_or_effects(self.bits@[word], bit, new_self.bits@[word]);
+        let idx: int = word * (u8::BITS as int) + bit;
+        // Prove set_bits equality
+        assert forall|i: int| new_self@.set_bits.contains(i) == self@.set_bits.insert(idx).contains(i) by {
+            if i == idx {
+                assert(Self::bit_at(new_self.bits@, idx));
+            } else if 0 <= i < self@.number_of_bits() {
+                assert(Self::bit_at(self.bits@, i) == Self::bit_at(new_self.bits@, i));
+            }
+        }
     }
 
-    /// Lemma: clearing a byte bit reflects in the boolean sequence
+    /// Lemma: clearing a byte bit reflects in the boolean sequence and set_bits
     proof fn lemma_byte_and_not_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
             0 <= word < self.bits@.len(),
@@ -558,17 +569,29 @@ impl Bitmap {
             forall|i: int| 0 <= i < self@.number_of_bits() ==>
                 self@.bits[i] == new_self@.bits[i] || i == word * (u8::BITS as int) + bit,
             !new_self@.bits[word * (u8::BITS as int) + bit],
+            // Set-based: new set_bits = old set_bits - the cleared bit index.
+            new_self@.set_bits =~= self@.set_bits.remove(word * (u8::BITS as int) + bit),
     {
         Self::lemma_bit_and_not_effects(self.bits@[word], bit, new_self.bits@[word]);
+        let idx: int = word * (u8::BITS as int) + bit;
+        // Prove set_bits equality
+        assert forall|i: int| new_self@.set_bits.contains(i) == self@.set_bits.remove(idx).contains(i) by {
+            if i == idx {
+                assert(!Self::bit_at(new_self.bits@, idx));
+            } else if 0 <= i < self@.number_of_bits() {
+                assert(Self::bit_at(self.bits@, i) == Self::bit_at(new_self.bits@, i));
+            }
+        }
     }
 
-    /// Lemma: when all raw bytes are zero, all boolean bits are false
+    /// Lemma: when all raw bytes are zero, all boolean bits are false and set_bits is empty
     proof fn lemma_zero_bytes_means_false_bits(&self)
         requires
             self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
             forall|i: int| 0 <= i < self.bits@.len() ==> self.bits@[i] == 0,
         ensures
             forall|i: int| 0 <= i < self@.number_of_bits() ==> !self@.bits[i],
+            self@.set_bits =~= Set::<int>::empty(),
     {
         assert forall|i: int| 0 <= i < self@.number_of_bits() implies !self@.bits[i] by {
             let byte_idx = i / (u8::BITS as int);
@@ -578,6 +601,18 @@ impl Bitmap {
             assert((0u8 & (1u8 << bit_idx_u8)) == 0) by (bit_vector)
                 requires 0 <= bit_idx_u8 < 8;
         };
+        // Prove set_bits is empty: no bit is set, so no index is in set_bits
+        // The key insight is: set_bits = Set::new(|i| 0 <= i < num_bits && bit_at(bits, i))
+        // and self@.bits[i] == bit_at(self.bits@, i) by definition of bits_to_seq
+        assert forall|i: int| !self@.set_bits.contains(i) by {
+            if 0 <= i < self@.number_of_bits() {
+                // self@.bits[i] == bit_at(self.bits@, i) by definition (via bits_to_seq)
+                // We already proved !self@.bits[i] above.
+                // So bit_at(self.bits@, i) == false.
+                assert(!self@.bits[i]);
+                // set_bits.contains(i) requires bit_at(self.bits@, i) which is false.
+            }
+        }
     }
 
     /// Lemma: Connects closed `is_bit_set` to open `BitmapView.is_bit_set`.

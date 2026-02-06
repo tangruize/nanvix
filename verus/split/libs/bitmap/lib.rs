@@ -72,7 +72,8 @@ impl Bitmap {
                 &&& bitmap.inv()
                 &&& bitmap@.number_of_bits() == number_of_bits as int
                 &&& bitmap@.is_empty()
-                &&& forall|i: int| 0 <= i < bitmap@.number_of_bits() ==> !bitmap.is_bit_set(i)
+                // Set-based: no bits are set initially.
+                &&& bitmap@.set_bits =~= Set::<int>::empty()
             },
             // Error case: at least one of these conditions must hold.
             // Note: RawArray::new may also fail, so we cannot fully enumerate error causes.
@@ -127,7 +128,8 @@ impl Bitmap {
                 &&& bmp.inv()
                 &&& bmp@.number_of_bits() == number_of_bits as int
                 &&& bmp@.is_empty()
-                &&& forall|i: int| 0 <= i < number_of_bits as int ==> !bmp.is_bit_set(i)
+                // Set-based: no bits are set initially.
+                &&& bmp@.set_bits =~= Set::<int>::empty()
             },
     {
         Self::new(number_of_bits)
@@ -157,7 +159,10 @@ impl Bitmap {
             result.inv(),
             result@.number_of_bits() == array@.len() * (u8::BITS as int),
             result@.is_empty(),
+            // Forall-based: no bits are set initially (for backward compatibility).
             forall|i: int| 0 <= i < result@.number_of_bits() ==> !result.is_bit_set(i),
+            // Set-based: no bits are set initially.
+            result@.set_bits =~= Set::<int>::empty(),
     {
         // NOTE: no need to test if the length of the raw array is valid, as it is by construction.
         // NOTE: the bitmap is already zeroed out by RawArray::new() or RawArray::from_raw_parts()
@@ -234,8 +239,11 @@ impl Bitmap {
                 &&& self.is_bit_set(index)
                 &&& !old(self).is_bit_set(index)
                 &&& !old(self)@.is_full()
+                // Forall-based frame (for backward compatibility with callers).
                 &&& forall|i: int| 0 <= i < self@.number_of_bits() && i != index ==>
                     self.is_bit_set(i) == old(self).is_bit_set(i)
+                // Set-based frame: set_bits is old plus the new index.
+                &&& self@.set_bits =~= old(self)@.set_bits.insert(index)
                 &&& self@.usage() == old(self)@.usage() + 1
             },
             result is Err ==> self@ == old(self)@,
@@ -279,9 +287,12 @@ impl Bitmap {
                 &&& self@.number_of_bits() == old(self)@.number_of_bits()
                 &&& self.all_bits_set_in_range(start, start + (size as int))
                 &&& old(self).all_bits_unset_in_range(start, start + (size as int))
+                // Forall-based frame (for backward compatibility with callers).
                 &&& forall|i: int| 0 <= i < self@.number_of_bits() &&
                     (i < start || i >= start + (size as int)) ==>
                     self.is_bit_set(i) == old(self).is_bit_set(i)
+                // Set-based frame: set_bits is old union the allocated range.
+                &&& self@.set_bits =~= old(self)@.set_bits.union(BitmapView::range_set(start, start + (size as int)))
                 &&& self@.usage() == old(self)@.usage() + (size as int)
             },
             result is Err ==> self@ == old(self)@,
@@ -397,6 +408,7 @@ impl Bitmap {
                 size <= self.number_of_bits,
                 start <= self.number_of_bits,
                 self@.bits == old(self)@.bits,
+                self@.set_bits =~= old(self)@.set_bits,
                 self.usage <= self.number_of_bits - size,
                 // For size=1: all bits before start are set (checked and found occupied).
                 size == 1 ==> forall|i: int| 0 <= i < start as int ==> self.is_bit_set(i),
@@ -547,6 +559,13 @@ impl Bitmap {
                 // Allocate the range
                 let ghost pre_alloc_self = *self;
 
+                proof {
+                    // At this point, self hasn't been modified since old_self, so set_bits are equal.
+                    // range_set(start, start + 0) is empty, so union with empty = old_self@.set_bits.
+                    assert(BitmapView::range_set(start as int, start as int) =~= Set::<int>::empty());
+                    assert(old_self@.set_bits.union(Set::<int>::empty()) =~= old_self@.set_bits);
+                }
+
                 let mut offset: usize = 0;
                 while offset < size
                     invariant
@@ -572,6 +591,8 @@ impl Bitmap {
                             (i < start as int || i >= (start + offset) as int)) ==>
                             #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i),
                         self@.usage() == pre_alloc_self@.usage() + offset,
+                        // Set-based invariant: set_bits == old union range [start, start+offset).
+                        self@.set_bits =~= old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (offset as int))),
                 {
                     let idx: usize = start + offset;
                     let (w, b): (usize, usize) = self.index_unchecked(idx);
@@ -608,6 +629,27 @@ impl Bitmap {
                                 assert(loop_old_self.is_bit_set(i) == old_self.is_bit_set(i));
                             }
                         };
+
+                        // Prove set_bits invariant update.
+                        // We have: self@.set_bits =~= loop_old_self@.set_bits.insert(idx)
+                        // And: loop_old_self@.set_bits =~= old_self@.set_bits.union(range_set(start, start+offset))
+                        // Need: self@.set_bits =~= old_self@.set_bits.union(range_set(start, start+offset+1))
+                        // This follows because: insert(idx) where idx == start+offset
+                        //   union(range_set(start, start+offset)).insert(start+offset)
+                        //   == union(range_set(start, start+offset+1))
+                        assert forall|i: int| self@.set_bits.contains(i) ==
+                            old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (offset as int + 1))).contains(i)
+                        by {
+                            // Case analysis
+                            if i == idx as int {
+                                // i is the newly inserted bit
+                            } else if start as int <= i < start as int + (offset as int) {
+                                // i is in the range we already allocated
+                                assert(loop_old_self@.set_bits.contains(i));
+                            } else if 0 <= i < self@.number_of_bits() {
+                                // i is outside the allocation range
+                            }
+                        }
                     }
 
                     offset = offset + 1;
@@ -691,6 +733,11 @@ impl Bitmap {
             // Since bits are unchanged from old_self (which equals old(self)), transfer the result.
             assert(self@.bits =~= old_self@.bits);
             assert(self@.number_of_bits() == old_self@.number_of_bits());
+            // Also prove set_bits unchanged (follows from bits unchanged).
+            assert(self@.set_bits =~= old_self@.set_bits);
+            // Now prove the full view equality.
+            assert(self@ == old_self@);
+            assert(self@ == old(self)@);
 
             // Use the lemma to connect self and old_self.
             self.lemma_bits_equal_exists_free_range_equal(&old_self, size as int);
@@ -741,8 +788,11 @@ impl Bitmap {
                 &&& self.is_bit_set(index as int)
                 &&& !old(self).is_bit_set(index as int)
                 &&& self@.number_of_bits() == old(self)@.number_of_bits()
+                // Forall-based frame (for backward compatibility with callers).
                 &&& forall|i: int| 0 <= i < self@.number_of_bits() && i != (index as int) ==>
                     self.is_bit_set(i) == old(self).is_bit_set(i)
+                // Set-based frame: set_bits is old plus the new index.
+                &&& self@.set_bits =~= old(self)@.set_bits.insert(index as int)
                 &&& self@.usage() == old(self)@.usage() + 1
             },
             result is Err ==> self == old(self),
@@ -797,8 +847,11 @@ impl Bitmap {
                 &&& !self.is_bit_set(index as int)
                 &&& old(self).is_bit_set(index as int)
                 &&& self@.number_of_bits() == old(self)@.number_of_bits()
+                // Forall-based frame (for backward compatibility with callers).
                 &&& forall|i: int| 0 <= i < self@.number_of_bits() && i != (index as int) ==>
                     self.is_bit_set(i) == old(self).is_bit_set(i)
+                // Set-based frame: set_bits is old minus the cleared index.
+                &&& self@.set_bits =~= old(self)@.set_bits.remove(index as int)
                 &&& self@.usage() == old(self)@.usage() - 1
             },
             result is Err ==> self == old(self),
@@ -856,9 +909,12 @@ impl Bitmap {
             result is Ok ==> {
                 &&& self.all_bits_unset_in_range(start as int, start as int + (size as int))
                 &&& self@.number_of_bits() == old(self)@.number_of_bits()
+                // Forall-based frame (for backward compatibility with callers).
                 &&& forall|i: int| 0 <= i < self@.number_of_bits() &&
                     (i < start as int || i >= start as int + (size as int)) ==>
                     self.is_bit_set(i) == old(self).is_bit_set(i)
+                // Set-based frame: set_bits is old minus the cleared range.
+                &&& self@.set_bits =~= old(self)@.set_bits.difference(BitmapView::range_set(start as int, start as int + (size as int)))
                 &&& self@.usage() == old(self)@.usage() - (size as int)
             },
             result is Err ==> self@ == old(self)@,
@@ -905,8 +961,11 @@ impl Bitmap {
                     #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i),
                 // Usage tracking: decreased by offset so far.
                 self@.usage() == old_self@.usage() - offset,
+                // Set-based invariant: set_bits == old minus range [start, start+offset).
+                self@.set_bits =~= old_self@.set_bits.difference(BitmapView::range_set(start as int, start as int + (offset as int))),
         {
             let idx: usize = start + offset;
+            let ghost loop_old_self = *self;
 
             proof {
                 // The bit at idx is still set (from invariant: bits in [start+offset, start+size) are set).
@@ -953,6 +1012,23 @@ impl Bitmap {
                         assert(i == idx as int);
                     }
                 };
+
+                // Prove set_bits invariant update.
+                // We have: self@.set_bits =~= loop_old_self@.set_bits.remove(idx)
+                // And: loop_old_self@.set_bits =~= old_self@.set_bits.difference(range_set(start, start+offset))
+                // Need: self@.set_bits =~= old_self@.set_bits.difference(range_set(start, start+offset+1))
+                assert forall|i: int| self@.set_bits.contains(i) ==
+                    old_self@.set_bits.difference(BitmapView::range_set(start as int, start as int + (offset as int + 1))).contains(i)
+                by {
+                    // Case analysis
+                    if i == idx as int {
+                        // i is the newly removed bit
+                    } else if start as int <= i < start as int + (offset as int) {
+                        // i is in the range we already cleared
+                    } else if 0 <= i < self@.number_of_bits() {
+                        // i is outside the clearing range
+                    }
+                }
             }
 
             offset = offset + 1;
