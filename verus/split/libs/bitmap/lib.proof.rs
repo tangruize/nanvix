@@ -62,6 +62,28 @@ impl Bitmap {
         vstd::set_lib::lemma_set_subset_finite(s2, s1);
     }
 
+    /// Lemma: Extensional equality preserves length.
+    /// If s1 =~= s2 and both are finite, then s1.len() == s2.len().
+    pub proof fn lemma_ext_equal_len(s1: Set<int>, s2: Set<int>)
+        requires
+            s1 =~= s2,
+            s2.finite(),
+        ensures
+            s1.finite(),
+            s1.len() == s2.len(),
+    {
+        Self::lemma_ext_equal_finite(s1, s2);
+        // s1 ⊆ s2 and s2 ⊆ s1, so |s1| <= |s2| and |s2| <= |s1|.
+        assert(s1.subset_of(s2)) by {
+            assert forall|a: int| s1.contains(a) implies s2.contains(a) by {}
+        }
+        assert(s2.subset_of(s1)) by {
+            assert forall|a: int| s2.contains(a) implies s1.contains(a) by {}
+        }
+        vstd::set_lib::lemma_len_subset(s1, s2);
+        vstd::set_lib::lemma_len_subset(s2, s1);
+    }
+
     /// Lemma: range_set(lo, hi) is finite when lo <= hi.
     pub proof fn lemma_range_set_finite(lo: int, hi: int)
         requires
@@ -610,7 +632,7 @@ impl Bitmap {
     /// Lemma: setting a byte bit reflects in set_bits
     proof fn lemma_byte_or_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
-            self.inv_structural(),
+            self.inv(),
             0 <= word < self.bits@.len(),
             0 <= bit < (u8::BITS as int),
             new_self.bits@.len() == self.bits@.len(),
@@ -642,7 +664,7 @@ impl Bitmap {
     /// Lemma: clearing a byte bit reflects in set_bits
     proof fn lemma_byte_and_not_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
-            self.inv_structural(),
+            self.inv(),
             0 <= word < self.bits@.len(),
             0 <= bit < (u8::BITS as int),
             new_self.bits@.len() == self.bits@.len(),
