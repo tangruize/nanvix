@@ -171,8 +171,8 @@ impl Slab {
                 let slab = result->Ok_0;
                 &&& slab.inv()
                 &&& slab@.block_size == block_size as int
-                // All data blocks are not allocated (equivalent to is_empty).
-                &&& forall|i: int| 0 <= i < slab@.num_data_blocks ==> !slab@.is_allocated(i)
+                // Freshly initialized: no blocks allocated (Set-based, no forall).
+                &&& slab@.allocated_blocks =~= Set::<int>::empty()
                 // The data address is at an offset from addr.
                 &&& slab@.data_addr > addr as int
                 &&& slab@.data_addr % (block_size as int) == 0
@@ -466,7 +466,8 @@ impl Slab {
                 &&& slab.inv()
                 &&& slab@.block_size == block_size as int
                 &&& slab@.num_data_blocks > 0
-                &&& forall|i: int| 0 <= i < slab@.num_data_blocks ==> !slab@.is_allocated(i)
+                // Freshly initialized: no blocks allocated (Set-based, no forall).
+                &&& slab@.allocated_blocks =~= Set::<int>::empty()
                 // Critical: data region is within the assigned slice.
                 &&& slab@.data_addr >= (base_addr as int) + (offset as int) * (slab_size as int)
                 &&& slab@.data_addr + slab@.num_data_blocks * slab@.block_size
@@ -559,9 +560,8 @@ impl Slab {
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
                 &&& self@.block_size == old(self)@.block_size
                 &&& self@.data_addr == old(self)@.data_addr
-                // Frame: other blocks unchanged.
-                &&& forall|i: int| 0 <= i < self@.num_data_blocks && i != block_idx ==>
-                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+                // Frame: allocated_blocks is old plus the new block (Set-based, no forall).
+                &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.insert(block_idx)
                 // Explicit postcondition that address is within buffer bounds.
                 &&& old(self)@.is_within_buffer(addr)
                 // Returned address is non-null (derivable from data_addr > 0 and is_valid_addr).
@@ -760,9 +760,8 @@ impl Slab {
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
                 &&& self@.block_size == old(self)@.block_size
                 &&& self@.data_addr == old(self)@.data_addr
-                // Frame: other blocks unchanged.
-                &&& forall|i: int| 0 <= i < self@.num_data_blocks && i != block_idx ==>
-                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+                // Frame: allocated_blocks is old minus the freed block (Set-based, no forall).
+                &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.remove(block_idx)
                 // Liveness: after deallocation, allocation is possible (at least one free block).
                 &&& self@.can_allocate()
             },
