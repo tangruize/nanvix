@@ -178,11 +178,6 @@ impl KheapView {
     // Address Validity
     //==============================================================================================
 
-    /// Returns true if an address is within a specific slab's region.
-    pub open spec fn addr_in_slab(&self, addr: int, size: SlabSize) -> bool {
-        self.get_slab(size).is_valid_addr(addr)
-    }
-
     /// Returns true if an address is valid in any slab.
     pub open spec fn is_valid_heap_addr(&self, addr: int) -> bool {
         ||| self.slab_8.is_valid_addr(addr)
@@ -242,21 +237,6 @@ impl View for Kheap {
 
 
 impl Kheap {
-    /// Returns the base address of the heap (spec).
-    ///
-    /// # Note
-    ///
-    /// This function is essential for SMT term sharing optimization.
-    /// Removing it causes verification rlimit to increase significantly.
-    pub closed spec fn spec_base_addr(&self) -> int {
-        self.base_addr@
-    }
-
-    /// Returns the total size of the heap (spec).
-    pub closed spec fn spec_total_size(&self) -> int {
-        self.total_size@
-    }
-
     /// Spec helper for disjointness checking between two slabs.
     pub open spec fn spec_slabs_disjoint(s1: &SlabView, s2: &SlabView) -> bool {
         let s1_start: int = s1.data_addr;
