@@ -548,7 +548,7 @@ impl Bitmap {
                         let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
                         vstd::set_lib::lemma_int_range(0, self@.num_bits);
                         assert(self@.set_bits.subset_of(full_range)) by {
-                            assert forall|i: int| self@.set_bits.contains(i) implies full_range.contains(i) by {}
+                            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
                         }
                         vstd::set_lib::lemma_len_subset(self@.set_bits, full_range);
                     }
@@ -585,7 +585,7 @@ impl Bitmap {
                     // This is because we verified all bits in [start, start+size) were unset.
                     let range: Set<int> = BitmapView::range_set(start as int, start as int + (size as int));
                     assert(old_self@.set_bits.disjoint(range)) by {
-                        assert forall|i: int| !(old_self@.set_bits.contains(i) && range.contains(i)) by {
+                        assert forall|i: int| #![auto] !(old_self@.set_bits.contains(i) && range.contains(i)) by {
                             if range.contains(i) {
                                 // i is in [start, start+size).
                                 assert(start as int <= i && i < start as int + (size as int));
@@ -630,7 +630,7 @@ impl Bitmap {
                     let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
                     vstd::set_lib::lemma_int_range(0, self@.num_bits);
                     assert(self@.set_bits.subset_of(full_range)) by {
-                        assert forall|i: int| self@.set_bits.contains(i) implies full_range.contains(i) by {}
+                        assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
                     }
                     vstd::set_lib::lemma_len_subset(self@.set_bits, full_range);
                     assert(self@.usage() <= self@.number_of_bits());

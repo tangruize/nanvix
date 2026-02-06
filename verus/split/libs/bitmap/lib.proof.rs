@@ -36,7 +36,7 @@ impl Bitmap {
         
         // Prove set_bits ⊆ full_range.
         assert(self@.set_bits.subset_of(full_range)) by {
-            assert forall|i: int| self@.set_bits.contains(i) implies full_range.contains(i) by {
+            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {
                 // From wf(): set_bits.contains(i) ==> 0 <= i < num_bits
             }
         }
@@ -253,7 +253,7 @@ impl Bitmap {
         
         // set_bits ⊆ full_range.
         assert(self@.set_bits.subset_of(full_range)) by {
-            assert forall|i: int| self@.set_bits.contains(i) implies full_range.contains(i) by {}
+            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
         }
         
         // x is in full_range but not in set_bits.
@@ -303,7 +303,7 @@ impl Bitmap {
         // - set_bits ⊆ full_range by wf()
         // - set_bits ∩ free_range = ∅ by has_free_range_at
         assert(self@.set_bits.subset_of(available_range)) by {
-            assert forall|i: int| self@.set_bits.contains(i) implies available_range.contains(i) by {
+            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies available_range.contains(i) by {
                 // i is in [0, num_bits) by wf().
                 assert(full_range.contains(i));
                 // i is not in [p, p+n) because all_bits_unset_in_range(p, p+n).
@@ -493,7 +493,7 @@ impl Bitmap {
         
         // set_bits ⊆ full_range.
         assert(self@.set_bits.subset_of(full_range)) by {
-            assert forall|i: int| self@.set_bits.contains(i) implies full_range.contains(i) by {
+            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {
                 // From wf(): set_bits.contains(i) ==> 0 <= i < num_bits.
             }
         }
@@ -645,7 +645,7 @@ impl Bitmap {
         Self::lemma_bit_or_effects(self.bits@[word], bit, new_self.bits@[word]);
         let idx: int = word * (u8::BITS as int) + bit;
         
-        assert forall|i: int| new_self@.set_bits.contains(i) == self@.set_bits.insert(idx).contains(i) by {
+        assert forall|i: int| #![auto] new_self@.set_bits.contains(i) == self@.set_bits.insert(idx).contains(i) by {
             if i == idx {
                 assert(Self::bit_at(new_self.bits@, idx));
             } else if 0 <= i < self@.number_of_bits() {
@@ -677,7 +677,7 @@ impl Bitmap {
         Self::lemma_bit_and_not_effects(self.bits@[word], bit, new_self.bits@[word]);
         let idx: int = word * (u8::BITS as int) + bit;
         
-        assert forall|i: int| new_self@.set_bits.contains(i) == self@.set_bits.remove(idx).contains(i) by {
+        assert forall|i: int| #![auto] new_self@.set_bits.contains(i) == self@.set_bits.remove(idx).contains(i) by {
             if i == idx {
                 assert(!Self::bit_at(new_self.bits@, idx));
             } else if 0 <= i < self@.number_of_bits() {
