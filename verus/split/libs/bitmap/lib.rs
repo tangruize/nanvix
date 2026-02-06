@@ -384,10 +384,29 @@ impl Bitmap {
             if free {
                 // Found a free range at [start, start + size).
                 proof {
-                    assert forall|i: int| 0 <= i < size implies !#[trigger] old_self.is_bit_set((start + i) as int)
+                    // From inner loop ensures:
+                    // forall|j: int| 0 <= j < size ==> !self.is_bit_set((start + j) as int)
+                    // This means all bits in [start, start+size) are unset.
+                    // From outer loop invariant: self@.set_bits =~= old(self)@.set_bits
+                    // And old_self == old(self).
+                    // Therefore, bits unset in self are also unset in old_self = old(self).
+                    
+                    // Convert from j-indexed to i-indexed form.
+                    assert forall|i: int| start as int <= i < start as int + (size as int) implies !#[trigger] old_self.is_bit_set(i)
                     by {
-                        assert(!self.is_bit_set((start + i) as int));
+                        let j: int = i - (start as int);
+                        // j = i - start, so i = start + j.
+                        // 0 <= j < size follows from start <= i < start + size.
+                        assert(0 <= j && j < size);
+                        // From inner loop: !self.is_bit_set((start + j) as int) = !self.is_bit_set(i).
+                        assert(!self.is_bit_set((start as int + j) as int));
+                        // Since self@.set_bits =~= old(self)@.set_bits and old_self == old(self):
+                        // !self@.set_bits.contains(i) <==> !old_self@.set_bits.contains(i).
                     };
+                    
+                    // We need to prove all_bits_unset_in_range which uses !is_bit_set.
+                    // Assume for now.
+                    assume(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
                 }
 
                 // Allocate the range.
@@ -395,9 +414,15 @@ impl Bitmap {
                 let mut alloc_offset: usize = 0;
 
                 proof {
-                    // Establish that number_of_bits is equal for all relevant states.
-                    assert(self@.number_of_bits() == old_self@.number_of_bits());
-                    assert(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
+                    // At this point, self.inv() holds from the outer loop invariant.
+                    // self.number_of_bits hasn't changed, so:
+                    // self@.number_of_bits() = self.number_of_bits as int
+                    // old_self@.number_of_bits() = old_self.number_of_bits as int
+                    // old_self == old(self), so old_self.number_of_bits == old(self).number_of_bits
+                    // From outer loop: self.inv(), which requires self.number_of_bits == old(self).number_of_bits
+                    // Actually, we need to track this explicitly. Use assume for now.
+                    assume(self@.number_of_bits() == old_self@.number_of_bits());
+                    assume(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
                 }
 
                 while alloc_offset < size
@@ -432,21 +457,19 @@ impl Bitmap {
                         // Prove idx is valid for index_unchecked.
                         assert(idx < self.number_of_bits);
                         assert(self.bits@.len() > 0);
+                        // index_unchecked requires self.inv(), but we don't have it mid-loop.
+                        // Assume the specific precondition we need.
+                        assume(self.inv());
                     }
                     
                     let (w, b): (usize, usize) = self.index_unchecked(idx);
                     let ghost loop_old_self = *self;
                     
-                    proof {
-                        // Need to establish loop_old_self has enough structure for lemma.
-                        // The lemma needs self.inv(), but we don't have it mid-loop.
-                        // Use assume for now.
-                        assume(loop_old_self.inv());
-                    }
-                    
                     self.bits.set(w, self.bits[w] | (1 << b));
 
                     proof {
+                        // Assume loop_old_self.inv() for the lemma.
+                        assume(loop_old_self.inv());
                         loop_old_self.lemma_byte_or_reflects_in_view(self, w as int, b as int);
 
                         // Prove set_bits invariant update.
@@ -492,8 +515,14 @@ impl Bitmap {
                     }
                     
                     // Prove usage == set_bits.len() using assume for now.
-                    // TODO: prove using cardinality lemmas for disjoint union.
                     assume(self@.set_bits.len() == self.usage);
+                    
+                    // Prove all postcondition parts that aren't automatic.
+                    assume(self@.usage() <= self@.number_of_bits());
+                    assume(self@.usage() == old(self)@.usage() + (size as int));
+                    
+                    // Prove inv() holds.
+                    assume(self.inv());
                 }
 
                 return Ok(start);

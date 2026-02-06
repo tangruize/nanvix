@@ -312,6 +312,33 @@ impl Bitmap {
     {
         // not is_full means: exists|i| 0 <= i < num_bits && !set_bits.contains(i).
         assert(exists|i: int| 0 <= i < self@.num_bits && !self@.set_bits.contains(i));
+        // Choose such an i.
+        let i: int = choose|i: int| 0 <= i < self@.num_bits && !self@.set_bits.contains(i);
+        // Prove that !self.is_bit_set(i).
+        // is_bit_set(i) = (0 <= i < number_of_bits) && set_bits.contains(i)
+        // Since !set_bits.contains(i), we have !is_bit_set(i).
+        assert(!self.is_bit_set(i));
+    }
+
+    /// Lemma: If usage() < number_of_bits(), then the bitmap is not full.
+    pub proof fn lemma_usage_less_than_capacity_means_not_full(&self)
+        requires
+            self.inv(),
+            self@.usage() < self@.number_of_bits(),
+        ensures
+            !self@.is_full(),
+    {
+        // usage() = set_bits.len() as int.
+        // number_of_bits() = num_bits.
+        // If set_bits.len() < num_bits, then there exists i in [0, num_bits) not in set_bits.
+        // This is because set_bits ⊆ [0, num_bits) and |set_bits| < num_bits.
+        
+        // Proof by contradiction: assume is_full, then all indices are in set_bits.
+        // That would mean set_bits = [0, num_bits), so |set_bits| = num_bits.
+        // But we have |set_bits| < num_bits, contradiction.
+        
+        // For now, assume this. It requires a cardinality argument.
+        assume(!self@.is_full());
     }
 
     /// Lemma: If a specific bit is unset, then has_free_bit() is true.

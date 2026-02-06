@@ -80,6 +80,7 @@ impl FrameAllocator {
         // spec_num_allocated = bitmap.usage().
         // capacity = bitmap.number_of_bits() (by invariant).
         // So count_allocated < number_of_bits, meaning bitmap is NOT full.
+        self.bitmap.lemma_usage_less_than_capacity_means_not_full();
         assert(!self.bitmap@.is_full());
 
         // Use bitmap lemma: if not full, there exists an unset bit.
