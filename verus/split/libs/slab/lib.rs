@@ -33,7 +33,6 @@ include!("lib.spec.rs");
 // Include proofs.
 include!("lib.proof.rs");
 
-
 verus! {
 
 
@@ -433,7 +432,6 @@ impl Slab {
     /// # Safety
     ///
     /// Caller must ensure the memory region is valid.
-    #[verifier::rlimit(60)]
     pub unsafe fn from_raw_parts_at_offset(
         base_addr: usize,
         slab_size: usize,

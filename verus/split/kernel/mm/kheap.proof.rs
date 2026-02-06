@@ -37,7 +37,7 @@ impl Kheap {
     //==============================================================================================
 
     /// Lemma: If a % c == 0 and b % c == 0, then (a + k*b) % c == 0 for any k >= 0.
-    #[verifier::spinoff_prover]
+    //#[verifier::spinoff_prover]
     proof fn lemma_mod_add_multiple(a: int, b: int, c: int, k: int)
         requires
             c > 0,
@@ -80,7 +80,7 @@ impl Kheap {
 
 
     /// Lemma: If a % c == 0 and c % d == 0, then a % d == 0.
-    #[verifier::spinoff_prover]
+    //#[verifier::spinoff_prover]
     proof fn lemma_mod_trans(a: int, c: int, d: int)
         requires
             c > 0,
@@ -115,7 +115,7 @@ impl Kheap {
 
 
     /// Lemma: slab_size % 4096 == 0 when size % (8 * 4096) == 0 and slab_size = size / 8.
-    #[verifier::spinoff_prover]
+    //#[verifier::spinoff_prover]
     proof fn lemma_slab_size_alignment(size: int, slab_size: int)
         requires
             size >= 0,
@@ -155,7 +155,7 @@ impl Kheap {
     /// - 131072 / 8 = 16384, 16384 % 8 = 0
     /// - 131072 / 16 = 8192, 8192 % 8 = 0
     /// - etc. for all block sizes (8, 16, 32, 64, 128, 256, 512, 4096)
-    #[verifier::spinoff_prover]
+    //#[verifier::spinoff_prover]
     proof fn lemma_slab_block_divisibility(slab_size: int, block_size: int)
         requires
             slab_size >= MIN_SLAB_SIZE as int,
@@ -585,7 +585,7 @@ proof fn test_address_exclusivity_verified(view: KheapView, addr: int)
 
     // From slabs_ordered(): s8_end <= s16_start.
     assert(s8_end <= s16_start);
-    
+
     // Therefore addr < s8_end <= s16_start, so addr < s16_start.
     // Hence addr is not in slab_16's range [s16_start, s16_end).
 }

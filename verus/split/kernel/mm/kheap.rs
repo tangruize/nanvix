@@ -48,7 +48,6 @@ include!("kheap.spec.rs");
 // Include proofs.
 include!("kheap.proof.rs");
 
-
 verus! {
 
 //==================================================================================================
@@ -553,7 +552,6 @@ impl Kheap {
     /// # Safety
     ///
     /// The returned address is valid for writes up to the slab's block size.
-    #[verifier::rlimit(100)]
     pub unsafe fn allocate(&mut self, size: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
