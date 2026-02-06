@@ -592,7 +592,7 @@ impl Slab {
                     }
                     // On error, bitmap is unchanged, so Slab::inv() still holds.
                     assert(self.index.inv());
-                    assert(self.index@.bits =~= old(self).index@.bits);
+                    assert(self.index@.set_bits =~= old(self).index@.set_bits);
                     // All other fields are unchanged (they were never modified).
                     assert(self.block_size == old(self).block_size);
                     assert(self.num_data_blocks == old(self).num_data_blocks);
@@ -602,12 +602,12 @@ impl Slab {
                     assert(self.total_len == old(self).total_len);
                     // Bitmap size is unchanged.
                     assert(self.index@.number_of_bits() == old(self).index@.number_of_bits());
-                    // Prove index blocks are still set (bits unchanged means is_bit_set unchanged).
+                    // Prove index blocks are still set (set_bits unchanged means is_bit_set unchanged).
                     assert forall|i: int| 0 <= i < self.num_index_blocks as int
                         implies self.index.is_bit_set(i) by {
                         assert(old(self).index.is_bit_set(i));
-                        // Use lemma: equal bits implies equal is_bit_set.
-                        self.index.lemma_bits_equal_implies_is_bit_set_equal(&old(self).index, i);
+                        // set_bits unchanged implies is_bit_set unchanged.
+                        assert(self.index@.set_bits.contains(i) == old(self).index@.set_bits.contains(i));
                     }
                     // Now inv() should hold.
                     assert(self.inv());
@@ -615,7 +615,7 @@ impl Slab {
                     // View fields: num_data_blocks, block_size, data_addr, allocated_blocks.
                     // All scalar fields are unchanged.
                     // allocated_blocks = { j | is_allocated(j) } = { j | is_bit_set(num_idx + j) }.
-                    // Since bits are unchanged, is_bit_set is unchanged for all indices.
+                    // Since set_bits are unchanged, is_bit_set is unchanged for all indices.
                     assert(self@.num_data_blocks == old(self)@.num_data_blocks);
                     assert(self@.block_size == old(self)@.block_size);
                     assert(self@.data_addr == old(self)@.data_addr);
@@ -624,7 +624,8 @@ impl Slab {
                         assert forall|j: int| 0 <= j < self.num_data_blocks as int implies
                             (self@.allocated_blocks.contains(j) == old(self)@.allocated_blocks.contains(j)) by {
                             let bitmap_idx = self.num_index_blocks as int + j;
-                            self.index.lemma_bits_equal_implies_is_bit_set_equal(&old(self).index, bitmap_idx);
+                            // set_bits unchanged implies is_bit_set unchanged.
+                            assert(self.index@.set_bits.contains(bitmap_idx) == old(self).index@.set_bits.contains(bitmap_idx));
                             assert(self.index.is_bit_set(bitmap_idx) == old(self).index.is_bit_set(bitmap_idx));
                         }
                     }
