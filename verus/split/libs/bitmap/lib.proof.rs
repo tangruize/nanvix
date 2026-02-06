@@ -154,6 +154,34 @@ impl Bitmap {
         assert(s.insert(x) =~= s);
     }
 
+    /// Lemma: Disjoint union has cardinality equal to sum of cardinalities.
+    pub proof fn lemma_disjoint_union_len(s1: Set<int>, s2: Set<int>)
+        requires
+            s1.finite(),
+            s2.finite(),
+            s1.disjoint(s2),
+        ensures
+            s1.union(s2).len() == s1.len() + s2.len(),
+    {
+        vstd::set_lib::lemma_set_disjoint_lens(s1, s2);
+    }
+
+    /// Lemma: range_set cardinality equals range size.
+    pub proof fn lemma_range_set_len(lo: int, hi: int)
+        requires
+            lo <= hi,
+        ensures
+            BitmapView::range_set(lo, hi).len() == hi - lo,
+    {
+        // range_set(lo, hi) = { i | lo <= i < hi } = set_int_range(lo, hi).
+        vstd::set_lib::lemma_int_range(lo, hi);
+        // Prove equality.
+        assert(BitmapView::range_set(lo, hi) =~= vstd::set_lib::set_int_range(lo, hi)) by {
+            assert forall|i: int| BitmapView::range_set(lo, hi).contains(i) ==
+                vstd::set_lib::set_int_range(lo, hi).contains(i) by {}
+        }
+    }
+
     /// Lemma: Removing an existing element decreases cardinality by 1.
     pub proof fn lemma_remove_len(s: Set<int>, x: int)
         requires
@@ -582,7 +610,7 @@ impl Bitmap {
     /// Lemma: setting a byte bit reflects in set_bits
     proof fn lemma_byte_or_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
-            self.inv(),
+            self.inv_structural(),
             0 <= word < self.bits@.len(),
             0 <= bit < (u8::BITS as int),
             new_self.bits@.len() == self.bits@.len(),
@@ -614,7 +642,7 @@ impl Bitmap {
     /// Lemma: clearing a byte bit reflects in set_bits
     proof fn lemma_byte_and_not_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
-            self.inv(),
+            self.inv_structural(),
             0 <= word < self.bits@.len(),
             0 <= bit < (u8::BITS as int),
             new_self.bits@.len() == self.bits@.len(),

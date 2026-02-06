@@ -133,15 +133,21 @@ impl Bitmap {
             self.has_free_range_at(start, n)
     }
 
-    /// Invariant: the bitmap's state is well-formed.
-    pub closed spec fn inv(&self) -> bool {
+    /// Structural invariant: well-formed without usage tracking.
+    /// Used as precondition for index_unchecked during allocation loops.
+    pub closed spec fn inv_structural(&self) -> bool {
         &&& self@.number_of_bits() > 0
         &&& self@.number_of_bits() == self.bits@.len() * (u8::BITS as int)
         &&& self@.number_of_bits() < u32::MAX as int
         &&& self@.wf()  // set_bits only contains valid indices
         &&& self@.set_bits.finite()  // set_bits is finite (required for len())
-        &&& self@.usage() <= self@.number_of_bits()
         &&& self.number_of_bits as int == self@.number_of_bits()
+    }
+
+    /// Invariant: the bitmap's state is well-formed.
+    pub closed spec fn inv(&self) -> bool {
+        &&& self.inv_structural()
+        &&& self@.usage() <= self@.number_of_bits()
         &&& self.usage as int == self@.usage()
     }
 }
