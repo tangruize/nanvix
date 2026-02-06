@@ -7,24 +7,9 @@ verus! {
 
 
 impl SlabView {
-    /// Returns the number of allocated blocks (alias: used).
-    pub open spec fn num_allocated(&self) -> int {
-        self.allocated_blocks.len() as int
-    }
-
-    /// Returns the number of used blocks.
-    ///
-    /// NOTE: This function appears to be a simple alias for `num_allocated()`, but it serves
-    /// two important purposes:
-    /// 1. **Semantic abstraction**: Provides a consistent API alongside `capacity()` and `free()`.
-    /// 2. **SMT solver optimization**: Acts as a term-sharing anchor that significantly improves
-    ///    verification performance. Without this alias, each occurrence of `allocated_blocks.len()`
-    ///    becomes a separate term in the SMT solver, causing redundant quantifier instantiations.
-    ///
-    /// DO NOT REMOVE this function to "reduce redundancy" - it provides significant performance
-    /// benefits with no runtime cost. Use `verus --profile-all` to measure the impact if needed.
+    /// Returns the number of allocated blocks.
     pub open spec fn used(&self) -> int {
-        self.num_allocated()
+        self.allocated_blocks.len() as int
     }
 
     /// Returns the capacity (total number of data blocks).
@@ -44,7 +29,7 @@ impl SlabView {
 
     /// Returns true if the slab is full.
     pub open spec fn is_full(&self) -> bool {
-        self.num_allocated() == self.num_data_blocks
+        self.used() == self.num_data_blocks
     }
 
     /// Returns true if the slab is empty.

@@ -570,7 +570,7 @@ impl Slab {
         // So: forall|j| 0 <= j < num_data_blocks ==> is_allocated(j).
         // This means allocated_blocks = {0, 1, ..., num_data_blocks - 1}.
         // Therefore: |allocated_blocks| == num_data_blocks == capacity.
-        // By definition, is_full() <==> num_allocated() == num_data_blocks.
+        // By definition, is_full() <==> used() == num_data_blocks.
 
         let num_data: int = self.num_data_blocks as int;
         let num_idx: int = self.num_index_blocks as int;
@@ -612,9 +612,9 @@ impl Slab {
         self.lemma_allocated_blocks_finite();
         assert(self@.allocated_blocks.len() == num_data);
 
-        // is_full() <==> num_allocated() == num_data_blocks.
-        // num_allocated() == |allocated_blocks| == num_data == num_data_blocks.
-        assert(self@.num_allocated() == self@.num_data_blocks);
+        // is_full() <==> used() == num_data_blocks.
+        // used() == |allocated_blocks| == num_data == num_data_blocks.
+        assert(self@.used() == self@.num_data_blocks);
         assert(self@.is_full());
     }
 
