@@ -1,6 +1,6 @@
 {
   "module_name": "mutex",
-  "outer_iteration": 1,
+  "outer_iteration": 2,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "398b1318-03ed-4ab6-b54a-1f7b56de7a11",
