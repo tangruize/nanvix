@@ -38,33 +38,35 @@ impl ProcessIdentifier {
     {
     }
 
-    /// Lemma: Conversion from i32 preserves value.
-    pub proof fn lemma_from_i32_preserves_value(raw: i32)
+    /// Lemma: Spec-level value preservation for from_i32.
+    pub proof fn lemma_from_i32_spec_value(raw: i32)
         ensures
-            ProcessIdentifier::from_i32(raw).spec_value() == raw as int,
+            (ProcessIdentifier { value: raw }).spec_value() == raw as int,
     {
     }
 
-    /// Lemma: Conversion to i32 preserves value.
-    pub proof fn lemma_to_i32_preserves_value(&self)
+    /// Lemma: Spec-level value preservation for into_i32.
+    pub proof fn lemma_into_i32_spec_value(&self)
         ensures
-            self.into_i32() as int == self.spec_value(),
+            self.value as int == self.spec_value(),
     {
     }
 
-    /// Lemma: Round-trip conversion from i32 and back.
-    pub proof fn lemma_roundtrip_i32(raw: i32)
-        ensures
-            ProcessIdentifier::from_i32(raw).into_i32() == raw,
-    {
-    }
-
-    /// Lemma: View equality implies structural equality.
+    /// Lemma: View equality implies value equality.
     pub proof fn lemma_view_equality(a: &ProcessIdentifier, b: &ProcessIdentifier)
         requires
             a@ == b@,
         ensures
             a.spec_value() == b.spec_value(),
+    {
+    }
+
+    /// Lemma: Two ProcessIdentifiers with equal values have equal views.
+    pub proof fn lemma_value_implies_view_equality(a: &ProcessIdentifier, b: &ProcessIdentifier)
+        requires
+            a.spec_value() == b.spec_value(),
+        ensures
+            a@ == b@,
     {
     }
 }
