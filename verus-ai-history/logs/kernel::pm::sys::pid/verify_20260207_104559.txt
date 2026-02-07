@@ -1,0 +1,116 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 10:45:59 CST 2026
+Module: kernel::pm::sys::pid
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sys::pid
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sys::pid
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:167:13
+    |
+167 | /             result is Err ==> {
+168 | |                 &&& !self.spec_is_non_negative()
+169 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+170 | |             },
+    | |_____________^ failed this postcondition
+...
+173 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:193:13
+    |
+193 | /             result is Err ==> {
+194 | |                 &&& !self.spec_is_non_negative()
+195 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+196 | |             },
+    | |_____________^ failed this postcondition
+...
+199 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:219:13
+    |
+219 | /             result is Err ==> {
+220 | |                 &&& !self.spec_is_non_negative()
+221 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+222 | |             },
+    | |_____________^ failed this postcondition
+...
+225 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:250:13
+    |
+250 | /             result is Err ==> {
+251 | |                 &&& !Self::spec_in_i32_range(raw as int)
+252 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+253 | |             },
+    | |_____________^ failed this postcondition
+...
+256 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:281:13
+    |
+281 | /             result is Err ==> {
+282 | |                 &&& !Self::spec_in_i32_range(raw as int)
+283 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+284 | |             },
+    | |_____________^ failed this postcondition
+...
+287 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:313:13
+    |
+313 | /             result is Err ==> {
+314 | |                 &&& !Self::spec_in_non_negative_i32_range(raw as int)
+315 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+316 | |             },
+    | |_____________^ failed this postcondition
+...
+319 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:345:13
+    |
+345 | /             result is Err ==> {
+346 | |                 &&& !Self::spec_in_non_negative_i32_range(raw as int)
+347 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+348 | |             },
+    | |_____________^ failed this postcondition
+...
+351 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+error: postcondition not satisfied
+   --> kernel/pm/sys/pid.rs:377:13
+    |
+377 | /             result is Err ==> {
+378 | |                 &&& !Self::spec_in_non_negative_i32_range(raw as int)
+379 | |                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+380 | |             },
+    | |_____________^ failed this postcondition
+...
+383 |               return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+    |               ----------------------------------------------------------------------------- at this exit
+
+verification results:: 22 verified, 8 errors (partial verification with `--verify-*`)
+error: aborting due to 8 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 22
+Errors: 8
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sys::pid (verified:22, errors:8)
