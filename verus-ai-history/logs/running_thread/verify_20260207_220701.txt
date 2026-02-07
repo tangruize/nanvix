@@ -1,0 +1,53 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 22:07:01 CST 2026
+Module: running_thread
+Command: verus --crate-type lib lib.rs --verify-module running_thread
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: could not find module running_thread specified by --verify-module or --verify-only-module
+       available modules are:
+       - kernel::hal::mem::types::address::frame
+       - kernel::mm::kheap
+       - kernel::mm::kredzone
+       - kernel::mm::kstack
+       - kernel::mm::phys::frame
+       - kernel::mm::phys::frame::test
+       - kernel::mm::phys::kpool
+       - kernel::mm::phys::kpool::test
+       - kernel::mm::phys::manager
+       - kernel::mm::phys::upool
+       - kernel::mm::phys::upool::test
+       - kernel::mm::ustack
+       - kernel::mm::virt::kpage
+       - kernel::mm::virt::vmem
+       - kernel::pm::sync::condvar
+       - kernel::pm::sync::fence
+       - kernel::pm::sync::mutex
+       - kernel::pm::sync::semaphore
+       - kernel::pm::sync::spinlock
+       - kernel::pm::sys::capability
+       - kernel::pm::sys::pid
+       - kernel::pm::sys::tid
+       - kernel::pm::thread::interrupted
+       - kernel::pm::thread::ready
+       - kernel::pm::thread::running
+       - kernel::pm::thread::state
+       - libs::bitmap
+       - libs::bitmap::test
+       - libs::error
+       - libs::raw_array
+       - libs::raw_array::test
+       - libs::slab
+       or use --verify-root
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+No changes to commit in verus/
