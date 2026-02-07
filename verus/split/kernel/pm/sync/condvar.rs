@@ -11,6 +11,9 @@
 //! - A new condvar has an empty sleeping queue and is well-formed.
 //! - `enqueue` adds exactly one entry to the back of the queue (FIFO).
 //! - `enqueue` requires the entry is not already present (uniqueness).
+//! - `enqueue` requires the pid is not the kernel process (safety invariant).
+//! - `try_enqueue` models `wait(alarm)` with alarm-expired guard: if expired,
+//!   the queue is unchanged; otherwise, enqueue proceeds.
 //! - `dequeue_first` removes the front entry (FIFO) and decreases length by 1.
 //! - `remove_at` removes the entry at a given index and preserves remaining order.
 //! - `remove_entry` removes a specific (pid, tid) entry by ghost index, models
@@ -75,7 +78,7 @@
 //! | Original API            | Verified Model         | Notes                         |
 //! |-------------------------|------------------------|-------------------------------|
 //! | `Condvar::new()`        | `new()`                | Direct correspondence.        |
-//! | `wait(alarm)`           | `enqueue(pid, tid)`    | Models queue insertion only.   |
+//! | `wait(alarm)`           | `try_enqueue(pid, tid, expired)` | Models alarm guard + queue insertion. |
 //! | `wait()` failure cleanup| `remove_entry()`       | Models `retain()` cleanup.    |
 //! | `wait()` full protocol  | (proof lemma)          | `lemma_wait_cleanup_restores_state`. |
 //! | `notify_first()`        | `dequeue_first()`      | Models queue removal only.     |
@@ -159,12 +162,14 @@
 //!   on the actual queue state at cleanup time, which may differ from the
 //!   enqueue-time state.
 //! - **T5: Search result correctness.** In `try_remove_by_pid` and
-//!   `try_remove_by_tid`, the `has_match` parameter is concrete (not ghost).
-//!   The caller must supply the correct value; the preconditions constrain
-//!   `has_match` to be consistent with `spec_contains_pid`/`spec_contains_tid`.
-//!   At runtime, the original computes this via `position()`. The model trusts
-//!   that the caller-supplied `has_match` faithfully represents the runtime
-//!   search result.
+//!   `try_remove_by_tid`, the `has_match` parameter is concrete (not ghost)
+//!   because the exec code branches on it (Verus cannot branch on ghost values
+//!   in exec mode). The caller must supply the correct value; the preconditions
+//!   constrain `has_match` to be consistent with
+//!   `spec_contains_pid`/`spec_contains_tid`, so an incorrect value makes
+//!   the precondition unsatisfiable. At runtime, the original computes this
+//!   via `position()`. A concrete call-site wrapper performing the search
+//!   would supply the correct value.
 //! - **T6: Arc lifetime management.** The original `reference_count()` returns
 //!   `Arc::strong_count()`. The verified model does not model reference
 //!   counting. Correct lifetime management (i.e., the condvar outlives all
@@ -241,6 +246,8 @@ impl Condvar {
             old(self).wf(),
             old(self).len < usize::MAX,
             !old(self).spec_contains_entry(pid_val as int, tid_val as int),
+            // The kernel process must not sleep (matches original panic guard).
+            pid_val as int != Condvar::spec_kernel_pid(),
         ensures
             self.len as nat == old(self).len as nat + 1,
             self@.sleeping =~= old(self)@.sleeping.push((pid_val as int, tid_val as int)),
@@ -277,6 +284,56 @@ impl Condvar {
         self.sleeping = Ghost(self.sleeping@.push((pid_val as int, tid_val as int)));
     }
 
+    /// Conditionally enqueues a (pid, tid) entry, modeling `wait()` with alarm.
+    ///
+    /// # Description
+    ///
+    /// Models the original `wait(alarm)` conditional: if the alarm has already
+    /// expired, the queue is not modified and `false` is returned. Otherwise,
+    /// the entry is enqueued and `true` is returned. The `alarm_expired`
+    /// parameter is concrete because the exec code branches on it. At runtime,
+    /// the original computes this by comparing `clock::now() >= alarm`.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid_val`: Process identifier value.
+    /// - `tid_val`: Thread identifier value.
+    /// - `alarm_expired`: Whether the alarm has already expired.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the entry was enqueued, `false` if the alarm was expired.
+    pub fn try_enqueue(
+        &mut self,
+        pid_val: i32,
+        tid_val: i32,
+        alarm_expired: bool,
+    ) -> (enqueued: bool)
+        requires
+            old(self).wf(),
+            old(self).len < usize::MAX,
+            !old(self).spec_contains_entry(pid_val as int, tid_val as int),
+            pid_val as int != Condvar::spec_kernel_pid(),
+        ensures
+            enqueued == !alarm_expired,
+            // If enqueued: queue grew by one.
+            enqueued ==> self.len as nat == old(self).len as nat + 1,
+            enqueued ==> self@.sleeping =~= old(self)@.sleeping.push(
+                (pid_val as int, tid_val as int),
+            ),
+            // If alarm expired: queue unchanged.
+            !enqueued ==> self@ == old(self)@,
+            !enqueued ==> self.len == old(self).len,
+            self.wf(),
+    {
+        if !alarm_expired {
+            self.enqueue(pid_val, tid_val);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Removes the front thread from the sleeping queue.
     ///
     /// # Description
@@ -297,6 +354,8 @@ impl Condvar {
                 1,
                 old(self)@.sleeping.len() as int,
             ),
+            // When dequeued, the removed entry was the front of the queue.
+            dequeued ==> old(self)@.sleeping[0] == old(self).spec_front(),
             !dequeued ==> self@ == old(self)@,
             self.wf(),
     {
@@ -466,6 +525,13 @@ impl Condvar {
     /// The `has_match` parameter indicates whether a matching entry exists.
     /// If `true`, the ghost index must point to the first matching entry.
     ///
+    /// **Note:** `has_match` is concrete (not ghost) because the exec code
+    /// branches on it. In the original, this is computed internally by
+    /// `position()`. The preconditions constrain `has_match` to be consistent
+    /// with `spec_contains_pid`, so an incorrect value makes the precondition
+    /// unsatisfiable. A concrete call-site wrapper performing the search would
+    /// supply the correct value. See trust assumption T5.
+    ///
     /// # Parameters
     ///
     /// - `pid_val`: Process identifier value to search for.
@@ -516,6 +582,7 @@ impl Condvar {
     /// case where `position()` returns `None` and the queue is unchanged.
     /// The `has_match` parameter indicates whether a matching entry exists.
     /// If `true`, the ghost index must point to the first matching entry.
+    /// See `try_remove_by_pid` for the rationale on `has_match` being concrete.
     ///
     /// # Parameters
     ///
@@ -569,6 +636,8 @@ impl Condvar {
     /// number of entries removed from the queue, not the number of successful
     /// wakeups. The original `notify_all()` returns the count of *successful*
     /// `ProcessManager::wakeup()` calls, which may be fewer if some fail.
+    /// The `spec_notify_all_result` predicate constrains the relationship:
+    /// `0 <= awakened <= total`.
     ///
     /// # Returns
     ///
@@ -578,6 +647,9 @@ impl Condvar {
             old(self).wf(),
         ensures
             count == old(self).len,
+            // Any actual awakened count from the original satisfies this.
+            Condvar::spec_notify_all_result(0, count as nat),
+            Condvar::spec_notify_all_result(count as nat, count as nat),
             self.len == 0,
             self.spec_is_empty(),
             self@ == Condvar::spec_new_view(),

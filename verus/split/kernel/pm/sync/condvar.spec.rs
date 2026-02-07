@@ -130,6 +130,28 @@ impl Condvar {
     pub open spec fn spec_drop_safe(&self) -> bool {
         self.spec_is_empty()
     }
+
+    /// Spec constant: the raw pid value of the kernel process.
+    ///
+    /// # Description
+    ///
+    /// Matches `ProcessIdentifier::KERNEL_RAW` (value 0) from the original.
+    /// The original `wait()` panics if this pid tries to sleep.
+    pub open spec fn spec_kernel_pid() -> int {
+        0
+    }
+
+    /// Spec predicate: constrains the possible return value of `notify_all()`.
+    ///
+    /// # Description
+    ///
+    /// The original `notify_all()` returns the count of *successful* wakeups,
+    /// which is at most the total number of entries drained. This predicate
+    /// captures the invariant `0 <= awakened <= total` without modeling
+    /// `ProcessManager::wakeup()` outcomes.
+    pub open spec fn spec_notify_all_result(awakened: nat, total: nat) -> bool {
+        awakened <= total
+    }
 }
 
 //==================================================================================================
