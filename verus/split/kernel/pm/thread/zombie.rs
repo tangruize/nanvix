@@ -151,15 +151,16 @@ impl ZombieThread {
     /// those that were stored in the ThreadState at construction time.
     /// After harvest, the ThreadState's stack fields are None, preserving
     /// wf() through the take-then-drop sequence.
-    pub fn harvest(mut self) -> (result: (Option<int>, Option<int>))
+    pub fn harvest(self) -> (result: (Option<int>, Option<int>))
         requires
             self.wf(),
         ensures
             result.0 == self.spec_kernel_stack(),
             result.1 == self.spec_user_stack(),
     {
-        let kstack: Option<int> = self.state.take_kernel_stack();
-        let ustack: Option<int> = self.state.take_user_stack();
+        let mut state: ThreadState = self.state;
+        let kstack: Option<int> = state.take_kernel_stack();
+        let ustack: Option<int> = state.take_user_stack();
         (kstack, ustack)
     }
 
