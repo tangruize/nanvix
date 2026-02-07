@@ -210,6 +210,11 @@ impl ZombieThread {
         self.state.spec_locked_mutex_count()
     }
 
+    /// Spec function: returns whether a specific mutex address is held.
+    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
+        self.state.spec_has_mutex(address)
+    }
+
     /// Spec function: checks if the state is drop-safe.
     pub open spec fn spec_drop_safe(&self) -> bool {
         self.state.spec_drop_safe()

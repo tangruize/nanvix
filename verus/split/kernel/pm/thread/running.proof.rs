@@ -238,7 +238,7 @@ impl RunningThread {
     {
     }
 
-    /// Lemma: exit() preserves mutex accounting.
+    /// Lemma: exit() preserves mutex accounting (count and per-address membership).
     pub proof fn lemma_exit_preserves_mutexes(&self, status: int)
         requires
             self.wf(),
@@ -246,6 +246,7 @@ impl RunningThread {
             ({
                 let z: ZombieThread = ZombieThread { state: self.state, status: status };
                 z.spec_locked_mutex_count() == self.spec_locked_mutex_count()
+                && (forall|a: int| z.spec_has_mutex(a) == self.spec_has_mutex(a))
             }),
     {
     }
@@ -319,6 +320,7 @@ impl RunningThread {
                 && zombie.spec_status() == status
                 && zombie.wf()
                 && zombie.spec_drop_safe() == state.spec_drop_safe()
+                && (forall|a: int| zombie.spec_has_mutex(a) == state.spec_has_mutex(a))
             }),
     {
     }
@@ -334,6 +336,43 @@ impl RunningThread {
         ensures
             a@ == b@,
     {
+    }
+
+    /// Lemma: A thread that acquires a mutex and then releases it returns to
+    /// its original mutex state (count and per-address membership). This
+    /// exercises non-trivial reasoning about store/take inverse relationship.
+    pub proof fn lemma_acquire_then_release_restores_mutex_state(
+        t: RunningThread,
+        address: Ghost<int>,
+    )
+        requires
+            t.wf(),
+            t.state.locked_mutex_count < usize::MAX,
+            !t.spec_has_mutex(address@),
+        ensures
+            ({
+                let after_acquire: RunningThread = RunningThread {
+                    state: ThreadState {
+                        locked_mutex_count: (t.state.locked_mutex_count + 1) as usize,
+                        locked_mutex_set: Ghost(t.state.locked_mutex_set@.insert(address@)),
+                        ..t.state
+                    },
+                };
+                let after_release: RunningThread = RunningThread {
+                    state: ThreadState {
+                        locked_mutex_count: (after_acquire.state.locked_mutex_count - 1) as usize,
+                        locked_mutex_set: Ghost(after_acquire.state.locked_mutex_set@.remove(address@)),
+                        ..after_acquire.state
+                    },
+                };
+                after_release.spec_locked_mutex_count() == t.spec_locked_mutex_count()
+                && (forall|a: int| after_release.spec_has_mutex(a) == t.spec_has_mutex(a))
+                && after_release.spec_drop_safe() == t.spec_drop_safe()
+            }),
+    {
+        // Trigger set extensionality: insert then remove is identity for non-member.
+        let s: Set<int> = t.state.locked_mutex_set@;
+        assert(s.insert(address@).remove(address@) =~= s);
     }
 }
 
@@ -426,6 +465,16 @@ impl ZombieThread {
             ({
                 let z: ZombieThread = ZombieThread { state: state, status: status };
                 z.wf()
+            }),
+    {
+    }
+
+    /// Lemma: from_state preserves per-address mutex membership.
+    pub proof fn lemma_from_state_preserves_mutexes(state: ThreadState, status: int)
+        ensures
+            ({
+                let z: ZombieThread = ZombieThread { state: state, status: status };
+                forall|a: int| z.spec_has_mutex(a) == state.spec_has_mutex(a)
             }),
     {
     }

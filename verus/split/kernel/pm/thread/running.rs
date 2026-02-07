@@ -214,6 +214,7 @@ impl ZombieThread {
     /// - `result.spec_id() == state.spec_id()`
     /// - `result.spec_status() == status`
     /// - `result.spec_locked_mutex_count() == state.spec_locked_mutex_count()`
+    /// - `forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a)`
     /// - `result.spec_drop_safe() == state.spec_drop_safe()`
     /// - `result.wf()`
     pub fn from_state(state: ThreadState, status: int) -> (result: ZombieThread)
@@ -223,6 +224,7 @@ impl ZombieThread {
             result.spec_id() == state.spec_id(),
             result.spec_status() == status,
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
+            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
             result.spec_drop_safe() == state.spec_drop_safe(),
             result.wf(),
     {
@@ -349,6 +351,12 @@ impl RunningThread {
     ///
     /// The real `RunningThread::exit()` also returns a `*mut ContextInformation`
     /// raw pointer. This is omitted (HAL boundary, unsafe raw pointer).
+    ///
+    /// **Design Note:** `spec_drop_safe()` is intentionally NOT a precondition.
+    /// The original code allows exit while holding mutexes (the `Drop` impl
+    /// only logs an error). This model faithfully mirrors that behavior.
+    /// Adding a `spec_drop_safe()` precondition would be a strengthening that
+    /// could be considered in a future iteration.
     pub fn exit(self, status: int) -> (result: ZombieThread)
         requires
             self.wf(),
@@ -356,6 +364,7 @@ impl RunningThread {
             result.spec_id() == self.spec_id(),
             result.spec_status() == status,
             result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
+            forall|a: int| result.spec_has_mutex(a) == self.spec_has_mutex(a),
             result.spec_drop_safe() == self.spec_drop_safe(),
             result.wf(),
     {
@@ -394,6 +403,13 @@ impl RunningThread {
     /// modeled as `Ghost<int>`. Returns unit (the `Option<MutexGuard>`
     /// return value is elided since the precondition guarantees the address
     /// is held).
+    ///
+    /// **API Strengthening Note:** The original returns `Option<MutexGuard>`,
+    /// allowing callers to handle a `None` (address not found) case. This
+    /// verified model requires `spec_has_mutex(address@)` as a precondition,
+    /// making the `None` path unreachable by construction. This is trust
+    /// assumption T2: callers release only what they hold. Runtime callers
+    /// outside the verification boundary must ensure this precondition.
     ///
     /// # Parameters
     ///
