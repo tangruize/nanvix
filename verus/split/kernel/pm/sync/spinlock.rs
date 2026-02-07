@@ -50,11 +50,11 @@
 //!
 //! ## Trust Boundaries
 //!
-//! - `lock()`: Uses `external_body` because the spin-wait loop relies on atomic CAS
-//!   and cannot be proven to terminate without reasoning about concurrent unlock.
-//!   This is justified as a HAL-level operation (atomic CPU instructions).
-//!   In the sequential model, `lock()` requires the lock to be unlocked to prevent
-//!   modeling infinite loops (deadlocks).
+//! - `lock()`: Fully verified. The sequential model's preconditions (`wf()`,
+//!   `spec_is_unlocked()`, `!token_issued()`) guarantee that the lock is acquirable,
+//!   so `lock()` delegates to `try_lock()` without needing `external_body`. The
+//!   original implementation's spin-wait loop (atomic CAS + pause) is a HAL-level
+//!   concern not modeled in the sequential verification.
 //! - `SpinlockGuard` and `Drop`: Modeled via tracked `LockToken` ghost state. The
 //!   original uses RAII via `SpinlockGuard<'a>` to auto-release on drop. Since Verus
 //!   cannot reason about `Drop` directly, we model the obligation using a tracked ghost
@@ -95,20 +95,20 @@ verus! {
 ///
 /// # Representation
 ///
-/// The `locked` field is `pub` for Verus spec reasoning. The original type
-/// uses `AtomicBool` with interior mutability. Verified code should use
-/// the provided methods rather than direct field access. The ghost `id`
-/// field provides instance identity for token binding (erased at runtime).
+/// The fields are `pub(crate)` for Verus spec reasoning within the crate.
+/// External code should use the provided methods and `View` trait rather than
+/// direct field access. The ghost `id` field provides instance identity for
+/// token binding (erased at runtime).
 pub struct Spinlock {
     /// Lock state: `true` means locked, `false` means unlocked.
-    pub locked: bool,
+    pub(crate) locked: bool,
     /// Ghost identity for distinguishing lock instances.
     /// Callers must provide a unique `id` per instance at construction time.
     /// Wrapped in `Ghost` for zero-cost erasure at runtime.
-    pub id: Ghost<nat>,
+    pub(crate) id: Ghost<nat>,
     /// Ghost tracking of whether a `LockToken` is currently outstanding.
     /// Set to `true` on lock acquisition, `false` on unlock.
-    pub token_issued: Ghost<bool>,
+    pub(crate) token_issued: Ghost<bool>,
 }
 
 //==================================================================================================
@@ -191,18 +191,15 @@ impl Spinlock {
     /// Repeatedly attempts `compare_exchange(false, true)` until the lock is
     /// acquired. Between attempts, calls `arch::cpu::pause()` as a CPU hint.
     ///
-    /// Uses `external_body` because:
-    /// - The original implementation uses `AtomicBool::compare_exchange` in a loop.
-    /// - Termination depends on another execution context releasing the lock.
-    /// - Verus cannot reason about atomic memory operations or spin-wait termination.
-    ///
     /// The `requires` clause enforces sequential-model safety: calling `lock()` on an
     /// already-locked spinlock would be an infinite loop (deadlock) in the sequential model.
+    /// With the biconditional `wf()`, `wf() && !token_issued` implies `!locked`, so the
+    /// lock is guaranteed to be acquirable. The body delegates to `try_lock()`, which
+    /// always succeeds under these preconditions, eliminating the need for `external_body`.
     ///
     /// Returns a tracked `LockToken` that the caller must pass to `unlock()` to
     /// discharge the lock-release obligation. This models the `SpinlockGuard` RAII
     /// pattern from the original implementation.
-    #[verifier::external_body]
     pub fn lock(&mut self) -> (token: Tracked<LockToken>)
         requires
             old(self).spec_is_unlocked(),
@@ -216,7 +213,9 @@ impl Spinlock {
             token@.view == self@,
             self.wf(),
     {
-        unimplemented!()
+        let (_success, Tracked(opt_token)) = self.try_lock();
+        let tracked token: LockToken = opt_token.tracked_unwrap();
+        Tracked(token)
     }
 
     /// Releases the spinlock.
