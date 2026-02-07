@@ -129,10 +129,14 @@
 //!
 //! - **T1: Queue element uniqueness.** The original code assumes each thread
 //!   appears at most once in the sleeping queue (a thread cannot wait twice).
-//!   The verified model enforces this structurally: `wf()` includes
-//!   `spec_all_unique()`, so every exec operation requires and ensures
-//!   uniqueness. The `enqueue` function explicitly requires the entry is not
-//!   already present, matching the protocol invariant.
+//!   This is a valid protocol invariant: a thread that calls `wait()` blocks
+//!   in `ProcessManager::sleep()`, so it cannot call `wait()` again until it
+//!   is woken up and the entry is removed. The original does not check for
+//!   duplicates because the protocol makes duplicates unreachable. The verified
+//!   model enforces this structurally: `wf()` includes `spec_all_unique()`, so
+//!   every exec operation requires and ensures uniqueness. The `enqueue`
+//!   function explicitly requires the entry is not already present, matching
+//!   the protocol invariant.
 //! - **T2: Drop discipline.** The queue must be empty when the condvar is
 //!   dropped. The original enforces this via a panic in `Drop::drop`. The
 //!   verified model formalizes this with `spec_drop_safe()` and proves that
@@ -141,7 +145,10 @@
 //! - **T3: Queue length bound.** The queue length never reaches `usize::MAX`.
 //!   The verified `enqueue()` requires `len < usize::MAX` to prevent overflow.
 //!   The original has no explicit check but this is practically guaranteed
-//!   since the number of threads is bounded by system resources.
+//!   since the number of threads is bounded by system resources. In Nanvix,
+//!   thread creation is managed by the ProcessManager with finite limits,
+//!   making `usize::MAX` threads unreachable. A runtime guard is unnecessary
+//!   given these system-level constraints.
 //! - **T4: Sequential wait protocol.** The wait protocol lemmas
 //!   (`lemma_wait_cleanup_restores_state`, `lemma_wait_protocol_preserves_wf`)
 //!   prove correctness assuming no concurrent modifications between enqueue
