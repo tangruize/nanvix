@@ -1,0 +1,109 @@
+=== Verus Verification ===
+Timestamp: Sun Feb  8 00:07:22 CST 2026
+Module: kernel::pm::thread::zombie
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::zombie
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0308]: mismatched types
+   --> kernel/pm/thread/zombie.rs:156:17
+    |
+156 |             old(self).wf(),
+    |             --- ^^^^ expected `&mut _`, found `ZombieThread`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected mutable reference `&mut _`
+                          found struct `kernel::pm::thread::zombie::ZombieThread`
+note: function defined here
+   --> /home/runner/work/verus/verus/source/builtin/src/lib.rs:284:8
+help: consider mutably borrowing here
+    |
+156 |             old(&mut self).wf(),
+    |                 ++++
+
+error[E0282]: type annotations needed
+   --> kernel/pm/thread/zombie.rs:156:13
+    |
+156 |             old(self).wf(),
+    |             ^^^       -- type must be known at this point
+    |             |
+    |             cannot infer type of the type parameter `A` declared on the function `old`
+    |
+help: consider specifying the generic argument
+    |
+156 |             old::<A>(self).wf(),
+    |                +++++
+
+error[E0308]: mismatched types
+   --> kernel/pm/thread/zombie.rs:158:29
+    |
+158 |             result.0 == old(self).spec_kernel_stack(),
+    |                         --- ^^^^ expected `&mut _`, found `ZombieThread`
+    |                         |
+    |                         arguments to this function are incorrect
+    |
+    = note: expected mutable reference `&mut _`
+                          found struct `kernel::pm::thread::zombie::ZombieThread`
+note: function defined here
+   --> /home/runner/work/verus/verus/source/builtin/src/lib.rs:284:8
+help: consider mutably borrowing here
+    |
+158 |             result.0 == old(&mut self).spec_kernel_stack(),
+    |                             ++++
+
+error[E0282]: type annotations needed
+   --> kernel/pm/thread/zombie.rs:158:25
+    |
+158 |             result.0 == old(self).spec_kernel_stack(),
+    |                         ^^^       ----------------- type must be known at this point
+    |                         |
+    |                         cannot infer type of the type parameter `A` declared on the function `old`
+    |
+help: consider specifying the generic argument
+    |
+158 |             result.0 == old::<A>(self).spec_kernel_stack(),
+    |                            +++++
+
+error[E0308]: mismatched types
+   --> kernel/pm/thread/zombie.rs:159:29
+    |
+159 |             result.1 == old(self).spec_user_stack(),
+    |                         --- ^^^^ expected `&mut _`, found `ZombieThread`
+    |                         |
+    |                         arguments to this function are incorrect
+    |
+    = note: expected mutable reference `&mut _`
+                          found struct `kernel::pm::thread::zombie::ZombieThread`
+note: function defined here
+   --> /home/runner/work/verus/verus/source/builtin/src/lib.rs:284:8
+help: consider mutably borrowing here
+    |
+159 |             result.1 == old(&mut self).spec_user_stack(),
+    |                             ++++
+
+error[E0282]: type annotations needed
+   --> kernel/pm/thread/zombie.rs:159:25
+    |
+159 |             result.1 == old(self).spec_user_stack(),
+    |                         ^^^       --------------- type must be known at this point
+    |                         |
+    |                         cannot infer type of the type parameter `A` declared on the function `old`
+    |
+help: consider specifying the generic argument
+    |
+159 |             result.1 == old::<A>(self).spec_user_stack(),
+    |                            +++++
+
+error: aborting due to 6 previous errors
+
+Some errors have detailed explanations: E0282, E0308.
+For more information about an error, try `rustc --explain E0282`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::zombie (verified:0, errors:0)
