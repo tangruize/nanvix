@@ -49,6 +49,8 @@ impl Capability {
     }
 
     /// Spec function: maps a valid discriminant to the expected capability variant.
+    ///
+    /// For out-of-range inputs, the result is unspecified (`arbitrary()`).
     pub open spec fn spec_from_discriminant(value: int) -> Capability
         recommends Self::spec_is_valid_discriminant(value)
     {
@@ -60,8 +62,10 @@ impl Capability {
             Capability::IoManagement
         } else if value == 3 {
             Capability::MemoryManagement
-        } else {
+        } else if value == 4 {
             Capability::ProcessManagement
+        } else {
+            arbitrary()
         }
     }
 }

@@ -14,10 +14,21 @@
 //! - Round-trip: try_from_u32(cap.to_u32()) == Ok(cap).
 //! - Error paths return `ErrorCode::InvalidArgument`.
 //!
+//! ## Verification Additions
+//!
+//! The following items are added for verification and do not exist in the
+//! original source (`src/libs/sys/src/sys/pm/capability.rs`):
+//! - `to_u32`: auxiliary exec function enabling round-trip proofs.
+//! - `PartialEq`/`Eq` derives: required by Verus for equality reasoning.
+//! - `CapabilityView` and `View` impl: abstract view for composability
+//!   with larger verified modules.
+//!
 //! ## Trust Boundary
 //!
 //! No `external_body` or `assume` is used in this module.
-//! All properties are fully verified.
+//! All properties are fully verified. Discriminant values (0..=4) are
+//! explicitly mapped in both exec and spec code; no `#[repr]` annotation
+//! is used, so the mapping does not depend on compiler-assigned layout.
 
 use crate::libs::error::{
     Error,
@@ -104,6 +115,11 @@ impl Capability {
     }
 
     /// Converts a Capability to its u32 discriminant value.
+    ///
+    /// # Note
+    ///
+    /// This function is a verification auxiliary not present in the original source.
+    /// It enables round-trip proofs for discriminant conversion.
     ///
     /// # Returns
     ///
