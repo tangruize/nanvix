@@ -71,6 +71,10 @@
 //! This verification proves the **state management protocol** is correct:
 //! field updates follow Option semantics, ID is immutable, mutex guard
 //! tracking is consistent with per-key semantics, and drop safety holds.
+//! Drop safety verification proves the *detection mechanism* is correct
+//! (`check_drop_safe()` ↔ `spec_drop_safe()`); *enforcement* that
+//! `spec_drop_safe()` holds at all drop sites requires protocol-level
+//! verification of callers.
 //! The following are out of scope:
 //! - Raw pointer safety for `context_mut()` / `fpu_state_mut()`.
 //! - Interior mutability / shared ownership of `Condvar`.
@@ -128,6 +132,11 @@ impl ThreadState {
     /// - `kernel_stack`: Optional abstract kernel stack resource token.
     /// - `user_stack`: Optional abstract user stack resource token.
     /// - `user_tda`: Optional base address for user-space thread data area.
+    ///
+    /// # Omitted Parameters
+    ///
+    /// The original constructor also takes `context: ContextInformation` and
+    /// `fpu_state: FpuState` (opaque HAL types, out of verification scope).
     ///
     /// # Returns
     ///
