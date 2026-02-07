@@ -60,7 +60,11 @@
 //!   holds in correct executions. The precondition formalizes this kernel invariant.
 //! - **T2: Release-what-you-hold.** `take_mutex_guard` requires
 //!   `self.spec_has_mutex(address@)`. In the original kernel, a thread releases
-//!   only mutexes it holds. The precondition formalizes this.
+//!   only mutexes it holds. The precondition formalizes this. The original
+//!   returns `Option<MutexGuard>`, handling the not-found case with `None`.
+//!   The verified model eliminates that path by construction: callers must
+//!   prove they hold the mutex. Callers outside the verification boundary
+//!   are responsible for ensuring this invariant holds at runtime.
 //!
 //! ## Verification Scope
 //!
@@ -189,6 +193,7 @@ impl ThreadState {
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
         let stack: Option<int> = self.kernel_stack;
@@ -215,6 +220,7 @@ impl ThreadState {
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
         let stack: Option<int> = self.user_stack;
@@ -238,6 +244,7 @@ impl ThreadState {
             self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
         self.interrupt_reason = Some(reason);
@@ -260,6 +267,7 @@ impl ThreadState {
             self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
         let reason: Option<int> = self.interrupt_reason;
@@ -378,6 +386,7 @@ impl ThreadState {
             self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
         self.user_tda = user_tda;
