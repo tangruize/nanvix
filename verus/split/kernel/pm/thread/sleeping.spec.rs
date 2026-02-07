@@ -139,6 +139,13 @@ impl SleepingThread {
     }
 
     /// Spec function: checks if a reason tag is valid (one of the two variants).
+    ///
+    /// This predicate models the Rust enum `InterruptReason { Killed, TimedOut }`
+    /// as an int tag domain `{0, 1}`. Soundness depends on the enum↔int
+    /// correspondence documented on `INTERRUPT_REASON_KILLED()` and
+    /// `INTERRUPT_REASON_TIMED_OUT()` above.
+    /// TODO (cross-module): Discharge via a verified conversion lemma in the
+    /// `InterruptReason` module once it is verified.
     pub open spec fn spec_valid_reason(reason: int) -> bool {
         reason == INTERRUPT_REASON_KILLED() || reason == INTERRUPT_REASON_TIMED_OUT()
     }
