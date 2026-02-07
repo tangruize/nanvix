@@ -160,10 +160,9 @@ impl Spinlock {
     ///
     /// NOTE: Verification helper — not present in original source. Decomposes the
     /// single CAS operation from `lock()`'s loop body for verifiable reasoning.
-    /// With the strengthened `wf()` biconditional, `wf() && !token_issued` implies
-    /// `!locked`, so `try_lock()` always succeeds on well-formed spinlocks. The
-    /// failure path exists for completeness but is unreachable from `new()`-constructed
-    /// spinlocks.
+    /// Both success and failure paths are non-vacuously verified: calling on an
+    /// unlocked spinlock succeeds; calling on a locked spinlock (with token
+    /// outstanding) fails and preserves state.
     ///
     /// # Returns
     ///
@@ -172,7 +171,6 @@ impl Spinlock {
     pub fn try_lock(&mut self) -> (result: (bool, Tracked<Option<LockToken>>))
         requires
             old(self).wf(),
-            !old(self).token_issued(),
         ensures
             result.0 == !old(self).locked,
             self.locked,
@@ -182,6 +180,7 @@ impl Spinlock {
             result.0 ==> result.1@.is_some(),
             result.0 ==> result.1@.unwrap().view == self@,
             !result.0 ==> result.1@.is_none(),
+            !result.0 ==> self@.token_issued == old(self)@.token_issued,
             self.wf(),
     {
         if !self.locked {
@@ -203,9 +202,8 @@ impl Spinlock {
     ///
     /// The `requires` clause enforces sequential-model safety: calling `lock()` on an
     /// already-locked spinlock would be an infinite loop (deadlock) in the sequential model.
-    /// With the biconditional `wf()`, `wf() && !token_issued` implies `!locked`, so the
-    /// lock is guaranteed to be acquirable. The body delegates to `try_lock()`, which
-    /// always succeeds under these preconditions, eliminating the need for `external_body`.
+    /// Under `lock()`'s preconditions (`spec_is_unlocked()` + `wf()`), `try_lock()` is
+    /// guaranteed to succeed, so delegation is sound without `external_body`.
     ///
     /// Returns a tracked `LockToken` that the caller must pass to `unlock()` to
     /// discharge the lock-release obligation. This models the `SpinlockGuard` RAII
