@@ -71,14 +71,16 @@ impl Spinlock {
     ///
     /// # Description
     ///
-    /// Enforces the token-ownership invariant: if the lock is unlocked, no token
-    /// can be outstanding. If locked, a token may or may not be outstanding
-    /// (it is issued on lock and consumed on unlock).
+    /// Enforces the token-ownership biconditional: the lock is held if and only if
+    /// a token is outstanding. This captures the full reachable-state invariant:
+    /// - `new()` produces `(locked=false, token_issued=false)`.
+    /// - `lock()`/`try_lock()` transitions to `(locked=true, token_issued=true)`.
+    /// - `unlock()` transitions to `(locked=false, token_issued=false)`.
     ///
-    /// This prevents states like "unlocked with token outstanding" which would
-    /// allow double-unlock or use-after-release.
+    /// This prevents both "unlocked with token outstanding" (double-unlock) and
+    /// "locked without token" (unreachable from API, but now excluded by wf).
     pub open spec fn wf(&self) -> bool {
-        !self.locked ==> !self.token_issued()
+        self.locked == self.token_issued()
     }
 
     /// Spec function: returns whether a token is currently outstanding.

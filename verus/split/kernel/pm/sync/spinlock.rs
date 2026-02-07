@@ -150,6 +150,10 @@ impl Spinlock {
     ///
     /// NOTE: Verification helper — not present in original source. Decomposes the
     /// single CAS operation from `lock()`'s loop body for verifiable reasoning.
+    /// With the strengthened `wf()` biconditional, `wf() && !token_issued` implies
+    /// `!locked`, so `try_lock()` always succeeds on well-formed spinlocks. The
+    /// failure path exists for completeness but is unreachable from `new()`-constructed
+    /// spinlocks.
     ///
     /// # Returns
     ///
