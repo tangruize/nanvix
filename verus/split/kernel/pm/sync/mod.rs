@@ -3,4 +3,5 @@
 
 pub mod condvar;
 pub mod fence;
+pub mod mutex;
 pub mod spinlock;
