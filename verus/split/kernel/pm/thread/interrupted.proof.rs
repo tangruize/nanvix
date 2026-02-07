@@ -134,7 +134,7 @@ impl InterruptedThread {
                     ..self.state
                 };
                 post_state.spec_locked_mutex_count() == self.spec_locked_mutex_count()
-                && (forall|a: int| post_state.spec_has_mutex(a) == self.state.spec_has_mutex(a))
+                && (forall|a: int| #![auto] post_state.spec_has_mutex(a) == self.state.spec_has_mutex(a))
             }),
     {
     }
