@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 10:12:19 CST 2026
+Module: kernel::pm::sys::pid
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sys::pid
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: cannot call function `lib::kernel::pm::sys::pid::ProcessIdentifier::from_i32` with mode exec
+  --> kernel/pm/sys/pid.proof.rs:44:13
+   |
+44 |             ProcessIdentifier::from_i32(raw).spec_value() == raw as int,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+No changes to commit in verus/
