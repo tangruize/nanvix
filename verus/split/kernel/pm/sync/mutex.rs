@@ -125,12 +125,15 @@
 //!    linearization point: it atomically reads and conditionally writes the lock
 //!    state, so the lock-state transition is equivalent to the sequential model's
 //!    `if !self.locked { self.locked = true; ... }`.
-//! 2. Each `store(false, Release)` in `unlock_unchecked()` is a linearization point:
+//! 2. Each `store(false, Relaxed)` in `unlock_unchecked()` is a linearization point:
 //!    it atomically sets the lock state to unlocked, equivalent to the sequential
 //!    model's `self.locked = false`.
-//! 3. If the atomic operations are linearizable (guaranteed by x86 TSO and the
-//!    `Acquire`/`Release` ordering), then any concurrent execution is equivalent
-//!    to some sequential interleaving of `try_lock()`/`unlock()` calls.
+//! 3. If the atomic operations are linearizable (guaranteed by x86 TSO, which
+//!    upgrades all stores to effective release semantics), then any concurrent
+//!    execution is equivalent to some sequential interleaving of
+//!    `try_lock()`/`unlock()` calls. Note: the original uses `Relaxed` ordering
+//!    for the unlock store, so this argument is architecture-specific to x86 TSO
+//!    and does not hold on weakly-ordered architectures (e.g., ARM, RISC-V).
 //! 4. The sequential model proves every such interleaving preserves `wf()`, so the
 //!    concurrent implementation also preserves `wf()` under linearizability.
 //!
