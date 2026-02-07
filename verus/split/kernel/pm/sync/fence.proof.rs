@@ -235,7 +235,7 @@ impl Fence {
     /// bridging the gap between per-step correctness and end-to-end protocol
     /// completion.
     ///
-    /// Unlike `lemma_total_signals_satisfies` (a static arithmetic fact), this
+    /// Unlike `lemma_equality_implies_satisfaction` (a static arithmetic fact), this
     /// lemma reasons about the accumulation of `n` signal operations from an
     /// arbitrary starting state.
     pub proof fn lemma_signals_accumulate_to_satisfaction(count: nat, n: nat, total: nat)
