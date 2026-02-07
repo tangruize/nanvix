@@ -262,7 +262,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    locked_mutex_count: self.locked_mutex_count + 1,
+                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
                     ..*self
                 };
                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() + 1
@@ -278,7 +278,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count - 1) as nat,
+                    locked_mutex_count: (self.locked_mutex_count - 1) as usize,
                     ..*self
                 };
                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() - 1
@@ -390,7 +390,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    locked_mutex_count: self.locked_mutex_count + 1,
+                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
                     ..*self
                 };
                 post.wf()
@@ -406,7 +406,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count - 1) as nat,
+                    locked_mutex_count: (self.locked_mutex_count - 1) as usize,
                     ..*self
                 };
                 post.wf()
