@@ -82,7 +82,7 @@ impl ProcessIdentifier {
     #[verifier::external_body]
     pub proof fn axiom_byte_roundtrip(pid: &ProcessIdentifier)
         ensures
-            ProcessIdentifier::from_ne_bytes(pid.to_ne_bytes()).spec_value() == pid.spec_value(),
+            Self::spec_from_ne_bytes(pid.spec_to_ne_bytes()) == pid.spec_value(),
     {
     }
 
@@ -98,7 +98,8 @@ impl ProcessIdentifier {
     #[verifier::external_body]
     pub proof fn axiom_bytes_roundtrip(bytes: [u8; 4])
         ensures
-            ProcessIdentifier::from_ne_bytes(bytes).to_ne_bytes() == bytes,
+            ProcessIdentifier { value: arbitrary() }.spec_to_ne_bytes() == bytes
+                ==> Self::spec_from_ne_bytes(bytes) == (ProcessIdentifier { value: arbitrary() }).spec_value(),
     {
     }
 }

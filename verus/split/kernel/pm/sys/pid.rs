@@ -348,6 +348,8 @@ impl ProcessIdentifier {
     /// See `axiom_byte_roundtrip` proof lemma for the assumed property.
     #[verifier::external_body]
     pub fn to_ne_bytes(&self) -> (result: [u8; 4])
+        ensures
+            result == self.spec_to_ne_bytes(),
     {
         self.value.to_ne_bytes()
     }
@@ -370,6 +372,8 @@ impl ProcessIdentifier {
     /// See `axiom_byte_roundtrip` proof lemma for the assumed property.
     #[verifier::external_body]
     pub fn from_ne_bytes(bytes: [u8; 4]) -> (result: ProcessIdentifier)
+        ensures
+            result.spec_value() == Self::spec_from_ne_bytes(bytes),
     {
         ProcessIdentifier { value: i32::from_ne_bytes(bytes) }
     }
