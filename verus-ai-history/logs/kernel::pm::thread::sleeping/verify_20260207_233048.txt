@@ -1,0 +1,25 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 23:30:48 CST 2026
+Module: kernel::pm::thread::sleeping
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::sleeping
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: invalid suffix `int` for number literal
+   --> kernel/pm/thread/sleeping.rs:169:53
+    |
+169 |         ReadyThread { state: state, admission_time: 0int }
+    |                                                     ^^^^ invalid suffix `int`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::sleeping (verified:0, errors:0)
