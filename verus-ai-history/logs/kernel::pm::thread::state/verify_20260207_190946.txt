@@ -1,0 +1,38 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 19:09:46 CST 2026
+Module: kernel::pm::thread::state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::state
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.proof.rs:307:13
+    |
+303 |     pub proof fn lemma_zero_mutexes_is_drop_safe(&self)
+    |     --------------------------------------------------- at the end of the function body
+...
+307 |             self.spec_drop_safe(),
+    |             ^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.proof.rs:316:13
+    |
+312 |     pub proof fn lemma_nonzero_mutexes_not_drop_safe(&self)
+    |     ------------------------------------------------------- at the end of the function body
+...
+316 |             !self.spec_drop_safe(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 36 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 36
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::state (verified:36, errors:2)
