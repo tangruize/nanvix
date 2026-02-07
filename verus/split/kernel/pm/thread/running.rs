@@ -17,7 +17,8 @@
 //!   accounting, and drop safety.
 //! - `exit()` transitions to ZombieThread with the provided exit status,
 //!   preserving identity, wf, mutex accounting, and drop safety.
-//! - `store_mutex_guard` / `take_mutex_guard` preserve identity, wf, and
+//! - `store_mutex_guard` / `take_mutex_guard` (via `put_mutex_guard` /
+//!   `take_mutex_guard`) preserve identity, wf, and
 //!   correctly update per-address mutex accounting.
 //! - `thread_state()` returns a reference with the same identity and state.
 //! - `id()` correctly returns the thread identifier.
@@ -381,14 +382,16 @@ impl RunningThread {
 
     /// Stores a mutex guard address in the underlying thread state.
     ///
-    /// Models `put_mutex_guard` from the original. The `MutexAddress` is
-    /// modeled as `Ghost<int>` and the `MutexGuard` RAII payload is elided
+    /// Models `put_mutex_guard` from the original `RunningThread`. Named to
+    /// match the original public API. Internally delegates to
+    /// `ThreadState::store_mutex_guard`. The `MutexAddress` is modeled as
+    /// `Ghost<int>` and the `MutexGuard` RAII payload is elided
     /// (protocol-only accounting).
     ///
     /// # Parameters
     ///
     /// - `address`: Ghost address of the mutex being locked.
-    pub fn store_mutex_guard(&mut self, address: Ghost<int>)
+    pub fn put_mutex_guard(&mut self, address: Ghost<int>)
         requires
             old(self).wf(),
             old(self).state.locked_mutex_count < usize::MAX,
@@ -456,7 +459,7 @@ impl RunningThread {
     /// functions can express the signature.
     ///
     /// **Prefer verified forwarding methods when possible:**
-    /// - `store_mutex_guard()` / `take_mutex_guard()` for mutex accounting.
+    /// - `put_mutex_guard()` / `take_mutex_guard()` for mutex accounting.
     ///
     /// This escape hatch is still needed for opaque HAL operations
     /// (e.g., `fpu_state_mut()`, `context_mut()`) that cannot be modeled.
