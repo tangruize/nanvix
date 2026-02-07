@@ -454,6 +454,23 @@ impl ProcessIdentifier {
         self.value == other.value
     }
 
+    /// Checks if two ProcessIdentifiers are not equal.
+    ///
+    /// # Parameters
+    ///
+    /// - `other`: The other ProcessIdentifier to compare with.
+    ///
+    /// # Returns
+    ///
+    /// True if values differ.
+    #[inline]
+    pub fn ne(&self, other: &ProcessIdentifier) -> (result: bool)
+        ensures
+            result == (self.spec_value() != other.spec_value()),
+    {
+        self.value != other.value
+    }
+
     /// Compares two ProcessIdentifiers for ordering.
     ///
     /// # Parameters
@@ -571,6 +588,8 @@ impl PartialOrd for ProcessIdentifier {
 
 impl Ord for ProcessIdentifier {
     /// Compares two ProcessIdentifiers for total ordering.
+    /// Note: accesses `value` field directly because no single verified method
+    /// returns `core::cmp::Ordering`. Consistent with verified `lt`/`le`/`gt`/`ge`.
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.value.cmp(&other.value)
     }

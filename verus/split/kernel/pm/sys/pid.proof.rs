@@ -105,6 +105,23 @@ impl ProcessIdentifier {
     {
     }
 
+    /// Axiom: `spec_from_ne_bytes` always returns a value in i32 range.
+    ///
+    /// # Note
+    ///
+    /// This is an assumed property based on Rust's `i32::from_ne_bytes` semantics:
+    /// every 4-byte array decodes to a valid i32 value. Without this axiom,
+    /// downstream proofs cannot establish that a decoded PID value is within i32
+    /// range, which could block proof composition for functions with i32-range
+    /// preconditions. This axiom also makes `axiom_decode_encode_roundtrip` more
+    /// usable, since it ensures the `v as i32` cast in that axiom is non-truncating.
+    #[verifier::external_body]
+    pub proof fn axiom_from_ne_bytes_in_range(bytes: [u8; 4])
+        ensures
+            i32::MIN as int <= Self::spec_from_ne_bytes(bytes) <= i32::MAX as int,
+    {
+    }
+
     /// Lemma: ProcessIdentifier has the same size as i32 (4 bytes).
     ///
     /// # Note
