@@ -452,5 +452,6 @@ impl Condvar {
     {
         Condvar::lemma_remove_entry_absent(s, idx);
     }
+}
 
 } // verus!
