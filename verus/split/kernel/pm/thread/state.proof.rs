@@ -259,6 +259,7 @@ impl ThreadState {
     pub proof fn lemma_store_mutex_guard_increments(&self)
         requires
             self.wf(),
+            self.locked_mutex_count < usize::MAX,
         ensures
             ({
                 let post: ThreadState = ThreadState {
@@ -387,6 +388,7 @@ impl ThreadState {
     pub proof fn lemma_store_mutex_guard_preserves_wf(&self)
         requires
             self.wf(),
+            self.locked_mutex_count < usize::MAX,
         ensures
             ({
                 let post: ThreadState = ThreadState {
