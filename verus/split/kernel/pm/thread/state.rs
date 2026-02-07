@@ -139,7 +139,7 @@ impl ThreadState {
             user_tda: user_tda,
             interrupt_reason: None,
             locked_mutex_count: 0usize,
-            locked_mutex_set: Ghost(Set::empty()),
+            locked_mutex_set: Set::empty(),
         }
     }
 
