@@ -282,6 +282,25 @@ impl Semaphore {
     {
     }
 
+    /// Lemma: `up()` overflow guard is satisfiable for bounded semaphores.
+    ///
+    /// # Description
+    ///
+    /// If a semaphore operates within a bounded resource pool (current value
+    /// never exceeds the initial allocation, and the initial value fits in
+    /// `usize`), then the `up()` precondition `value < usize::MAX` (T1) is
+    /// always satisfiable. This connects `lemma_resource_conservation` to
+    /// the overflow guard: callers can discharge T1 by establishing the
+    /// initial pool size is less than `usize::MAX`.
+    pub proof fn lemma_up_overflow_safe_when_bounded(current: nat, initial: nat)
+        requires
+            current <= initial,
+            initial < usize::MAX as nat,
+        ensures
+            current < usize::MAX as nat,
+    {
+    }
+
     //==============================================================================================
     // Blocking Protocol Properties (Ghost State Transitions)
     //==============================================================================================
@@ -375,6 +394,12 @@ impl Semaphore {
     /// (each cycle: up increments value to 1, wake decrements value back
     /// to 0 and decrements waiters by 1), all waiters have acquired and
     /// the semaphore reaches (value=0, waiters=0).
+    ///
+    /// **Scope:** This is a spec-level state-machine property, not an exec
+    /// liveness guarantee. It proves the abstract protocol drains all waiters
+    /// given sufficient up-wake cycles, but does not model fairness, scheduling,
+    /// or real exec transitions. See "Verification Scope" and "Ghost State
+    /// Architecture" in the module documentation.
     ///
     /// Proved by induction on w, chaining `lemma_up_wake_cycle` at each step.
     pub proof fn lemma_all_waiters_eventually_served(w: nat)
