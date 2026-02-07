@@ -1,6 +1,6 @@
 {
   "module_name": "sleeping_thread",
-  "outer_iteration": 2,
+  "outer_iteration": 3,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "741df60e-008a-4562-96de-06eaafefe950",
