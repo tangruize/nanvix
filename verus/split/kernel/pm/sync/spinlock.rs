@@ -7,14 +7,16 @@
 //!
 //! ## Verified Properties
 //!
-//! - A new spinlock is always unlocked.
+//! - A new spinlock is always unlocked with no token outstanding.
 //! - `try_lock` succeeds iff the lock was previously unlocked, and locks it.
 //! - `try_lock` fails iff the lock was previously locked, leaving state unchanged.
-//! - `unlock` transitions the lock from locked to unlocked.
+//! - `unlock` transitions the lock from locked to unlocked and consumes the token.
 //! - Lock-then-unlock round-trip restores the original unlocked state.
 //! - `spec_is_locked` and `spec_is_unlocked` are complementary predicates.
 //! - Lock instance identity (`id`) is preserved across all state transitions.
 //! - Tokens are bound to the producing lock instance via view identity.
+//! - Well-formedness (`wf()`) enforces: unlocked implies no token outstanding.
+//! - Token issuance is tracked: only one token per lock at a time.
 //!
 //! ## Verification Model
 //!
@@ -49,6 +51,14 @@
 //!   lock instance cannot unlock a different instance. This makes the lock-release
 //!   obligation explicit and instance-bound at the type level.
 //! - `arch::cpu::pause()`: CPU hint with no semantic effect on lock state.
+//!
+//! ## Trust Assumptions
+//!
+//! - **T1: ID Uniqueness.** Callers must provide a unique ghost `id` per spinlock
+//!   instance. If two spinlocks share the same `id`, token isolation between them is
+//!   not guaranteed. This parallels the original's reliance on reference identity
+//!   (`&'a Spinlock`) which Verus cannot reason about. A global ghost ID allocator
+//!   could enforce this mechanically but is outside the current scope.
 
 use vstd::prelude::*;
 
@@ -84,6 +94,9 @@ pub struct Spinlock {
     /// Callers must provide a unique `id` per instance at construction time.
     /// Wrapped in `Ghost` for zero-cost erasure at runtime.
     pub id: Ghost<nat>,
+    /// Ghost tracking of whether a `LockToken` is currently outstanding.
+    /// Set to `true` on lock acquisition, `false` on unlock.
+    pub token_issued: Ghost<bool>,
 }
 
 //==================================================================================================
@@ -109,7 +122,7 @@ impl Spinlock {
             result@.id == id,
             result.wf(),
     {
-        Spinlock { locked: false, id: Ghost(id) }
+        Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) }
     }
 
     /// Attempts to acquire the lock without spinning.
@@ -131,17 +144,23 @@ impl Spinlock {
     /// `true` if the lock was acquired (with `LockToken` in the `Tracked<Option>`),
     /// `false` otherwise (with `None`).
     pub fn try_lock(&mut self) -> (result: (bool, Tracked<Option<LockToken>>))
+        requires
+            old(self).wf(),
+            !old(self).token_issued(),
         ensures
             result.0 == !old(self).locked,
             self.locked,
             self@.id == old(self)@.id,
             !result.0 ==> self@ == old(self)@,
+            result.0 ==> self@.token_issued,
             result.0 ==> result.1@.is_some(),
             result.0 ==> result.1@.unwrap().view == self@,
             !result.0 ==> result.1@.is_none(),
+            self.wf(),
     {
         if !self.locked {
             self.locked = true;
+            self.token_issued = Ghost(true);
             let tracked token: LockToken = LockToken { view: self@ };
             (true, Tracked(Some(token)))
         } else {
@@ -171,11 +190,15 @@ impl Spinlock {
     pub fn lock(&mut self) -> (token: Tracked<LockToken>)
         requires
             old(self).spec_is_unlocked(),
+            old(self).wf(),
+            !old(self).token_issued(),
         ensures
             self.locked,
             self.spec_is_locked(),
             self@.id == old(self)@.id,
+            self@.token_issued,
             token@.view == self@,
+            self.wf(),
     {
         unimplemented!()
     }
@@ -197,15 +220,20 @@ impl Spinlock {
     pub fn unlock(&mut self, Tracked(token): Tracked<LockToken>)
         requires
             old(self).locked,
+            old(self).wf(),
+            old(self).token_issued(),
             token.view == old(self)@,
         ensures
             old(self).spec_is_locked(),
             !self.locked,
             self.spec_is_unlocked(),
             self@.id == old(self)@.id,
+            !self@.token_issued,
             self@ == Spinlock::spec_new_view(old(self)@.id),
+            self.wf(),
     {
         self.locked = false;
+        self.token_issued = Ghost(false);
     }
 
     /// Checks if the spinlock is currently locked.

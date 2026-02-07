@@ -11,11 +11,12 @@ verus! {
 //==================================================================================================
 
 impl Spinlock {
-    /// Lemma: A newly created spinlock is unlocked.
+    /// Lemma: A newly created spinlock is unlocked with no token outstanding.
     pub proof fn lemma_new_is_unlocked(id: nat)
         ensures
-            Spinlock::spec_new_view(id) == (SpinlockView { locked: false, id: id }),
+            Spinlock::spec_new_view(id) == (SpinlockView { locked: false, id: id, token_issued: false }),
             !Spinlock::spec_new_view(id).locked,
+            !Spinlock::spec_new_view(id).token_issued,
             Spinlock::spec_new_view(id).id == id,
     {
     }
@@ -42,13 +43,14 @@ impl Spinlock {
     {
     }
 
-    /// Lemma: Two spinlocks with equal views have equal locked state.
+    /// Lemma: Two spinlocks with equal views have equal locked state and identity.
     pub proof fn lemma_view_equality(a: &Spinlock, b: &Spinlock)
         requires
             a@ == b@,
         ensures
             a.spec_is_locked() == b.spec_is_locked(),
             a@.id == b@.id,
+            a@.token_issued == b@.token_issued,
     {
     }
 
@@ -73,28 +75,30 @@ impl Spinlock {
     /// Lemma: unlock on a locked spinlock produces an unlocked spinlock.
     pub proof fn lemma_unlock_produces_unlocked(id: nat)
         ensures
-            !(Spinlock { locked: false, id: Ghost(id) }).locked,
-            (Spinlock { locked: false, id: Ghost(id) }).spec_is_unlocked(),
+            !(Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) }).locked,
+            (Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) }).spec_is_unlocked(),
     {
     }
 
-    /// Lemma: Lock-then-unlock round-trip restores unlocked state.
-    ///
-    /// # Note
-    ///
-    /// Models the protocol: starting from unlocked, acquiring the lock,
-    /// then releasing it returns to the unlocked state. Identity is preserved.
+    /// Lemma: Lock-then-unlock round-trip restores unlocked state. Identity and
+    /// token tracking are preserved through the protocol.
     pub proof fn lemma_lock_unlock_roundtrip(id: nat)
         ensures ({
-            let initial: Spinlock = Spinlock { locked: false, id: Ghost(id) };
-            let after_lock: Spinlock = Spinlock { locked: true, id: Ghost(id) };
-            let after_unlock: Spinlock = Spinlock { locked: false, id: Ghost(id) };
+            let initial: Spinlock = Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) };
+            let after_lock: Spinlock = Spinlock { locked: true, id: Ghost(id), token_issued: Ghost(true) };
+            let after_unlock: Spinlock = Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) };
             &&& initial.spec_is_unlocked()
             &&& after_lock.spec_is_locked()
             &&& after_unlock.spec_is_unlocked()
             &&& initial@ == after_unlock@
             &&& initial@.id == after_lock@.id
             &&& after_lock@.id == after_unlock@.id
+            &&& !initial@.token_issued
+            &&& after_lock@.token_issued
+            &&& !after_unlock@.token_issued
+            &&& initial.wf()
+            &&& after_lock.wf()
+            &&& after_unlock.wf()
         }),
     {
     }
@@ -103,6 +107,7 @@ impl Spinlock {
     pub proof fn lemma_unlocked_eq_new_view(s: &Spinlock)
         requires
             s.spec_is_unlocked(),
+            s.wf(),
         ensures
             s@ == Spinlock::spec_new_view(s@.id),
     {
@@ -121,6 +126,8 @@ impl Spinlock {
         ensures
             s.spec_is_unlocked(),
             !s.locked,
+            !s@.token_issued,
+            s.wf(),
     {
     }
 
@@ -130,8 +137,6 @@ impl Spinlock {
     ///
     /// Proves the lock-release obligation is always dischargeable: a token whose
     /// view matches a locked spinlock satisfies `unlock()`'s preconditions.
-    /// This connects the token-producing postconditions of `lock()`/`try_lock()`
-    /// to the token-consuming preconditions of `unlock()`.
     pub proof fn lemma_lock_token_valid_for_unlock(s: &Spinlock, token: &LockToken)
         requires
             s.spec_is_locked(),
@@ -140,6 +145,7 @@ impl Spinlock {
             s.locked,
             token.view.locked,
             token.view.id == s@.id,
+            token.view.token_issued == s@.token_issued,
     {
     }
 
@@ -153,7 +159,7 @@ impl Spinlock {
         requires
             token.view.locked,
         ensures
-            token.view == (SpinlockView { locked: true, id: token.view.id }),
+            token.view == (SpinlockView { locked: true, id: token.view.id, token_issued: token.view.token_issued }),
     {
     }
 
@@ -174,6 +180,26 @@ impl Spinlock {
             token.view == s1@,
         ensures
             token.view != s2@,
+    {
+    }
+
+    /// Lemma: The well-formedness invariant ensures no token is outstanding
+    /// when the lock is unlocked.
+    pub proof fn lemma_wf_unlocked_no_token(s: &Spinlock)
+        requires
+            s.wf(),
+            s.spec_is_unlocked(),
+        ensures
+            !s@.token_issued,
+    {
+    }
+
+    /// Lemma: Well-formedness is preserved: new spinlocks are well-formed.
+    pub proof fn lemma_new_is_wf(id: nat)
+        ensures ({
+            let view: SpinlockView = Spinlock::spec_new_view(id);
+            !view.locked && !view.token_issued
+        }),
     {
     }
 }

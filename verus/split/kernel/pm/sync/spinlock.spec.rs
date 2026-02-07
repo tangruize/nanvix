@@ -15,13 +15,18 @@ verus! {
 /// # Description
 ///
 /// Represents the observable state of a spinlock: whether it is locked or unlocked,
-/// and which instance it belongs to (via the ghost `id` field).
+/// which instance it belongs to (via the ghost `id` field), and whether a lock token
+/// is currently outstanding (via `token_issued`).
 #[verifier::ext_equal]
 pub struct SpinlockView {
     /// Whether the spinlock is currently held.
     pub locked: bool,
     /// Ghost identity for distinguishing lock instances.
     pub id: nat,
+    /// Whether a `LockToken` for this lock is currently outstanding.
+    /// When `true`, the lock is held and a token exists. When `false`,
+    /// either the lock is unlocked or the token has been consumed.
+    pub token_issued: bool,
 }
 
 /// Tracked ghost token representing the obligation to release a held spinlock.
@@ -66,17 +71,24 @@ impl Spinlock {
     ///
     /// # Description
     ///
-    /// Trivially true for Spinlock (no structural invariants beyond a valid bool
-    /// and nat). Included for API consistency with other verified modules that have
-    /// meaningful `wf()` predicates. Would become non-trivial if the exec struct
-    /// gains additional constrained fields.
+    /// Enforces the token-ownership invariant: if the lock is unlocked, no token
+    /// can be outstanding. If locked, a token may or may not be outstanding
+    /// (it is issued on lock and consumed on unlock).
+    ///
+    /// This prevents states like "unlocked with token outstanding" which would
+    /// allow double-unlock or use-after-release.
     pub open spec fn wf(&self) -> bool {
-        true
+        !self.locked ==> !self.token_issued()
+    }
+
+    /// Spec function: returns whether a token is currently outstanding.
+    pub open spec fn token_issued(&self) -> bool {
+        self@.token_issued
     }
 
     /// Spec function: the view of a newly created spinlock with the given identity.
     pub open spec fn spec_new_view(id: nat) -> SpinlockView {
-        SpinlockView { locked: false, id: id }
+        SpinlockView { locked: false, id: id, token_issued: false }
     }
 }
 
@@ -88,7 +100,7 @@ impl View for Spinlock {
     type V = SpinlockView;
 
     open spec fn view(&self) -> SpinlockView {
-        SpinlockView { locked: self.locked, id: self.id@ }
+        SpinlockView { locked: self.locked, id: self.id@, token_issued: self.token_issued@ }
     }
 }
 
