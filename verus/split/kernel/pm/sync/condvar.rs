@@ -24,8 +24,9 @@
 //! - `try_remove_by_tid` models `notify_thread` with both found/not-found cases.
 //! - `clear` empties the queue and returns the previous length.
 //! - `is_empty` and `get_len` are faithful observers of the queue state.
-//! - Well-formedness (`wf()`) is preserved by all operations and includes both
-//!   length consistency and queue element uniqueness (`spec_all_unique()`).
+//! - Well-formedness (`wf()`) is preserved by all operations and includes
+//!   length consistency, queue element uniqueness (`spec_all_unique()`), and
+//!   the kernel process exclusion invariant (`spec_no_kernel_pid()`).
 //! - FIFO ordering: enqueue A then B, dequeue returns A first.
 //! - Enqueue-then-dequeue round-trip on empty queue restores empty state.
 //! - **Wait protocol**: `lemma_wait_cleanup_restores_state` proves that enqueue
