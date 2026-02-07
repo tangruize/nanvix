@@ -1,11 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # ProcessIdentifier Proofs
-//!
-//! This file contains proof lemmas for the ProcessIdentifier type.
-
-use vstd::prelude::*;
+// ProcessIdentifier Proofs.
+// This file contains proof lemmas for the ProcessIdentifier type.
 
 verus! {
 

@@ -1,11 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # ProcessIdentifier Specification
-//!
-//! This file contains spec functions for the ProcessIdentifier type.
-
-use vstd::prelude::*;
+// ProcessIdentifier Specification.
+// This file contains spec functions for the ProcessIdentifier type.
 
 verus! {
 
