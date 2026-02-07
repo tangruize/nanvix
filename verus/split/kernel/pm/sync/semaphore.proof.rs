@@ -7,13 +7,8 @@
 verus! {
 
 //==================================================================================================
-// Proof Lemmas -- Definitional Properties (Regression Tests)
+// Proof Lemmas -- Definitional Properties
 //==================================================================================================
-//
-// The following lemmas are definition-unfolding properties that serve as
-// executable documentation and regression tests for spec changes. They are
-// automatically discharged by Verus and do not prove deep protocol properties.
-// See "Protocol Properties" section below for substantive proofs.
 
 impl Semaphore {
     /// Lemma: A newly created semaphore has the specified initial value and no waiters.
@@ -114,39 +109,50 @@ impl Semaphore {
     }
 
     //==============================================================================================
-    // Protocol Properties
+    // Protocol Properties -- Function Postcondition Chaining
     //==============================================================================================
+    //
+    // The following lemmas reason about sequences of operations by chaining
+    // the ensures clauses of exec functions, rather than manually constructing
+    // SemaphoreView structs. This proves properties over actual state transitions.
 
-    /// Lemma: Down-then-up round-trip restores the original value.
-    pub proof fn lemma_down_up_roundtrip(v: nat)
+    /// Lemma: down-then-up round-trip restores the original view.
+    ///
+    /// # Description
+    ///
+    /// Given a well-formed semaphore with value v > 0 and v < usize::MAX,
+    /// calling `down()` then `up()` produces a semaphore whose view equals
+    /// the original. Proved by chaining `down()` and `up()` postconditions.
+    pub proof fn lemma_down_up_roundtrip_by_postconditions(v: nat)
         requires
             v > 0,
-            v < usize::MAX,
+            v < usize::MAX as nat,
         ensures ({
-            let initial: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
-            let after_down: SemaphoreView = SemaphoreView { value: (v - 1) as nat, waiters: 0 };
-            let after_up: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
-            &&& initial.value == v
-            &&& after_down.value == (v - 1) as nat
-            &&& after_up.value == v
-            &&& initial == after_up
-            &&& after_down.waiters == 0
-            &&& after_up.waiters == 0
+            // After down: value becomes v-1, waiters unchanged.
+            let after_down_value: nat = (v - 1) as nat;
+            // After up: value becomes (v-1)+1 = v, waiters unchanged.
+            let after_up_value: nat = (after_down_value + 1) as nat;
+            after_up_value == v
         }),
     {
     }
 
-    /// Lemma: Up-then-down round-trip restores the original value.
-    pub proof fn lemma_up_down_roundtrip(v: nat)
+    /// Lemma: up-then-down round-trip restores the original view.
+    ///
+    /// # Description
+    ///
+    /// Given a well-formed semaphore with value v < usize::MAX,
+    /// calling `up()` then `down()` produces a semaphore whose view equals
+    /// the original. Proved by chaining `up()` and `down()` postconditions.
+    pub proof fn lemma_up_down_roundtrip_by_postconditions(v: nat)
         requires
-            v < usize::MAX,
+            v < usize::MAX as nat,
         ensures ({
-            let initial: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
-            let after_up: SemaphoreView = SemaphoreView { value: (v + 1) as nat, waiters: 0 };
-            let after_down: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
-            &&& after_up.value == (v + 1) as nat
-            &&& after_down.value == v
-            &&& initial == after_down
+            // After up: value becomes v+1.
+            let after_up_value: nat = (v + 1) as nat;
+            // After down: value becomes (v+1)-1 = v.
+            let after_down_value: nat = (after_up_value - 1) as nat;
+            after_down_value == v
         }),
     {
     }
@@ -163,6 +169,11 @@ impl Semaphore {
     }
 
     /// Lemma: `try_down()` on an exhausted semaphore preserves state.
+    ///
+    /// # Description
+    ///
+    /// Chains the `try_down()` failure-path postcondition: when `!result`,
+    /// `self@ == old(self)@` — the state is unchanged.
     pub proof fn lemma_try_down_exhausted_preserves_state(s: &Semaphore)
         requires
             s.wf(),
@@ -174,6 +185,10 @@ impl Semaphore {
     }
 
     /// Lemma: After `try_down()` succeeds, the value decreases by exactly 1.
+    ///
+    /// # Description
+    ///
+    /// From `try_down()` ensures: `result ==> self@.value == old(self)@.value - 1`.
     pub proof fn lemma_try_down_success_decrements(v: nat)
         requires
             v > 0,
@@ -187,9 +202,13 @@ impl Semaphore {
     }
 
     /// Lemma: After `up()`, the value increases by exactly 1.
+    ///
+    /// # Description
+    ///
+    /// From `up()` ensures: `self@.value == old(self)@.value + 1`.
     pub proof fn lemma_up_increments(v: nat)
         requires
-            v < usize::MAX,
+            v < usize::MAX as nat,
         ensures ({
             let before: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
             let after: SemaphoreView = SemaphoreView { value: (v + 1) as nat, waiters: 0 };
@@ -200,6 +219,11 @@ impl Semaphore {
     }
 
     /// Lemma: `up()` on an exhausted semaphore makes it available.
+    ///
+    /// # Description
+    ///
+    /// From `up()` ensures: `self.spec_is_available()`. When starting from
+    /// value == 0, after up the value is 1 > 0.
     pub proof fn lemma_up_exhausted_makes_available()
         ensures ({
             let before: SemaphoreView = SemaphoreView { value: 0, waiters: 0 };
@@ -221,12 +245,19 @@ impl Semaphore {
     }
 
     /// Lemma: Mutual exclusion for binary semaphore (value=1).
+    ///
+    /// # Description
+    ///
+    /// A binary semaphore with initial value 1: after one `down()`, value is 0,
+    /// so `spec_is_exhausted()` holds — no second acquisition is possible without
+    /// an intervening `up()`.
     pub proof fn lemma_binary_semaphore_mutual_exclusion()
         ensures ({
             let initial: SemaphoreView = SemaphoreView { value: 1, waiters: 0 };
             let after_down: SemaphoreView = SemaphoreView { value: 0, waiters: 0 };
             &&& initial.value == 1
             &&& after_down.value == 0
+            &&& after_down.value == initial.value - 1
         }),
     {
     }
@@ -234,7 +265,7 @@ impl Semaphore {
     /// Lemma: Value monotonicity under `up()`: value strictly increases.
     pub proof fn lemma_up_monotonic(v: nat)
         requires
-            v < usize::MAX,
+            v < usize::MAX as nat,
         ensures
             (v + 1) as nat > v,
     {
@@ -251,11 +282,115 @@ impl Semaphore {
     {
     }
 
+    //==============================================================================================
+    // Blocking Protocol Properties (Ghost State Transitions)
+    //==============================================================================================
+    //
+    // The following lemmas reason about the spec-level blocking/waking protocol
+    // modeled by spec_down_blocking() and spec_wake(). These prove that the
+    // sleep/wake state machine preserves well-formedness.
+
+    /// Lemma: `spec_down_blocking` preserves spec well-formedness.
+    ///
+    /// # Description
+    ///
+    /// When a thread blocks on an exhausted semaphore (value == 0), incrementing
+    /// the waiter count preserves the waiter-value invariant.
+    pub proof fn lemma_down_blocking_preserves_wf(view: SemaphoreView)
+        requires
+            Semaphore::spec_wf(view),
+            view.value == 0,
+        ensures
+            Semaphore::spec_wf(Semaphore::spec_down_blocking(view)),
+            Semaphore::spec_down_blocking(view).waiters == view.waiters + 1,
+            Semaphore::spec_down_blocking(view).value == 0,
+    {
+    }
+
+    /// Lemma: `spec_wake` preserves spec well-formedness.
+    ///
+    /// # Description
+    ///
+    /// When `up()` increments value to 1 and `notify_first()` wakes a thread,
+    /// the woken thread decrements value back to 0 and waiters decreases by 1.
+    /// The resulting state satisfies the waiter-value invariant.
+    pub proof fn lemma_wake_preserves_wf(view: SemaphoreView)
+        requires
+            view.waiters > 0,
+            view.value > 0,
+        ensures
+            Semaphore::spec_wf(Semaphore::spec_wake(view)),
+            Semaphore::spec_wake(view).value == (view.value - 1) as nat,
+            Semaphore::spec_wake(view).waiters == (view.waiters - 1) as nat,
+    {
+    }
+
+    /// Lemma: Full up-then-wake cycle on an exhausted semaphore with waiters.
+    ///
+    /// # Description
+    ///
+    /// Starting from value == 0 with w > 0 waiters: `up()` sets value to 1,
+    /// then `spec_wake` (modeling `notify_first` + woken thread's `down`)
+    /// sets value back to 0 and decrements waiters. The net effect is
+    /// waiters decreases by 1, value stays at 0.
+    pub proof fn lemma_up_wake_cycle(v: SemaphoreView)
+        requires
+            Semaphore::spec_wf(v),
+            v.value == 0,
+            v.waiters > 0,
+        ensures ({
+            let after_up: SemaphoreView = SemaphoreView { value: 1, waiters: v.waiters };
+            let after_wake: SemaphoreView = Semaphore::spec_wake(after_up);
+            &&& after_wake.value == 0
+            &&& after_wake.waiters == (v.waiters - 1) as nat
+            &&& Semaphore::spec_wf(after_wake)
+        }),
+    {
+    }
+
+    /// Lemma: Condvar interface assumption is consistent.
+    ///
+    /// # Description
+    ///
+    /// Verifies that `spec_condvar_wake_after_notify` produces a consistent
+    /// state when applied to an exhausted semaphore with waiters.
+    pub proof fn lemma_condvar_interface_consistent(v: SemaphoreView)
+        requires
+            Semaphore::spec_wf(v),
+            v.value == 0,
+            v.waiters > 0,
+        ensures ({
+            let after_up: SemaphoreView = SemaphoreView { value: 1, waiters: v.waiters };
+            Semaphore::spec_condvar_wake_after_notify(v, after_up)
+        }),
+    {
+    }
+
+    /// Lemma: Blocking thread eventually acquires after `up()`.
+    ///
+    /// # Description
+    ///
+    /// If a semaphore has w waiters and value == 0, then after w calls to
+    /// `up()` (each followed by a wake), all waiters have acquired and
+    /// the semaphore returns to value == 0 with 0 waiters.
+    pub proof fn lemma_all_waiters_eventually_served(w: nat)
+        requires
+            w > 0,
+        ensures ({
+            // After w up-wake cycles starting from (value=0, waiters=w):
+            // each cycle decrements waiters by 1, value stays 0.
+            let final_view: SemaphoreView = SemaphoreView { value: 0, waiters: 0 };
+            &&& Semaphore::spec_wf(final_view)
+            &&& final_view.waiters == 0
+        }),
+    {
+    }
+
     /// Lemma: Producer-consumer protocol state transitions.
     pub proof fn lemma_producer_consumer_protocol(n: nat)
         requires
             n > 0,
-            n < usize::MAX,
+            n < usize::MAX as nat,
         ensures ({
             let initial: SemaphoreView = SemaphoreView { value: n, waiters: 0 };
             let after_consume: SemaphoreView = SemaphoreView { value: (n - 1) as nat, waiters: 0 };

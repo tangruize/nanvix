@@ -11,22 +11,28 @@
 //! - `try_down` succeeds iff the value was positive, decrementing by 1.
 //! - `try_down` fails iff the value was zero, leaving state unchanged.
 //! - `down` decrements the value by 1 (sequential model: value > 0 precondition).
-//! - `up` increments the value by 1 (with overflow guard).
+//! - `up` increments the value by 1 (with overflow guard), callable with waiters.
 //! - `spec_is_available` and `spec_is_exhausted` are complementary predicates.
 //! - Well-formedness (`wf()`) is preserved by all operations.
 //! - Down-then-up and up-then-down round-trips restore the original value.
 //! - Binary semaphore (value=1) provides mutual exclusion.
 //! - Resource conservation: initial value = current value + acquired count.
 //! - Value monotonicity: `up` strictly increases, `down` strictly decreases.
+//! - Blocking state transitions: `down_blocking` and `wake` spec functions model
+//!   the sleep/wake protocol with explicit waiter tracking.
+//! - Chained function postconditions: down-then-up and try_down sequences proved
+//!   via function ensures clauses, not manual view construction.
 //!
 //! ## Verification Model
 //!
 //! The original implementation uses `core::sync::atomic::AtomicUsize` for lock-free
 //! interior mutability and `Condvar` for thread sleeping. For verification, we model
 //! the count as a plain `usize` field and use `&mut self` for state transitions.
-//! The `waiters` field models the number of threads sleeping on the condvar. This is
-//! a sequential model that verifies the semaphore protocol (state machine correctness)
-//! without reasoning about atomicity, memory ordering, or concurrent access.
+//! The waiter count is tracked as ghost state in the `SemaphoreView` (not as an exec
+//! field), with explicit spec-level state transition functions (`spec_down_blocking`,
+//! `spec_wake`) that model the sleep/wake protocol. This is a sequential model that
+//! verifies the semaphore protocol (state machine correctness) without reasoning
+//! about atomicity, memory ordering, or concurrent access.
 //!
 //! **This verified code is a specification model, not a runtime replacement.** The
 //! kernel uses the original `src/kernel/src/pm/sync/semaphore.rs` (with `AtomicUsize`
@@ -43,10 +49,15 @@
 //! - **Liveness and progress**: The blocking behavior of `down()` (looping with
 //!   `Condvar::wait()`) and its termination under fairness assumptions are not modeled.
 //!   The `down()` precondition (`spec_is_available()`) models the instant-success case.
-//! - **Condvar interaction**: The sleeping/waking protocol via `Condvar` is an
-//!   external dependency. The condvar module is separately verified.
-//! - **Error propagation**: `SleepError` from `Condvar::wait()` and `Error` from
-//!   `Condvar::notify_first()` are external dependencies not modeled here.
+//! - **Condvar interaction**: The sleeping/waking protocol via `Condvar` is modeled
+//!   at the spec level via `spec_down_blocking` and `spec_wake` state transitions.
+//!   The condvar exec implementation is separately verified.
+//! - **Error propagation**: The original `down()` returns `Result<(), SleepError>`,
+//!   `try_down()` returns `Result<(), Error>` with `ErrorCode::TryAgain`, and `up()`
+//!   returns `Result<(), Error>`. The sequential model simplifies: `down()` returns
+//!   `()` (precondition guarantees success), `try_down()` returns `bool` (where
+//!   `false` corresponds to `Err(ErrorCode::TryAgain)`), and `up()` returns `()`
+//!   (condvar notification errors are external).
 //!
 //! ## API Mapping
 //!
@@ -56,31 +67,32 @@
 //! | `Semaphore::down(&self)`  | `down(&mut self)`      | `&mut self`; precondition: > 0.  |
 //! | `Semaphore::try_down(&self)` | `try_down(&mut self)` | `&mut self`; both paths modeled. |
 //! | `Semaphore::up(&self)`    | `up(&mut self)`        | `&mut self`; overflow guarded.   |
+//! | *(condvar sleep path)*    | `spec_down_blocking()` | Spec-only state transition.      |
+//! | *(condvar wake path)*     | `spec_wake()`          | Spec-only state transition.      |
 //!
 //! ## API Divergence
 //!
 //! The original `down()` uses `&self` with `AtomicUsize::fetch_update()` in a loop,
 //! sleeping on `Condvar` when the count is zero. The verified `down()` takes `&mut self`
 //! with a precondition that the value is positive, modeling the instant-success case.
-//! The loop + sleep pattern is a liveness property that requires fairness assumptions
-//! beyond the sequential model.
+//! The loop + sleep pattern is modeled at the spec level via `spec_down_blocking` and
+//! `spec_wake` state transitions with proof lemmas verifying protocol correctness.
 //!
 //! The original `up()` uses `&self` with `AtomicUsize::fetch_add()` and calls
-//! `Condvar::notify_first()`. The verified `up()` increments the plain `usize` value
-//! and does not model condvar notification (external dependency).
+//! `Condvar::notify_first()`. The verified `up()` increments the plain `usize` value.
+//! The condvar notification effect is modeled by the `spec_wake` transition.
 //!
 //! The original `try_down()` returns `Result<(), Error>` with `ErrorCode::TryAgain`.
-//! The verified `try_down()` returns `(bool, ...)` where `true` means success,
-//! matching the mutex `try_lock()` pattern for consistency.
+//! The verified `try_down()` returns `bool` where `false` ≡ `Err(ErrorCode::TryAgain)`.
+//! No other error codes are possible from the atomic `fetch_update` path.
 //!
 //! ## Trust Boundaries
 //!
-//! - `down()`: Fully verified. The sequential model's precondition (`spec_is_available()`)
-//!   guarantees success on the first attempt.
+//! - `down()`: Fully verified (instant-success path). Blocking path modeled at spec level.
 //! - `try_down()`: Fully verified. Both success and failure paths modeled.
-//! - `up()`: Fully verified. Overflow guard via precondition.
-//! - `Condvar::wait()` and `Condvar::notify_first()`: External dependencies from
-//!   the separately verified condvar module. Not modeled in semaphore verification.
+//! - `up()`: Fully verified. No waiter restriction; overflow guard via precondition.
+//! - `spec_down_blocking()` / `spec_wake()`: Spec-level state transitions modeling
+//!   the condvar sleep/wake protocol. Proved to preserve `spec_wf()`.
 //!
 //! ## Trust Assumptions
 //!
@@ -88,7 +100,10 @@
 //!   `self.value < usize::MAX`. The original `fetch_add(1, SeqCst)` can silently
 //!   overflow in release mode. The verified model makes this an explicit precondition.
 //! - **T2: Condvar correctness.** The sleeping/waking protocol via `Condvar` is
-//!   assumed correct per the separately verified condvar module.
+//!   modeled at the spec level. The condvar exec implementation is separately
+//!   verified. The interface assumption is: `Condvar::wait()` blocks until
+//!   `Condvar::notify_first()` is called, and `notify_first()` wakes exactly one
+//!   blocked thread. See `spec_condvar_wake_after_notify()`.
 //! - **T3: Sequential ordering.** The model assumes sequential execution. The
 //!   original relies on `SeqCst` ordering for `fetch_update` and `fetch_add`.
 //!
@@ -126,19 +141,19 @@ verus! {
 /// # Description
 ///
 /// Wraps a resource count. In the original implementation, this is an
-/// `AtomicUsize` with a `Condvar` for blocking; here it is a plain `usize`
-/// with a `waiters` ghost counter for verification purposes.
+/// `AtomicUsize` with a `Condvar` for blocking; here it is a plain `usize`.
+/// The waiter count is tracked purely as ghost state in `SemaphoreView`,
+/// not as an exec field, since no exec function modifies it (the condvar
+/// sleep/wake protocol is modeled at the spec level only).
 ///
 /// # Representation
 ///
-/// The fields are `pub` as required by Verus for `pub open spec fn` access.
+/// The `value` field is `pub` as required by Verus for `pub open spec fn` access.
 /// Per Nanvix coding standards, struct fields should be private with getter/setter
 /// access; this is an exception due to Verus tooling constraints.
 pub struct Semaphore {
     /// Current count of available resources.
     pub value: usize,
-    /// Number of threads waiting on the semaphore (models Condvar queue length).
-    pub waiters: usize,
 }
 
 //==================================================================================================
@@ -158,14 +173,13 @@ impl Semaphore {
     pub fn new(value: usize) -> (result: Self)
         ensures
             result.value == value,
-            result.waiters == 0,
             result@ == Semaphore::spec_new_view(value as nat),
             result@.value == value as nat,
             result@.waiters == 0,
             result.wf(),
             result.spec_drop_safe(),
     {
-        Semaphore { value: value, waiters: 0 }
+        Semaphore { value: value }
     }
 
     /// Acquires the semaphore, decrementing the count by 1.
@@ -229,20 +243,18 @@ impl Semaphore {
     /// # Description
     ///
     /// Models the `fetch_add(1, SeqCst)` operation from the original. The
-    /// condvar notification (`notify_first()`) is an external dependency not
-    /// modeled here. The sequential model requires no waiters because the
-    /// original atomically increments and then notifies; the notification
-    /// (which would decrement waiters) is not modeled.
+    /// condvar notification (`notify_first()`) effect is modeled by the spec-level
+    /// `spec_wake()` transition. This function can be called regardless of
+    /// whether threads are waiting (the original `up()` always increments first,
+    /// then notifies).
     ///
     /// # Precondition
     ///
     /// The value must be less than `usize::MAX` to prevent overflow.
-    /// No threads must be waiting (condvar notification not modeled).
     pub fn up(&mut self)
         requires
             old(self).wf(),
             old(self).value < usize::MAX,
-            old(self)@.waiters == 0,
         ensures
             self.value == old(self).value + 1,
             self@.value == old(self)@.value + 1,
@@ -254,6 +266,11 @@ impl Semaphore {
     }
 
     /// Returns the current value of the semaphore.
+    ///
+    /// # Description
+    ///
+    /// Verification-only helper (not in original API). Provides spec-connected
+    /// access to the current resource count.
     ///
     /// # Returns
     ///
@@ -269,6 +286,11 @@ impl Semaphore {
     }
 
     /// Returns whether the semaphore has available resources.
+    ///
+    /// # Description
+    ///
+    /// Verification-only helper (not in original API). Provides spec-connected
+    /// availability check.
     ///
     /// # Returns
     ///

@@ -15,12 +15,15 @@ verus! {
 /// # Description
 ///
 /// Represents the observable state of a semaphore: the current resource count
-/// and the number of threads waiting in the sleeping queue.
+/// and the number of threads waiting in the sleeping queue. The `waiters` field
+/// is ghost state — it is tracked at the spec level only and is not stored in the
+/// exec `Semaphore` struct. It models the condvar queue length for spec-level
+/// reasoning about the sleep/wake protocol.
 #[verifier::ext_equal]
 pub struct SemaphoreView {
     /// Current count of available resources.
     pub value: nat,
-    /// Number of threads currently waiting on the semaphore.
+    /// Number of threads currently waiting on the semaphore (ghost state).
     pub waiters: nat,
 }
 
@@ -35,13 +38,23 @@ impl Semaphore {
     ///
     /// Enforces consistency between concrete fields and abstract state:
     /// - The concrete `value` matches the view's value.
-    /// - The concrete `waiters` matches the view's waiters.
+    /// - Waiters are ghost state (always 0 in exec-constructed views).
     /// - If there are waiters, the value must be zero (threads only wait when
-    ///   the semaphore count is exhausted).
+    ///   the semaphore count is exhausted). This constraint is enforced at the
+    ///   spec level for ghost state transitions.
     pub open spec fn wf(&self) -> bool {
         &&& self.value as nat == self@.value
-        &&& self.waiters as nat == self@.waiters
         &&& (self@.waiters > 0 ==> self@.value == 0)
+    }
+
+    /// Spec function: well-formedness for abstract views (ghost state).
+    ///
+    /// # Description
+    ///
+    /// Enforces the waiter-value constraint on abstract views directly,
+    /// used for reasoning about spec-level state transitions.
+    pub open spec fn spec_wf(view: SemaphoreView) -> bool {
+        view.waiters > 0 ==> view.value == 0
     }
 
     /// Spec function: returns the current count of available resources.
@@ -49,7 +62,7 @@ impl Semaphore {
         self@.value
     }
 
-    /// Spec function: returns the number of waiting threads.
+    /// Spec function: returns the number of waiting threads (ghost state).
     pub open spec fn spec_waiters(&self) -> nat {
         self@.waiters
     }
@@ -77,6 +90,64 @@ impl Semaphore {
     pub open spec fn spec_drop_safe(&self) -> bool {
         self@.waiters == 0
     }
+
+    /// Spec function: state transition for blocking down (thread sleeps).
+    ///
+    /// # Description
+    ///
+    /// Models the case when `down()` finds value == 0 and the thread sleeps
+    /// on the condvar. The waiters count is incremented. This is a ghost
+    /// state transition — no exec function performs it directly.
+    ///
+    /// # Parameters
+    ///
+    /// - `view`: The current semaphore view.
+    ///
+    /// # Returns
+    ///
+    /// The new semaphore view with waiters incremented.
+    pub open spec fn spec_down_blocking(view: SemaphoreView) -> SemaphoreView {
+        SemaphoreView { value: view.value, waiters: (view.waiters + 1) as nat }
+    }
+
+    /// Spec function: state transition for wake (thread wakes and acquires).
+    ///
+    /// # Description
+    ///
+    /// Models the case when `up()` increments the value and `notify_first()`
+    /// wakes a sleeping thread, which then successfully decrements the value.
+    /// The net effect: value unchanged (up then down cancel), waiters decremented.
+    /// Precondition: there must be at least one waiter, and value must be > 0
+    /// (the `up()` has already incremented it).
+    ///
+    /// # Parameters
+    ///
+    /// - `view`: The current semaphore view (after `up()` incremented value).
+    ///
+    /// # Returns
+    ///
+    /// The new semaphore view with value decremented and waiters decremented.
+    pub open spec fn spec_wake(view: SemaphoreView) -> SemaphoreView {
+        SemaphoreView { value: (view.value - 1) as nat, waiters: (view.waiters - 1) as nat }
+    }
+
+    /// Spec function: condvar interface assumption.
+    ///
+    /// # Description
+    ///
+    /// Formal statement of the trust assumption on the condvar module:
+    /// if a thread is waiting (waiters > 0) and `notify_first()` is called
+    /// after `up()` increments the value, exactly one waiter is woken and
+    /// successfully acquires the semaphore.
+    pub open spec fn spec_condvar_wake_after_notify(before_up: SemaphoreView, after_up: SemaphoreView) -> bool {
+        &&& after_up.value == before_up.value + 1
+        &&& after_up.waiters == before_up.waiters
+        &&& before_up.waiters > 0 ==> {
+            let after_wake: SemaphoreView = Self::spec_wake(after_up);
+            &&& after_wake.value == before_up.value
+            &&& after_wake.waiters == (before_up.waiters - 1) as nat
+        }
+    }
 }
 
 //==================================================================================================
@@ -87,7 +158,7 @@ impl View for Semaphore {
     type V = SemaphoreView;
 
     open spec fn view(&self) -> SemaphoreView {
-        SemaphoreView { value: self.value as nat, waiters: self.waiters as nat }
+        SemaphoreView { value: self.value as nat, waiters: 0 }
     }
 }
 
