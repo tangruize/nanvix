@@ -1,6 +1,6 @@
-# Review: pid (gpt-5.1-codex-max)
+# Review: pid (gpt-5.2-codex)
 
-## Grade: B-
+## Grade: B
 
 ## Issues Found
 
@@ -8,19 +8,30 @@
 - None.
 
 ### High
-- ProcessIdentifier layout (exec: verus/split/kernel/pm/sys/pid.rs): The verified struct lacks the original `#[repr(C)]` plus size/align assertions, so FFI/layout guarantees relied on by the kernel type are unverified. **Suggested Fix:** Restore the C layout attributes and static asserts (or equivalent spec/proof obligations) to match the original representation.
-- API coverage gap for conversions and defaults (exec: verus/split/kernel/pm/sys/pid.rs): The original `From`/`TryFrom` conversions, `Default`, and `Debug` impls are replaced by bespoke methods with no proofs, leaving those public APIs uncovered by verification and potentially divergent. **Suggested Fix:** Reintroduce the trait impls (or wrappers equivalent to the original API) and verify them against the specs, including default value and debug formatting behavior.
-
-### Medium
-- Byte round-trip assumptions (exec/proof: to_ne_bytes/from_ne_bytes & axiom_byte_roundtrip/axiom_bytes_roundtrip): Correctness of serialization relies on `external_body` axioms rather than proved links to Rust’s byte representations, which weakens soundness. **Suggested Fix:** Replace the axioms with proved lemmas using Verus-supported reasoning or tie them to trusted library specs so the round-trip property is derived rather than assumed.
-- Abstraction leak on PID value (exec/spec: ProcessIdentifier): The verified struct exposes `pub value`, whereas the original tuple struct kept the field private, so callers can bypass the validated constructors and invariants. **Suggested Fix:** Make the field private (or `pub(crate)` if required for specs) and rely on accessor methods/specs to preserve the original encapsulation contract.
-
-### Low
 - None.
 
+### Medium
+- **Public field breaks API equivalence** (exec: `ProcessIdentifier` in `verus/split/kernel/pm/sys/pid.rs`).
+  - **Description:** The verified type exposes `pub value: i32`, while the original tuple field is private. This changes the public API and allows direct external access/mutation that the original code disallowed, so the verified module is not strictly semantically equivalent.
+  - **Suggested Fix:** Make the field private (match the original), and keep spec access via `spec_value()`/`view()` in the same module. If external spec access is needed, provide `pub open spec fn` accessors rather than a public field.
+
+- **Untrusted byte serialization assumptions** (exec/spec/proof: `to_ne_bytes`, `from_ne_bytes`, `axiom_*` in `pid.rs` and `pid.proof.rs`).
+  - **Description:** Byte conversions are marked `external_body` with uninterpreted specs and round‑trip axioms. This is an explicit trust boundary in a core module and means the verification depends on unproven assumptions about Rust’s byte layout semantics.
+  - **Suggested Fix:** Isolate these axioms in a small trusted module with clear justification, or replace with a verified bit‑level model if available. At minimum, document the trust boundary in module-level safety notes and avoid reusing these axioms outside this module.
+
+- **Error content not specified** (exec/spec: `try_into_*`, `try_from_*` in `pid.rs`).
+  - **Description:** Specs only distinguish Ok/Err but do not assert the `ErrorCode::InvalidArgument` and message used on failures. This weakens guarantees compared to the original implementation where error code/message are part of behavior.
+  - **Suggested Fix:** Strengthen ensures to specify the error code and message in the Err case (assuming `Error` has spec fields or accessors).
+
+### Low
+- **Layout assertions missing** (exec: `pid.rs`).
+  - **Description:** Original code includes size/alignment static asserts; the verified code relies on `#[repr(C)]` only. This omits an explicit check that layout matches the original ABI guarantees.
+  - **Suggested Fix:** Add static assertions (or a proof lemma) for size/alignment to mirror the original guarantees.
+
 ## Positive Observations
-- Conversions to unsigned types and cross-width signed types carry explicit range checks with postconditions tying results to the abstract PID value.
-- Constants for `KERNEL` and `INITD` are captured with lemmas asserting their expected values and non-negativity.
+- All original conversions and constants are represented, and verification passes for the module.
+- Specs for conversions capture the key range conditions for signed/unsigned conversions.
+- Spec/proof/exec separation is clean; proofs are isolated in `pid.proof.rs`.
 
 ## Summary
-The verification captures basic value-preservation and range-checking properties for PID conversions and constants, but it omits several elements of the original API and representation. Missing layout guarantees and unverified trait-based conversions mean core interfaces remain uncovered, and reliance on byte-conversion axioms weakens soundness. Aligning the verified exec/spec with the original layout and API and replacing axioms with proved properties will improve coverage and robustness.
+The verification covers the functional surface of PID conversions and constants, but there are notable soundness and equivalence gaps: the public field changes the API, and byte serialization relies on trusted axioms. Strengthening error specs and reinstating ABI layout checks would improve fidelity. Overall verification is solid but not airtight.
