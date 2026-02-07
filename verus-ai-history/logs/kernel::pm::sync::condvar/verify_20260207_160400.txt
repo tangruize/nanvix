@@ -1,0 +1,40 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 16:04:00 CST 2026
+Module: kernel::pm::sync::condvar
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::condvar
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sync::condvar
+
+error: postcondition not satisfied
+   --> kernel/pm/sync/condvar.proof.rs:728:17
+    |
+709 | /     pub proof fn lemma_wait_protocol_preserves_wf(
+710 | |         s: Seq<(int, int)>,
+711 | |         len: usize,
+712 | |         entry: (int, int),
+713 | |     )
+    | |_____- at the end of the function body
+...
+728 |           ensures ({
+    |  _________________^
+729 | |             // After enqueue then cleanup, the original state is restored.
+730 | |             let after_enqueue: Seq<(int, int)> = s.push(entry);
+731 | |             let idx: int = s.len() as int;
+...   |
+737 | |             cv.wf()
+738 | |         }),
+    | |__________^ failed this postcondition
+
+verification results:: 52 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 52
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::condvar (verified:52, errors:1)
