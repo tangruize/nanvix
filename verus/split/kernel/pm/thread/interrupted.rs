@@ -65,6 +65,8 @@ verus! {
 /// in `open spec fn` definitions. In the original code these fields are private.
 /// External code should not construct `InterruptedThread` directly; use
 /// `from_state` to ensure the well-formedness invariant (`wf()`) holds.
+/// If constructing directly (e.g., in proof contexts), callers must ensure
+/// `state.wf() && spec_valid_reason(reason)` to establish `wf()`.
 pub struct InterruptedThread {
     /// The underlying thread state.
     pub state: ThreadState,
@@ -224,6 +226,13 @@ impl InterruptedThread {
     /// **Intended postconditions** (not machine-checked):
     /// - `ensures old(self).spec_id() == self.spec_id()` (identity preserved).
     /// - `ensures old(self).wf() ==> self.wf()` (well-formedness preserved).
+    ///
+    /// **Known call sites** (in unverified kernel code):
+    /// - `ThreadRefMut::Interrupted` delegates to this in `pm/thread/mod.rs`.
+    /// - External callers (`pm/process/manager/mod.rs`) access `fpu_state_mut()`
+    ///   through the returned reference. FPU state is elided from the
+    ///   verification model, so these mutations do not affect `wf()` or
+    ///   `spec_id()`.
     ///
     /// Once Verus supports `&mut T` returns, replace this with a verified
     /// function carrying the above postconditions, or refactor callers to
