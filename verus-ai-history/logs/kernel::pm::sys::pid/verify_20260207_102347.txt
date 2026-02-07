@@ -1,0 +1,18 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 10:23:47 CST 2026
+Module: kernel::pm::sys::pid
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sys::pid
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sys::pid
+
+verification results:: 27 verified, 0 errors (partial verification with `--verify-*`)
+
+Duration: 3s
+Exit code: 0
+
+=== Summary ===
+Verified: 27
+Errors: 0
+Status: PASSED
+No changes to commit in verus/
