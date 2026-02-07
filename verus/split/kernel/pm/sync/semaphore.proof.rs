@@ -422,6 +422,84 @@ impl Semaphore {
         }),
     {
     }
+
+    //==============================================================================================
+    // Error Mapping Lemmas
+    //==============================================================================================
+
+    /// Lemma: `try_down()` result correctly maps to original error semantics.
+    ///
+    /// # Description
+    ///
+    /// Proves that the postconditions of `try_down()` satisfy the formal
+    /// error mapping predicate `spec_try_down_result_maps_ok`. This connects
+    /// the verified model's `bool` return to the original's `Result<(), Error>`
+    /// with `ErrorCode::TryAgain`.
+    pub proof fn lemma_try_down_result_mapping(s_before: &Semaphore, s_after: &Semaphore, result: bool)
+        requires
+            s_before.wf(),
+            result == s_before.spec_is_available(),
+            result ==> s_after@.value == s_before@.value - 1,
+            result ==> s_after@.waiters == s_before@.waiters,
+            !result ==> s_after@ == s_before@,
+        ensures
+            Semaphore::spec_try_down_result_maps_ok(result, s_before@, s_after@),
+    {
+    }
+
+    //==============================================================================================
+    // Caller Context Lemmas
+    //==============================================================================================
+
+    /// Lemma: A valid caller context for `down()` is constructible.
+    ///
+    /// # Description
+    ///
+    /// Proves that `safe_for_down()` is satisfiable: a context with interrupts
+    /// disabled, non-kernel caller, and no held resources satisfies the predicate.
+    pub proof fn lemma_safe_down_context_exists()
+        ensures ({
+            let ctx: CallerContext = CallerContext {
+                interrupts_disabled: true,
+                is_kernel_process: false,
+                holds_resources: false,
+                holds_pm_ref: false,
+            };
+            ctx.safe_for_down()
+        }),
+    {
+    }
+
+    /// Lemma: A valid caller context for `up()` is constructible.
+    ///
+    /// # Description
+    ///
+    /// Proves that `safe_for_up()` is satisfiable: a context with interrupts
+    /// disabled and no held process manager reference satisfies the predicate.
+    pub proof fn lemma_safe_up_context_exists()
+        ensures ({
+            let ctx: CallerContext = CallerContext {
+                interrupts_disabled: true,
+                is_kernel_process: false,
+                holds_resources: false,
+                holds_pm_ref: false,
+            };
+            ctx.safe_for_up()
+        }),
+    {
+    }
+
+    /// Lemma: Kernel process cannot call `down()`.
+    ///
+    /// # Description
+    ///
+    /// Proves that a caller context with `is_kernel_process == true` cannot
+    /// satisfy `safe_for_down()`, matching the original's panic behavior.
+    pub proof fn lemma_kernel_process_cannot_down()
+        ensures
+            forall |ctx: CallerContext| ctx.is_kernel_process ==> !ctx.safe_for_down(),
+    {
+    }
 }
 
 } // verus!

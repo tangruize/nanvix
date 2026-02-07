@@ -64,9 +64,9 @@
 //! | Original API              | Verified Model         | Notes                            |
 //! |---------------------------|------------------------|----------------------------------|
 //! | `Semaphore::new(value)`   | `new(value)`           | Direct mapping.                  |
-//! | `Semaphore::down(&self)`  | `down(&mut self)`      | `&mut self`; precondition: > 0.  |
+//! | `Semaphore::down(&self)`  | `down(&mut self, ctx)`  | `&mut self`; ghost safety ctx.  |
 //! | `Semaphore::try_down(&self)` | `try_down(&mut self)` | `&mut self`; both paths modeled. |
-//! | `Semaphore::up(&self)`    | `up(&mut self)`        | `&mut self`; overflow guarded.   |
+//! | `Semaphore::up(&self)`    | `up(&mut self, ctx)`    | `&mut self`; ghost safety ctx.  |
 //! | *(condvar sleep path)*    | `spec_down_blocking()` | Spec-only state transition.      |
 //! | *(condvar wake path)*     | `spec_wake()`          | Spec-only state transition.      |
 //!
@@ -110,8 +110,9 @@
 //!   `unsafe` with caller obligations: interrupts must be disabled, the caller
 //!   must not be the kernel process (for `down()`), and no resources must be
 //!   held (for `down()`) or no process manager reference held (for `up()`).
-//!   These hardware/OS-level preconditions are not expressible in the sequential
-//!   Verus model and are assumed to be enforced by the calling context.
+//!   These conditions are encoded as ghost `CallerContext` preconditions on
+//!   `down()` and `up()`. Callers must provide a `Ghost<CallerContext>`
+//!   satisfying `safe_for_down()` or `safe_for_up()` respectively.
 //!
 //! ## Refinement Argument
 //!
@@ -201,15 +202,20 @@ impl Semaphore {
     ///
     /// The original `down()` is `unsafe` and requires: interrupts disabled,
     /// caller is not the kernel process, and no resources are held. These
-    /// conditions are not modeled (see trust assumption T4).
+    /// conditions are encoded via the ghost `CallerContext` parameter (see T4).
+    ///
+    /// # Parameters
+    ///
+    /// - `ctx`: Ghost caller context proving safety conditions are satisfied.
     ///
     /// # Returns
     ///
     /// The semaphore with value decremented by 1.
-    pub fn down(&mut self)
+    pub fn down(&mut self, ctx: Ghost<CallerContext>)
         requires
             old(self).wf(),
             old(self).spec_is_available(),
+            ctx@.safe_for_down(),
         ensures
             self.value == old(self).value - 1,
             self@.value == old(self)@.value - 1,
@@ -264,7 +270,11 @@ impl Semaphore {
     ///
     /// The original `up()` is `unsafe` and requires: interrupts disabled and
     /// the caller does not hold a reference to the process manager. These
-    /// conditions are not modeled (see trust assumption T4).
+    /// conditions are encoded via the ghost `CallerContext` parameter (see T4).
+    ///
+    /// # Parameters
+    ///
+    /// - `ctx`: Ghost caller context proving safety conditions are satisfied.
     ///
     /// # Precondition
     ///
@@ -272,10 +282,11 @@ impl Semaphore {
     /// `fetch_add(1, SeqCst)` can silently wrap in release builds; the verified
     /// model makes this an explicit precondition. Callers should establish this
     /// bound from the resource pool size or system invariant.
-    pub fn up(&mut self)
+    pub fn up(&mut self, ctx: Ghost<CallerContext>)
         requires
             old(self).wf(),
             old(self).value < usize::MAX,
+            ctx@.safe_for_up(),
         ensures
             self.value == old(self).value + 1,
             self@.value == old(self)@.value + 1,

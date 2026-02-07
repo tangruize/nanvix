@@ -27,6 +27,59 @@ pub struct SemaphoreView {
     pub waiters: nat,
 }
 
+/// Ghost state representing the caller's execution context.
+///
+/// # Description
+///
+/// Models the safety preconditions of the original `unsafe` functions
+/// (`down()` and `up()`). The original kernel semaphore requires specific
+/// caller obligations (interrupts disabled, not the kernel process, etc.).
+/// This ghost struct encodes those conditions so they can be checked at
+/// the spec level. Callers must provide a `Ghost<CallerContext>` satisfying
+/// the appropriate predicate.
+pub struct CallerContext {
+    /// Whether interrupts are currently disabled.
+    pub interrupts_disabled: bool,
+    /// Whether the caller is the kernel process.
+    pub is_kernel_process: bool,
+    /// Whether the caller holds resources (relevant for `down()`).
+    pub holds_resources: bool,
+    /// Whether the caller holds a process manager reference (relevant for `up()`).
+    pub holds_pm_ref: bool,
+}
+
+//==================================================================================================
+// CallerContext Spec Functions
+//==================================================================================================
+
+impl CallerContext {
+    /// Spec function: caller context satisfies `down()` safety conditions.
+    ///
+    /// # Description
+    ///
+    /// The original `down()` is `unsafe` and requires:
+    /// - The caller is running with interrupts disabled.
+    /// - The calling process is not the kernel process.
+    /// - The function is invoked without holding any resources.
+    pub open spec fn safe_for_down(&self) -> bool {
+        &&& self.interrupts_disabled
+        &&& !self.is_kernel_process
+        &&& !self.holds_resources
+    }
+
+    /// Spec function: caller context satisfies `up()` safety conditions.
+    ///
+    /// # Description
+    ///
+    /// The original `up()` is `unsafe` and requires:
+    /// - The caller is running with interrupts disabled.
+    /// - The calling process does not hold a reference to the process manager.
+    pub open spec fn safe_for_up(&self) -> bool {
+        &&& self.interrupts_disabled
+        &&& !self.holds_pm_ref
+    }
+}
+
 //==================================================================================================
 // Spec Functions
 //==================================================================================================
@@ -191,6 +244,30 @@ impl Semaphore {
             let after_wake: SemaphoreView = Self::spec_wake(after_up);
             Self::spec_after_n_up_wake_cycles(after_wake, (n - 1) as nat)
         }
+    }
+
+    /// Spec function: maps `try_down()` result to original error semantics.
+    ///
+    /// # Description
+    ///
+    /// Formalizes the correspondence between the verified model's `bool`
+    /// return and the original `Result<(), Error>`:
+    /// - `true`  corresponds to `Ok(())`: value was positive, decremented by 1.
+    /// - `false` corresponds to `Err(ErrorCode::TryAgain)`: value was zero,
+    ///   state unchanged.
+    ///
+    /// # Parameters
+    ///
+    /// - `result`: The `bool` returned by the verified `try_down()`.
+    /// - `before`: The semaphore view before the call.
+    /// - `after`: The semaphore view after the call.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the result-to-view mapping is consistent.
+    pub open spec fn spec_try_down_result_maps_ok(result: bool, before: SemaphoreView, after: SemaphoreView) -> bool {
+        &&& (result ==> after.value == (before.value - 1) as nat && after.waiters == before.waiters)
+        &&& (!result ==> after == before && before.value == 0)
     }
 }
 
