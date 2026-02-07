@@ -145,6 +145,18 @@ impl RunningThread {
     {
     }
 
+    /// Lemma: sleep() preserves the full ThreadStateView.
+    pub proof fn lemma_sleep_preserves_state_view(&self, alarm: Option<int>)
+        requires
+            self.wf(),
+        ensures
+            ({
+                let s: SleepingThread = SleepingThread { state: self.state, alarm: alarm };
+                s.state@ == self.state@
+            }),
+    {
+    }
+
     //==============================================================================================
     // State Transition: schedule()
     //==============================================================================================
@@ -194,6 +206,18 @@ impl RunningThread {
             ({
                 let r: ReadyThread = ReadyThread { state: self.state };
                 r.spec_drop_safe() == self.spec_drop_safe()
+            }),
+    {
+    }
+
+    /// Lemma: schedule() preserves the full ThreadStateView.
+    pub proof fn lemma_schedule_preserves_state_view(&self)
+        requires
+            self.wf(),
+        ensures
+            ({
+                let r: ReadyThread = ReadyThread { state: self.state };
+                r.state@ == self.state@
             }),
     {
     }
@@ -259,6 +283,18 @@ impl RunningThread {
             ({
                 let z: ZombieThread = ZombieThread { state: self.state, status: status };
                 z.spec_drop_safe() == self.spec_drop_safe()
+            }),
+    {
+    }
+
+    /// Lemma: exit() preserves the full ThreadStateView.
+    pub proof fn lemma_exit_preserves_state_view(&self, status: int)
+        requires
+            self.wf(),
+        ensures
+            ({
+                let z: ZombieThread = ZombieThread { state: self.state, status: status };
+                z.state@ == self.state@
             }),
     {
     }

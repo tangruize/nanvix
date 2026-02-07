@@ -142,6 +142,7 @@ impl SleepingThread {
         requires
             state.wf(),
         ensures
+            result.state@ == state@,
             result.spec_id() == state.spec_id(),
             result.spec_alarm() == alarm,
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
@@ -172,6 +173,7 @@ impl ReadyThread {
     ///
     /// CROSS-MODULE-CHECK: When `ready.rs` is verified, confirm the real
     /// `ReadyThread::from_state` implies all of:
+    /// - `result.state@ == state@`
     /// - `result.spec_id() == state.spec_id()`
     /// - `result.spec_locked_mutex_count() == state.spec_locked_mutex_count()`
     /// - `forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a)`
@@ -181,6 +183,7 @@ impl ReadyThread {
         requires
             state.wf(),
         ensures
+            result.state@ == state@,
             result.spec_id() == state.spec_id(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
             forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
@@ -211,6 +214,7 @@ impl ZombieThread {
     ///
     /// CROSS-MODULE-CHECK: When `zombie.rs` is verified, confirm the real
     /// `ZombieThread::from_state` implies all of:
+    /// - `result.state@ == state@`
     /// - `result.spec_id() == state.spec_id()`
     /// - `result.spec_status() == status`
     /// - `result.spec_locked_mutex_count() == state.spec_locked_mutex_count()`
@@ -221,6 +225,7 @@ impl ZombieThread {
         requires
             state.wf(),
         ensures
+            result.state@ == state@,
             result.spec_id() == state.spec_id(),
             result.spec_status() == status,
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
@@ -278,6 +283,7 @@ impl RunningThread {
         requires
             self.wf(),
         ensures
+            result.state@ == self.state@,
             result.spec_id() == self.spec_id(),
             result.spec_alarm() == alarm,
             result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
@@ -302,6 +308,7 @@ impl RunningThread {
         requires
             self.wf(),
         ensures
+            result.state@ == self.state@,
             result.spec_id() == self.spec_id(),
             result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
             forall|a: int| result.spec_has_mutex(a) == self.spec_has_mutex(a),
@@ -361,6 +368,7 @@ impl RunningThread {
         requires
             self.wf(),
         ensures
+            result.state@ == self.state@,
             result.spec_id() == self.spec_id(),
             result.spec_status() == status,
             result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
