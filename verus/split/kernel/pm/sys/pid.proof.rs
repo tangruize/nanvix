@@ -104,6 +104,36 @@ impl ProcessIdentifier {
         }),
     {
     }
+
+    /// Lemma: ProcessIdentifier has the same size as i32 (4 bytes).
+    ///
+    /// # Note
+    ///
+    /// This mirrors the original `assert_eq_size!(ProcessIdentifier, 4)` static
+    /// assertion. Uses `external_body` because Verus cannot reason about
+    /// `core::mem::size_of` directly.
+    #[verifier::external_body]
+    pub proof fn lemma_size_eq_i32()
+        ensures
+            core::mem::size_of::<ProcessIdentifier>() == core::mem::size_of::<i32>(),
+            core::mem::size_of::<ProcessIdentifier>() == 4,
+    {
+    }
+
+    /// Lemma: ProcessIdentifier has the same alignment as i32 (4 bytes).
+    ///
+    /// # Note
+    ///
+    /// This mirrors the original `assert_eq_align!(ProcessIdentifier, 4)` static
+    /// assertion. Uses `external_body` because Verus cannot reason about
+    /// `core::mem::align_of` directly.
+    #[verifier::external_body]
+    pub proof fn lemma_align_eq_i32()
+        ensures
+            core::mem::align_of::<ProcessIdentifier>() == core::mem::align_of::<i32>(),
+            core::mem::align_of::<ProcessIdentifier>() == 4,
+    {
+    }
 }
 
 } // verus!

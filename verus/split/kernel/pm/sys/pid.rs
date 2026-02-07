@@ -10,7 +10,26 @@
 //! - Constants KERNEL and INITD have expected values (0 and 1).
 //! - Conversion from/to i32 preserves value.
 //! - Conversion to/from other integer types is safe when in range.
+//! - Error paths return `ErrorCode::InvalidArgument`.
 //! - Byte serialization round-trips correctly.
+//! - Layout: size == 4 bytes, alignment == 4 bytes (matching original ABI).
+//!
+//! ## Trust Boundary: Byte Serialization
+//!
+//! The `to_ne_bytes`/`from_ne_bytes` functions and their corresponding axioms
+//! (`axiom_byte_roundtrip`, `axiom_decode_encode_roundtrip`) are an explicit
+//! trust boundary. They use `external_body` with uninterpreted spec functions
+//! because Verus cannot reason about byte-level integer representation.
+//! These axioms are justified by Rust's `i32::to_ne_bytes`/`i32::from_ne_bytes`
+//! semantics which guarantee round-trip fidelity. Consumers of this module
+//! should be aware that these two axioms are assumed, not proven.
+//!
+//! ## Trust Boundary: Layout Assertions
+//!
+//! The `lemma_size_eq_i32` and `lemma_align_eq_i32` proof lemmas use
+//! `external_body` because Verus cannot reason about `core::mem::size_of`
+//! and `core::mem::align_of`. These are justified by the `#[repr(C)]`
+//! attribute on a single-field struct wrapping `i32`.
 
 use crate::libs::error::{
     Error,
@@ -145,7 +164,10 @@ impl ProcessIdentifier {
                 &&& self.spec_is_non_negative()
                 &&& result->Ok_0 as int == self.spec_value()
             },
-            result is Err ==> !self.spec_is_non_negative(),
+            result is Err ==> {
+                &&& !self.spec_is_non_negative()
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if self.value < 0 {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
@@ -168,7 +190,10 @@ impl ProcessIdentifier {
                 &&& self.spec_is_non_negative()
                 &&& result->Ok_0 as int == self.spec_value()
             },
-            result is Err ==> !self.spec_is_non_negative(),
+            result is Err ==> {
+                &&& !self.spec_is_non_negative()
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if self.value < 0 {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
@@ -191,7 +216,10 @@ impl ProcessIdentifier {
                 &&& self.spec_is_non_negative()
                 &&& result->Ok_0 as int == self.spec_value()
             },
-            result is Err ==> !self.spec_is_non_negative(),
+            result is Err ==> {
+                &&& !self.spec_is_non_negative()
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if self.value < 0 {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
@@ -219,7 +247,10 @@ impl ProcessIdentifier {
                 &&& Self::spec_in_i32_range(raw as int)
                 &&& result->Ok_0.spec_value() == raw as int
             },
-            result is Err ==> !Self::spec_in_i32_range(raw as int),
+            result is Err ==> {
+                &&& !Self::spec_in_i32_range(raw as int)
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if raw < i32::MIN as isize || raw > i32::MAX as isize {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
@@ -247,7 +278,10 @@ impl ProcessIdentifier {
                 &&& Self::spec_in_i32_range(raw as int)
                 &&& result->Ok_0.spec_value() == raw as int
             },
-            result is Err ==> !Self::spec_in_i32_range(raw as int),
+            result is Err ==> {
+                &&& !Self::spec_in_i32_range(raw as int)
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if raw < i32::MIN as i64 || raw > i32::MAX as i64 {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
@@ -276,7 +310,10 @@ impl ProcessIdentifier {
                 &&& result->Ok_0.spec_value() == raw as int
                 &&& result->Ok_0.spec_is_non_negative()
             },
-            result is Err ==> !Self::spec_in_non_negative_i32_range(raw as int),
+            result is Err ==> {
+                &&& !Self::spec_in_non_negative_i32_range(raw as int)
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if raw > i32::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
@@ -305,7 +342,10 @@ impl ProcessIdentifier {
                 &&& result->Ok_0.spec_value() == raw as int
                 &&& result->Ok_0.spec_is_non_negative()
             },
-            result is Err ==> !Self::spec_in_non_negative_i32_range(raw as int),
+            result is Err ==> {
+                &&& !Self::spec_in_non_negative_i32_range(raw as int)
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if raw > i32::MAX as u32 {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
@@ -334,7 +374,10 @@ impl ProcessIdentifier {
                 &&& result->Ok_0.spec_value() == raw as int
                 &&& result->Ok_0.spec_is_non_negative()
             },
-            result is Err ==> !Self::spec_in_non_negative_i32_range(raw as int),
+            result is Err ==> {
+                &&& !Self::spec_in_non_negative_i32_range(raw as int)
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+            },
     {
         if raw > i32::MAX as u64 {
             return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
