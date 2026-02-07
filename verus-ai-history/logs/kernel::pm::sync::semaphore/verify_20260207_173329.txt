@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 17:33:29 CST 2026
+Module: kernel::pm::sync::semaphore
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::semaphore
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sync::semaphore
+
+error: postcondition not satisfied
+   --> kernel/pm/sync/semaphore.proof.rs:322:13
+    |
+317 |     pub proof fn lemma_wake_preserves_wf(view: SemaphoreView)
+    |     --------------------------------------------------------- at the end of the function body
+...
+322 |             Semaphore::spec_wf(Semaphore::spec_wake(view)),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 33 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 33
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::semaphore (verified:33, errors:1)
