@@ -237,18 +237,21 @@ impl Mutex {
     {
     }
 
-    /// Lemma: Mutual exclusion — a well-formed mutex cannot have two independent
-    /// tokens outstanding simultaneously.
+    /// Lemma: Mutual exclusion — a well-formed mutex with a valid lock token
+    /// must be in the locked state.
     ///
     /// # Description
     ///
-    /// If a mutex is well-formed and a valid token exists (token.view == mutex view),
-    /// then the mutex must be locked with token_issued. Since token_issued is a single
-    /// boolean, at most one token can be outstanding per well-formed mutex instance.
+    /// If a mutex is well-formed and a valid lock token exists (produced by
+    /// `lock()`/`try_lock()`, so `token.view.locked == true`), and the token
+    /// matches the mutex view, then the mutex must be locked with token_issued.
+    /// Since token_issued is a single boolean, at most one token can be
+    /// outstanding per well-formed mutex instance.
     pub proof fn lemma_mutual_exclusion(s: &Mutex, token: &MutexToken)
         requires
             s.wf(),
             token.view == s@,
+            token.view.locked,
         ensures
             s.spec_is_locked(),
             s@.token_issued,
