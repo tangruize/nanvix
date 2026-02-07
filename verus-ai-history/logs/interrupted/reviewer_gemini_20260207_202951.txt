@@ -1,0 +1,93 @@
+=== Copilot Session ===
+Timestamp: 2026-02-07T20:30:56.428711
+Model: gemini-3-pro-preview
+Session: 08e53ce3-804c-4ec3-a9ff-377b360203ec
+Duration: 65.4s
+Exit code: 0
+
+=== Prompt ===
+Review the Verus verification of interrupted.
+
+Original source: src/kernel/src/pm/thread/interrupted.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - interrupted.rs (exec)
+  - interrupted.spec.rs (spec)
+  - interrupted.proof.rs (proof)
+
+This is an OS kernel component. Evaluate if the verification captures the
+essential correctness properties.
+
+Review criteria:
+1. COVERAGE: All functions in original source (public and private) have verified versions
+2. SPECIFICATIONS: Specs capture intended behavior (not too weak, not too strong)
+3. SOUNDNESS: No unjustified assume/external_body in core module
+4. EQUIVALENCE: Verified code is semantically equivalent to original
+5. INVARIANTS: State invariants are sufficient to prove correctness
+6. PROPERTIES: Are the key safety and liveness properties identified and proven?
+7. SPLIT QUALITY: Are spec/proof properly separated from exec code?
+
+Verification command: ./verus-ai/scripts/verify.sh interrupted
+
+For each issue found, provide:
+- Priority: Critical / High / Medium / Low
+- Location: Function or spec name (and which file: exec/spec/proof)
+- Description: What is wrong or missing
+- Suggested Fix: How to address it
+
+Output format (write to /home/ubuntu/nanvix/verus-ai-history/reviews/interrupted/gemini_r1_a1.md):
+```markdown
+# Review: interrupted (gemini-3-pro-preview)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+
+### Critical
+- ...
+
+### High
+- ...
+
+### Medium
+- ...
+
+### Low
+- ...
+
+## Positive Observations
+- ...
+
+## Summary
+[Overall assessment and recommendations]
+```
+
+=== Output ===
+● Read src/kernel/src/pm/thread/interrupted.rs
+  └ 135 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.proof.rs
+  └ 259 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.spec.rs
+  └ 210 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.rs
+  └ 240 lines read
+
+● Run Verus verification for interrupted module
+  $ ./verus-ai/scripts/verify.sh interrupted
+  └ 23 lines...
+
+● Create verus-ai-history/reviews/interrupted/gemini_r1_a1.md (+28)
+
+✓ Task complete
+
+
+Total usage est:        1 Premium request
+API time spent:         55s
+Total session time:     1m 4.162s
+Total code changes:     +28 -0
+Breakdown by AI model:
+ gemini-3-pro-preview    109.3k in, 805 out, 74.4k cached (Est. 1 Premium request)
+
+=== End ===
