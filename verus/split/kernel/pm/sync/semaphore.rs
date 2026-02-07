@@ -230,15 +230,19 @@ impl Semaphore {
     ///
     /// Models the `fetch_add(1, SeqCst)` operation from the original. The
     /// condvar notification (`notify_first()`) is an external dependency not
-    /// modeled here.
+    /// modeled here. The sequential model requires no waiters because the
+    /// original atomically increments and then notifies; the notification
+    /// (which would decrement waiters) is not modeled.
     ///
     /// # Precondition
     ///
     /// The value must be less than `usize::MAX` to prevent overflow.
+    /// No threads must be waiting (condvar notification not modeled).
     pub fn up(&mut self)
         requires
             old(self).wf(),
             old(self).value < usize::MAX,
+            old(self)@.waiters == 0,
         ensures
             self.value == old(self).value + 1,
             self@.value == old(self)@.value + 1,
