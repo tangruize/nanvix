@@ -201,6 +201,8 @@ impl InterruptedThread {
 
 } // verus!
 
+/// Non-verus impl block for functions that cannot be expressed inside `verus!`
+/// due to Verus language limitations (e.g., `&mut T` return types).
 impl InterruptedThread {
     /// Returns a mutable reference to the thread state.
     ///
@@ -208,20 +210,25 @@ impl InterruptedThread {
     ///
     /// A mutable reference to the underlying ThreadState.
     ///
-    /// # Note on Verification
-    ///
-    /// Placed outside `verus!` block because Verus does not yet support
-    /// returning `&mut T` from functions.
-    ///
     /// # Trust Boundary
+    ///
+    /// Marked `#[verifier::external]` because Verus does not yet support
+    /// `&mut T` return types — neither `external_body` nor normal `verus!`
+    /// functions can express the signature.
     ///
     /// Callers that mutate the `ThreadState` through this reference operate
     /// outside the verification boundary. Callers MUST preserve:
     /// - `self.wf()` — the compound well-formedness invariant.
     /// - `self.spec_id()` — the thread identity must not change.
-    /// Once Verus supports `&mut T` returns, this should be replaced with
-    /// specific setter methods that carry postconditions, or refactored to
-    /// ensure `wf()` holds when the mutable borrow is released.
+    ///
+    /// **Intended postconditions** (not machine-checked):
+    /// - `ensures old(self).spec_id() == self.spec_id()` (identity preserved).
+    /// - `ensures old(self).wf() ==> self.wf()` (well-formedness preserved).
+    ///
+    /// Once Verus supports `&mut T` returns, replace this with a verified
+    /// function carrying the above postconditions, or refactor callers to
+    /// use specific setter methods with per-field postconditions.
+    #[verifier::external]
     pub fn thread_state_mut(&mut self) -> &mut ThreadState {
         &mut self.state
     }
