@@ -14,11 +14,14 @@ verus! {
 ///
 /// # Description
 ///
-/// Represents the observable state of a spinlock: whether it is locked or unlocked.
+/// Represents the observable state of a spinlock: whether it is locked or unlocked,
+/// and which instance it belongs to (via the ghost `id` field).
 #[verifier::ext_equal]
 pub struct SpinlockView {
     /// Whether the spinlock is currently held.
     pub locked: bool,
+    /// Ghost identity for distinguishing lock instances.
+    pub id: nat,
 }
 
 /// Tracked ghost token representing the obligation to release a held spinlock.
@@ -31,7 +34,9 @@ pub struct SpinlockView {
 /// the original implementation at the proof level.
 ///
 /// The token carries a ghost snapshot of the spinlock's view at acquisition time,
-/// binding the token to the specific lock instance and state.
+/// binding the token to the specific lock instance (via the `id` field in the view)
+/// and state. A token produced by lock instance A cannot be used to unlock instance B,
+/// because `unlock()` requires `token.view == old(self)@` which includes identity.
 ///
 /// # Soundness
 ///
@@ -61,16 +66,17 @@ impl Spinlock {
     ///
     /// # Description
     ///
-    /// Trivially true for Spinlock (no structural invariants beyond a valid bool).
-    /// Included for API consistency with other verified modules that have meaningful
-    /// `wf()` predicates. Would become non-trivial if the exec struct gains fields.
+    /// Trivially true for Spinlock (no structural invariants beyond a valid bool
+    /// and nat). Included for API consistency with other verified modules that have
+    /// meaningful `wf()` predicates. Would become non-trivial if the exec struct
+    /// gains additional constrained fields.
     pub open spec fn wf(&self) -> bool {
         true
     }
 
-    /// Spec function: the view of a newly created spinlock.
-    pub open spec fn spec_new_view() -> SpinlockView {
-        SpinlockView { locked: false }
+    /// Spec function: the view of a newly created spinlock with the given identity.
+    pub open spec fn spec_new_view(id: nat) -> SpinlockView {
+        SpinlockView { locked: false, id: id }
     }
 }
 
@@ -82,7 +88,7 @@ impl View for Spinlock {
     type V = SpinlockView;
 
     open spec fn view(&self) -> SpinlockView {
-        SpinlockView { locked: self.locked }
+        SpinlockView { locked: self.locked, id: self.id }
     }
 }
 

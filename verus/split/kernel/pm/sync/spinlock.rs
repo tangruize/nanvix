@@ -13,6 +13,8 @@
 //! - `unlock` transitions the lock from locked to unlocked.
 //! - Lock-then-unlock round-trip restores the original unlocked state.
 //! - `spec_is_locked` and `spec_is_unlocked` are complementary predicates.
+//! - Lock instance identity (`id`) is preserved across all state transitions.
+//! - Tokens are bound to the producing lock instance via view identity.
 //!
 //! ## Verification Model
 //!
@@ -43,7 +45,9 @@
 //!   original uses RAII via `SpinlockGuard<'a>` to auto-release on drop. Since Verus
 //!   cannot reason about `Drop` directly, we model the obligation using a tracked ghost
 //!   token: `lock()` and `try_lock()` produce a `LockToken` that must be consumed by
-//!   `unlock()`. This makes the lock-release obligation explicit at the type level.
+//!   `unlock()`. The token's view includes the lock's ghost `id`, so tokens from one
+//!   lock instance cannot unlock a different instance. This makes the lock-release
+//!   obligation explicit and instance-bound at the type level.
 //! - `arch::cpu::pause()`: CPU hint with no semantic effect on lock state.
 
 use vstd::prelude::*;
@@ -71,10 +75,14 @@ verus! {
 ///
 /// The `locked` field is `pub` for Verus spec reasoning. The original type
 /// uses `AtomicBool` with interior mutability. Verified code should use
-/// the provided methods rather than direct field access.
+/// the provided methods rather than direct field access. The ghost `id`
+/// field provides instance identity for token binding (erased at runtime).
 pub struct Spinlock {
     /// Lock state: `true` means locked, `false` means unlocked.
     pub locked: bool,
+    /// Ghost identity for distinguishing lock instances.
+    /// Callers must provide a unique `id` per instance at construction time.
+    pub ghost id: nat,
 }
 
 //==================================================================================================
@@ -84,17 +92,23 @@ pub struct Spinlock {
 impl Spinlock {
     /// Creates a new unlocked spinlock.
     ///
+    /// # Parameters
+    ///
+    /// - `id`: Ghost identity for this lock instance. Callers should ensure
+    ///   unique IDs across all spinlock instances to preserve token isolation.
+    ///
     /// # Returns
     ///
-    /// A new `Spinlock` in the unlocked state.
-    pub fn new() -> (result: Self)
+    /// A new `Spinlock` in the unlocked state with the given identity.
+    pub fn new(Ghost(id): Ghost<nat>) -> (result: Self)
         ensures
             !result.locked,
             result.spec_is_unlocked(),
-            result@ == Spinlock::spec_new_view(),
+            result@ == Spinlock::spec_new_view(id),
+            result@.id == id,
             result.wf(),
     {
-        Spinlock { locked: false }
+        Spinlock { locked: false, id: id }
     }
 
     /// Attempts to acquire the lock without spinning.
@@ -119,6 +133,7 @@ impl Spinlock {
         ensures
             result.0 == !old(self).locked,
             self.locked,
+            self@.id == old(self)@.id,
             !result.0 ==> self@ == old(self)@,
             result.0 ==> result.1@.is_some(),
             result.0 ==> result.1@.unwrap().view == self@,
@@ -158,6 +173,7 @@ impl Spinlock {
         ensures
             self.locked,
             self.spec_is_locked(),
+            self@.id == old(self)@.id,
             token@.view == self@,
     {
         unimplemented!()
@@ -185,7 +201,8 @@ impl Spinlock {
             old(self).spec_is_locked(),
             !self.locked,
             self.spec_is_unlocked(),
-            self@ == Spinlock::spec_new_view(),
+            self@.id == old(self)@.id,
+            self@ == Spinlock::spec_new_view(old(self)@.id),
     {
         self.locked = false;
     }

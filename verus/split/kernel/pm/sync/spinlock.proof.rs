@@ -12,10 +12,11 @@ verus! {
 
 impl Spinlock {
     /// Lemma: A newly created spinlock is unlocked.
-    pub proof fn lemma_new_is_unlocked()
+    pub proof fn lemma_new_is_unlocked(id: nat)
         ensures
-            Spinlock::spec_new_view() == (SpinlockView { locked: false }),
-            !Spinlock::spec_new_view().locked,
+            Spinlock::spec_new_view(id) == (SpinlockView { locked: false, id: id }),
+            !Spinlock::spec_new_view(id).locked,
+            Spinlock::spec_new_view(id).id == id,
     {
     }
 
@@ -47,6 +48,7 @@ impl Spinlock {
             a@ == b@,
         ensures
             a.spec_is_locked() == b.spec_is_locked(),
+            a@.id == b@.id,
     {
     }
 
@@ -69,10 +71,10 @@ impl Spinlock {
     }
 
     /// Lemma: unlock on a locked spinlock produces an unlocked spinlock.
-    pub proof fn lemma_unlock_produces_unlocked()
+    pub proof fn lemma_unlock_produces_unlocked(id: nat)
         ensures
-            !(Spinlock { locked: false }).locked,
-            (Spinlock { locked: false }).spec_is_unlocked(),
+            !(Spinlock { locked: false, id: id }).locked,
+            (Spinlock { locked: false, id: id }).spec_is_unlocked(),
     {
     }
 
@@ -81,26 +83,28 @@ impl Spinlock {
     /// # Note
     ///
     /// Models the protocol: starting from unlocked, acquiring the lock,
-    /// then releasing it returns to the unlocked state.
-    pub proof fn lemma_lock_unlock_roundtrip()
+    /// then releasing it returns to the unlocked state. Identity is preserved.
+    pub proof fn lemma_lock_unlock_roundtrip(id: nat)
         ensures ({
-            let initial: Spinlock = Spinlock { locked: false };
-            let after_lock: Spinlock = Spinlock { locked: true };
-            let after_unlock: Spinlock = Spinlock { locked: false };
+            let initial: Spinlock = Spinlock { locked: false, id: id };
+            let after_lock: Spinlock = Spinlock { locked: true, id: id };
+            let after_unlock: Spinlock = Spinlock { locked: false, id: id };
             &&& initial.spec_is_unlocked()
             &&& after_lock.spec_is_locked()
             &&& after_unlock.spec_is_unlocked()
             &&& initial@ == after_unlock@
+            &&& initial@.id == after_lock@.id
+            &&& after_lock@.id == after_unlock@.id
         }),
     {
     }
 
-    /// Lemma: An unlocked spinlock has the same view as a new spinlock.
+    /// Lemma: An unlocked spinlock has the same view as a new spinlock with its id.
     pub proof fn lemma_unlocked_eq_new_view(s: &Spinlock)
         requires
             s.spec_is_unlocked(),
         ensures
-            s@ == Spinlock::spec_new_view(),
+            s@ == Spinlock::spec_new_view(s@.id),
     {
     }
 
@@ -113,7 +117,7 @@ impl Spinlock {
     /// condition.
     pub proof fn lemma_new_then_try_lock_succeeds(s: &Spinlock)
         requires
-            s@ == Spinlock::spec_new_view(),
+            s@ == Spinlock::spec_new_view(s@.id),
         ensures
             s.spec_is_unlocked(),
             !s.locked,
@@ -135,6 +139,7 @@ impl Spinlock {
         ensures
             s.locked,
             token.view.locked,
+            token.view.id == s@.id,
     {
     }
 
@@ -148,7 +153,27 @@ impl Spinlock {
         requires
             token.view.locked,
         ensures
-            token.view == (SpinlockView { locked: true }),
+            token.view == (SpinlockView { locked: true, id: token.view.id }),
+    {
+    }
+
+    /// Lemma: Tokens from different lock instances cannot satisfy each other's
+    /// unlock preconditions.
+    ///
+    /// # Description
+    ///
+    /// If two locked spinlocks have different identities, a token from one cannot
+    /// be used to unlock the other. This formalizes instance-level token isolation.
+    pub proof fn lemma_token_instance_isolation(
+        s1: &Spinlock, s2: &Spinlock, token: &LockToken,
+    )
+        requires
+            s1.spec_is_locked(),
+            s2.spec_is_locked(),
+            s1@.id != s2@.id,
+            token.view == s1@,
+        ensures
+            token.view != s2@,
     {
     }
 }
