@@ -112,11 +112,13 @@ impl Fence {
     ///
     /// # Description
     ///
-    /// Proves liveness: if the signal count equals the total, the fence
+    /// Proves satisfaction: when the signal count equals the total, the fence
     /// satisfaction condition (`count >= total`) holds. This captures the fact
     /// that starting from `count == 0` and applying `total` signal operations
     /// (each incrementing count by 1) yields `count == total`, which implies
-    /// satisfaction.
+    /// satisfaction. Note: this is a static arithmetic entailment, not a
+    /// temporal liveness proof—it does not model the sequence of signal
+    /// operations inductively.
     pub proof fn lemma_total_signals_satisfies(count: nat, total: nat)
         requires
             count == total,
@@ -216,6 +218,7 @@ impl Fence {
             count + signals_a + signals_b <= total,
         ensures
             count + signals_a + signals_b == count + signals_b + signals_a,
+            (count + signals_a + signals_b >= total) == (count + signals_b + signals_a >= total),
     {
     }
 }

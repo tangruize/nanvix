@@ -15,7 +15,7 @@
 //! - `spec_is_satisfied` and `spec_is_waiting` are complementary predicates.
 //! - Well-formedness (`wf()`) enforces: count <= total.
 //! - Satisfaction is monotone: once satisfied, a fence stays satisfied.
-//! - After exactly `total` signals from a new fence, it is satisfied (liveness).
+//! - After exactly `total` signals from a new fence, it is satisfied.
 //!
 //! ## Verification Model
 //!
