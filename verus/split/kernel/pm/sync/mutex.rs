@@ -64,6 +64,7 @@
 //! | `Mutex::reference_count()`| (not modeled)          | Arc-specific, out of scope.   |
 //! | `MutexInner::unlock_unchecked()` | `unlock(&mut self)` | Safe wrapper with token.   |
 //! | `fmt::Debug for MutexGuard` | (not modeled)       | Display-only, no state mutation. |
+//! | (none in original)          | `is_locked(&self)`   | Verification-only helper.     |
 //!
 //! ## API Divergence
 //!
@@ -106,6 +107,12 @@
 //! - **T2: Arc lifetime management.** The original `reference_count()` returns
 //!   `Arc::strong_count()`. The verified model does not model reference counting.
 //!   Correct lifetime management is assumed.
+//! - **T3: Token construction uniqueness.** The `MutexToken` tracked struct has
+//!   `pub ghost view`, so external code could theoretically construct a token
+//!   without calling `lock()`/`try_lock()`. The mutual exclusion guarantee relies
+//!   on the assumption that tokens are created solely via the module's API.
+//!   In a future iteration, a singleton token pattern or Verus resource algebra
+//!   could enforce this at the type level.
 
 use vstd::prelude::*;
 
@@ -255,7 +262,9 @@ impl Mutex {
     ///
     /// Sets the lock state to unlocked. Models the `MutexGuard::drop()` which
     /// calls `MutexInner::unlock_unchecked()` to store `false` and notify the
-    /// first sleeping thread.
+    /// first sleeping thread. The original `notify_first()` error path (handled
+    /// with `warn!()` in `Drop`) is not modeled; condvar notification is an
+    /// external dependency verified separately.
     ///
     /// Consumes the `MutexToken` produced by `lock()` or `try_lock()`, discharging
     /// the lock-release obligation.

@@ -58,8 +58,8 @@ impl Mutex {
     {
     }
 
-    /// Lemma: try_lock on an unlocked mutex succeeds and locks it.
-    pub proof fn lemma_try_lock_unlocked_succeeds(pre: &Mutex)
+    /// Lemma: An unlocked mutex has `locked == false`.
+    pub proof fn lemma_unlocked_implies_not_locked(pre: &Mutex)
         requires
             pre.spec_is_unlocked(),
         ensures
@@ -67,8 +67,8 @@ impl Mutex {
     {
     }
 
-    /// Lemma: try_lock on a locked mutex fails and state is unchanged.
-    pub proof fn lemma_try_lock_locked_fails(pre: &Mutex)
+    /// Lemma: A locked mutex has `locked == true`.
+    pub proof fn lemma_locked_implies_locked(pre: &Mutex)
         requires
             pre.spec_is_locked(),
         ensures
