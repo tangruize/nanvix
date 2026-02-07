@@ -106,6 +106,12 @@
 //!   blocked thread. See `spec_condvar_wake_after_notify()`.
 //! - **T3: Sequential ordering.** The model assumes sequential execution. The
 //!   original relies on `SeqCst` ordering for `fetch_update` and `fetch_add`.
+//! - **T4: Caller safety conditions.** The original `down()` and `up()` are
+//!   `unsafe` with caller obligations: interrupts must be disabled, the caller
+//!   must not be the kernel process (for `down()`), and no resources must be
+//!   held (for `down()`) or no process manager reference held (for `up()`).
+//!   These hardware/OS-level preconditions are not expressible in the sequential
+//!   Verus model and are assumed to be enforced by the calling context.
 //!
 //! ## Refinement Argument
 //!
@@ -191,6 +197,12 @@ impl Semaphore {
     /// In the sequential model, the `spec_is_available()` precondition guarantees
     /// success on the first attempt, so the blocking loop is not modeled.
     ///
+    /// # Safety (Original)
+    ///
+    /// The original `down()` is `unsafe` and requires: interrupts disabled,
+    /// caller is not the kernel process, and no resources are held. These
+    /// conditions are not modeled (see trust assumption T4).
+    ///
     /// # Returns
     ///
     /// The semaphore with value decremented by 1.
@@ -248,9 +260,18 @@ impl Semaphore {
     /// whether threads are waiting (the original `up()` always increments first,
     /// then notifies).
     ///
+    /// # Safety (Original)
+    ///
+    /// The original `up()` is `unsafe` and requires: interrupts disabled and
+    /// the caller does not hold a reference to the process manager. These
+    /// conditions are not modeled (see trust assumption T4).
+    ///
     /// # Precondition
     ///
-    /// The value must be less than `usize::MAX` to prevent overflow.
+    /// The value must be less than `usize::MAX` to prevent overflow. The original
+    /// `fetch_add(1, SeqCst)` can silently wrap in release builds; the verified
+    /// model makes this an explicit precondition. Callers should establish this
+    /// bound from the resource pool size or system invariant.
     pub fn up(&mut self)
         requires
             old(self).wf(),
