@@ -355,7 +355,8 @@ impl ReadyThread {
             result.spec_drop_safe() == self.spec_drop_safe(),
             result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
     {
-        ZombieThread::from_state(self.state, 0)
+        let status: int = 0;
+        ZombieThread::from_state(self.state, status)
     }
 }
 
