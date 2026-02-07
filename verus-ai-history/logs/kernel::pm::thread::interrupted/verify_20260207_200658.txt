@@ -1,0 +1,62 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 20:06:58 CST 2026
+Module: kernel::pm::thread::interrupted
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::interrupted
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0412]: cannot find type `ThreadStateView` in this scope
+   --> kernel/pm/thread/interrupted.spec.rs:47:16
+    |
+ 47 |     pub state: ThreadStateView,
+    |                ^^^^^^^^^^^^^^^
+    |
+   ::: kernel/pm/thread/state.rs:102:1
+    |
+102 | pub struct ThreadState {
+    | ---------------------- similarly named struct `ThreadState` defined here
+    |
+help: a struct with a similar name exists
+    |
+ 47 -     pub state: ThreadStateView,
+ 47 +     pub state: ThreadState,
+    |
+help: consider importing this struct
+   --> kernel/pm/thread/interrupted.rs:41:1
+    |
+ 41 + use crate::kernel::pm::thread::state::ThreadStateView;
+    |
+
+error[E0412]: cannot find type `ThreadStateView` in this scope
+   --> kernel/pm/thread/interrupted.spec.rs:56:16
+    |
+ 56 |     pub state: ThreadStateView,
+    |                ^^^^^^^^^^^^^^^
+    |
+   ::: kernel/pm/thread/state.rs:102:1
+    |
+102 | pub struct ThreadState {
+    | ---------------------- similarly named struct `ThreadState` defined here
+    |
+help: a struct with a similar name exists
+    |
+ 56 -     pub state: ThreadStateView,
+ 56 +     pub state: ThreadState,
+    |
+help: consider importing this struct
+   --> kernel/pm/thread/interrupted.rs:41:1
+    |
+ 41 + use crate::kernel::pm::thread::state::ThreadStateView;
+    |
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0412`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::interrupted (verified:0, errors:0)
