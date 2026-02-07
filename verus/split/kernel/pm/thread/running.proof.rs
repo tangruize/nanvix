@@ -69,6 +69,16 @@ impl RunningThread {
     {
     }
 
+    /// Lemma: Construction preserves the full ThreadStateView.
+    pub proof fn lemma_from_state_preserves_state_view(state: ThreadState)
+        ensures
+            ({
+                let r: RunningThread = RunningThread { state: state };
+                r.state@ == state@
+            }),
+    {
+    }
+
     //==============================================================================================
     // Identity Correctness
     //==============================================================================================

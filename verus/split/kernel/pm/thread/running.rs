@@ -256,6 +256,7 @@ impl RunningThread {
         requires
             state.wf(),
         ensures
+            result.state@ == state@,
             result.spec_id() == state.spec_id(),
             result.spec_is_interrupted() == state.spec_is_interrupted(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
