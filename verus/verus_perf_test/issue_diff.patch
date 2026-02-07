@@ -1,0 +1,186 @@
+diff --git a/verus/kheap.rs b/verus/kheap.rs
+index f65d8173..554a67b4 100644
+--- a/verus/kheap.rs
++++ b/verus/kheap.rs
+@@ -171,8 +171,8 @@ impl KheapView {
+ 
+     /// Returns total allocated blocks across all slabs.
+     pub open spec fn total_allocated(&self) -> int {
+-        self.slab_8.used() + self.slab_16.used() + self.slab_32.used() + self.slab_64.used()
+-            + self.slab_128.used() + self.slab_256.used() + self.slab_512.used() + self.slab_4096.used()
++        self.slab_8.num_allocated() + self.slab_16.num_allocated() + self.slab_32.num_allocated() + self.slab_64.num_allocated()
++            + self.slab_128.num_allocated() + self.slab_256.num_allocated() + self.slab_512.num_allocated() + self.slab_4096.num_allocated()
+     }
+ 
+     /// Returns total capacity across all slabs.
+@@ -1155,14 +1155,14 @@ impl Kheap {
+             assert(heap.slab_512_bytes@.is_empty());
+             assert(heap.slab_4096_bytes@.is_empty());
+ 
+-            assert(heap@.slab_8.used() == 0);
+-            assert(heap@.slab_16.used() == 0);
+-            assert(heap@.slab_32.used() == 0);
+-            assert(heap@.slab_64.used() == 0);
+-            assert(heap@.slab_128.used() == 0);
+-            assert(heap@.slab_256.used() == 0);
+-            assert(heap@.slab_512.used() == 0);
+-            assert(heap@.slab_4096.used() == 0);
++            assert(heap@.slab_8.num_allocated() == 0);
++            assert(heap@.slab_16.num_allocated() == 0);
++            assert(heap@.slab_32.num_allocated() == 0);
++            assert(heap@.slab_64.num_allocated() == 0);
++            assert(heap@.slab_128.num_allocated() == 0);
++            assert(heap@.slab_256.num_allocated() == 0);
++            assert(heap@.slab_512.num_allocated() == 0);
++            assert(heap@.slab_4096.num_allocated() == 0);
+ 
+             assert(heap@.total_allocated() == 0);
+             assert(heap@.is_empty());
+diff --git a/verus/slab.rs b/verus/slab.rs
+index 828d742d..f6d9bb93 100644
+--- a/verus/slab.rs
++++ b/verus/slab.rs
+@@ -80,16 +80,11 @@ pub struct SlabView {
+ }
+ 
+ impl SlabView {
+-    /// Returns the number of allocated blocks (alias: used).
++    /// Returns the number of allocated blocks.
+     pub open spec fn num_allocated(&self) -> int {
+         self.allocated_blocks.len() as int
+     }
+ 
+-    /// Returns the number of used blocks.
+-    pub open spec fn used(&self) -> int {
+-        self.num_allocated()
+-    }
+-
+     /// Returns the capacity (total number of data blocks).
+     pub open spec fn capacity(&self) -> int {
+         self.num_data_blocks
+@@ -97,7 +92,7 @@ impl SlabView {
+ 
+     /// Returns the number of free blocks.
+     pub open spec fn free(&self) -> int {
+-        self.capacity() - self.used()
++        self.capacity() - self.num_allocated()
+     }
+ 
+     /// Returns true if block at given index is allocated.
+@@ -220,10 +215,10 @@ impl SlabView {
+     /// Property (Liveness): After deallocation, allocation becomes possible.
+     /// This is crucial for allocator liveness - freed resources become available.
+     pub open spec fn dealloc_enables_alloc(&self, freed_view: &SlabView) -> bool
+-        recommends self.used() == self.capacity()  // self is full
++        recommends self.num_allocated() == self.capacity()  // self is full
+     {
+         // If we were full and deallocated one block, now we can allocate.
+-        freed_view.used() < freed_view.capacity()
++        freed_view.num_allocated() < freed_view.capacity()
+     }
+ 
+     //==============================================================================================
+@@ -583,9 +578,9 @@ impl Slab {
+ 
+     /// Lemma: If no block is allocated, the slab is empty.
+     /// Bridges `forall|i| !is_allocated(i)` to `is_empty()`.
+-    /// 
++    ///
+     /// # Proof Strategy
+-    /// 
++    ///
+     /// We prove that allocated_blocks == empty set by showing no element can be in it.
+     /// - For i in [0, num_data_blocks): !is_allocated(i) by precondition.
+     /// - For i outside this range: !is_allocated(i) by allocated_blocks_in_range (from inv).
+@@ -720,12 +715,12 @@ impl Slab {
+             0 <= block_idx < self@.num_data_blocks,
+             self@.is_allocated(block_idx),
+             !new_self@.is_allocated(block_idx),
+-            new_self@.used() < new_self@.capacity(),  // After dealloc, there's capacity
++            new_self@.num_allocated() < new_self@.capacity(),  // After dealloc, there's capacity
+         ensures
+             // The deallocated block is now free and can be allocated.
+             !new_self@.is_allocated(block_idx),
+             // There's at least one free block (the one we just freed).
+-            new_self@.used() < new_self@.capacity(),
++            new_self@.num_allocated() < new_self@.capacity(),
+     {
+         // After deallocate:
+         // - The block's bit is cleared in the bitmap.
+@@ -987,7 +982,7 @@ impl Slab {
+         requires
+             self.inv(),
+             new_self.inv(),
+-            self@.used() == self@.capacity(),  // Slab was full
++            self@.num_allocated() == self@.capacity(),  // Slab was full
+             0 <= block_idx < self@.num_data_blocks,
+             self@.is_allocated(block_idx),
+             !new_self@.is_allocated(block_idx),
+@@ -1075,11 +1070,11 @@ impl Slab {
+         assert(new_set.len() <= removed_set.len());
+ 
+         // Therefore: new_set.len() <= old_set.len() - 1
+-        // old_set.len() == self@.used() == self@.capacity() == self@.num_data_blocks
++        // old_set.len() == self@.num_allocated() == self@.capacity() == self@.num_data_blocks
+         // So: new_set.len() <= capacity - 1
+-        // Therefore: new_self@.used() < new_self@.capacity()
++        // Therefore: new_self@.num_allocated() < new_self@.capacity()
+         // Therefore: new_self@.free() >= 1 and can_allocate() is true
+-        assert(new_self@.used() <= self@.capacity() - 1);
++        assert(new_self@.num_allocated() <= self@.capacity() - 1);
+         assert(new_self@.free() >= 1);
+         assert(new_self@.can_allocate());
+     }
+@@ -1117,9 +1112,9 @@ impl Slab {
+             slab@.is_freshly_initialized(),
+         ensures
+             slab@.free() == slab@.capacity(),
+-            slab@.used() == 0,
++            slab@.num_allocated() == 0,
+     {
+-        // If allocated_blocks is empty, used() = 0, free() = capacity - 0 = capacity.
++        // If allocated_blocks is empty, num_allocated() = 0, free() = capacity - 0 = capacity.
+     }
+ 
+     //==============================================================================================
+@@ -2264,7 +2259,7 @@ impl Slab {
+                         assert(self@.allocated_blocks.len() + 1 <= self@.num_data_blocks);
+                     }
+ 
+-                    assert(self@.used() < self@.capacity());
++                    assert(self@.num_allocated() < self@.capacity());
+                     assert(self@.free() > 0);
+                     assert(self@.can_allocate());
+                 }
+@@ -2866,7 +2861,7 @@ proof fn test_no_memory_aliasing_property(view: SlabView)
+ /// Verified: Freed block becomes available for allocation
+ proof fn test_liveness_dealloc_enables_alloc(view: SlabView, freed_view: SlabView, block_idx: int)
+     requires
+-        view.used() == view.capacity(),  // Was full
++        view.num_allocated() == view.capacity(),  // Was full
+         view.is_allocated(block_idx),
+         0 <= block_idx < view.num_data_blocks,
+         !freed_view.is_allocated(block_idx),  // Now freed
+@@ -2944,7 +2939,7 @@ proof fn test_liveness_dealloc_enables_alloc(view: SlabView, freed_view: SlabVie
+     // new_set.len() <= removed_set.len()
+     lemma_len_subset(new_set, removed_set);
+ 
+-    // Therefore: freed_view.used() < freed_view.capacity()
++    // Therefore: freed_view.num_allocated() < freed_view.capacity()
+     assert(freed_view.can_allocate());
+ }
+ 
+@@ -2954,11 +2949,11 @@ proof fn test_fresh_initialization_property(view: SlabView)
+     requires
+         view.is_freshly_initialized(),
+     ensures
+-        view.used() == 0,
++        view.num_allocated() == 0,
+         view.free() == view.capacity(),
+ {
+     // is_freshly_initialized() ==> allocated_blocks is empty
+-    // ==> used() = |allocated_blocks| = 0
++    // ==> num_allocated() = |allocated_blocks| = 0
+     // ==> free() = capacity - 0 = capacity
+ }
+ 

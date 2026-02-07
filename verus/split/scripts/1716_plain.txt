@@ -1,0 +1,438 @@
+Skip to content
+GitHub Enterprise
+Users managed by Microsoft EMU
+verus-lang
+verus
+Repository navigation
+Code
+Issues
+164
+ (164)
+Pull requests
+45
+ (45)
+Agents
+Discussions
+Actions
+Projects
+2
+ (2)
+Security
+Insights
+Attribute-based syntax for executable code
+#1716
+@ziqiaozhou
+ziqiaozhou
+on May 31, 2025 · 1 comment
+Return to top
+
+ziqiaozhou
+on May 31, 2025
+Collaborator
+Motivation:
+Incremental verification for a relatively large and existed codebase.
+Minimize changes to executable codes
+Improve readability of executable codes for non-verification developers. Do not mix the use of executable code and ghost code.
+Avoid extra efforts to install verus toolchain (verus, verusfmt, customized rust-analyzer) for non-verification developer.
+Allow project to avoid adding verus (builtin, builtin-macro, and vstd) as a hard dependencies. Projects can easily define their verus_stub procedure macros to control the verus dependency by feature.
+Summary
+All attribute-base procedure macros only change or insert codes to enable verification when compiling with erase.keep() == true and will not have side effect (verus_spec) or return empty token stream (proof!{}, proof_xxx!{}) when erase.keep() == false
+
+verus/source/builtin_macros/src/lib.rs
+
+Lines 260 to 313 in c3014c7
+
+ /*** Verus small macro definition for executable items ***/ 
+  
+ // If no #[verus_verify] on the item, it is verifier::external by default. 
+ // When compiling code with verus: 
+ // #[verus_verify] annotates the item with verifier::verify 
+ // #[verus_verify(external_body)] annotates the item with verifier::external_body 
+ // When compiling code with standard rust tool, the item has no verifier annotation. 
+ #[proc_macro_attribute] 
+ pub fn verus_verify( 
+     args: proc_macro::TokenStream, 
+     input: proc_macro::TokenStream, 
+ ) -> proc_macro::TokenStream { 
+     attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input) 
+ } 
+  
+ #[proc_macro_attribute] 
+ pub fn verus_spec( 
+     attr: proc_macro::TokenStream, 
+     input: proc_macro::TokenStream, 
+ ) -> proc_macro::TokenStream { 
+     attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into()).into() 
+ } 
+  
+ /// proof_with add ghost input/output to the next function call. 
+ /// In stable rust, we cannot add attribute-based macro to expr/statement. 
+ /// Using proof_with! to tell #[verus_spec] to add ghost input/output. 
+ /// Using proof_with outside of #[verus_spec] does not have any side effects. 
+ #[proc_macro] 
+ pub fn proof_with(_: proc_macro::TokenStream) -> proc_macro::TokenStream { 
+     proc_macro::TokenStream::new() 
+ } 
+  
+ /// Add a verus proof block. 
+ #[proc_macro] 
+ pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream { 
+     attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into() 
+ } 
+  
+ /// proof_decl add extra stmts that are used only 
+ /// for verification. 
+ /// For example, declare a ghost/tracked variable. 
+ /// To avoid confusion, let stmts without ghost/tracked is not supported. 
+ /// Non-local stmts inside proof_decl! are treated similar to those in proof! 
+ #[proc_macro] 
+ pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream { 
+     let erase = cfg_erase(); 
+     if erase.keep() { 
+         syntax::rewrite_proof_decl(erase, input.into()) 
+     } else { 
+         proc_macro::TokenStream::new() 
+     } 
+ } 
+  
+ /*** End of verus small macro definition for executable items ***/ 
+
+Two attribute procedure macros:
+#[verus_spec(...)]: Add specification signature.
+#[verus_verify(...)]: Add hints to verifier to mark verifier(external), verifier(external_body), verifier(rlimit(xx)), etc. In additionally, dual_mode is specified via verus_verify.
+Three function-like procedure macros:
+
+proof!{...}: proof block similar to proof { ... } inside verus macro
+proof_decl!{...}: proof block with function-scoped variables
+proof_with!{...}: pass and receive tracked/ghost
+Syntax and examples
+Basic specification signature on function item
+verus_spec will mark the function #[verifier::verify] and insert specifications for the function (e.g., ensure, requires, etc.).
+
+verus/dependencies/syn/src/verus.rs
+
+Lines 260 to 272 in c3014c7
+
+ ast_struct! { 
+     pub struct SignatureSpec { 
+         // When adding Verus fields here, update erase_spec_fields: 
+         pub prover: Option<Prover>, 
+         pub requires: Option<Requires>, 
+         pub recommends: Option<Recommends>, 
+         pub ensures: Option<Ensures>, 
+         pub returns: Option<Returns>, 
+         pub decreases: Option<SignatureDecreases>, 
+         pub invariants: Option<SignatureInvariants>, 
+         pub unwind: Option<SignatureUnwind>, 
+         pub with: Option<WithSpecOnFn>, 
+     } 
+verus/examples/syntax_attr.rs
+
+Lines 17 to 27 in c3014c7
+
+ #[verus_spec(sum => 
+     requires 
+         x < 100, 
+         y < 100, 
+     ensures 
+         sum < 200, 
+ )] 
+ fn my_exec_fun(x: u32, y: u32) -> u32 
+ { 
+     x + y 
+ } 
+verus/examples/syntax.rs
+
+Lines 18 to 26 in c3014c7
+
+ fn my_exec_fun(x: u32, y: u32) -> (sum: u32) 
+     requires 
+         x < 100, 
+         y < 100, 
+     ensures 
+         sum < 200, 
+ { 
+     x + y 
+ } 
+Specification signature on loop block
+verus_spec will insert other loop specification (e.g, invariant) into the loop block
+
+#[verus_spec(v => ensures true)]
+fn test_for_loop(n: u32) -> Vec<u32> {
+    let mut v: Vec<u32> = Vec::new();
+
+    #[verus_spec(
+       invariant
+           v@ =~= Seq::new(i as nat, |k| k as u32),
+    )]
+    for i in 0..n {
+        v.push(i);
+    }
+    v
+}
+verus! {
+fn test_for_loop(n: u32) -> (v: Vec<u32>)
+  ensures true
+{
+    let mut v: Vec<u32> = Vec::new();
+
+    for i in 0..n 
+    invariant
+        v@ =~= Seq::new(i as nat, |k| k as u32)
+   {
+        v.push(i);
+    }
+    v
+}
+}
+Proof blocks inside executable function
+Inside function body, we prefer to use function-like macro since it does not need to use unstable features.
+
+proof!{} is similar to proof {} inside verus macro, and all variable declared inside proof!{} is scoped to that proof block; This makes verus!{} user see consistant side effect.
+proof_decl!{} allows to declare function-scoped variable and in most cases could replace proof!{}.
+#[verus_spec]
+fn g() {
+   proof_decl!{
+     let ghost mut i = 0;
+     assert(true);
+   }
+   f();
+   proof!{
+     assert(i == 0);
+   }
+}
+verus!{
+fn g() {
+   let ghost mut i = 0;
+   proof{
+      assert(true);
+   }
+
+   f();
+   proof{
+      assert(i == 0);
+   }
+}
+}
+Tracked and Ghost variables used as function inputs and outputs
+#[verus_spec(ret =>
+with
+  Tracked(y): Tracked<&mut u32>,
+  Ghost(w): Ghost<u32> 
+     -> z: Ghost<u32>
+requires
+  x < 100,
+  *old(y) < 100,
+ensures
+  *y == x,
+  ret == x + 1,
+  z@ == x,
+)]
+fn exec_tracked(x: u32) -> u32 {
+  proof! {
+    *y = x;
+  }
+  proof_with!(|= Ghost(x));
+  (x + 1)
+}
+
+
+
+
+
+
+
+#[verus_spec]
+fn exec_tracked_test(x: u32) {
+  proof_decl!{
+   let ghost mut z = 0u32;
+   let tracked mut y = 0u32;
+  }
+
+  proof_with!{Tracked(&mut y), Ghost(0)=> Ghost(z)}
+  let x = exec_tracked(1);
+
+  proof!{
+    assert(y == 1);
+    assert(z == 1);
+    assert(x == 2);
+  }
+}
+
+fn exec_external_test(x: u32) -> u32 {
+   exec_tracked(1)
+}
+verus!{
+fn verus_verified_exec_tracked(
+    x: u32,
+    Tracked(y): Tracked<&mut u32>,
+    Ghost(w): Ghost<u32>,
+) -> (ret: (u32, Ghost<u32>))
+requires
+  x < 100,
+  *old(y) < 100,
+ensures
+  *y == x,
+  ret.0 == x + 1,
+  ret.1@ == x,
+ {
+  proof! {
+    *y = x;
+  }
+  ((x + 1), Ghost(x))
+}
+
+fn exec_tracked(x: u32) -> u32
+requires
+  false
+{
+  unimplemented!()
+}
+
+fn exec_tracked_test(x: u32) {
+  let ghost mut z = 0u32;
+  let tracked mut y = 0u32;
+
+  let tmp = verus_verified_exec_tracked(1, Tracked(&mut y), Ghost(0));
+  let x = tmp.0
+  proof {z = tmp@;}
+  proof{
+    assert(y == 1);
+    assert(z == 1);
+    assert(x == 2);
+  }
+}
+
+}
+
+fn exec_external_test(x: u32) -> u32 {
+   exec_tracked(1)
+}
+with specification passes the extra ghost input and output variables to a function.
+verus/dependencies/syn/src/verus.rs
+
+Lines 252 to 258 in c3014c7
+
+ ast_struct! { 
+     pub struct WithSpecOnFn { 
+         pub with: Token![with], 
+         pub inputs: Punctuated<FnArg , Token![,]>, 
+         pub outputs: Option<(Token![->], Punctuated<PatType, Token![,]>)>, 
+     } 
+ } 
+When a function is anotated with verus_spec(with ...), verus_spec procedure macro will generate two version of functions: verus_verified_{xxx} and {xxx} to allow the function to be used by functions inside and outside verification scope.
+
+The unverified function requires false so that not providing correct proof_with!() to pass the tracked/ghost variables to the function will fail the verification.
+
+#[verus_spec]
+fn call_unverified(x: u32) {
+  test_mut_tracked(0); // FAILS
+}
+When passing tracked/ghost using proof_with!{...}, it calls verus_verified_xxx
+content in proof_with!{...} will be parsed by
+verus/dependencies/syn/src/verus.rs
+
+Lines 243 to 250 in c3014c7
+
+ ast_struct! { 
+     pub struct WithSpecOnExpr { 
+         pub with: Token![with], 
+         pub inputs: Punctuated<Expr, Token![,]>, 
+         pub outputs: Option<(Token![=>], Pat)>, 
+         pub follows: Option<(Token![|=], Pat)>, 
+     } 
+ } 
+proof_with!{} is just a placeholder. #[verus_spec] is responsible to modify inputs and outputs for the function in the statement followed by proof_with!{}.
+Dual mode for simple functions
+If spec function name is not provided, it will generate a random name.
+
+#[verus_verify(dual_spec(spec_bit_and))]
+#[verus_spec(
+    returns
+      self.bit_and(x, y),
+)]
+fn bit_and(x: u32, y: u32) -> u32 {
+  proof!{ assert(true); }
+  x & y
+}
+verus! {
+#[verifier::when_used_as_spec(spec_bit_and)]
+fn bit_and(x: u32, y: u32) -> u32 
+returns bit_and(x, y)
+{
+  proof { assert(true); }
+  x & y
+}
+
+spec fn spec_bit_and(x: u32, y: u32) -> u32 {
+  x & y
+}
+}
+MISC
+When enabling vpanic feature in builtin_macro and allow-panic feature in vstd, #[verus_spec] will allow replace panic!(...) macro to a vstd::pervasive::vpanic!(...) to allow use of panic macro
+
+More examples
+rust_verify_test/tests/syntax_attr.rs
+examples/syntax_attr.rs
+
+Replies:1 comment
+
+ziqiaozhou
+on May 31, 2025
+Collaborator
+Author
+One limitation is that the current implementation doesn't address how to guard calls to external functions using tracked variables—unless those functions are manually replaced with wrapper functions. This approach, however, causes the executable code to diverge significantly from the original unverified version.
+
+A potential solution to use a procedural macro that recognizes when certain external functions are being guarded by wrapper functions. The mapping between external functions and their verified counterparts could be hard-coded (for standard library functions) or loaded from a configuration file.
+
+For example, a call to core::ptr::read(src: *const T) -> T could be rewritten as vstd::ptr_mut_read(src: *const T, Tracked(perm): Tracked<&mut PointsTo>) -> T in verification mode. The macro would replace core::ptr::read with vstd::ptr_mut_read and insert a corresponding proof_with!(Tracked(perm)) annotation automatically. While this mechanism is theoretically workable, it may be too hacky.
+
+#[verus_spec(
+   with Tracked(perm): Tracked(PointsTo<u64>),
+  requires ...
+)
+]
+unsafe fn test_ptr_read(src: *const u64) -> u64 {
+  proof_with!(Tracked(perm));
+  let val = core::ptr::read(src);
+  val
+}
+unsafe fn test_ptr_read(src: *const u64) -> u64 
+requires ...
+{
+  let val = vstd::ptr_mut_read(src, Tracked(perm));
+  val
+}
+I think a better solution is to do such replacement by rust_verifier. It should be more easier to understand and flexible if verifier can identify the extra arguments from assume_specification and the extra arguments from proof_with!().
+
+verus!{
+assume_specification [core::ptr::read] (src: *const T,  Tracked(perm): Tracked<&mut PointsTo<T>>) -> (ret: T)
+requires ...
+ensures ...
+}
+0 replies
+Write
+Preview
+You cannot contribute to repositories outside of your enterprise Microsoft EMU.
+
+Category
+🗨️
+Language design
+Labels
+None yet
+1 participant
+@ziqiaozhou
+Notifications
+You’re not receiving notifications from this thread.
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information

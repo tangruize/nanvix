@@ -1,0 +1,12 @@
+.verus-log
+*.air
+*.vir
+*.smt_transcript
+*.dot
+*.smt2
+*.interp
+*.triggers
+
+*.old
+*.bak
+*.profile

@@ -1,0 +1,153 @@
+Skip to content
+GitHub Enterprise
+Users managed by Microsoft EMU
+verus-lang
+verus
+Repository navigation
+Code
+Issues
+164
+ (164)
+Pull requests
+45
+ (45)
+Agents
+Discussions
+Actions
+Projects
+2
+ (2)
+Security
+Insights
+Further simplify the attribute-based macros for executable code #1843
+ziqiaozhou started this conversation in Language design
+
+ziqiaozhou
+on Jul 26, 2025
+Collaborator
+As I mentioned in #1716, I added the attribute-based macro for executable function to make it easier to integrate verus annotations in executable code. But not all cases can be easily achieved by attributes, especially when I need annotation inside function body.
+
+Passing ghost variables to functions
+Thus, I have added a placeholder macro, proof_with!(), which injects proof code that is later parsed by the verus_spec macro along with the statement that follows it.
+
+proof_with!(Tracked(p1));
+let ret = call1(a1);
+But the current version still requires some changes to existing code in order to insert ghost variable into executable properly.
+
+For example, proof_with does not yet support nested pattern.
+
+If we have some nested function calls that needs to take ghost variables. We need to change
+
+fn x() {
+  let ret = call1(a1, call2(a2));
+}
+to
+
+#[verus_spec(...)]
+fn x() {
+  proof_with(Tracked(p1) => Tracked(outp1));
+  let ret = call1(a1, {
+     proof_with(Tracked(p2) => Tracked(outp1));
+     call2(a2)
+  });
+}
+A potential solution is to let proof_with to capture a pattern and then fill the ghost to statement following it. For example,
+
+proof_with!{
+    Tracked(p1), ... => Tracked(outp1)
+    [
+        Tracked(p2), ... => Tracked(outp2)
+       [
+            Tracked(p3), ... => Tracked(outp3),
+            Tracked(p4), ... => Tracked(outp4),
+       ]
+    ]
+}
+let ret = call1(a1, call2(a2, call3(a3) + call4(a4) ));
+I think it should look simplier in practice since we may only need to pass a few ghost var to some functions not all of them.
+
+Annotating closure
+In addition, annotating a closure is also a pain. For example,
+
+(vaddr > start).then(|| vaddr - start)
+should be rewritten to
+
+(vaddr > start).then(
+            #[cfg_attr(verus_keep_ghost_body, verus_spec(ret: usize =>
+                requires
+                    vaddr > start
+                ensures
+                    ret == vadd - start
+            ))]
+            || vaddr - start,
+        )
+#1759 might be helpful to avoid annotations. But when it is needed, we still need to change existing line. I am not sure whether it makes sense to define a proof_with-like faked macro to annotate a closure expr following the macro.
+
+proof_closure!(ret: usize =>
+  requires
+    vaddr > start
+  ensures
+     ret == vadd - start
+);
+(vaddr > start).then(|| vaddr - start)
+And again, we may also need a pattern if the statement contains more than one closure.
+
+Annotating a loop
+Currently, annotating a loop is simple. But we may still see some limitation on using unstable feature #![feature(proc_macro_hygiene)].
+
+#[verus_spec(
+    invariant i <= 10,
+    invariant_except_break i <= 9,
+    ensures i == 10, ret == 10
+)]
+loop
+{
+    i = i + 1;
+    if (i == 10) {
+        ret = i;
+        break;
+    }
+}
+To unify the use of annotations inside executable, I may also need a proof_loop!() and rely on the function-level's verus_spec to rewrite statements that follows proof_xxx!().
+
+proof_loop!(
+    invariant i <= 10,
+    invariant_except_break i <= 9,
+    ensures i == 10, ret == 10
+)
+loop
+{
+    i = i + 1;
+    if (i == 10) {
+        ret = i;
+        break;
+    }
+}
+Your feedback is more than welcome!
+
+Replies:0 comments
+Write
+Preview
+You cannot contribute to repositories outside of your enterprise Microsoft EMU.
+
+Category
+🗨️
+Language design
+Labels
+None yet
+1 participant
+@ziqiaozhou
+Notifications
+You’re not receiving notifications from this thread.
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information
