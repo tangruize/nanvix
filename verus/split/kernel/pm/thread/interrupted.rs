@@ -81,6 +81,12 @@ pub struct InterruptedThread {
 /// **Cross-module dependency:** When the `ReadyThread` module is verified
 /// independently, the postconditions of this boundary model's `from_state`
 /// must be confirmed as implied by the real `ReadyThread::from_state` spec.
+///
+/// **Out of scope:** The real `ReadyThread` also holds an `admission_time`
+/// field set to `clock::now()` in `from_state`. This is a scheduling
+/// property (not a safety/identity/well-formedness property) and is
+/// intentionally omitted from this boundary model. Scheduling-related
+/// verification should be addressed in the `ReadyThread` module itself.
 pub struct ReadyThread {
     /// The underlying thread state.
     pub state: ThreadState,
@@ -157,10 +163,12 @@ impl InterruptedThread {
     ///
     /// # Returns
     ///
-    /// A reference to the underlying ThreadState with the same identity.
+    /// A reference to the underlying ThreadState with the same identity
+    /// and full state transparency.
     pub fn thread_state(&self) -> (result: &ThreadState)
         ensures
             result.spec_id() == self.spec_id(),
+            result@ == self.state@,
     {
         &self.state
     }

@@ -33,6 +33,11 @@
 // - `thread_state_mut` returns `&mut ThreadState` outside the `verus!` block.
 //   Callers must preserve `wf()` and `spec_id()`. See the trust boundary
 //   documentation on that function.
+// - `ReadyThread` boundary model omits the `admission_time` field present in
+//   the real `ReadyThread`. The real `ReadyThread::from_state` sets
+//   `admission_time = clock::now()`. This is a scheduling property, not a
+//   safety or identity property, and is intentionally outside the scope of
+//   this module's verification.
 //
 // ## Verified Properties
 //
