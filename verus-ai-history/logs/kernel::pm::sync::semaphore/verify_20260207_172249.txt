@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 17:22:49 CST 2026
+Module: kernel::pm::sync::semaphore
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::semaphore
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: expected `,`
+   --> kernel/pm/sync/semaphore.proof.rs:124:16
+    |
+124 |   impl Semaphore {
+    |  ________________^
+125 | |     /// Lemma: Down-then-up round-trip restores the original value.
+126 | |     ///
+127 | |     /// # Description
+...   |
+285 | | }
+    | |_^
+
+error: aborting due to 1 previous error
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::semaphore (verified:0, errors:0)
