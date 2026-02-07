@@ -54,9 +54,7 @@ pub tracked struct MutexToken {
 
 impl MutexToken {
     /// Spec function: returns the ghost snapshot of the mutex's view at lock time.
-    pub open spec fn spec_view(&self) -> MutexView {
-        self.view
-    }
+    pub closed spec fn spec_view(&self) -> MutexView;
 }
 
 //==================================================================================================
