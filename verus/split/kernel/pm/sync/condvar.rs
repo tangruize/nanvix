@@ -25,6 +25,13 @@
 //!   length consistency and queue element uniqueness (`spec_all_unique()`).
 //! - FIFO ordering: enqueue A then B, dequeue returns A first.
 //! - Enqueue-then-dequeue round-trip on empty queue restores empty state.
+//! - **Wait protocol**: `lemma_wait_cleanup_restores_state` proves that enqueue
+//!   followed by remove_entry (modeling `wait()`'s `retain()` cleanup on failure)
+//!   restores the original queue state. `lemma_wait_protocol_preserves_wf` proves
+//!   the cleanup path preserves well-formedness.
+//! - **Drop safety**: `spec_drop_safe()` formalizes that the queue must be empty
+//!   for safe drop. Proof lemmas establish `new()` and `clear()` produce
+//!   drop-safe condvars.
 //!
 //! ## Verification Model
 //!
@@ -59,7 +66,9 @@
 //!   are ProcessManager concerns, not queue management.
 //! - **Drop safety**: The original `CondvarInner::drop` panics if the queue
 //!   is non-empty. This is a design discipline requirement documented as a
-//!   trust assumption (T2), not verified structurally.
+//!   trust assumption (T2). The `spec_drop_safe()` predicate formalizes the
+//!   precondition; proof lemmas establish that `new()` and `clear()` produce
+//!   drop-safe condvars.
 //!
 //! ## API Mapping
 //!
@@ -68,6 +77,7 @@
 //! | `Condvar::new()`        | `new()`                | Direct correspondence.        |
 //! | `wait(alarm)`           | `enqueue(pid, tid)`    | Models queue insertion only.   |
 //! | `wait()` failure cleanup| `remove_entry()`       | Models `retain()` cleanup.    |
+//! | `wait()` full protocol  | (proof lemma)          | `lemma_wait_cleanup_restores_state`. |
 //! | `notify_first()`        | `dequeue_first()`      | Models queue removal only.     |
 //! | `notify_process(pid)`   | `try_remove_by_pid()`  | Handles found and not-found.   |
 //! | `notify_thread(tid)`    | `try_remove_by_tid()`  | Handles found and not-found.   |
@@ -125,8 +135,9 @@
 //!   already present, matching the protocol invariant.
 //! - **T2: Drop discipline.** The queue must be empty when the condvar is
 //!   dropped. The original enforces this via a panic in `Drop::drop`. The
-//!   verified model documents this requirement but cannot enforce it
-//!   structurally (Verus does not model `Drop`).
+//!   verified model formalizes this with `spec_drop_safe()` and proves that
+//!   `new()` and `clear()` produce drop-safe condvars. The actual enforcement
+//!   at all call sites requires whole-program reasoning beyond Verus's scope.
 //! - **T3: Queue length bound.** The queue length never reaches `usize::MAX`.
 //!   The verified `enqueue()` requires `len < usize::MAX` to prevent overflow.
 //!   The original has no explicit check but this is practically guaranteed

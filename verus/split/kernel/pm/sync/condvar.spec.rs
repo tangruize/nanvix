@@ -119,6 +119,17 @@ impl Condvar {
     {
         s.subrange(0, idx) + s.subrange(idx + 1, s.len() as int)
     }
+
+    /// Spec function: returns whether the condvar is safe to drop.
+    ///
+    /// # Description
+    ///
+    /// Formalizes trust assumption T2: the queue must be empty when the condvar
+    /// is dropped. The original enforces this via a panic in `Drop::drop`.
+    /// Callers can use this predicate to reason about drop safety.
+    pub open spec fn spec_drop_safe(&self) -> bool {
+        self.spec_is_empty()
+    }
 }
 
 //==================================================================================================
