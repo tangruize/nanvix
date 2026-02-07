@@ -10,11 +10,17 @@
 //!
 //! - A new condvar has an empty sleeping queue and is well-formed.
 //! - `enqueue` adds exactly one entry to the back of the queue (FIFO).
+//! - `enqueue` preserves queue element uniqueness when the entry is not present.
 //! - `dequeue_first` removes the front entry (FIFO) and decreases length by 1.
 //! - `remove_at` removes the entry at a given index and preserves remaining order.
+//! - `remove_entry` removes a specific (pid, tid) entry by ghost index, models
+//!   `wait()` failure cleanup. Under uniqueness, the entry is absent afterward.
+//! - `remove_by_pid` removes an entry matching a pid, connecting search to index.
+//! - `remove_by_tid` removes an entry matching a tid, connecting search to index.
 //! - `clear` empties the queue and returns the previous length.
 //! - `is_empty` and `get_len` are faithful observers of the queue state.
 //! - Well-formedness (`wf()`) is preserved by all operations.
+//! - Queue element uniqueness (`spec_all_unique()`) is preserved by all operations.
 //! - FIFO ordering: enqueue A then B, dequeue returns A first.
 //! - Enqueue-then-dequeue round-trip on empty queue restores empty state.
 //!
@@ -59,9 +65,10 @@
 //! |-------------------------|----------------------|-------------------------------|
 //! | `Condvar::new()`        | `new()`              | Direct correspondence.        |
 //! | `wait(alarm)`           | `enqueue(pid, tid)`  | Models queue insertion only.   |
+//! | `wait()` failure cleanup| `remove_entry()`     | Models `retain()` cleanup.    |
 //! | `notify_first()`        | `dequeue_first()`    | Models queue removal only.     |
-//! | `notify_process(pid)`   | `remove_at(idx)`     | Caller provides ghost index.   |
-//! | `notify_thread(tid)`    | `remove_at(idx)`     | Caller provides ghost index.   |
+//! | `notify_process(pid)`   | `remove_by_pid()`    | Search predicate verified.     |
+//! | `notify_thread(tid)`    | `remove_by_tid()`    | Search predicate verified.     |
 //! | `notify_all()`          | `clear()`            | Models complete queue drain.   |
 //! | `reference_count()`     | (not modeled)        | Arc-specific, out of scope.    |
 //!
@@ -69,11 +76,27 @@
 //!
 //! The original `notify_process` and `notify_thread` search the queue by pid
 //! or tid using `LinkedList::iter().position()`. In the verified model, the
-//! search result is provided as a ghost index parameter to `remove_at()`.
-//! This decouples the search (which depends on the LinkedList implementation)
-//! from the removal (which is the core protocol operation). The spec functions
-//! `spec_contains_pid` and `spec_contains_tid` allow callers to reason about
-//! whether a matching entry exists.
+//! search result is provided as a ghost index parameter. The wrapper functions
+//! `remove_by_pid` and `remove_by_tid` connect the search predicate to the
+//! ghost index via preconditions that assert the entry at the ghost index
+//! matches the search criterion. The lower-level `remove_at` is also retained
+//! for generality. The spec functions `spec_contains_pid` and
+//! `spec_contains_tid` allow callers to reason about whether a matching entry
+//! exists.
+//!
+//! The original `notify_process(pid)` documentation says "Wakes up all threads
+//! of a process" but the implementation only wakes the *first* thread found
+//! with matching `pid` (uses `position()` which returns the first match, then
+//! removes one entry). The verified model matches the *implementation*
+//! (removes one entry), not the documentation.
+//!
+//! The original `notify_all()` has iterative partial-failure semantics: it
+//! calls `ProcessManager::wakeup()` for each entry, continues on error, and
+//! returns `Err` only if zero wakeups succeeded. The model's `clear()`
+//! atomically empties the queue. This is consistent with the documented
+//! verification scope: error handling and `ProcessManager` interaction are out
+//! of scope. The queue state transition (drain all entries) is correctly
+//! modeled.
 //!
 //! ## Trust Boundaries
 //!
@@ -90,12 +113,18 @@
 //!
 //! - **T1: Queue element uniqueness.** The original code assumes each thread
 //!   appears at most once in the sleeping queue (a thread cannot wait twice).
-//!   The verified model does not enforce this but documents it as a protocol
-//!   requirement.
+//!   The verified model formalizes this via `spec_all_unique()` and proves that
+//!   `enqueue` preserves uniqueness (given the entry is not already present)
+//!   and that `dequeue_first`, `remove_at`, `remove_entry`, and `clear`
+//!   preserve it trivially.
 //! - **T2: Drop discipline.** The queue must be empty when the condvar is
 //!   dropped. The original enforces this via a panic in `Drop::drop`. The
 //!   verified model documents this requirement but cannot enforce it
 //!   structurally (Verus does not model `Drop`).
+//! - **T3: Queue length bound.** The queue length never reaches `usize::MAX`.
+//!   The verified `enqueue()` requires `len < usize::MAX` to prevent overflow.
+//!   The original has no explicit check but this is practically guaranteed
+//!   since the number of threads is bounded by system resources.
 
 use vstd::prelude::*;
 
@@ -233,6 +262,126 @@ impl Condvar {
         ensures
             removed,
             self.len as nat == old(self).len as nat - 1,
+            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
+            self.wf(),
+    {
+        let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
+        self.len = self.len - 1;
+        self.sleeping = Ghost(
+            old_sleeping.subrange(0, idx) + old_sleeping.subrange(
+                idx + 1,
+                old_sleeping.len() as int,
+            ),
+        );
+        true
+    }
+
+    /// Removes a specific (pid, tid) entry from the sleeping queue.
+    ///
+    /// # Description
+    ///
+    /// Models the `wait()` failure cleanup path in the original, where
+    /// `self.sleeping.borrow_mut().retain(|&mut (p, t)| p != pid || t != tid)`
+    /// removes the entry after `ProcessManager::sleep()` fails. The caller
+    /// provides a ghost index proving where the entry is located.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid_val`: Process identifier value to remove.
+    /// - `tid_val`: Thread identifier value to remove.
+    /// - `idx`: Ghost index of the (pid, tid) entry in the queue.
+    ///
+    /// # Returns
+    ///
+    /// Always returns `true` (removal succeeds when preconditions hold).
+    pub fn remove_entry(&mut self, pid_val: i32, tid_val: i32, Ghost(idx): Ghost<int>) -> (removed: bool)
+        requires
+            old(self).wf(),
+            0 <= idx < old(self).len as int,
+            old(self)@.sleeping[idx] == (pid_val as int, tid_val as int),
+        ensures
+            removed,
+            self.len as nat == old(self).len as nat - 1,
+            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
+            self.wf(),
+    {
+        let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
+        self.len = self.len - 1;
+        self.sleeping = Ghost(
+            old_sleeping.subrange(0, idx) + old_sleeping.subrange(
+                idx + 1,
+                old_sleeping.len() as int,
+            ),
+        );
+        true
+    }
+
+    /// Removes the first entry matching a given process identifier.
+    ///
+    /// # Description
+    ///
+    /// Models the original `notify_process(pid)` which uses
+    /// `LinkedList::iter().position()` to find the first entry with matching
+    /// pid, then removes it. The ghost index must point to an entry whose
+    /// pid component matches `pid_val`.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid_val`: Process identifier value to search for.
+    /// - `idx`: Ghost index of the matching entry in the queue.
+    ///
+    /// # Returns
+    ///
+    /// Always returns `true` (removal succeeds when preconditions hold).
+    pub fn remove_by_pid(&mut self, pid_val: i32, Ghost(idx): Ghost<int>) -> (removed: bool)
+        requires
+            old(self).wf(),
+            0 <= idx < old(self).len as int,
+            old(self)@.sleeping[idx].0 == pid_val as int,
+        ensures
+            removed,
+            self.len as nat == old(self).len as nat - 1,
+            old(self)@.sleeping[idx].0 == pid_val as int,
+            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
+            self.wf(),
+    {
+        let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
+        self.len = self.len - 1;
+        self.sleeping = Ghost(
+            old_sleeping.subrange(0, idx) + old_sleeping.subrange(
+                idx + 1,
+                old_sleeping.len() as int,
+            ),
+        );
+        true
+    }
+
+    /// Removes the first entry matching a given thread identifier.
+    ///
+    /// # Description
+    ///
+    /// Models the original `notify_thread(tid)` which uses
+    /// `LinkedList::iter().position()` to find the first entry with matching
+    /// tid, then removes it. The ghost index must point to an entry whose
+    /// tid component matches `tid_val`.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid_val`: Thread identifier value to search for.
+    /// - `idx`: Ghost index of the matching entry in the queue.
+    ///
+    /// # Returns
+    ///
+    /// Always returns `true` (removal succeeds when preconditions hold).
+    pub fn remove_by_tid(&mut self, tid_val: i32, Ghost(idx): Ghost<int>) -> (removed: bool)
+        requires
+            old(self).wf(),
+            0 <= idx < old(self).len as int,
+            old(self)@.sleeping[idx].1 == tid_val as int,
+        ensures
+            removed,
+            self.len as nat == old(self).len as nat - 1,
+            old(self)@.sleeping[idx].1 == tid_val as int,
             self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
             self.wf(),
     {

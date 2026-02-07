@@ -79,6 +79,22 @@ impl Condvar {
             && self@.sleeping[i].1 == tid_val
     }
 
+    /// Spec function: returns whether all queue entries are unique.
+    ///
+    /// # Description
+    ///
+    /// Formalizes trust assumption T1: each thread appears at most once in the
+    /// sleeping queue. This predicate can be used as a precondition to prove
+    /// stronger postconditions (e.g., after `remove_entry`, the entry is absent).
+    pub open spec fn spec_all_unique(&self) -> bool {
+        forall|i: int, j: int|
+            #![trigger self@.sleeping[i], self@.sleeping[j]]
+            0 <= i < self@.sleeping.len() as int
+            && 0 <= j < self@.sleeping.len() as int
+            && i != j
+            ==> self@.sleeping[i] != self@.sleeping[j]
+    }
+
     /// Spec function: returns the front element of the queue.
     pub open spec fn spec_front(&self) -> (int, int)
         recommends !self.spec_is_empty()

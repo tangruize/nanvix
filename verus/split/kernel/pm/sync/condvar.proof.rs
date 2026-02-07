@@ -234,4 +234,223 @@ impl Condvar {
     }
 }
 
+//==================================================================================================
+// Proof Lemmas — Uniqueness Preservation
+//==================================================================================================
+//
+// The following lemmas prove that `spec_all_unique()` (trust assumption T1)
+// is preserved by all queue operations.
+
+impl Condvar {
+    /// Lemma: A new (empty) condvar satisfies uniqueness.
+    pub proof fn lemma_new_is_unique()
+        ensures ({
+            let cv: Condvar = Condvar { len: 0, sleeping: Ghost(Seq::empty()) };
+            cv.spec_all_unique()
+        }),
+    {
+    }
+
+    /// Lemma: Enqueue preserves uniqueness when the entry is not already present.
+    pub proof fn lemma_enqueue_preserves_unique(
+        s: Seq<(int, int)>,
+        entry: (int, int),
+    )
+        requires
+            // All existing entries are unique.
+            forall|i: int, j: int|
+                #![trigger s[i], s[j]]
+                0 <= i < s.len() as int
+                && 0 <= j < s.len() as int
+                && i != j
+                ==> s[i] != s[j],
+            // The new entry is not already in the sequence.
+            forall|i: int|
+                #![trigger s[i]]
+                0 <= i < s.len() as int ==> s[i] != entry,
+        ensures
+            forall|i: int, j: int|
+                #![trigger s.push(entry)[i], s.push(entry)[j]]
+                0 <= i < s.push(entry).len() as int
+                && 0 <= j < s.push(entry).len() as int
+                && i != j
+                ==> s.push(entry)[i] != s.push(entry)[j],
+    {
+        let new_s: Seq<(int, int)> = s.push(entry);
+        assert forall|i: int, j: int|
+            #![trigger new_s[i], new_s[j]]
+            0 <= i < new_s.len() as int
+            && 0 <= j < new_s.len() as int
+            && i != j
+        implies new_s[i] != new_s[j] by {
+            if i < s.len() as int && j < s.len() as int {
+                // Both are old entries.
+                assert(new_s[i] == s[i]);
+                assert(new_s[j] == s[j]);
+            } else if i < s.len() as int {
+                // i is old, j is the new entry.
+                assert(new_s[i] == s[i]);
+                assert(new_s[j] == entry);
+            } else if j < s.len() as int {
+                // i is the new entry, j is old.
+                assert(new_s[i] == entry);
+                assert(new_s[j] == s[j]);
+            }
+            // Both can't be the new entry since i != j and len is s.len()+1.
+        }
+    }
+
+    /// Lemma: Dequeue (remove front) preserves uniqueness.
+    pub proof fn lemma_dequeue_preserves_unique(s: Seq<(int, int)>)
+        requires
+            s.len() > 0,
+            forall|i: int, j: int|
+                #![trigger s[i], s[j]]
+                0 <= i < s.len() as int
+                && 0 <= j < s.len() as int
+                && i != j
+                ==> s[i] != s[j],
+        ensures ({
+            let result: Seq<(int, int)> = s.subrange(1, s.len() as int);
+            forall|i: int, j: int|
+                #![trigger result[i], result[j]]
+                0 <= i < result.len() as int
+                && 0 <= j < result.len() as int
+                && i != j
+                ==> result[i] != result[j]
+        }),
+    {
+        let result: Seq<(int, int)> = s.subrange(1, s.len() as int);
+        assert forall|i: int, j: int|
+            #![trigger result[i], result[j]]
+            0 <= i < result.len() as int
+            && 0 <= j < result.len() as int
+            && i != j
+        implies result[i] != result[j] by {
+            assert(result[i] == s[i + 1]);
+            assert(result[j] == s[j + 1]);
+        }
+    }
+
+    /// Lemma: Remove-at preserves uniqueness.
+    pub proof fn lemma_remove_at_preserves_unique(s: Seq<(int, int)>, idx: int)
+        requires
+            0 <= idx < s.len(),
+            forall|i: int, j: int|
+                #![trigger s[i], s[j]]
+                0 <= i < s.len() as int
+                && 0 <= j < s.len() as int
+                && i != j
+                ==> s[i] != s[j],
+        ensures ({
+            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+            forall|i: int, j: int|
+                #![trigger result[i], result[j]]
+                0 <= i < result.len() as int
+                && 0 <= j < result.len() as int
+                && i != j
+                ==> result[i] != result[j]
+        }),
+    {
+        let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+        assert forall|i: int, j: int|
+            #![trigger result[i], result[j]]
+            0 <= i < result.len() as int
+            && 0 <= j < result.len() as int
+            && i != j
+        implies result[i] != result[j] by {
+            // Map result indices back to original indices.
+            let orig_i: int = if i < idx { i } else { i + 1 };
+            let orig_j: int = if j < idx { j } else { j + 1 };
+            assert(result[i] == s[orig_i]);
+            assert(result[j] == s[orig_j]);
+        }
+    }
+
+    /// Lemma: Clear trivially preserves uniqueness (empty sequence is unique).
+    pub proof fn lemma_clear_preserves_unique()
+        ensures ({
+            let result: Seq<(int, int)> = Seq::<(int, int)>::empty();
+            forall|i: int, j: int|
+                #![trigger result[i], result[j]]
+                0 <= i < result.len() as int
+                && 0 <= j < result.len() as int
+                && i != j
+                ==> result[i] != result[j]
+        }),
+    {
+    }
+}
+
+//==================================================================================================
+// Proof Lemmas — Remove Entry Properties
+//==================================================================================================
+//
+// The following lemmas prove properties of remove_entry under the uniqueness
+// invariant, showing that the removed entry is absent from the result.
+
+impl Condvar {
+    /// Lemma: After removing the entry at index `idx`, that entry no longer
+    /// appears in the resulting sequence, provided all entries were unique.
+    pub proof fn lemma_remove_entry_absent(
+        s: Seq<(int, int)>,
+        idx: int,
+    )
+        requires
+            0 <= idx < s.len(),
+            forall|i: int, j: int|
+                #![trigger s[i], s[j]]
+                0 <= i < s.len() as int
+                && 0 <= j < s.len() as int
+                && i != j
+                ==> s[i] != s[j],
+        ensures ({
+            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+            let entry: (int, int) = s[idx];
+            forall|k: int|
+                #![trigger result[k]]
+                0 <= k < result.len() as int ==> result[k] != entry
+        }),
+    {
+        let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+        let entry: (int, int) = s[idx];
+        assert forall|k: int|
+            #![trigger result[k]]
+            0 <= k < result.len() as int
+        implies result[k] != entry by {
+            let orig_k: int = if k < idx { k } else { k + 1 };
+            assert(result[k] == s[orig_k]);
+            assert(orig_k != idx);
+        }
+    }
+
+    /// Lemma: After removing a (pid, tid) entry at index `idx` from a unique
+    /// sequence, the (pid, tid) pair is no longer contained in the result.
+    pub proof fn lemma_remove_entry_not_contains(
+        s: Seq<(int, int)>,
+        idx: int,
+        pid_val: int,
+        tid_val: int,
+    )
+        requires
+            0 <= idx < s.len(),
+            s[idx] == (pid_val, tid_val),
+            forall|i: int, j: int|
+                #![trigger s[i], s[j]]
+                0 <= i < s.len() as int
+                && 0 <= j < s.len() as int
+                && i != j
+                ==> s[i] != s[j],
+        ensures ({
+            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+            !exists|k: int|
+                #![trigger result[k]]
+                0 <= k < result.len() as int
+                && result[k].0 == pid_val
+                && result[k].1 == tid_val
+        }),
+    {
+        Condvar::lemma_remove_entry_absent(s, idx);
+    }
+
 } // verus!
