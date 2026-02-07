@@ -50,7 +50,7 @@ impl Capability {
 
     /// Spec function: maps a valid discriminant to the expected capability variant.
     pub open spec fn spec_from_discriminant(value: int) -> Capability
-        requires Self::spec_is_valid_discriminant(value)
+        recommends Self::spec_is_valid_discriminant(value)
     {
         if value == 0 {
             Capability::ExceptionControl
