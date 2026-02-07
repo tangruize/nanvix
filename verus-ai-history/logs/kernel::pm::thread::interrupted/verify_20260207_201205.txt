@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 20:12:05 CST 2026
+Module: kernel::pm::thread::interrupted
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::interrupted
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: The verifier does not yet support the following Rust feature: &mut types, except in special cases
+   --> kernel/pm/thread/interrupted.rs:165:5
+    |
+165 |     pub fn thread_state_mut(&mut self) -> (result: &mut ThreadState)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::interrupted (verified:0, errors:0)
