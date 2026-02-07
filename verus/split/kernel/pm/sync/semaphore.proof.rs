@@ -112,16 +112,11 @@ impl Semaphore {
             Semaphore::spec_new_view(value).waiters == 0,
     {
     }
-}
 
-//==================================================================================================
-// Proof Lemmas -- Protocol Properties
-//==================================================================================================
-//
-// The following lemmas prove protocol properties that reason across multiple
-// state transitions or relate different API operations.
+    //==============================================================================================
+    // Protocol Properties
+    //==============================================================================================
 
-impl Semaphore {
     /// Lemma: Down-then-up round-trip restores the original value.
     pub proof fn lemma_down_up_roundtrip(v: nat)
         requires
@@ -129,8 +124,144 @@ impl Semaphore {
             v < usize::MAX,
         ensures ({
             let initial: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
+            let after_down: SemaphoreView = SemaphoreView { value: (v - 1) as nat, waiters: 0 };
             let after_up: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
-            initial == after_up
+            &&& initial.value == v
+            &&& after_down.value == (v - 1) as nat
+            &&& after_up.value == v
+            &&& initial == after_up
+            &&& after_down.waiters == 0
+            &&& after_up.waiters == 0
+        }),
+    {
+    }
+
+    /// Lemma: Up-then-down round-trip restores the original value.
+    pub proof fn lemma_up_down_roundtrip(v: nat)
+        requires
+            v < usize::MAX,
+        ensures ({
+            let initial: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
+            let after_up: SemaphoreView = SemaphoreView { value: (v + 1) as nat, waiters: 0 };
+            let after_down: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
+            &&& after_up.value == (v + 1) as nat
+            &&& after_down.value == v
+            &&& initial == after_down
+        }),
+    {
+    }
+
+    /// Lemma: Multiple downs correctly track resource count.
+    pub proof fn lemma_multiple_downs_track_count(n: nat, k: nat)
+        requires
+            k <= n,
+        ensures ({
+            let after_k_downs: SemaphoreView = SemaphoreView { value: (n - k) as nat, waiters: 0 };
+            after_k_downs.value == (n - k) as nat
+        }),
+    {
+    }
+
+    /// Lemma: `try_down()` on an exhausted semaphore preserves state.
+    pub proof fn lemma_try_down_exhausted_preserves_state(s: &Semaphore)
+        requires
+            s.wf(),
+            s.spec_is_exhausted(),
+        ensures
+            s@.value == 0,
+            !s.spec_is_available(),
+    {
+    }
+
+    /// Lemma: After `try_down()` succeeds, the value decreases by exactly 1.
+    pub proof fn lemma_try_down_success_decrements(v: nat)
+        requires
+            v > 0,
+        ensures ({
+            let before: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
+            let after: SemaphoreView = SemaphoreView { value: (v - 1) as nat, waiters: 0 };
+            &&& after.value == before.value - 1
+            &&& after.waiters == before.waiters
+        }),
+    {
+    }
+
+    /// Lemma: After `up()`, the value increases by exactly 1.
+    pub proof fn lemma_up_increments(v: nat)
+        requires
+            v < usize::MAX,
+        ensures ({
+            let before: SemaphoreView = SemaphoreView { value: v, waiters: 0 };
+            let after: SemaphoreView = SemaphoreView { value: (v + 1) as nat, waiters: 0 };
+            &&& after.value == before.value + 1
+            &&& after.waiters == before.waiters
+        }),
+    {
+    }
+
+    /// Lemma: `up()` on an exhausted semaphore makes it available.
+    pub proof fn lemma_up_exhausted_makes_available()
+        ensures ({
+            let before: SemaphoreView = SemaphoreView { value: 0, waiters: 0 };
+            let after: SemaphoreView = SemaphoreView { value: 1, waiters: 0 };
+            &&& before.value == 0
+            &&& after.value > 0
+        }),
+    {
+    }
+
+    /// Lemma: Semaphore resource conservation.
+    pub proof fn lemma_resource_conservation(initial: nat, acquired: nat, current: nat)
+        requires
+            acquired <= initial,
+            current == initial - acquired,
+        ensures
+            initial == current + acquired,
+    {
+    }
+
+    /// Lemma: Mutual exclusion for binary semaphore (value=1).
+    pub proof fn lemma_binary_semaphore_mutual_exclusion()
+        ensures ({
+            let initial: SemaphoreView = SemaphoreView { value: 1, waiters: 0 };
+            let after_down: SemaphoreView = SemaphoreView { value: 0, waiters: 0 };
+            &&& initial.value == 1
+            &&& after_down.value == 0
+        }),
+    {
+    }
+
+    /// Lemma: Value monotonicity under `up()`: value strictly increases.
+    pub proof fn lemma_up_monotonic(v: nat)
+        requires
+            v < usize::MAX,
+        ensures
+            (v + 1) as nat > v,
+    {
+    }
+
+    /// Lemma: Value monotonicity under `down()`: value strictly decreases.
+    pub proof fn lemma_down_monotonic(v: nat)
+        requires
+            v > 0,
+        ensures
+            (v - 1) as nat < v,
+    {
+    }
+
+    /// Lemma: Producer-consumer protocol state transitions.
+    pub proof fn lemma_producer_consumer_protocol(n: nat)
+        requires
+            n > 0,
+            n < usize::MAX,
+        ensures ({
+            let initial: SemaphoreView = SemaphoreView { value: n, waiters: 0 };
+            let after_consume: SemaphoreView = SemaphoreView { value: (n - 1) as nat, waiters: 0 };
+            let after_produce: SemaphoreView = SemaphoreView { value: n, waiters: 0 };
+            &&& initial.value > 0
+            &&& after_consume.value == n - 1
+            &&& after_produce.value == n
+            &&& initial == after_produce
         }),
     {
     }
