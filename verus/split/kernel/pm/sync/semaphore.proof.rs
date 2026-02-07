@@ -582,7 +582,7 @@ impl Semaphore {
     /// satisfy `safe_for_down()`, matching the original's panic behavior.
     pub proof fn lemma_kernel_process_cannot_down()
         ensures
-            forall |ctx: CallerContext| ctx.is_kernel_process ==> !ctx.safe_for_down(),
+            forall |ctx: CallerContext| ctx.is_kernel_process ==> !#[trigger] ctx.safe_for_down(),
     {
     }
 }
