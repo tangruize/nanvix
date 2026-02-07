@@ -101,7 +101,7 @@ impl SleepingThread {
             self.wf(),
         ensures
             ({
-                let r: ReadyThread = ReadyThread { state: self.state };
+                let r: ReadyThread = ReadyThread { state: self.state, admission_time: 0int };
                 r.spec_id() == self.spec_id()
             }),
     {
@@ -113,7 +113,7 @@ impl SleepingThread {
             self.wf(),
         ensures
             ({
-                let r: ReadyThread = ReadyThread { state: self.state };
+                let r: ReadyThread = ReadyThread { state: self.state, admission_time: 0int };
                 r.wf()
             }),
     {
@@ -125,7 +125,7 @@ impl SleepingThread {
             self.wf(),
         ensures
             ({
-                let r: ReadyThread = ReadyThread { state: self.state };
+                let r: ReadyThread = ReadyThread { state: self.state, admission_time: 0int };
                 r.spec_locked_mutex_count() == self.spec_locked_mutex_count()
                 && (forall|a: int| r.spec_has_mutex(a) == self.spec_has_mutex(a))
             }),
@@ -138,7 +138,7 @@ impl SleepingThread {
             self.wf(),
         ensures
             ({
-                let r: ReadyThread = ReadyThread { state: self.state };
+                let r: ReadyThread = ReadyThread { state: self.state, admission_time: 0int };
                 r.spec_drop_safe() == self.spec_drop_safe()
             }),
     {
@@ -283,7 +283,7 @@ impl ReadyThread {
     pub proof fn lemma_from_state_preserves_id(state: ThreadState)
         ensures
             ({
-                let r: ReadyThread = ReadyThread { state: state };
+                let r: ReadyThread = ReadyThread { state: state, admission_time: 0int };
                 r.spec_id() == state.spec_id()
             }),
     {
@@ -295,7 +295,7 @@ impl ReadyThread {
             state.wf(),
         ensures
             ({
-                let r: ReadyThread = ReadyThread { state: state };
+                let r: ReadyThread = ReadyThread { state: state, admission_time: 0int };
                 r.wf()
             }),
     {

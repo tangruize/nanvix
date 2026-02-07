@@ -166,7 +166,7 @@ impl ReadyThread {
             result.wf(),
             result.spec_admission_time() >= 0,
     {
-        ReadyThread { state: state, admission_time: 0 }
+        ReadyThread { state: state, admission_time: 0int }
     }
 }
 
