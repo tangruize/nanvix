@@ -71,6 +71,23 @@ include!("sleeping.proof.rs");
 verus! {
 
 //==================================================================================================
+// Boundary Functions
+//==================================================================================================
+
+/// Boundary model of `clock::now()`.
+///
+/// The real implementation returns the current system time.
+/// This boundary model only guarantees the result is non-negative,
+/// matching the postcondition of the real `clock_now()` in `ready.rs`.
+#[verifier::external_body]
+fn clock_now() -> (result: int)
+    ensures
+        result >= 0,
+{
+    unimplemented!()
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -166,7 +183,7 @@ impl ReadyThread {
             result.wf(),
             result.spec_admission_time() >= 0,
     {
-        ReadyThread { state: state, admission_time: 0int }
+        ReadyThread { state: state, admission_time: clock_now() }
     }
 }
 
