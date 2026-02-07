@@ -1,6 +1,6 @@
 {
   "module_name": "spinlock",
-  "outer_iteration": 1,
+  "outer_iteration": 2,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "6c43c1fd-9357-4e02-bf00-11985b31de36",
