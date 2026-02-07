@@ -123,17 +123,29 @@ impl Capability {
     }
 }
 
-} // verus!
-
 //==================================================================================================
-// External Trait Implementations
+// Trait Implementations
 //==================================================================================================
 
-// TryFrom wraps the verified try_from_u32 method.
 impl TryFrom<u32> for Capability {
     type Error = Error;
 
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
+    /// Converts a u32 value to a Capability via the verified `try_from_u32` method.
+    fn try_from(value: u32) -> (result: Result<Self, Self::Error>)
+        ensures
+            result is Ok ==> {
+                &&& Self::spec_is_valid_discriminant(value as int)
+                &&& result->Ok_0.spec_discriminant() == value as int
+                &&& result->Ok_0 == Self::spec_from_discriminant(value as int)
+            },
+            result is Err ==> {
+                &&& !Self::spec_is_valid_discriminant(value as int)
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
+            },
+    {
         Self::try_from_u32(value)
     }
 }
+
+} // verus!
