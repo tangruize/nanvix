@@ -84,6 +84,23 @@ impl CallerContext {
 // Spec Functions
 //==================================================================================================
 
+/// Outcome of a `down_or_block()` call.
+///
+/// # Description
+///
+/// Models the two possible outcomes of the original `down()`:
+/// - `Acquired`: The semaphore was available, value was decremented (instant success).
+/// - `WouldBlock`: The semaphore was exhausted, the thread would sleep on the condvar.
+///   In the original, this enters the `Condvar::wait()` loop. In the verified model,
+///   the ghost waiter view is updated via `spec_down_blocking()`.
+#[verifier::ext_equal]
+pub enum DownOutcome {
+    /// Semaphore was available; value decremented by 1.
+    Acquired,
+    /// Semaphore was exhausted; thread would block on condvar.
+    WouldBlock,
+}
+
 impl Semaphore {
     /// Spec function: well-formedness predicate.
     ///
@@ -268,6 +285,29 @@ impl Semaphore {
     pub open spec fn spec_try_down_result_maps_ok(result: bool, before: SemaphoreView, after: SemaphoreView) -> bool {
         &&& (result ==> after.value == (before.value - 1) as nat && after.waiters == before.waiters)
         &&& (!result ==> after == before && before.value == 0)
+    }
+
+    /// Spec function: ghost view after `down_or_block()` for the WouldBlock case.
+    ///
+    /// # Description
+    ///
+    /// When `down_or_block()` returns `WouldBlock`, the exec state is unchanged
+    /// but the ghost waiter count should be incremented (a thread enters the
+    /// condvar queue). This function computes the updated ghost view.
+    ///
+    /// # Parameters
+    ///
+    /// - `before`: The ghost semaphore view before the call.
+    /// - `outcome`: The outcome of `down_or_block()`.
+    ///
+    /// # Returns
+    ///
+    /// The updated ghost semaphore view.
+    pub open spec fn spec_down_or_block_ghost_view(before: SemaphoreView, outcome: DownOutcome) -> SemaphoreView {
+        match outcome {
+            DownOutcome::Acquired => SemaphoreView { value: (before.value - 1) as nat, waiters: before.waiters },
+            DownOutcome::WouldBlock => Self::spec_down_blocking(before),
+        }
     }
 }
 

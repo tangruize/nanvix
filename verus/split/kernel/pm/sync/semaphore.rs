@@ -65,6 +65,7 @@
 //! |---------------------------|------------------------|----------------------------------|
 //! | `Semaphore::new(value)`   | `new(value)`           | Direct mapping.                  |
 //! | `Semaphore::down(&self)`  | `down(&mut self, ctx)`  | `&mut self`; ghost safety ctx.  |
+//! | *(full down logic)*       | `down_or_block(ctx)`   | Both paths; returns DownOutcome. |
 //! | `Semaphore::try_down(&self)` | `try_down(&mut self)` | `&mut self`; both paths modeled. |
 //! | `Semaphore::up(&self)`    | `up(&mut self, ctx)`    | `&mut self`; ghost safety ctx.  |
 //! | *(condvar sleep path)*    | `spec_down_blocking()` | Spec-only state transition.      |
@@ -223,6 +224,55 @@ impl Semaphore {
             self.wf(),
     {
         self.value = self.value - 1;
+    }
+
+    /// Attempts to acquire the semaphore, returning the outcome.
+    ///
+    /// # Description
+    ///
+    /// Models the full decision logic of the original `down()`:
+    /// - If value > 0: decrements and returns `Acquired` (instant success path).
+    /// - If value == 0: returns `WouldBlock` (the original would enter the
+    ///   `Condvar::wait()` loop). The exec state is unchanged; the ghost view
+    ///   should be updated via `spec_down_or_block_ghost_view()` to reflect the
+    ///   waiter increment.
+    ///
+    /// This function bridges the exec and spec layers for the blocking path:
+    /// the exec code handles the decision, and the caller uses the ghost view
+    /// spec function to track the waiter state change.
+    ///
+    /// # Safety (Original)
+    ///
+    /// Same as `down()`: requires interrupts disabled, non-kernel caller,
+    /// no held resources (see T4).
+    ///
+    /// # Parameters
+    ///
+    /// - `ctx`: Ghost caller context proving safety conditions are satisfied.
+    ///
+    /// # Returns
+    ///
+    /// `DownOutcome::Acquired` if the semaphore was available and acquired,
+    /// `DownOutcome::WouldBlock` if the semaphore was exhausted.
+    pub fn down_or_block(&mut self, ctx: Ghost<CallerContext>) -> (result: DownOutcome)
+        requires
+            old(self).wf(),
+            ctx@.safe_for_down(),
+        ensures
+            result == DownOutcome::Acquired ==> old(self).spec_is_available(),
+            result == DownOutcome::Acquired ==> self.value == old(self).value - 1,
+            result == DownOutcome::Acquired ==> self@.value == old(self)@.value - 1,
+            result == DownOutcome::Acquired ==> self@.waiters == old(self)@.waiters,
+            result == DownOutcome::WouldBlock ==> old(self).spec_is_exhausted(),
+            result == DownOutcome::WouldBlock ==> self@ == old(self)@,
+            self.wf(),
+    {
+        if self.value > 0 {
+            self.value = self.value - 1;
+            DownOutcome::Acquired
+        } else {
+            DownOutcome::WouldBlock
+        }
     }
 
     /// Attempts to acquire the semaphore without blocking.

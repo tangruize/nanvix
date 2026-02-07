@@ -448,6 +448,66 @@ impl Semaphore {
     }
 
     //==============================================================================================
+    // Blocking Model Lemmas (down_or_block)
+    //==============================================================================================
+
+    /// Lemma: `down_or_block` Acquired path preserves `spec_wf`.
+    ///
+    /// # Description
+    ///
+    /// When `down_or_block()` returns `Acquired`, the ghost view computed
+    /// by `spec_down_or_block_ghost_view` preserves `spec_wf()`.
+    pub proof fn lemma_down_or_block_acquired_preserves_wf(view: SemaphoreView)
+        requires
+            Semaphore::spec_wf(view),
+            view.value > 0,
+        ensures ({
+            let after: SemaphoreView = Semaphore::spec_down_or_block_ghost_view(view, DownOutcome::Acquired);
+            &&& Semaphore::spec_wf(after)
+            &&& after.value == (view.value - 1) as nat
+            &&& after.waiters == view.waiters
+        }),
+    {
+    }
+
+    /// Lemma: `down_or_block` WouldBlock path preserves `spec_wf`.
+    ///
+    /// # Description
+    ///
+    /// When `down_or_block()` returns `WouldBlock`, the ghost view computed
+    /// by `spec_down_or_block_ghost_view` preserves `spec_wf()` and increments
+    /// the waiter count (delegating to `spec_down_blocking`).
+    pub proof fn lemma_down_or_block_would_block_preserves_wf(view: SemaphoreView)
+        requires
+            Semaphore::spec_wf(view),
+            view.value == 0,
+        ensures ({
+            let after: SemaphoreView = Semaphore::spec_down_or_block_ghost_view(view, DownOutcome::WouldBlock);
+            &&& Semaphore::spec_wf(after)
+            &&& after.value == 0
+            &&& after.waiters == view.waiters + 1
+        }),
+    {
+    }
+
+    /// Lemma: `down_or_block` outcome matches availability.
+    ///
+    /// # Description
+    ///
+    /// Proves that `down_or_block` returns `Acquired` iff the semaphore was
+    /// available, and `WouldBlock` iff it was exhausted.
+    pub proof fn lemma_down_or_block_outcome_consistent(s: &Semaphore, outcome: DownOutcome)
+        requires
+            s.wf(),
+            outcome == DownOutcome::Acquired ==> s.spec_is_available(),
+            outcome == DownOutcome::WouldBlock ==> s.spec_is_exhausted(),
+        ensures
+            outcome == DownOutcome::Acquired ==> s@.value > 0,
+            outcome == DownOutcome::WouldBlock ==> s@.value == 0,
+    {
+    }
+
+    //==============================================================================================
     // Caller Context Lemmas
     //==============================================================================================
 
