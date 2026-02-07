@@ -19,8 +19,9 @@
 //
 // ## Trust Assumptions
 //
-// - `clock_now()` is `external_body`: no spec-level constraint on the
-//   returned timestamp. Scheduling correctness is outside scope.
+// - `clock_now()` is `external_body`: minimal postcondition `result >= 0`
+//   reflecting that `SystemTime` is non-negative. Scheduling correctness
+//   is outside scope.
 // - `join_cond()` is omitted: returns opaque `Condvar` (sync boundary).
 // - `thread_state_mut()` is `#[verifier::external]`: returns `&mut T`
 //   which Verus cannot express. See trust boundary docs on that function.

@@ -39,9 +39,9 @@
 //!
 //! ## Trust Boundary
 //!
-//! - `clock_now()` is `external_body`: returns an abstract timestamp with no
-//!   spec-level constraint. The actual value is a scheduling property, not
-//!   a safety property.
+//! - `clock_now()` is `external_body`: minimal postcondition `result >= 0`
+//!   reflecting that `SystemTime` is non-negative. Stronger ordering
+//!   guarantees (monotonicity) are scheduling properties outside scope.
 //! - `thread_state_mut()` is `#[verifier::external]`: returns `&mut ThreadState`
 //!   which Verus cannot express. See documented trust obligations.
 //! - `join_cond()` is omitted: returns opaque `Condvar` (sync boundary).
@@ -245,6 +245,7 @@ impl ReadyThread {
             result.spec_locked_mutex_count() == 0,
             result.spec_drop_safe(),
             result.wf(),
+            result.spec_admission_time() >= 0,
     {
         ReadyThread {
             state: ThreadState::new(id, kernel_stack, user_stack, user_tda),
@@ -274,6 +275,7 @@ impl ReadyThread {
             forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
             result.spec_drop_safe() == state.spec_drop_safe(),
             result.wf(),
+            result.spec_admission_time() >= 0,
     {
         ReadyThread {
             state: state,
