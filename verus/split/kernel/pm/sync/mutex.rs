@@ -63,6 +63,7 @@
 //! | `MutexGuard::drop()`      | `unlock(&mut self)`    | Explicit token consumption.   |
 //! | `Mutex::reference_count()`| (not modeled)          | Arc-specific, out of scope.   |
 //! | `MutexInner::unlock_unchecked()` | `unlock(&mut self)` | Safe wrapper with token.   |
+//! | `fmt::Debug for MutexGuard` | (not modeled)       | Display-only, no state mutation. |
 //!
 //! ## API Divergence
 //!
@@ -79,6 +80,11 @@
 //! The original `MutexGuard` holds an `Arc<MutexInner>` and calls
 //! `unlock_unchecked()` in its `Drop` implementation. The verified model replaces
 //! this RAII pattern with an explicit `MutexToken` that must be consumed by `unlock()`.
+//!
+//! The original `unlock_unchecked()` calls `self.sleeping.notify_first()` which can
+//! return an error, handled with a `warn!()` log in `Drop`. The verified `unlock()`
+//! has no error path because `Condvar` notification failure is an external dependency
+//! not modeled here.
 //!
 //! ## Trust Boundaries
 //!
@@ -126,6 +132,8 @@ verus! {
 /// # Representation
 ///
 /// The fields are `pub` as required by Verus for `pub open spec fn` access.
+/// Per Nanvix coding standards, struct fields should be private with getter/setter
+/// access; this is an exception due to Verus tooling constraints.
 /// The ghost `id` field provides instance identity for token binding.
 pub struct Mutex {
     /// Lock state: `true` means locked, `false` means unlocked.
@@ -171,6 +179,11 @@ impl Mutex {
     /// Returns `true` if the lock was successfully acquired (was unlocked),
     /// `false` if the lock was already held (was locked).
     ///
+    /// **Note:** The original takes `&self` with atomic interior mutability.
+    /// The verified version takes `&mut self` (exclusive reference), so this
+    /// verification covers state machine transitions only, not the concurrent
+    /// correctness that `compare_exchange` provides.
+    ///
     /// On success, produces a tracked `MutexToken` that the caller must pass to
     /// `unlock()` to discharge the lock-release obligation.
     ///
@@ -209,9 +222,11 @@ impl Mutex {
     ///
     /// # Description
     ///
-    /// In the original, this loops calling `try_lock()` and sleeping on a
-    /// `Condvar` on failure. In the sequential model, the preconditions
-    /// guarantee `try_lock()` succeeds on the first attempt.
+    /// In the original, this is a blocking operation that loops calling `try_lock()`
+    /// and sleeping on a `Condvar` on failure, and can be called on an already-locked
+    /// mutex. In the sequential model, the `spec_is_unlocked()` precondition guarantees
+    /// `try_lock()` succeeds on the first attempt, so contended locking (the primary
+    /// concurrent use case) is outside the verified model's coverage.
     ///
     /// Returns a tracked `MutexToken` that the caller must pass to `unlock()`
     /// to discharge the lock-release obligation. This models the `MutexGuard`

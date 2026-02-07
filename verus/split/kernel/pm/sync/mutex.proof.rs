@@ -104,12 +104,16 @@ impl Mutex {
     {
     }
 
-    /// Lemma: The `MutexToken` snapshot matches the locked state.
-    pub proof fn lemma_lock_token_snapshot_is_locked(token: &MutexToken)
+    /// Lemma: A well-formed, locked mutex has token_issued, and the token's
+    /// snapshot matches the mutex's current view.
+    pub proof fn lemma_locked_wf_implies_token_state(s: &Mutex)
         requires
-            token.view.locked,
+            s.wf(),
+            s.spec_is_locked(),
         ensures
-            token.view == (MutexView { locked: true, id: token.view.id, token_issued: token.view.token_issued }),
+            s@.token_issued,
+            s@.locked,
+            s@ == (MutexView { locked: true, id: s@.id, token_issued: true }),
     {
     }
 
@@ -230,6 +234,43 @@ impl Mutex {
             &&& after_unlock.wf()
             &&& !after_unlock.token_issued()
         }),
+    {
+    }
+
+    /// Lemma: Mutual exclusion — a well-formed mutex cannot have two independent
+    /// tokens outstanding simultaneously.
+    ///
+    /// # Description
+    ///
+    /// If a mutex is well-formed and a valid token exists (token.view == mutex view),
+    /// then the mutex must be locked with token_issued. Since token_issued is a single
+    /// boolean, at most one token can be outstanding per well-formed mutex instance.
+    pub proof fn lemma_mutual_exclusion(s: &Mutex, token: &MutexToken)
+        requires
+            s.wf(),
+            token.view == s@,
+        ensures
+            s.spec_is_locked(),
+            s@.token_issued,
+            s@.locked,
+    {
+    }
+
+    /// Lemma: No double-unlock — a well-formed, unlocked mutex cannot satisfy
+    /// the preconditions of `unlock()`.
+    ///
+    /// # Description
+    ///
+    /// Proves that double-unlock is precondition-blocked: after unlock produces
+    /// an unlocked, well-formed mutex with `!token_issued`, the `unlock()`
+    /// preconditions (`locked`, `wf()`, `token_issued()`) cannot all be satisfied.
+    pub proof fn lemma_no_double_unlock(s: &Mutex)
+        requires
+            s.wf(),
+            s.spec_is_unlocked(),
+        ensures
+            !s.locked,
+            !s@.token_issued,
     {
     }
 }

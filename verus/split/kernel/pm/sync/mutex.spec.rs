@@ -69,6 +69,11 @@ impl Mutex {
     /// - `new()` produces `(locked=false, token_issued=false)`.
     /// - `lock()`/`try_lock()` transitions to `(locked=true, token_issued=true)`.
     /// - `unlock()` transitions to `(locked=false, token_issued=false)`.
+    ///
+    /// **Note:** This is a local (per-mutex) invariant. It does not capture the
+    /// global uniqueness property that at most one token exists per mutex `id`
+    /// across the entire system. A global resource algebra would be needed for
+    /// that, which is beyond Verus's current tracked-token model.
     pub open spec fn wf(&self) -> bool {
         self.locked == self.token_issued()
     }
