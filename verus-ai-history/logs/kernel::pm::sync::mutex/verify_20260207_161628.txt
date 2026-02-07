@@ -1,0 +1,44 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 16:16:28 CST 2026
+Module: kernel::pm::sync::mutex
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sync::mutex
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/sync/mutex.proof.rs:248:5
+    |
+248 |     pub proof fn lemma_mutual_exclusion(s: &Mutex, token: &MutexToken)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/sync/mutex.proof.rs:253:13
+    |
+248 |     pub proof fn lemma_mutual_exclusion(s: &Mutex, token: &MutexToken)
+    |     ------------------------------------------------------------------ at the end of the function body
+...
+253 |             s.spec_is_locked(),
+    |             ^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/sync/mutex.proof.rs:254:13
+    |
+248 |     pub proof fn lemma_mutual_exclusion(s: &Mutex, token: &MutexToken)
+    |     ------------------------------------------------------------------ at the end of the function body
+...
+254 |             s@.token_issued,
+    |             ^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 25 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 25
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::mutex (verified:25, errors:1)
