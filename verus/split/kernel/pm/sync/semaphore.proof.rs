@@ -231,7 +231,7 @@ impl Semaphore {
     {
     }
 
-    /// Lemma: Semaphore resource conservation -- the total of value and acquired
+    /// Lemma: Semaphore resource conservation. The total of value and acquired
     /// resources is constant across down/up operations.
     ///
     /// # Description
@@ -247,7 +247,7 @@ impl Semaphore {
     {
     }
 
-    /// Lemma: Mutual exclusion for binary semaphore -- a semaphore initialized
+    /// Lemma: Mutual exclusion for binary semaphore. A semaphore initialized
     /// with value 1 can be acquired at most once before being released.
     ///
     /// # Description
@@ -265,7 +265,7 @@ impl Semaphore {
     {
     }
 
-    /// Lemma: Semaphore value monotonicity under `up()` -- value strictly increases.
+    /// Lemma: Semaphore value monotonicity under `up()`: value strictly increases.
     pub proof fn lemma_up_monotonic(v: nat)
         requires
             v < usize::MAX,
@@ -274,7 +274,7 @@ impl Semaphore {
     {
     }
 
-    /// Lemma: Semaphore value monotonicity under `down()` -- value strictly decreases.
+    /// Lemma: Semaphore value monotonicity under `down()`: value strictly decreases.
     pub proof fn lemma_down_monotonic(v: nat)
         requires
             v > 0,
@@ -283,7 +283,7 @@ impl Semaphore {
     {
     }
 
-    /// Lemma: The producer-consumer protocol -- demonstrates the state transition
+    /// Lemma: The producer-consumer protocol demonstrates the state transition
     /// sequence for a semaphore used as a resource counter.
     ///
     /// # Description
