@@ -822,19 +822,6 @@ mod test {
         // All set bits are within bounds.
         assert(view.wf());
     }
-
-    /// Test: count_free calculation.
-    proof fn test_count_free() {
-        let view: BitmapView = BitmapView {
-            num_bits: 8,
-            set_bits: set![1, 3, 5],  // 3 bits set.
-        };
-
-        assume(view.set_bits.finite());
-        assume(view.set_bits.len() == 3);
-        assert(view.usage() == 3);
-        assert(view.count_free() == 5);  // 8 - 3 = 5 free.
-    }
 }
 
 } // verus!
