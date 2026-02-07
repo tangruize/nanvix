@@ -1,0 +1,41 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 18:49:53 CST 2026
+Module: kernel::pm::thread::state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::state
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.proof.rs:263:13
+    |
+259 |       pub proof fn lemma_store_mutex_guard_increments(&self)
+    |       ------------------------------------------------------ at the end of the function body
+...
+263 | /             ({
+264 | |                 let post: ThreadState = ThreadState {
+265 | |                     locked_mutex_count: (self.locked_mutex_count + 1) as usize,
+266 | |                     ..*self
+267 | |                 };
+268 | |                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() + 1
+269 | |             }),
+    | |______________^ failed this postcondition
+
+note: recommendation not met: value may be out of range of the target type (use `#[verifier::truncate]` on the cast to silence this warning)
+   --> kernel/pm/thread/state.proof.rs:265:41
+    |
+265 |                     locked_mutex_count: (self.locked_mutex_count + 1) as usize,
+    |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 36 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 36
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::state (verified:36, errors:1)
