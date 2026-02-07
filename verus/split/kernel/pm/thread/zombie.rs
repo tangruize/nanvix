@@ -153,10 +153,10 @@ impl ZombieThread {
     /// wf() through the take-then-drop sequence.
     pub fn harvest(mut self) -> (result: (Option<int>, Option<int>))
         requires
-            old(self).wf(),
+            self.wf(),
         ensures
-            result.0 == old(self).spec_kernel_stack(),
-            result.1 == old(self).spec_user_stack(),
+            result.0 == self.spec_kernel_stack(),
+            result.1 == self.spec_user_stack(),
     {
         let kstack: Option<int> = self.state.take_kernel_stack();
         let ustack: Option<int> = self.state.take_user_stack();
