@@ -261,4 +261,20 @@ impl ThreadIdentifier {
     }
 }
 
+//==================================================================================================
+// Module-Level Layout Assertion
+//==================================================================================================
+
+/// Proof: Module-level layout assertion mirroring the original static_assert! macros.
+///
+/// This ensures layout properties are checked as part of module verification,
+/// not just available as callable lemmas.
+proof fn assert_tid_layout()
+    ensures
+        core::mem::size_of::<ThreadIdentifier>() == 4,
+        core::mem::align_of::<ThreadIdentifier>() == 4,
+{
+    ThreadIdentifier::assert_layout();
+}
+
 } // verus!
