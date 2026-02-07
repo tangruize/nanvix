@@ -43,10 +43,14 @@
 //!
 //! ## Trust Boundary
 //!
-//! - `join_cond()` is omitted: returns opaque `Condvar` (sync boundary).
-//!   TODO: Add `#[verifier::external_body]` stub if Verus gains opaque token
-//!   types, to at least track condvar identity preservation across the
-//!   sleeping state. Currently, `Condvar` cannot be meaningfully modeled.
+//! - `join_cond()` is omitted: returns `Condvar` via `self.state.join_cond()`.
+//!   `Condvar` is elided from the entire verification model (ThreadState, ReadyThread,
+//!   RunningThread, InterruptedThread, SleepingThread) as a project-wide architectural
+//!   decision — it is an opaque sync primitive that Verus cannot model. Since
+//!   `join_cond()` is a read-only pass-through to `ThreadState`, and no
+//!   `SleepingThread` method modifies the condvar field, condvar identity is
+//!   trivially preserved across the sleeping state lifetime.
+//!   TODO: Model condvar identity if Verus gains opaque token types.
 //! - `thread_state_mut()` is `#[verifier::external]`: returns `&mut ThreadState`
 //!   which Verus cannot express. See documented trust obligations.
 //! - `ReadyThread` and `InterruptedThread` are boundary models of sibling modules.
