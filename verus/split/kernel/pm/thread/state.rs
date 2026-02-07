@@ -95,7 +95,7 @@ pub struct ThreadState {
     pub locked_mutex_count: usize,
     /// Ghost set of locked mutex addresses, faithfully modeling the
     /// original `BTreeMap<MutexAddress, MutexGuard>` per-key semantics.
-    pub ghost locked_mutex_set: Set<int>,
+    pub locked_mutex_set: Ghost<Set<int>>,
 }
 
 //==================================================================================================
@@ -139,7 +139,7 @@ impl ThreadState {
             user_tda: user_tda,
             interrupt_reason: None,
             locked_mutex_count: 0usize,
-            locked_mutex_set: Set::empty(),
+            locked_mutex_set: Ghost(Set::empty()),
         }
     }
 
@@ -268,7 +268,7 @@ impl ThreadState {
     {
         self.locked_mutex_count = self.locked_mutex_count + 1;
         proof {
-            self.locked_mutex_set = self.locked_mutex_set.insert(address@);
+            self.locked_mutex_set = Ghost(self.locked_mutex_set@.insert(address@));
         }
     }
 
@@ -305,7 +305,7 @@ impl ThreadState {
     {
         self.locked_mutex_count = self.locked_mutex_count - 1;
         proof {
-            self.locked_mutex_set = self.locked_mutex_set.remove(address@);
+            self.locked_mutex_set = Ghost(self.locked_mutex_set@.remove(address@));
         }
         true
     }

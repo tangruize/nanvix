@@ -40,7 +40,7 @@ impl ThreadState {
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
-                    locked_mutex_set: Set::empty(),
+                    locked_mutex_set: Ghost(Set::empty()),
                 };
                 s.wf()
             }),
@@ -63,7 +63,7 @@ impl ThreadState {
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
-                    locked_mutex_set: Set::empty(),
+                    locked_mutex_set: Ghost(Set::empty()),
                 };
                 s.spec_drop_safe()
             }),
@@ -86,7 +86,7 @@ impl ThreadState {
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
-                    locked_mutex_set: Set::empty(),
+                    locked_mutex_set: Ghost(Set::empty()),
                 };
                 !s.spec_is_interrupted()
             }),
@@ -272,7 +272,7 @@ impl ThreadState {
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count + 1) as usize,
-                    locked_mutex_set: self.locked_mutex_set.insert(address),
+                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
                     ..*self
                 };
                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() + 1
@@ -290,7 +290,7 @@ impl ThreadState {
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count - 1) as usize,
-                    locked_mutex_set: self.locked_mutex_set.remove(address),
+                    locked_mutex_set: Ghost(self.locked_mutex_set@.remove(address)),
                     ..*self
                 };
                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() - 1
@@ -406,7 +406,7 @@ impl ThreadState {
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count + 1) as usize,
-                    locked_mutex_set: self.locked_mutex_set.insert(address),
+                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
                     ..*self
                 };
                 post.wf()
@@ -423,7 +423,7 @@ impl ThreadState {
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count - 1) as usize,
-                    locked_mutex_set: self.locked_mutex_set.remove(address),
+                    locked_mutex_set: Ghost(self.locked_mutex_set@.remove(address)),
                     ..*self
                 };
                 post.wf()
@@ -479,7 +479,7 @@ impl ThreadState {
             a.user_tda == b.user_tda,
             a.interrupt_reason == b.interrupt_reason,
             a.locked_mutex_count == b.locked_mutex_count,
-            a.locked_mutex_set =~= b.locked_mutex_set,
+            a.locked_mutex_set@ =~= b.locked_mutex_set@,
         ensures
             a@ == b@,
     {

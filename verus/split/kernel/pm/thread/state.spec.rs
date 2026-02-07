@@ -87,7 +87,7 @@ impl ThreadState {
 
     /// Spec function: returns whether a specific mutex address is locked.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.locked_mutex_set.contains(address)
+        self.locked_mutex_set@.contains(address)
     }
 
     /// Spec function: well-formedness predicate.
@@ -96,8 +96,8 @@ impl ThreadState {
     /// - The ghost mutex set is finite.
     /// - The runtime counter equals the ghost set size.
     pub open spec fn wf(&self) -> bool {
-        self.locked_mutex_set.finite()
-        && self.locked_mutex_set.len() == self.locked_mutex_count as nat
+        self.locked_mutex_set@.finite()
+        && self.locked_mutex_set@.len() == self.locked_mutex_count as nat
     }
 
     /// Spec function: checks if the thread holds no locked mutexes.
@@ -134,7 +134,7 @@ impl View for ThreadState {
             user_tda: self.user_tda,
             interrupt_reason: self.interrupt_reason,
             locked_mutex_count: self.locked_mutex_count as nat,
-            locked_mutex_set: self.locked_mutex_set,
+            locked_mutex_set: self.locked_mutex_set@,
         }
     }
 }
