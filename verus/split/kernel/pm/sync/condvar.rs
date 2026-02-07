@@ -279,6 +279,19 @@ impl Condvar {
                 }
             }
             Condvar::lemma_enqueue_preserves_unique(s, entry);
+            // Prove no-kernel-pid is preserved after push.
+            let new_s: Seq<(int, int)> = s.push(entry);
+            assert forall|i: int|
+                #![trigger new_s[i]]
+                0 <= i < new_s.len() as int
+            implies new_s[i].0 != Condvar::spec_kernel_pid() by {
+                if i < s.len() as int {
+                    assert(new_s[i] == s[i]);
+                    assert(self@.sleeping[i] == s[i]);
+                } else {
+                    assert(new_s[i] == entry);
+                }
+            }
         }
         self.len = self.len + 1;
         self.sleeping = Ghost(self.sleeping@.push((pid_val as int, tid_val as int)));

@@ -32,12 +32,13 @@ impl Condvar {
     /// # Description
     ///
     /// Enforces that the concrete length counter matches the ghost sequence
-    /// length and that all queue entries are unique (trust assumption T1).
-    /// Including uniqueness in `wf()` ensures all exec operations
-    /// automatically require and preserve the uniqueness invariant.
+    /// length, that all queue entries are unique (trust assumption T1), and
+    /// that no kernel process entry exists in the queue (safety invariant
+    /// from the original `wait()` panic guard).
     pub open spec fn wf(&self) -> bool {
         &&& self.len as nat == self.sleeping@.len()
         &&& self.spec_all_unique()
+        &&& self.spec_no_kernel_pid()
     }
 
     /// Spec function: returns whether the sleeping queue is empty.
@@ -97,6 +98,20 @@ impl Condvar {
             && 0 <= j < self@.sleeping.len() as int
             && i != j
             ==> self@.sleeping[i] != self@.sleeping[j]
+    }
+
+    /// Spec function: returns whether the queue contains no kernel process entry.
+    ///
+    /// # Description
+    ///
+    /// Formalizes the safety invariant from the original `wait()` which panics
+    /// if `pid == ProcessIdentifier::KERNEL`. Including this in `wf()` makes
+    /// it a global invariant preserved by all operations.
+    pub open spec fn spec_no_kernel_pid(&self) -> bool {
+        forall|i: int|
+            #![trigger self@.sleeping[i]]
+            0 <= i < self@.sleeping.len() as int
+            ==> self@.sleeping[i].0 != Condvar::spec_kernel_pid()
     }
 
     /// Spec function: returns the front element of the queue.
