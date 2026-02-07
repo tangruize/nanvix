@@ -383,6 +383,97 @@ impl Condvar {
 }
 
 //==================================================================================================
+// Proof Lemmas — Uniqueness Preservation (Condvar-level wrappers)
+//==================================================================================================
+//
+// The following lemmas wrap the raw-Seq uniqueness preservation lemmas,
+// providing a `&self`-based interface using `spec_all_unique()`.
+
+impl Condvar {
+    /// Lemma: Enqueue preserves `spec_all_unique` when the entry is not present.
+    pub proof fn lemma_enqueue_preserves_unique_cv(&self, pid_val: int, tid_val: int)
+        requires
+            self.wf(),
+            self.spec_all_unique(),
+            !self.spec_contains_entry(pid_val, tid_val),
+        ensures ({
+            let new_cv: Condvar = Condvar {
+                len: (self.len + 1) as usize,
+                sleeping: Ghost(self@.sleeping.push((pid_val, tid_val))),
+            };
+            new_cv.spec_all_unique()
+        }),
+    {
+        let entry: (int, int) = (pid_val, tid_val);
+        let s: Seq<(int, int)> = self@.sleeping;
+
+        // Prove that no existing element equals the new entry.
+        assert forall|i: int|
+            #![trigger s[i]]
+            0 <= i < s.len() as int
+        implies s[i] != entry by {
+            if s[i] == entry {
+                // Contradicts !self.spec_contains_entry.
+                assert(s[i].0 == pid_val && s[i].1 == tid_val);
+            }
+        }
+
+        Condvar::lemma_enqueue_preserves_unique(s, entry);
+    }
+
+    /// Lemma: Dequeue preserves `spec_all_unique`.
+    pub proof fn lemma_dequeue_preserves_unique_cv(&self)
+        requires
+            self.wf(),
+            self.spec_all_unique(),
+            !self.spec_is_empty(),
+        ensures ({
+            let new_sleeping: Seq<(int, int)> =
+                self@.sleeping.subrange(1, self@.sleeping.len() as int);
+            let new_cv: Condvar = Condvar {
+                len: (self.len - 1) as usize,
+                sleeping: Ghost(new_sleeping),
+            };
+            new_cv.spec_all_unique()
+        }),
+    {
+        Condvar::lemma_dequeue_preserves_unique(self@.sleeping);
+    }
+
+    /// Lemma: Remove-at preserves `spec_all_unique`.
+    pub proof fn lemma_remove_at_preserves_unique_cv(&self, idx: int)
+        requires
+            self.wf(),
+            self.spec_all_unique(),
+            0 <= idx < self.len as int,
+        ensures ({
+            let new_sleeping: Seq<(int, int)> =
+                Condvar::spec_remove_at_seq(self@.sleeping, idx);
+            let new_cv: Condvar = Condvar {
+                len: (self.len - 1) as usize,
+                sleeping: Ghost(new_sleeping),
+            };
+            new_cv.spec_all_unique()
+        }),
+    {
+        Condvar::lemma_remove_at_preserves_unique(self@.sleeping, idx);
+    }
+
+    /// Lemma: Clear preserves `spec_all_unique`.
+    pub proof fn lemma_clear_preserves_unique_cv()
+        ensures ({
+            let new_cv: Condvar = Condvar {
+                len: 0usize,
+                sleeping: Ghost(Seq::<(int, int)>::empty()),
+            };
+            new_cv.spec_all_unique()
+        }),
+    {
+        Condvar::lemma_clear_preserves_unique();
+    }
+}
+
+//==================================================================================================
 // Proof Lemmas — Remove Entry Properties
 //==================================================================================================
 //

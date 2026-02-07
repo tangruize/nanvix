@@ -305,15 +305,7 @@ impl Condvar {
             self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
             self.wf(),
     {
-        let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
-        self.len = self.len - 1;
-        self.sleeping = Ghost(
-            old_sleeping.subrange(0, idx) + old_sleeping.subrange(
-                idx + 1,
-                old_sleeping.len() as int,
-            ),
-        );
-        true
+        self.remove_at(Ghost(idx))
     }
 
     /// Removes the first entry matching a given process identifier.
@@ -322,13 +314,13 @@ impl Condvar {
     ///
     /// Models the original `notify_process(pid)` which uses
     /// `LinkedList::iter().position()` to find the first entry with matching
-    /// pid, then removes it. The ghost index must point to an entry whose
-    /// pid component matches `pid_val`.
+    /// pid, then removes it. The ghost index must point to the first entry
+    /// whose pid component matches `pid_val`.
     ///
     /// # Parameters
     ///
     /// - `pid_val`: Process identifier value to search for.
-    /// - `idx`: Ghost index of the matching entry in the queue.
+    /// - `idx`: Ghost index of the first matching entry in the queue.
     ///
     /// # Returns
     ///
@@ -338,6 +330,10 @@ impl Condvar {
             old(self).wf(),
             0 <= idx < old(self).len as int,
             old(self)@.sleeping[idx].0 == pid_val as int,
+            // The index is the first match, modeling `position()` semantics.
+            forall|k: int|
+                #![trigger old(self)@.sleeping[k]]
+                0 <= k < idx ==> old(self)@.sleeping[k].0 != pid_val as int,
         ensures
             removed,
             self.len as nat == old(self).len as nat - 1,
@@ -345,15 +341,7 @@ impl Condvar {
             self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
             self.wf(),
     {
-        let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
-        self.len = self.len - 1;
-        self.sleeping = Ghost(
-            old_sleeping.subrange(0, idx) + old_sleeping.subrange(
-                idx + 1,
-                old_sleeping.len() as int,
-            ),
-        );
-        true
+        self.remove_at(Ghost(idx))
     }
 
     /// Removes the first entry matching a given thread identifier.
@@ -362,13 +350,13 @@ impl Condvar {
     ///
     /// Models the original `notify_thread(tid)` which uses
     /// `LinkedList::iter().position()` to find the first entry with matching
-    /// tid, then removes it. The ghost index must point to an entry whose
-    /// tid component matches `tid_val`.
+    /// tid, then removes it. The ghost index must point to the first entry
+    /// whose tid component matches `tid_val`.
     ///
     /// # Parameters
     ///
     /// - `tid_val`: Thread identifier value to search for.
-    /// - `idx`: Ghost index of the matching entry in the queue.
+    /// - `idx`: Ghost index of the first matching entry in the queue.
     ///
     /// # Returns
     ///
@@ -378,6 +366,10 @@ impl Condvar {
             old(self).wf(),
             0 <= idx < old(self).len as int,
             old(self)@.sleeping[idx].1 == tid_val as int,
+            // The index is the first match, modeling `position()` semantics.
+            forall|k: int|
+                #![trigger old(self)@.sleeping[k]]
+                0 <= k < idx ==> old(self)@.sleeping[k].1 != tid_val as int,
         ensures
             removed,
             self.len as nat == old(self).len as nat - 1,
@@ -385,15 +377,7 @@ impl Condvar {
             self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
             self.wf(),
     {
-        let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
-        self.len = self.len - 1;
-        self.sleeping = Ghost(
-            old_sleeping.subrange(0, idx) + old_sleeping.subrange(
-                idx + 1,
-                old_sleeping.len() as int,
-            ),
-        );
-        true
+        self.remove_at(Ghost(idx))
     }
 
     /// Removes all threads from the sleeping queue.
