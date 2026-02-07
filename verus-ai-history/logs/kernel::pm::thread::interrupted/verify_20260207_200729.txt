@@ -1,0 +1,33 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 20:07:29 CST 2026
+Module: kernel::pm::thread::interrupted
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::interrupted
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: invalid suffix `int` for number literal
+   --> kernel/pm/thread/interrupted.rs:106:34
+    |
+106 |         InterruptReason { value: 0int }
+    |                                  ^^^^ invalid suffix `int`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: invalid suffix `int` for number literal
+   --> kernel/pm/thread/interrupted.rs:121:34
+    |
+121 |         InterruptReason { value: 1int }
+    |                                  ^^^^ invalid suffix `int`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: aborting due to 2 previous errors
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::interrupted (verified:0, errors:0)
