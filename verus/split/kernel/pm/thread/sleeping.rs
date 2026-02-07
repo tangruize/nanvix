@@ -53,6 +53,11 @@
 //! - `ReadyThread` and `InterruptedThread` are boundary models of sibling modules.
 //!   When those modules are verified independently, the boundary models'
 //!   postconditions must be confirmed as implied by the real implementations.
+//! - **Boundary model divergence:** The `ReadyThread` boundary here includes
+//!   `admission_time`, while the `ReadyThread` boundary in `interrupted.rs` omits
+//!   it. Both are individually sound but structurally incompatible for cross-module
+//!   composition. TODO (cross-module): Standardize `ReadyThread` boundary models
+//!   across modules, or extract a shared canonical boundary type.
 
 use crate::kernel::pm::thread::state::ThreadState;
 use crate::kernel::pm::thread::state::ThreadStateView;
@@ -76,6 +81,10 @@ verus! {
 /// The real implementation returns the current system time.
 /// This boundary model only guarantees the result is non-negative,
 /// matching the postcondition of the real `clock_now()` in `ready.rs`.
+///
+/// Note: An identical `external_body` declaration exists in `ready.rs`.
+/// TODO (cross-module): Extract to a shared clock utility module to
+/// avoid duplicating this trust assumption.
 #[verifier::external_body]
 fn clock_now() -> (result: int)
     ensures
@@ -415,6 +424,8 @@ impl SleepingThread {
     /// TODO: Once Verus supports `&mut T` returns, replace this with a verified
     /// function carrying the above postconditions, or refactor remaining callers
     /// to use specific setter methods with per-field postconditions.
+    /// TODO: Audit all callers to confirm they only perform mutations already
+    /// coverable by verified setters (e.g., `set_thread_data_area`).
     #[verifier::external]
     pub fn thread_state_mut(&mut self) -> &mut ThreadState {
         &mut self.state
