@@ -101,52 +101,14 @@ impl ZombieThread {
     }
 
     //==============================================================================================
-    // Identity Correctness
+    // Identity and Status Correctness
     //==============================================================================================
 
-    /// Lemma: spec_id faithfully reflects the underlying state's identity.
-    pub proof fn lemma_id_correct(&self)
-        ensures
-            self.spec_id() == self.state.spec_id(),
-    {
-    }
-
-    //==============================================================================================
-    // Status Correctness
-    //==============================================================================================
-
-    /// Lemma: spec_status faithfully reflects the stored exit status.
-    pub proof fn lemma_status_correct(&self)
-        ensures
-            self.spec_status() == self.status,
-    {
-    }
-
-    //==============================================================================================
-    // Harvest Lemmas
-    //==============================================================================================
-
-    /// Lemma: harvest returns the kernel stack that was in the state.
-    /// After harvest, the state's kernel stack is None.
-    pub proof fn lemma_harvest_returns_stacks(z: ZombieThread)
-        requires
-            z.wf(),
-        ensures
-            // The harvest operation returns the stacks that were stored.
-            z.spec_kernel_stack() == z.state.spec_kernel_stack(),
-            z.spec_user_stack() == z.state.spec_user_stack(),
-    {
-    }
-
-    /// Lemma: After harvest, the zombie's identity is unchanged
-    /// (harvest consumes self, but the stacks returned are from the original state).
-    pub proof fn lemma_harvest_identity(z: ZombieThread)
-        requires
-            z.wf(),
-        ensures
-            z.spec_id() == z.state.spec_id(),
-    {
-    }
+    // Note: Trivially tautological lemmas (lemma_id_correct, lemma_status_correct,
+    // lemma_harvest_returns_stacks, lemma_harvest_identity) were consolidated per
+    // review feedback. Their properties follow directly from spec definitions and
+    // are proven vacuously by the SMT solver. The construction lemmas above
+    // already verify these properties at the point they matter (creation time).
 
     //==============================================================================================
     // View Equality

@@ -89,6 +89,11 @@ impl ZombieThread {
 
     /// Spec function: well-formedness predicate.
     /// A ZombieThread is well-formed when the underlying state is well-formed.
+    ///
+    /// Note: `status` is modeled as unbounded `int` — an intentional
+    /// abstraction of the original `ExitStatus` type. Bounding `status`
+    /// (e.g., to `i32` range) is not required for the properties verified
+    /// here and is left as an explicit trust boundary simplification.
     pub open spec fn wf(&self) -> bool {
         self.state.wf()
     }

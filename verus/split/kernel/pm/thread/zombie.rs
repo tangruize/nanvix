@@ -34,7 +34,12 @@
 //!   which Verus cannot express. See documented trust obligations.
 //! - `harvest()` delegates to verified ThreadState methods (`take_kernel_stack`,
 //!   `take_user_stack`). The return type is modeled as a tuple of `Option<int>`
-//!   tokens matching the abstract resource model.
+//!   tokens matching the abstract resource model. Resource lifecycle tracking
+//!   of returned stacks by the caller is out of verification scope.
+//! - `Box<ThreadState>` is modeled as `ThreadState` directly. Box deallocation
+//!   correctness is out of verification scope.
+//! - `ExitStatus` is modeled as unbounded `int`. Bounding to the original
+//!   type's range is an intentional simplification (see `wf()` documentation).
 
 use crate::kernel::pm::thread::state::ThreadState;
 use crate::kernel::pm::thread::state::ThreadStateView;
@@ -61,7 +66,7 @@ verus! {
 ///
 /// **Note:** Fields are `pub` for Verus proof ergonomics (spec access,
 /// direct construction in lemmas). The original has private fields.
-/// Construction should only occur via `from_state()` which establishes `wf()`.
+/// INVARIANT: Construction should only occur via `from_state()` which establishes `wf()`.
 pub struct ZombieThread {
     /// The exit status of the terminated thread (abstract int tag).
     pub status: int,
@@ -135,7 +140,8 @@ impl ZombieThread {
     ///
     /// A tuple containing the optional kernel stack and user stack tokens
     /// of the terminated thread. The stacks are taken from the underlying
-    /// state (Option::take semantics).
+    /// state via `take_kernel_stack()` / `take_user_stack()` (Option::take
+    /// semantics), matching the original implementation's mutation sequence.
     ///
     /// # Modeling Note
     ///
@@ -143,15 +149,17 @@ impl ZombieThread {
     /// These are modeled as `(Option<int>, Option<int>)` — abstract resource
     /// tokens with identity preservation. The returned tokens are exactly
     /// those that were stored in the ThreadState at construction time.
-    pub fn harvest(self) -> (result: (Option<int>, Option<int>))
+    /// After harvest, the ThreadState's stack fields are None, preserving
+    /// wf() through the take-then-drop sequence.
+    pub fn harvest(mut self) -> (result: (Option<int>, Option<int>))
         requires
-            self.wf(),
+            old(self).wf(),
         ensures
-            result.0 == self.spec_kernel_stack(),
-            result.1 == self.spec_user_stack(),
+            result.0 == old(self).spec_kernel_stack(),
+            result.1 == old(self).spec_user_stack(),
     {
-        let kstack: Option<int> = self.state.kernel_stack;
-        let ustack: Option<int> = self.state.user_stack;
+        let kstack: Option<int> = self.state.take_kernel_stack();
+        let ustack: Option<int> = self.state.take_user_stack();
         (kstack, ustack)
     }
 
