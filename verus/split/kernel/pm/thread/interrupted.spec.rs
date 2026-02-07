@@ -19,6 +19,21 @@
 //   from the sibling `ready.rs` module. It wraps a `ThreadState` and is
 //   only used to verify the `resume` state transition.
 //
+// ## Trust Assumptions
+//
+// - `join_cond()` is omitted from the spec: it returns an opaque `Condvar`
+//   from the sync subsystem that cannot be meaningfully modeled in a pure
+//   spec. Synchronization correctness of thread-join operations involving
+//   interrupted threads is outside the verification boundary.
+// - `ThreadState::set_interrupt_reason` accepts any `int` without constraining
+//   it to a valid `InterruptReason` variant. The constraint is enforced at
+//   the `InterruptedThread` level via `wf()` (which requires `spec_valid_reason`).
+//   Only `InterruptedThread::resume` calls `set_interrupt_reason`, and it
+//   does so with `self.reason` which is guaranteed valid by `self.wf()`.
+// - `thread_state_mut` returns `&mut ThreadState` outside the `verus!` block.
+//   Callers must preserve `wf()` and `spec_id()`. See the trust boundary
+//   documentation on that function.
+//
 // ## Verified Properties
 //
 // - spec_id: Thread identity is derived from the underlying ThreadState.

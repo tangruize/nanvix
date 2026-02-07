@@ -60,6 +60,11 @@ verus! {
 /// This is the verification model of `src/kernel/src/pm/thread/interrupted.rs::InterruptedThread`.
 /// `Box<ThreadState>` is modeled as `ThreadState` directly.
 /// `InterruptReason` is abstracted to an `int` tag (0 = Killed, 1 = TimedOut).
+///
+/// Fields are `pub` because Verus requires public fields for spec-level access
+/// in `open spec fn` definitions. In the original code these fields are private.
+/// External code should not construct `InterruptedThread` directly; use
+/// `from_state` to ensure the well-formedness invariant (`wf()`) holds.
 pub struct InterruptedThread {
     /// The underlying thread state.
     pub state: ThreadState,
@@ -72,6 +77,10 @@ pub struct InterruptedThread {
 /// Models the original `ReadyThread` from the sibling `ready.rs` module.
 /// Only the `from_state` constructor is modeled — enough to verify the
 /// resume transition protocol.
+///
+/// **Cross-module dependency:** When the `ReadyThread` module is verified
+/// independently, the postconditions of this boundary model's `from_state`
+/// must be confirmed as implied by the real `ReadyThread::from_state` spec.
 pub struct ReadyThread {
     /// The underlying thread state.
     pub state: ThreadState,
@@ -195,6 +204,16 @@ impl InterruptedThread {
     ///
     /// Placed outside `verus!` block because Verus does not yet support
     /// returning `&mut T` from functions.
+    ///
+    /// # Trust Boundary
+    ///
+    /// Callers that mutate the `ThreadState` through this reference operate
+    /// outside the verification boundary. Callers MUST preserve:
+    /// - `self.wf()` — the compound well-formedness invariant.
+    /// - `self.spec_id()` — the thread identity must not change.
+    /// Once Verus supports `&mut T` returns, this should be replaced with
+    /// specific setter methods that carry postconditions, or refactored to
+    /// ensure `wf()` holds when the mutable borrow is released.
     pub fn thread_state_mut(&mut self) -> &mut ThreadState {
         &mut self.state
     }

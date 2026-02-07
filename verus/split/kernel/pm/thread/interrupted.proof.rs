@@ -74,6 +74,12 @@ impl InterruptedThread {
     // Resume State Transition Lemmas
     //==============================================================================================
 
+    // NOTE: The resume lemmas below construct the post-state manually as
+    //   `ThreadState { interrupt_reason: Some(self.reason), ..self.state }`
+    // mirroring the exec `resume` implementation. If the exec `resume` code
+    // changes (e.g., modifies additional fields), these lemmas must be
+    // updated in sync to remain meaningful.
+
     /// Lemma: After resume, the resulting state has the interrupt reason set
     /// to the InterruptedThread's reason. This is the key safety property:
     /// the interrupt reason is correctly propagated from the InterruptedThread
