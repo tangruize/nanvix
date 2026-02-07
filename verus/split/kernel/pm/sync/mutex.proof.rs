@@ -197,12 +197,12 @@ impl Mutex {
     pub proof fn lemma_lock_token_valid_for_unlock(s: &Mutex, token: &MutexToken)
         requires
             s.spec_is_locked(),
-            token.spec_view() == s@,
+            token.view == s@,
         ensures
             s.locked,
-            token.spec_view().locked,
-            token.spec_view().id == s@.id,
-            token.spec_view().token_issued == s@.token_issued,
+            token.view.locked,
+            token.view.id == s@.id,
+            token.view.token_issued == s@.token_issued,
     {
     }
 
@@ -215,9 +215,9 @@ impl Mutex {
             s1.spec_is_locked(),
             s2.spec_is_locked(),
             s1@.id != s2@.id,
-            token.spec_view() == s1@,
+            token.view == s1@,
         ensures
-            token.spec_view() != s2@,
+            token.view != s2@,
     {
     }
 
@@ -250,8 +250,8 @@ impl Mutex {
     pub proof fn lemma_mutual_exclusion(s: &Mutex, token: &MutexToken)
         requires
             s.wf(),
-            token.spec_view() == s@,
-            token.spec_view().locked,
+            token.view == s@,
+            token.view.locked,
         ensures
             s.spec_is_locked(),
             s@.token_issued,

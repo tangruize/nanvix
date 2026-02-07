@@ -39,22 +39,16 @@ pub struct MutexView {
 /// The token carries a ghost snapshot of the mutex's view at acquisition time,
 /// binding the token to the specific mutex instance (via the `id` field in the view)
 /// and state. A token produced by mutex instance A cannot be used to unlock instance B,
-/// because `unlock()` requires `token.spec_view() == old(self)@` which includes identity.
+/// because `unlock()` requires `token.view == old(self)@` which includes identity.
 ///
-/// The `view` field is private to prevent external code from constructing forged
-/// tokens. External callers read the token's view via `spec_view()`.
+/// The `view` field is `pub ghost` because Verus requires `pub open spec fn`
+/// bodies to reference only public fields (the "opaqueness" rule). A private field
+/// with a `pub closed spec fn` getter would make the getter opaque, preventing
+/// proof reasoning about token contents. See Trust Assumption T3 in the module
+/// header for the implications.
 pub tracked struct MutexToken {
     /// Ghost snapshot of the mutex's view when the lock was acquired.
-    ghost view: MutexView,
-}
-
-//==================================================================================================
-// MutexToken Spec Functions
-//==================================================================================================
-
-impl MutexToken {
-    /// Spec function: returns the ghost snapshot of the mutex's view at lock time.
-    pub closed spec fn spec_view(&self) -> MutexView;
+    pub ghost view: MutexView,
 }
 
 //==================================================================================================
