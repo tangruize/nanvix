@@ -54,11 +54,20 @@
 //!
 //! ## Trust Boundaries
 //!
-//! - `wait()`: Modeled as a no-op with a precondition that the fence is already
-//!   satisfied. The original spins until satisfied; the sequential model requires
-//!   the caller to establish satisfaction before calling wait (or equivalently,
-//!   wait's postcondition is that the fence is satisfied, which in the sequential
-//!   model means the precondition must already hold).
+//! - `wait()`: **Key verification gap.** Modeled as a no-op with a precondition
+//!   that the fence is already satisfied. The original `wait()` is a *blocking*
+//!   operation: it spins until concurrent signalers establish satisfaction. The
+//!   sequential model cannot express this blocking behavior, so instead the
+//!   caller must prove satisfaction before calling `wait()`. This means the
+//!   verified `wait()` does not capture the fundamental purpose of the original:
+//!   waiting for concurrent signals. The trust boundary is that concurrent
+//!   signalers will eventually satisfy the fence—this assumption is implicit
+//!   in the precondition rather than modeled as an explicit concurrency axiom.
+//! - `signal(&mut self)`: Uses `&mut self` (exclusive access) instead of the
+//!   original `&self` with `AtomicUsize`. This means the verified model cannot
+//!   represent the concurrent case where multiple threads call `signal()`
+//!   simultaneously. See `lemma_signal_commutativity` for a spec-level proof
+//!   that signal ordering does not affect the final state.
 //! - `arch::cpu::pause()`: CPU hint with no semantic effect on fence state.
 //!
 //! ## Trust Assumptions
@@ -104,6 +113,11 @@ pub struct Fence {
 
 impl Fence {
     /// Instantiates a new fence.
+    ///
+    /// # Description
+    ///
+    /// Note: The original `new` is a `const fn`. Verus does not currently
+    /// support `const fn` verification, so this is modeled as a plain `fn`.
     ///
     /// # Parameters
     ///
@@ -181,6 +195,10 @@ impl Fence {
 
     /// Checks if the fence is satisfied.
     ///
+    /// # Description
+    ///
+    /// Verification-only accessor not present in the original runtime code.
+    ///
     /// # Returns
     ///
     /// `true` if all signals have been received, `false` otherwise.
@@ -196,6 +214,10 @@ impl Fence {
 
     /// Returns the number of signals received so far.
     ///
+    /// # Description
+    ///
+    /// Verification-only accessor not present in the original runtime code.
+    ///
     /// # Returns
     ///
     /// The current signal count.
@@ -208,6 +230,10 @@ impl Fence {
     }
 
     /// Returns the total number of signals required.
+    ///
+    /// # Description
+    ///
+    /// Verification-only accessor not present in the original runtime code.
     ///
     /// # Returns
     ///

@@ -63,7 +63,14 @@ impl Fence {
     }
 
     /// Spec function: returns the number of remaining signals needed.
-    pub open spec fn spec_remaining(&self) -> nat {
+    ///
+    /// # Note
+    ///
+    /// This function assumes `wf()` for meaningful results. Without `wf()`,
+    /// if `count > total`, nat subtraction saturates to 0.
+    pub open spec fn spec_remaining(&self) -> nat
+        recommends self.wf(),
+    {
         (self.total as nat - self.count as nat) as nat
     }
 
