@@ -61,6 +61,7 @@ impl ProcessIdentifier {
     ///
     /// This is an abstract spec function representing the byte serialization.
     /// It is uninterpreted but allows stating round-trip properties as axioms.
+    #[verifier::uninterp]
     pub closed spec fn spec_to_ne_bytes(&self) -> [u8; 4];
 
     /// Spec function: abstract representation of from_ne_bytes result.
@@ -69,6 +70,7 @@ impl ProcessIdentifier {
     ///
     /// This is an abstract spec function representing the byte deserialization.
     /// It is uninterpreted but allows stating round-trip properties as axioms.
+    #[verifier::uninterp]
     pub closed spec fn spec_from_ne_bytes(bytes: [u8; 4]) -> int;
 
     /// Spec function: checks if value is within valid i32 range.

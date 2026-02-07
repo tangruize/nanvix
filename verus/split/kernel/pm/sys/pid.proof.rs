@@ -94,12 +94,11 @@ impl ProcessIdentifier {
     /// semantics. Verus cannot verify byte-level integer representation, so this
     /// property is documented as an axiom.
     ///
-    /// Property: `from_ne_bytes(bytes).to_ne_bytes() == bytes`
+    /// Property: for any pid, `spec_from_ne_bytes(pid.spec_to_ne_bytes()) == pid.spec_value()`
     #[verifier::external_body]
-    pub proof fn axiom_bytes_roundtrip(bytes: [u8; 4])
+    pub proof fn axiom_bytes_roundtrip(pid: ProcessIdentifier, bytes: [u8; 4])
         ensures
-            ProcessIdentifier { value: arbitrary() }.spec_to_ne_bytes() == bytes
-                ==> Self::spec_from_ne_bytes(bytes) == (ProcessIdentifier { value: arbitrary() }).spec_value(),
+            pid.spec_to_ne_bytes() == bytes ==> Self::spec_from_ne_bytes(bytes) == pid.spec_value(),
     {
     }
 }
