@@ -1,6 +1,6 @@
 {
   "module_name": "semaphore",
-  "outer_iteration": 2,
+  "outer_iteration": 3,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "a032ce5e-479a-487b-9130-67df5f875cfc",
