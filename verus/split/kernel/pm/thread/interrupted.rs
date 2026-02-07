@@ -39,6 +39,7 @@
 //!   subsystem that cannot be meaningfully modeled in a pure spec.
 
 use crate::kernel::pm::thread::state::ThreadState;
+use crate::kernel::pm::thread::state::ThreadStateView;
 use crate::kernel::pm::sys::tid::ThreadIdentifier;
 use vstd::prelude::*;
 
