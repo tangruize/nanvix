@@ -143,15 +143,15 @@ impl ZombieThread {
     /// These are modeled as `(Option<int>, Option<int>)` — abstract resource
     /// tokens with identity preservation. The returned tokens are exactly
     /// those that were stored in the ThreadState at construction time.
-    pub fn harvest(mut self) -> (result: (Option<int>, Option<int>))
+    pub fn harvest(self) -> (result: (Option<int>, Option<int>))
         requires
             self.wf(),
         ensures
-            result.0 == old(self).spec_kernel_stack(),
-            result.1 == old(self).spec_user_stack(),
+            result.0 == self.spec_kernel_stack(),
+            result.1 == self.spec_user_stack(),
     {
-        let kstack: Option<int> = self.state.take_kernel_stack();
-        let ustack: Option<int> = self.state.take_user_stack();
+        let kstack: Option<int> = self.state.kernel_stack;
+        let ustack: Option<int> = self.state.user_stack;
         (kstack, ustack)
     }
 
