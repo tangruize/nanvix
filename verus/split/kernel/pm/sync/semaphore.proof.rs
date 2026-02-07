@@ -282,36 +282,6 @@ impl Semaphore {
             (v - 1) as nat < v,
     {
     }
-
-    /// Lemma: The producer-consumer protocol demonstrates the state transition
-    /// sequence for a semaphore used as a resource counter.
-    ///
-    /// # Description
-    ///
-    /// Models the spec-level state transitions:
-    /// 1. Initial: semaphore has capacity `n > 0`, well-formed.
-    /// 2. Consumer acquires (down): value decreases to `n - 1`.
-    /// 3. If exhausted: subsequent consumers would block.
-    /// 4. Producer releases (up): value increases, consumers can proceed.
-    pub proof fn lemma_producer_consumer_protocol(n: nat)
-        requires
-            n > 0,
-            n < usize::MAX,
-        ensures ({
-            let initial: SemaphoreView = SemaphoreView { value: n, waiters: 0 };
-            let after_consume: SemaphoreView = SemaphoreView { value: (n - 1) as nat, waiters: 0 };
-            let after_produce: SemaphoreView = SemaphoreView { value: n, waiters: 0 };
-            // Phase 1: Resources available.
-            &&& initial.value > 0
-            // Phase 2: Consumer acquires one resource.
-            &&& after_consume.value == n - 1
-            // Phase 3: Producer restores one resource.
-            &&& after_produce.value == n
-            // Full cycle restores state.
-            &&& initial == after_produce
-        }),
-    {
-    }
 }
 
 } // verus!
