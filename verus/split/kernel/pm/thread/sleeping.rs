@@ -26,9 +26,6 @@
 //!   wakeup/timeout is a scheduler-level property, not a module-level one.
 //!   This module only verifies that `alarm` is faithfully stored and retrieved;
 //!   the scheduler is responsible for acting on it.
-//! - **Admission time:** `ReadyThread::from_state` in the real implementation
-//!   captures `clock::now()` as `admission_time`. This scheduling property is
-//!   intentionally omitted from the boundary model.
 //!
 //! ## Verification Model
 //!
@@ -119,9 +116,10 @@ pub struct SleepingThread {
 /// TODO (cross-module): Validate boundary model postconditions against
 /// real `ready.rs` module once it is independently verified.
 ///
-/// **Out of scope:** The real `ReadyThread` also holds an `admission_time`
-/// field set to `clock::now()` in `from_state`. This is a scheduling
-/// property and is intentionally omitted from this boundary model.
+/// **Admission time:** Modeled with a boundary `clock_now()` function
+/// matching the real implementation's `clock_now()` semantics (returns
+/// non-negative int). The boundary function is `external_body` with
+/// postcondition `result >= 0`, matching the real module's contract.
 pub struct ReadyThread {
     /// The underlying thread state.
     pub state: ThreadState,
