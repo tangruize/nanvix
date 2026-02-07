@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 17:23:43 CST 2026
+Module: kernel::pm::sync::semaphore
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::semaphore
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sync::semaphore
+
+error: postcondition not satisfied
+   --> kernel/pm/sync/semaphore.rs:247:13
+    |
+238 |     pub fn up(&mut self)
+    |     -------------------- at the end of the function body
+...
+247 |             self.wf(),
+    |             ^^^^^^^^^ failed this postcondition
+
+verification results:: 17 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 17
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::semaphore (verified:17, errors:1)
