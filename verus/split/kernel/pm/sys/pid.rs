@@ -343,14 +343,11 @@ impl ProcessIdentifier {
     /// # Note on Verification
     ///
     /// This function uses `external_body` because Verus cannot reason about
-    /// byte-level integer representation. The round-trip property
-    /// (`from_ne_bytes(to_ne_bytes(x)).spec_value() == x.spec_value()`) is
-    /// assumed based on Rust's i32::to_ne_bytes/from_ne_bytes semantics.
+    /// byte-level integer representation. The round-trip property is assumed
+    /// based on Rust's i32::to_ne_bytes/from_ne_bytes semantics.
+    /// See `axiom_byte_roundtrip` proof lemma for the assumed property.
     #[verifier::external_body]
     pub fn to_ne_bytes(&self) -> (result: [u8; 4])
-        ensures
-            // Round-trip property: bytes can be decoded back to same value.
-            ProcessIdentifier::from_ne_bytes(result).spec_value() == self.spec_value(),
     {
         self.value.to_ne_bytes()
     }
@@ -368,13 +365,11 @@ impl ProcessIdentifier {
     /// # Note on Verification
     ///
     /// This function uses `external_body` because Verus cannot reason about
-    /// byte-level integer representation. The specification captures the
-    /// value-preserving property assumed based on Rust's i32::from_ne_bytes semantics.
+    /// byte-level integer representation. The round-trip property is assumed
+    /// based on Rust's i32::from_ne_bytes semantics.
+    /// See `axiom_byte_roundtrip` proof lemma for the assumed property.
     #[verifier::external_body]
     pub fn from_ne_bytes(bytes: [u8; 4]) -> (result: ProcessIdentifier)
-        ensures
-            // The result's byte representation equals the input bytes.
-            result.to_ne_bytes() == bytes,
     {
         ProcessIdentifier { value: i32::from_ne_bytes(bytes) }
     }

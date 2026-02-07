@@ -69,6 +69,38 @@ impl ProcessIdentifier {
             a@ == b@,
     {
     }
+
+    /// Axiom: Byte serialization round-trip preserves value.
+    ///
+    /// # Note
+    ///
+    /// This is an assumed property based on Rust's i32::to_ne_bytes/from_ne_bytes
+    /// semantics. Verus cannot verify byte-level integer representation, so this
+    /// property is documented as an axiom.
+    ///
+    /// Property: `from_ne_bytes(pid.to_ne_bytes()).spec_value() == pid.spec_value()`
+    #[verifier::external_body]
+    pub proof fn axiom_byte_roundtrip(pid: &ProcessIdentifier)
+        ensures
+            ProcessIdentifier::from_ne_bytes(pid.to_ne_bytes()).spec_value() == pid.spec_value(),
+    {
+    }
+
+    /// Axiom: Byte deserialization round-trip preserves bytes.
+    ///
+    /// # Note
+    ///
+    /// This is an assumed property based on Rust's i32::from_ne_bytes/to_ne_bytes
+    /// semantics. Verus cannot verify byte-level integer representation, so this
+    /// property is documented as an axiom.
+    ///
+    /// Property: `from_ne_bytes(bytes).to_ne_bytes() == bytes`
+    #[verifier::external_body]
+    pub proof fn axiom_bytes_roundtrip(bytes: [u8; 4])
+        ensures
+            ProcessIdentifier::from_ne_bytes(bytes).to_ne_bytes() == bytes,
+    {
+    }
 }
 
 } // verus!
