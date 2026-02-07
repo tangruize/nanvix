@@ -31,9 +31,13 @@ impl Condvar {
     ///
     /// # Description
     ///
-    /// Enforces that the concrete length counter matches the ghost sequence length.
+    /// Enforces that the concrete length counter matches the ghost sequence
+    /// length and that all queue entries are unique (trust assumption T1).
+    /// Including uniqueness in `wf()` ensures all exec operations
+    /// automatically require and preserve the uniqueness invariant.
     pub open spec fn wf(&self) -> bool {
-        self.len as nat == self.sleeping@.len()
+        &&& self.len as nat == self.sleeping@.len()
+        &&& self.spec_all_unique()
     }
 
     /// Spec function: returns whether the sleeping queue is empty.
