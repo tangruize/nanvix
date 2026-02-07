@@ -561,19 +561,6 @@ impl ThreadIdentifier {
         }
     }
 
-    /// Creates a default ThreadIdentifier (value 0).
-    ///
-    /// # Returns
-    ///
-    /// A ThreadIdentifier with value 0.
-    #[inline]
-    pub fn default_value() -> (result: ThreadIdentifier)
-        ensures
-            result.spec_value() == 0,
-            result.spec_is_kernel(),
-    {
-        ThreadIdentifier { value: 0 }
-    }
 }
 
 } // verus!
@@ -584,13 +571,6 @@ impl ThreadIdentifier {
 
 // These trait implementations wrap the verified methods to provide the standard Rust API.
 // They are marked external because Verus cannot verify trait implementations directly.
-
-impl Default for ThreadIdentifier {
-    /// Returns the default ThreadIdentifier (KERNEL, value 0).
-    fn default() -> Self {
-        Self::default_value()
-    }
-}
 
 impl PartialEq for ThreadIdentifier {
     /// Compares two ThreadIdentifiers for equality.
