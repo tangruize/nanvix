@@ -281,6 +281,25 @@ impl ThreadState {
     {
     }
 
+    /// Lemma: Storing a mutex guard preserves membership of other addresses.
+    pub proof fn lemma_store_mutex_guard_preserves_others(&self, address: int, other: int)
+        requires
+            self.wf(),
+            self.locked_mutex_count < usize::MAX,
+            !self.spec_has_mutex(address),
+            other != address,
+        ensures
+            ({
+                let post: ThreadState = ThreadState {
+                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
+                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
+                    ..*self
+                };
+                post.spec_has_mutex(other) == self.spec_has_mutex(other)
+            }),
+    {
+    }
+
     /// Lemma: Taking a mutex guard removes the address and decrements count.
     pub proof fn lemma_take_mutex_guard_decrements(&self, address: int)
         requires
@@ -295,6 +314,24 @@ impl ThreadState {
                 };
                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() - 1
                 && !post.spec_has_mutex(address)
+            }),
+    {
+    }
+
+    /// Lemma: Taking a mutex guard preserves membership of other addresses.
+    pub proof fn lemma_take_mutex_guard_preserves_others(&self, address: int, other: int)
+        requires
+            self.wf(),
+            self.spec_has_mutex(address),
+            other != address,
+        ensures
+            ({
+                let post: ThreadState = ThreadState {
+                    locked_mutex_count: (self.locked_mutex_count - 1) as usize,
+                    locked_mutex_set: Ghost(self.locked_mutex_set@.remove(address)),
+                    ..*self
+                };
+                post.spec_has_mutex(other) == self.spec_has_mutex(other)
             }),
     {
     }

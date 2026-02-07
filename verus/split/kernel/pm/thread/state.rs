@@ -16,6 +16,8 @@
 //! - `store_thread_data_area` / `get_thread_data_area` round-trip correctly.
 //! - `store_mutex_guard` inserts an address into the ghost set (no double-lock).
 //! - `take_mutex_guard` removes an address from the ghost set (precondition: address held).
+//! - Mutex guard per-address non-interference: store/take of one address does
+//!   not affect membership of any other address (models `BTreeMap` semantics).
 //! - Well-formedness (`wf()`): the runtime counter equals the ghost set size, and
 //!   the ghost set is finite. Preserved by all operations.
 //! - Drop safety (`spec_drop_safe()`): no locked mutexes remain at destruction.
@@ -40,7 +42,10 @@
 //! - Locked mutexes → `locked_mutex_count: usize` (runtime counter) paired with
 //!   a ghost `locked_mutex_set: Set<int>` that tracks per-address semantics,
 //!   faithfully modeling `BTreeMap::insert`/`BTreeMap::remove`. The `wf()`
-//!   predicate ties the counter to the set size.
+//!   predicate ties the counter to the set size. This is a **protocol-only
+//!   model**: the `MutexGuard` RAII payload is opaque and not modeled — we
+//!   verify the lock *accounting* (which addresses are held, count consistency,
+//!   non-interference, drop safety), not the guard values themselves.
 //! - Context, FPU state, join_cond → elided (opaque HAL/sync boundary types).
 //!
 //! The `context_mut()`, `fpu_state_mut()`, and `join_cond()` functions return
@@ -270,10 +275,16 @@ impl ThreadState {
     ///
     /// # Note
     ///
-    /// The original uses `BTreeMap::insert(address, guard)`. We model this
-    /// with a ghost `Set<int>` for per-key semantics and a runtime counter.
-    /// The no-double-lock precondition formalizes the kernel invariant that
-    /// double-locking causes a deadlock and therefore never occurs.
+    /// This is a **protocol-only model**: the original
+    /// `BTreeMap::insert(address, guard)` transfers ownership of a
+    /// `MutexGuard` RAII token. The guard payload is opaque — its only
+    /// purpose is to be held and later dropped. We model the *accounting*
+    /// (which addresses are held) via the ghost `Set<int>`, not the guard
+    /// value itself. The no-double-lock precondition formalizes the kernel
+    /// invariant that double-locking causes a deadlock and never occurs.
+    /// The per-address frame condition proves non-interference: inserting
+    /// one address does not affect membership of any other address,
+    /// faithfully modeling `BTreeMap::insert` semantics.
     pub fn store_mutex_guard(&mut self, address: Ghost<int>)
         requires
             old(self).wf(),
@@ -281,6 +292,8 @@ impl ThreadState {
             !old(self).spec_has_mutex(address@),
         ensures
             self.spec_has_mutex(address@),
+            forall|a: int| a != address@ ==>
+                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
             !self.spec_drop_safe(),
             self.spec_id() == old(self).spec_id(),
@@ -302,18 +315,23 @@ impl ThreadState {
     ///
     /// # Note
     ///
-    /// The original uses `BTreeMap::remove(address)` which returns
-    /// `Option<MutexGuard>`. The precondition `spec_has_mutex(address@)`
-    /// converts the runtime None/Some check into a proof obligation,
-    /// which is strictly stronger: callers must prove at verification time
-    /// that they hold the mutex. This eliminates the address-not-found
-    /// case by construction.
+    /// This is a **protocol-only model**: the original
+    /// `BTreeMap::remove(address)` returns `Option<MutexGuard>`. The
+    /// precondition `spec_has_mutex(address@)` converts the runtime
+    /// None/Some check into a proof obligation, which is strictly stronger:
+    /// callers must prove at verification time that they hold the mutex.
+    /// This eliminates the address-not-found case by construction. The
+    /// per-address frame condition proves non-interference: removing one
+    /// address does not affect membership of any other address,
+    /// faithfully modeling `BTreeMap::remove` semantics.
     pub fn take_mutex_guard(&mut self, address: Ghost<int>)
         requires
             old(self).wf(),
             old(self).spec_has_mutex(address@),
         ensures
             !self.spec_has_mutex(address@),
+            forall|a: int| a != address@ ==>
+                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
             self.spec_id() == old(self).spec_id(),
             self.spec_kernel_stack() == old(self).spec_kernel_stack(),
