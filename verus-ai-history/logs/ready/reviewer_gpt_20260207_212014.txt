@@ -1,0 +1,109 @@
+=== Copilot Session ===
+Timestamp: 2026-02-07T21:21:47.437042
+Model: gpt-5.2-codex
+Session: ad2beb48-8676-4903-8b26-f4aeece7501d
+Duration: 93.3s
+Exit code: 0
+
+=== Prompt ===
+Review the Verus verification of ready.
+
+Original source: src/kernel/src/pm/thread/ready.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - ready.rs (exec)
+  - ready.spec.rs (spec)
+  - ready.proof.rs (proof)
+
+This is an OS kernel component. Evaluate if the verification captures the
+essential correctness properties.
+
+Review criteria:
+1. COVERAGE: All functions in original source (public and private) have verified versions
+2. SPECIFICATIONS: Specs capture intended behavior (not too weak, not too strong)
+3. SOUNDNESS: No unjustified assume/external_body in core module
+4. EQUIVALENCE: Verified code is semantically equivalent to original
+5. INVARIANTS: State invariants are sufficient to prove correctness
+6. PROPERTIES: Are the key safety and liveness properties identified and proven?
+7. SPLIT QUALITY: Are spec/proof properly separated from exec code?
+
+Verification command: ./verus-ai/scripts/verify.sh ready
+
+For each issue found, provide:
+- Priority: Critical / High / Medium / Low
+- Location: Function or spec name (and which file: exec/spec/proof)
+- Description: What is wrong or missing
+- Suggested Fix: How to address it
+
+Output format (write to /home/ubuntu/nanvix/verus-ai-history/reviews/ready/gpt_r1_a1.md):
+```markdown
+# Review: ready (gpt-5.2-codex)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+
+### Critical
+- ...
+
+### High
+- ...
+
+### Medium
+- ...
+
+### Low
+- ...
+
+## Positive Observations
+- ...
+
+## Summary
+[Overall assessment and recommendations]
+```
+
+=== Output ===
+● Create plan.md for the review task
+  $ cat <<'EOF' > /home/ubuntu/.copilot/session-state/17167a06-fe3f-4f29-84ac-d41298d8c08c/plan.md
+  # Plan
+  - Review original ready.rs and the Verus exec/spec/proof split for coverage, specs, soundness,
+   equivalence, invariants, and properties.
+  - Run the provided verification command for ready and capture any issues....
+  └ 3 lines...
+
+● Read verus/split/kernel/pm/thread/ready.rs
+  └ 496 lines read
+
+● Read verus/split/kernel/pm/thread/ready.proof.rs
+  └ 373 lines read
+
+● Read src/kernel/src/pm/thread/ready.rs
+  └ 222 lines read
+
+● Read verus/split/kernel/pm/thread/ready.spec.rs
+  └ 242 lines read
+
+● Run Verus verification for ready module
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh ready
+  └ 23 lines...
+
+● Write ready verification review report
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/ready && cat <<'EOF' >
+  /home/ubuntu/nanvix/verus-ai-history/reviews/ready/gpt_r1_a1.md
+  # Review: ready (gpt-5.2-codex)
+
+  ## Grade: B-...
+  └ 51 lines...
+
+✓ Task complete
+
+Review report saved to verus-ai-history/reviews/ready/gpt_r1_a1.md; ran ./verus-ai/scripts/verify.sh ready.
+
+
+Total usage est:        1 Premium request
+API time spent:         1m 19.175s
+Total session time:     1m 32.032s
+Total code changes:     +0 -0
+Breakdown by AI model:
+ gpt-5.2-codex           180.9k in, 5.8k out, 144.4k cached (Est. 1 Premium request)
+
+=== End ===
