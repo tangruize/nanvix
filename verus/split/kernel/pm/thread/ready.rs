@@ -101,6 +101,11 @@ fn exit_status_interrupted_value() -> (result: int)
 /// Verification model of `src/kernel/src/pm/thread/ready.rs::ReadyThread`.
 /// `Box<ThreadState>` is modeled as `ThreadState` directly.
 /// `SystemTime` is modeled as `int`.
+///
+/// **Note:** Fields are `pub` for Verus proof ergonomics (spec access,
+/// direct construction in lemmas). The original has private fields.
+/// Construction should only occur via `new()`/`from_state()` which
+/// establish `wf()`. All methods require `wf()` as a precondition.
 pub struct ReadyThread {
     /// The underlying thread state.
     pub state: ThreadState,
@@ -344,8 +349,9 @@ impl ReadyThread {
 
     /// Sets the interrupt reason on the underlying thread state.
     ///
-    /// Verified forwarding method — callers should prefer this over
-    /// `thread_state_mut()` when setting interrupt reasons.
+    /// **Verification-only API extension** — not present in the original
+    /// `ReadyThread`. Provides a verified path instead of
+    /// `thread_state_mut().set_interrupt_reason(...)`.
     ///
     /// # Parameters
     ///
@@ -368,8 +374,9 @@ impl ReadyThread {
 
     /// Stores a mutex guard address in the underlying thread state.
     ///
-    /// Verified forwarding method — callers should prefer this over
-    /// `thread_state_mut()` when acquiring mutexes.
+    /// **Verification-only API extension** — not present in the original
+    /// `ReadyThread`. Provides a verified path instead of
+    /// `thread_state_mut().store_mutex_guard(...)`.
     ///
     /// # Parameters
     ///
@@ -394,8 +401,9 @@ impl ReadyThread {
 
     /// Takes a mutex guard address from the underlying thread state.
     ///
-    /// Verified forwarding method — callers should prefer this over
-    /// `thread_state_mut()` when releasing mutexes.
+    /// **Verification-only API extension** — not present in the original
+    /// `ReadyThread`. Provides a verified path instead of
+    /// `thread_state_mut().take_mutex_guard(...)`.
     ///
     /// # Parameters
     ///

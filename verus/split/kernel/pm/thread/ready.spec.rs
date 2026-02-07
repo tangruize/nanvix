@@ -70,6 +70,9 @@ pub struct ZombieThreadView {
 /// Conversion chain: `ErrorCode::Interrupted` (#[repr(i32)] enum variant,
 /// lib.rs:47) → `From<ErrorCode> for i32` casts via `errno as i32` →
 /// yields the value of `EINTR` (errno.rs:21) = 4.
+///
+/// CROSS-MODULE-CHECK: Confirm this value matches
+/// `sys::error::ErrorCode::Interrupted as i32` if the error module changes.
 pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 4 }
 
 //==================================================================================================
