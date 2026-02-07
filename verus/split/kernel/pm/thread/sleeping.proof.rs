@@ -235,6 +235,30 @@ impl SleepingThread {
     {
     }
 
+    /// Lemma: set_thread_data_area on a SleepingThread round-trips at the SleepingThread level.
+    ///
+    /// This complements `lemma_tda_roundtrip` by reasoning at the SleepingThread abstraction
+    /// rather than the underlying ThreadState.
+    pub proof fn lemma_sleeping_tda_roundtrip(st: SleepingThread, tda: Option<int>)
+        requires
+            st.wf(),
+        ensures
+            ({
+                let post_state: ThreadState = ThreadState {
+                    user_tda: tda,
+                    ..st.state
+                };
+                let post: SleepingThread = SleepingThread { state: post_state, alarm: st.alarm };
+                post.spec_user_tda() == tda
+                && post.spec_id() == st.spec_id()
+                && post.spec_alarm() == st.spec_alarm()
+                && post.spec_locked_mutex_count() == st.spec_locked_mutex_count()
+                && post.spec_drop_safe() == st.spec_drop_safe()
+                && post.wf()
+            }),
+    {
+    }
+
     //==============================================================================================
     // View Equality
     //==============================================================================================

@@ -108,6 +108,9 @@ pub struct SleepingThread {
 pub struct ReadyThread {
     /// The underlying thread state.
     pub state: ThreadState,
+    /// Admission time (abstract timestamp >= 0, set by clock_now() in real impl).
+    /// Included to match the real ReadyThread structure for cross-module compatibility.
+    pub admission_time: int,
 }
 
 /// A thread that has been interrupted (boundary model).
@@ -151,6 +154,7 @@ impl ReadyThread {
     /// - `forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a)`
     /// - `result.spec_drop_safe() == state.spec_drop_safe()`
     /// - `result.wf()`
+    /// - `result.spec_admission_time() >= 0`
     pub fn from_state(state: ThreadState) -> (result: ReadyThread)
         requires
             state.wf(),
@@ -160,8 +164,9 @@ impl ReadyThread {
             forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
             result.spec_drop_safe() == state.spec_drop_safe(),
             result.wf(),
+            result.spec_admission_time() >= 0,
     {
-        ReadyThread { state: state }
+        ReadyThread { state: state, admission_time: 0 }
     }
 }
 
@@ -187,10 +192,14 @@ impl InterruptedThread {
     /// `InterruptedThread::from_state` implies all of:
     /// - `result.spec_id() == state.spec_id()`
     /// - `result.spec_reason() == reason`
-    /// - `result.spec_locked_mutex_count() == state.spec_locked_mutex_count()`
-    /// - `forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a)`
-    /// - `result.spec_drop_safe() == state.spec_drop_safe()`
     /// - `result.wf()`
+    ///
+    /// Note: The real `from_state` explicitly ensures only `spec_id`, `spec_reason`,
+    /// and `wf()`. The additional postconditions below (`spec_locked_mutex_count`,
+    /// `spec_has_mutex`, `spec_drop_safe`) are sound by structural transparency:
+    /// the real constructor is `InterruptedThread { state, reason }`, and
+    /// `InterruptedThread`'s spec accessors delegate to `self.state`, so all
+    /// ThreadState properties are trivially preserved through the transparent wrapper.
     pub fn from_state(state: ThreadState, reason: int) -> (result: InterruptedThread)
         requires
             state.wf(),

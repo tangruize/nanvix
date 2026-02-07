@@ -46,6 +46,8 @@ pub struct SleepingThreadView {
 pub struct ReadyThreadView {
     /// The abstract thread state.
     pub state: ThreadStateView,
+    /// Admission time (abstract timestamp).
+    pub admission_time: int,
 }
 
 /// Abstract view of an InterruptedThread (boundary type).
@@ -152,6 +154,11 @@ impl ReadyThread {
         self.state.spec_id()
     }
 
+    /// Spec function: returns the admission time.
+    pub open spec fn spec_admission_time(&self) -> int {
+        self.admission_time
+    }
+
     /// Spec function: returns the state's locked mutex count.
     pub open spec fn spec_locked_mutex_count(&self) -> nat {
         self.state.spec_locked_mutex_count()
@@ -230,6 +237,7 @@ impl View for ReadyThread {
     open spec fn view(&self) -> ReadyThreadView {
         ReadyThreadView {
             state: self.state@,
+            admission_time: self.admission_time,
         }
     }
 }
