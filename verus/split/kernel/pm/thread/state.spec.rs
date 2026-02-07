@@ -11,11 +11,14 @@
 // - `kernel_stack` and `user_stack` as Option<bool> presence flags.
 // - `user_tda` as Option<int> (abstract virtual address).
 // - `interrupt_reason` as Option<int> (abstract reason tag).
-// - `locked_mutexes` as a ghost map from int to bool (abstract mutex address -> guard presence).
+// - `locked_mutexes` as a ghost `Set<int>` (abstract mutex address set) with a
+//   runtime `locked_mutex_count` counter. The ghost set faithfully models
+//   `BTreeMap::insert`/`BTreeMap::remove` per-key semantics, while the counter
+//   provides the exec-level size. `wf()` ties them together.
 // - `join_cond`, `context`, `fpu_state` as opaque (HAL/sync boundary types).
 //
 // The spec focuses on the state management protocol: ID immutability,
-// Option take/store semantics, mutex guard map consistency, and drop safety.
+// Option take/store semantics, mutex guard set consistency, and drop safety.
 
 use vstd::prelude::*;
 
@@ -43,6 +46,8 @@ pub struct ThreadStateView {
     pub interrupt_reason: Option<int>,
     /// Number of locked mutexes held.
     pub locked_mutex_count: nat,
+    /// Ghost set of locked mutex addresses.
+    pub locked_mutex_set: Set<int>,
 }
 
 //==================================================================================================
@@ -80,13 +85,19 @@ impl ThreadState {
         self.locked_mutex_count as nat
     }
 
+    /// Spec function: returns whether a specific mutex address is locked.
+    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
+        self.locked_mutex_set.contains(address)
+    }
+
     /// Spec function: well-formedness predicate.
     ///
     /// A ThreadState is well-formed when:
-    /// - The locked_mutex_count is consistent (non-negative, which is guaranteed by nat).
-    /// - The id is a valid ThreadIdentifier.
+    /// - The ghost mutex set is finite.
+    /// - The runtime counter equals the ghost set size.
     pub open spec fn wf(&self) -> bool {
-        true  // All fields are always in a valid state by construction.
+        self.locked_mutex_set.finite()
+        && self.locked_mutex_set.len() == self.locked_mutex_count as nat
     }
 
     /// Spec function: checks if the thread holds no locked mutexes.
@@ -123,6 +134,7 @@ impl View for ThreadState {
             user_tda: self.user_tda,
             interrupt_reason: self.interrupt_reason,
             locked_mutex_count: self.locked_mutex_count as nat,
+            locked_mutex_set: self.locked_mutex_set,
         }
     }
 }

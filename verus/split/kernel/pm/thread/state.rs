@@ -13,11 +13,14 @@
 //! - `take_kernel_stack` / `take_user_stack` follow Option::take semantics.
 //! - `set_interrupt_reason` / `take_interrupt_reason` follow Option set/take semantics.
 //! - `store_thread_data_area` / `get_thread_data_area` round-trip correctly.
-//! - `store_mutex_guard` increments locked mutex count.
-//! - `take_mutex_guard` decrements locked mutex count (when guard is present).
-//! - Well-formedness (`wf()`) is preserved by all operations.
+//! - `store_mutex_guard` inserts an address into the ghost set (no double-lock).
+//! - `take_mutex_guard` removes an address from the ghost set (address must be held).
+//! - Well-formedness (`wf()`): the runtime counter equals the ghost set size, and
+//!   the ghost set is finite. Preserved by all operations.
 //! - Drop safety (`spec_drop_safe()`): no locked mutexes remain at destruction.
-//!   Newly constructed state is always drop-safe.
+//!   This is the verification-side encoding of the `Drop` invariant — the original
+//!   `Drop::drop()` logs an error if locked mutexes remain. Newly constructed state
+//!   is always drop-safe.
 //!
 //! ## Verification Model
 //!
@@ -28,21 +31,34 @@
 //! - Stacks → `has_kernel_stack: bool`, `has_user_stack: bool` (presence flags).
 //! - Thread data area → `user_tda: Option<int>` (abstract address).
 //! - Interrupt reason → `interrupt_reason: Option<int>` (abstract reason tag).
-//! - Locked mutexes → `locked_mutex_count: nat` (count model).
+//! - Locked mutexes → `locked_mutex_count: usize` (runtime counter) paired with
+//!   a ghost `locked_mutex_set: Set<int>` that tracks per-address semantics,
+//!   faithfully modeling `BTreeMap::insert`/`BTreeMap::remove`. The `wf()`
+//!   predicate ties the counter to the set size.
 //! - Context, FPU state, join_cond → elided (opaque HAL/sync boundary types).
 //!
 //! The `context_mut()`, `fpu_state_mut()`, and `join_cond()` functions return
 //! opaque pointers or cloned sync primitives that cannot be meaningfully
 //! modeled in a pure spec. They are omitted from the verification model.
 //!
+//! ## Trust Assumption
+//!
+//! - **T1: No double-locking.** `store_mutex_guard` requires
+//!   `!self.spec_has_mutex(address@)` as a precondition. In the original kernel,
+//!   double-locking the same mutex causes a deadlock, so this condition always
+//!   holds in correct executions. The precondition formalizes this kernel invariant.
+//! - **T2: Release-what-you-hold.** `take_mutex_guard` requires
+//!   `self.spec_has_mutex(address@)`. In the original kernel, a thread releases
+//!   only mutexes it holds. The precondition formalizes this.
+//!
 //! ## Verification Scope
 //!
 //! This verification proves the **state management protocol** is correct:
 //! field updates follow Option semantics, ID is immutable, mutex guard
-//! tracking is consistent, and drop safety holds. The following are out of scope:
+//! tracking is consistent with per-key semantics, and drop safety holds.
+//! The following are out of scope:
 //! - Raw pointer safety for `context_mut()` / `fpu_state_mut()`.
 //! - Interior mutability / shared ownership of `Condvar`.
-//! - BTreeMap ordering invariants (modeled as a count).
 //! - Pin projection safety.
 
 use crate::kernel::pm::sys::tid::ThreadIdentifier;
@@ -77,6 +93,9 @@ pub struct ThreadState {
     pub interrupt_reason: Option<int>,
     /// Number of locked mutexes held by this thread.
     pub locked_mutex_count: usize,
+    /// Ghost set of locked mutex addresses, faithfully modeling the
+    /// original `BTreeMap<MutexAddress, MutexGuard>` per-key semantics.
+    pub ghost locked_mutex_set: Set<int>,
 }
 
 //==================================================================================================
@@ -120,6 +139,7 @@ impl ThreadState {
             user_tda: user_tda,
             interrupt_reason: None,
             locked_mutex_count: 0usize,
+            locked_mutex_set: Ghost(Set::empty()),
         }
     }
 
@@ -218,16 +238,25 @@ impl ThreadState {
         reason
     }
 
-    /// Stores a mutex guard, incrementing the locked mutex count.
+    /// Stores a mutex guard, adding the address to the locked mutex set.
+    ///
+    /// # Parameters
+    ///
+    /// - `address`: Ghost mutex address being locked.
     ///
     /// # Note
     ///
-    /// The original uses `BTreeMap::insert`. We model this as a count
-    /// increment, abstracting away the key-value mapping.
-    pub fn store_mutex_guard(&mut self)
+    /// The original uses `BTreeMap::insert(address, guard)`. We model this
+    /// with a ghost `Set<int>` for per-key semantics and a runtime counter.
+    /// The no-double-lock precondition formalizes the kernel invariant that
+    /// double-locking causes a deadlock and therefore never occurs.
+    pub fn store_mutex_guard(&mut self, address: Ghost<int>)
         requires
+            old(self).wf(),
             old(self).locked_mutex_count < usize::MAX,
+            !old(self).spec_has_mutex(address@),
         ensures
+            self.spec_has_mutex(address@),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
             !self.spec_drop_safe(),
             self.spec_id() == old(self).spec_id(),
@@ -238,25 +267,35 @@ impl ThreadState {
             self.wf(),
     {
         self.locked_mutex_count = self.locked_mutex_count + 1;
+        proof {
+            self.locked_mutex_set = self.locked_mutex_set.insert(address@);
+        }
     }
 
-    /// Takes a mutex guard, decrementing the locked mutex count.
+    /// Takes a mutex guard, removing the address from the locked mutex set.
+    ///
+    /// # Parameters
+    ///
+    /// - `address`: Ghost mutex address being released.
     ///
     /// # Returns
     ///
-    /// True if a guard was present (count was > 0), false otherwise.
+    /// Always returns true (the precondition guarantees the address is held).
     ///
     /// # Note
     ///
-    /// The original uses `BTreeMap::remove` which returns `Option<MutexGuard>`.
-    /// We model this as a count decrement when count > 0.
-    pub fn take_mutex_guard(&mut self) -> (result: bool)
+    /// The original uses `BTreeMap::remove(address)` which returns
+    /// `Option<MutexGuard>`. The precondition `spec_has_mutex(address@)`
+    /// formalizes the kernel invariant that a thread only releases mutexes
+    /// it holds.
+    pub fn take_mutex_guard(&mut self, address: Ghost<int>) -> (result: bool)
         requires
             old(self).wf(),
+            old(self).spec_has_mutex(address@),
         ensures
-            result == (old(self).spec_locked_mutex_count() > 0),
-            result ==> self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
-            !result ==> self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
+            result == true,
+            !self.spec_has_mutex(address@),
+            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
             self.spec_id() == old(self).spec_id(),
             self.spec_has_kernel_stack() == old(self).spec_has_kernel_stack(),
             self.spec_has_user_stack() == old(self).spec_has_user_stack(),
@@ -264,12 +303,11 @@ impl ThreadState {
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.wf(),
     {
-        if self.locked_mutex_count > 0 {
-            self.locked_mutex_count = self.locked_mutex_count - 1;
-            true
-        } else {
-            false
+        self.locked_mutex_count = self.locked_mutex_count - 1;
+        proof {
+            self.locked_mutex_set = self.locked_mutex_set.remove(address@);
         }
+        true
     }
 
     /// Sets the base address for the user-space thread data area.

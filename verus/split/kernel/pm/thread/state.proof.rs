@@ -9,9 +9,10 @@
 // - ID is immutable: all operations preserve the thread identifier.
 // - Take operations clear the corresponding field (Option::take semantics).
 // - Store operations set the corresponding field.
-// - Mutex guard store increments count; take decrements count (when present).
+// - Mutex guard store inserts address into ghost set; take removes it.
 // - Drop safety: newly constructed state is drop-safe (no locked mutexes).
-// - Interrupt reason set/take follows Option semantics.
+// - Interrupt reason set/take follows Option semantics with non-vacuous round-trip.
+// - Resource tracking: taking both stacks removes all resources.
 
 use vstd::prelude::*;
 
@@ -39,6 +40,7 @@ impl ThreadState {
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
+                    locked_mutex_set: Set::empty(),
                 };
                 s.wf()
             }),
@@ -61,6 +63,7 @@ impl ThreadState {
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
+                    locked_mutex_set: Set::empty(),
                 };
                 s.spec_drop_safe()
             }),
@@ -83,6 +86,7 @@ impl ThreadState {
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
+                    locked_mutex_set: Set::empty(),
                 };
                 !s.spec_is_interrupted()
             }),
@@ -214,7 +218,9 @@ impl ThreadState {
     {
     }
 
-    /// Lemma: set then take interrupt_reason round-trips: restores None.
+    /// Lemma: set then take interrupt_reason round-trips correctly.
+    /// After set(reason) then take, the interrupt reason is cleared (None)
+    /// and the intermediate state held exactly the given reason.
     pub proof fn lemma_interrupt_reason_roundtrip(&self, reason: int)
         ensures
             ({
@@ -226,8 +232,9 @@ impl ThreadState {
                     interrupt_reason: None,
                     ..mid
                 };
-                post.spec_interrupt_reason() == self.spec_interrupt_reason()
-                    || self.spec_interrupt_reason().is_some()
+                post.spec_interrupt_reason().is_none()
+                && mid.spec_interrupt_reason() == Some(reason)
+                && post.spec_id() == self.spec_id()
             }),
     {
     }
@@ -255,34 +262,39 @@ impl ThreadState {
     // Mutex Guard Lemmas
     //==============================================================================================
 
-    /// Lemma: Storing a mutex guard increments the locked mutex count.
-    pub proof fn lemma_store_mutex_guard_increments(&self)
+    /// Lemma: Storing a mutex guard inserts the address and increments count.
+    pub proof fn lemma_store_mutex_guard_increments(&self, address: int)
         requires
             self.wf(),
             self.locked_mutex_count < usize::MAX,
+            !self.spec_has_mutex(address),
         ensures
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count + 1) as usize,
+                    locked_mutex_set: self.locked_mutex_set.insert(address),
                     ..*self
                 };
                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() + 1
+                && post.spec_has_mutex(address)
             }),
     {
     }
 
-    /// Lemma: Taking a mutex guard decrements the locked mutex count (when count > 0).
-    pub proof fn lemma_take_mutex_guard_decrements(&self)
+    /// Lemma: Taking a mutex guard removes the address and decrements count.
+    pub proof fn lemma_take_mutex_guard_decrements(&self, address: int)
         requires
             self.wf(),
-            self.spec_locked_mutex_count() > 0,
+            self.spec_has_mutex(address),
         ensures
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count - 1) as usize,
+                    locked_mutex_set: self.locked_mutex_set.remove(address),
                     ..*self
                 };
                 post.spec_locked_mutex_count() == self.spec_locked_mutex_count() - 1
+                && !post.spec_has_mutex(address)
             }),
     {
     }
@@ -385,14 +397,16 @@ impl ThreadState {
     }
 
     /// Lemma: store_mutex_guard preserves well-formedness.
-    pub proof fn lemma_store_mutex_guard_preserves_wf(&self)
+    pub proof fn lemma_store_mutex_guard_preserves_wf(&self, address: int)
         requires
             self.wf(),
             self.locked_mutex_count < usize::MAX,
+            !self.spec_has_mutex(address),
         ensures
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count + 1) as usize,
+                    locked_mutex_set: self.locked_mutex_set.insert(address),
                     ..*self
                 };
                 post.wf()
@@ -400,15 +414,16 @@ impl ThreadState {
     {
     }
 
-    /// Lemma: take_mutex_guard preserves well-formedness (when count > 0).
-    pub proof fn lemma_take_mutex_guard_preserves_wf(&self)
+    /// Lemma: take_mutex_guard preserves well-formedness (when address is held).
+    pub proof fn lemma_take_mutex_guard_preserves_wf(&self, address: int)
         requires
             self.wf(),
-            self.spec_locked_mutex_count() > 0,
+            self.spec_has_mutex(address),
         ensures
             ({
                 let post: ThreadState = ThreadState {
                     locked_mutex_count: (self.locked_mutex_count - 1) as usize,
+                    locked_mutex_set: self.locked_mutex_set.remove(address),
                     ..*self
                 };
                 post.wf()
@@ -434,6 +449,24 @@ impl ThreadState {
     }
 
     //==============================================================================================
+    // Resource Tracking Lemmas
+    //==============================================================================================
+
+    /// Lemma: After taking both stacks, the thread has no resources.
+    pub proof fn lemma_take_stacks_removes_resources(&self)
+        ensures
+            ({
+                let post: ThreadState = ThreadState {
+                    has_kernel_stack: false,
+                    has_user_stack: false,
+                    ..*self
+                };
+                !post.spec_has_resources()
+            }),
+    {
+    }
+
+    //==============================================================================================
     // View Equality Lemmas
     //==============================================================================================
 
@@ -446,6 +479,7 @@ impl ThreadState {
             a.user_tda == b.user_tda,
             a.interrupt_reason == b.interrupt_reason,
             a.locked_mutex_count == b.locked_mutex_count,
+            a.locked_mutex_set =~= b.locked_mutex_set,
         ensures
             a@ == b@,
     {
