@@ -27,6 +27,18 @@
 //! the lock protocol (state machine correctness) without reasoning about atomicity
 //! or memory ordering.
 //!
+//! ## Verification Scope
+//!
+//! This verification proves **sequential state machine correctness** of the spinlock
+//! protocol. The following are explicitly **out of scope**:
+//! - **Concurrency and atomicity**: The sequential `&mut self` model does not capture
+//!   concurrent thread access or atomic memory ordering.
+//! - **Liveness and progress**: The spinning behavior of `lock()` and its termination
+//!   under fairness assumptions are not modeled. The `lock()` precondition
+//!   (`spec_is_unlocked`) effectively models the instant-success case.
+//! - **Drop-based RAII**: Automatic lock release via `SpinlockGuard`/`Drop` is modeled
+//!   via explicit `LockToken` consumption in `unlock()`.
+//!
 //! ## API Divergence
 //!
 //! The original implementation uses `lock(&self) -> SpinlockGuard` with interior
