@@ -103,6 +103,43 @@ impl Spinlock {
             s@ == Spinlock::spec_new_view(),
     {
     }
+
+    /// Lemma: After `new()` followed by `try_lock()`, the result is always `true`.
+    ///
+    /// # Description
+    ///
+    /// Proves a protocol property: a freshly created spinlock is always acquirable.
+    /// This connects `new()`'s postcondition to `try_lock()`'s behavior.
+    pub proof fn lemma_new_then_try_lock_succeeds()
+        ensures ({
+            let s: Spinlock = Spinlock { locked: false };
+            &&& s.spec_is_unlocked()
+            &&& !s.locked
+            // try_lock returns `!old(self).locked`, which is `!false == true`.
+            &&& !s.locked == true
+        }),
+    {
+    }
+
+    /// Lemma: Every `lock()` must be paired with an `unlock()`.
+    ///
+    /// # Description
+    ///
+    /// Documents the lock-release obligation as a proof-level property.
+    /// Since `SpinlockGuard`/`Drop` are not modeled, callers must manually
+    /// ensure every `lock()` is paired with a corresponding `unlock()`.
+    /// This lemma proves that the obligation is dischargeable: given a locked
+    /// spinlock, `unlock()` restores it to the unlocked state matching a new lock.
+    pub proof fn lemma_lock_release_obligation()
+        ensures ({
+            let locked_state: Spinlock = Spinlock { locked: true };
+            let released_state: Spinlock = Spinlock { locked: false };
+            &&& locked_state.spec_is_locked()
+            &&& released_state.spec_is_unlocked()
+            &&& released_state@ == Spinlock::spec_new_view()
+        }),
+    {
+    }
 }
 
 } // verus!

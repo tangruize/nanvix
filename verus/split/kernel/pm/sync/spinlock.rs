@@ -23,14 +23,27 @@
 //! the lock protocol (state machine correctness) without reasoning about atomicity
 //! or memory ordering.
 //!
+//! ## API Divergence
+//!
+//! The original implementation uses `lock(&self) -> SpinlockGuard` with interior
+//! mutability via `AtomicBool`. The verified version uses `lock(&mut self)` because
+//! Verus requires exclusive references for state mutation. This means the verification
+//! covers the *state machine protocol* (lock/unlock transitions) but not the
+//! *concurrent access pattern* that motivates the spinlock's existence. In the
+//! concurrent original, `&self` access is safe due to `AtomicBool` interior mutability.
+//!
 //! ## Trust Boundaries
 //!
 //! - `lock()`: Uses `external_body` because the spin-wait loop relies on atomic CAS
 //!   and cannot be proven to terminate without reasoning about concurrent unlock.
 //!   This is justified as a HAL-level operation (atomic CPU instructions).
+//!   In the sequential model, `lock()` requires the lock to be unlocked to prevent
+//!   modeling infinite loops (deadlocks).
 //! - `SpinlockGuard` and `Drop`: Not modeled in this verification. The original uses
 //!   RAII via `SpinlockGuard<'a>` to auto-release on drop. Drop-based reasoning
 //!   requires lifetime-aware resource tracking beyond Verus's current scope.
+//!   **Callers must ensure every `lock()` is paired with an `unlock()`.** All call
+//!   sites should be manually audited for lock-release pairing.
 //! - `arch::cpu::pause()`: CPU hint with no semantic effect on lock state.
 
 use vstd::prelude::*;
@@ -92,6 +105,9 @@ impl Spinlock {
     /// Returns `true` if the lock was successfully acquired (was unlocked),
     /// `false` if the lock was already held (was locked).
     ///
+    /// NOTE: Verification helper — not present in original source. Decomposes the
+    /// single CAS operation from `lock()`'s loop body for verifiable reasoning.
+    ///
     /// # Returns
     ///
     /// `true` if the lock was acquired, `false` otherwise.
@@ -99,6 +115,7 @@ impl Spinlock {
         ensures
             result == !old(self).locked,
             self.locked,
+            !result ==> self@ == old(self)@,
     {
         if !self.locked {
             self.locked = true;
@@ -119,8 +136,13 @@ impl Spinlock {
     /// - The original implementation uses `AtomicBool::compare_exchange` in a loop.
     /// - Termination depends on another execution context releasing the lock.
     /// - Verus cannot reason about atomic memory operations or spin-wait termination.
+    ///
+    /// The `requires` clause enforces sequential-model safety: calling `lock()` on an
+    /// already-locked spinlock would be an infinite loop (deadlock) in the sequential model.
     #[verifier::external_body]
     pub fn lock(&mut self)
+        requires
+            old(self).spec_is_unlocked(),
         ensures
             self.locked,
             self.spec_is_locked(),
@@ -142,6 +164,7 @@ impl Spinlock {
         requires
             old(self).locked,
         ensures
+            old(self).spec_is_locked(),
             !self.locked,
             self.spec_is_unlocked(),
             self@ == Spinlock::spec_new_view(),
@@ -150,6 +173,9 @@ impl Spinlock {
     }
 
     /// Checks if the spinlock is currently locked.
+    ///
+    /// NOTE: Verification helper — not present in original source. Provides a pure
+    /// observer method for spec-level reasoning about lock state.
     ///
     /// # Returns
     ///

@@ -38,11 +38,11 @@ impl Spinlock {
 
     /// Spec function: well-formedness predicate.
     ///
-    /// # Note
+    /// # Description
     ///
-    /// A Spinlock is a simple boolean lock with no structural invariants.
-    /// The wf() predicate is trivially true. The locked field is always
-    /// a valid boolean.
+    /// Trivially true for Spinlock (no structural invariants beyond a valid bool).
+    /// Included for API consistency with other verified modules that have meaningful
+    /// `wf()` predicates. Would become non-trivial if the exec struct gains fields.
     pub open spec fn wf(&self) -> bool {
         true
     }
