@@ -3,9 +3,7 @@
   "outer_iteration": 1,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
-  "prover_session_id": "f0eefb2c-b4ed-4b82-aaa5-9f76b38c9090",
+  "prover_session_id": "1be794d5-744f-45fb-81eb-e56f56cb89d5",
   "completed": false,
-  "final_grades": {
-    "claude": "A"
-  }
+  "final_grades": {}
 }
