@@ -64,8 +64,8 @@
 //! | Original API              | Verified Model         | Notes                            |
 //! |---------------------------|------------------------|----------------------------------|
 //! | `Semaphore::new(value)`   | `new(value)`           | Direct mapping.                  |
-//! | `Semaphore::down(&self)`  | `down(&mut self, ctx)`  | `&mut self`; ghost safety ctx.  |
-//! | *(full down logic)*       | `down_or_block(ctx)`   | Both paths; returns DownOutcome. |
+//! | `Semaphore::down(&self)`  | `down_or_block(ctx)`   | Primary model; returns outcome.  |
+//! | *(instant-success only)*  | `down_available(ctx)`  | Precondition: value > 0.         |
 //! | `Semaphore::try_down(&self)` | `try_down(&mut self)` | `&mut self`; both paths modeled. |
 //! | `Semaphore::up(&self)`    | `up(&mut self, ctx)`    | `&mut self`; ghost safety ctx.  |
 //! | *(condvar sleep path)*    | `spec_down_blocking()` | Spec-only state transition.      |
@@ -74,10 +74,11 @@
 //! ## API Divergence
 //!
 //! The original `down()` uses `&self` with `AtomicUsize::fetch_update()` in a loop,
-//! sleeping on `Condvar` when the count is zero. The verified `down()` takes `&mut self`
-//! with a precondition that the value is positive, modeling the instant-success case.
-//! The loop + sleep pattern is modeled at the spec level via `spec_down_blocking` and
-//! `spec_wake` state transitions with proof lemmas verifying protocol correctness.
+//! sleeping on `Condvar` when the count is zero. The verified `down_or_block()` models
+//! both paths: `Acquired` for instant success, `WouldBlock` for the blocking case.
+//! The convenience function `down_available()` models only the instant-success path
+//! with a precondition that the value is positive. The loop + sleep pattern is modeled
+//! at the spec level via `spec_down_blocking` and `spec_wake` state transitions.
 //!
 //! The original `up()` uses `&self` with `AtomicUsize::fetch_add()` and calls
 //! `Condvar::notify_first()`. The verified `up()` increments the plain `usize` value.
@@ -89,7 +90,8 @@
 //!
 //! ## Trust Boundaries
 //!
-//! - `down()`: Fully verified (instant-success path). Blocking path modeled at spec level.
+//! - `down_available()`: Fully verified (instant-success path only).
+//! - `down_or_block()`: Fully verified (both paths). Blocking path modeled at spec level.
 //! - `try_down()`: Fully verified. Both success and failure paths modeled.
 //! - `up()`: Fully verified. No waiter restriction; overflow guard via precondition.
 //! - `spec_down_blocking()` / `spec_wake()`: Spec-level state transitions modeling
@@ -112,8 +114,35 @@
 //!   must not be the kernel process (for `down()`), and no resources must be
 //!   held (for `down()`) or no process manager reference held (for `up()`).
 //!   These conditions are encoded as ghost `CallerContext` preconditions on
-//!   `down()` and `up()`. Callers must provide a `Ghost<CallerContext>`
-//!   satisfying `safe_for_down()` or `safe_for_up()` respectively.
+//!   `down_available()`, `down_or_block()`, and `up()`. Callers must provide a
+//!   `Ghost<CallerContext>` satisfying `safe_for_down()` or `safe_for_up()`.
+//! - **T5: `notify_first()` success.** The original `up()` returns
+//!   `Result<(), Error>` because `Condvar::notify_first()` may fail. The
+//!   verified model assumes `notify_first()` always succeeds. If it fails in
+//!   practice, the semaphore value has been incremented but no waiter is woken,
+//!   which could cause a thread to remain sleeping indefinitely.
+//! - **T6: `Condvar::wait()` success.** The original `down()` returns
+//!   `Result<(), SleepError>` because `Condvar::wait()` may fail (e.g., signal
+//!   interruption). The verified model's `down_or_block()` returns `WouldBlock`
+//!   without modeling the `SleepError` failure case. The sleep-then-error path
+//!   (thread woken with error, must retry or propagate) is not represented.
+//!
+//! ## Ghost State Architecture
+//!
+//! The `SemaphoreView.waiters` field is **pure ghost state**: the `View`
+//! implementation always returns `waiters: 0` because no exec field tracks
+//! waiting threads (the original uses `Condvar`'s internal queue). The waiter
+//! count exists solely for spec-level protocol reasoning.
+//!
+//! The blocking protocol lemmas (`lemma_down_blocking_preserves_wf`,
+//! `lemma_wake_preserves_wf`, `lemma_up_wake_cycle`,
+//! `lemma_all_waiters_eventually_served`) operate on manually constructed
+//! `SemaphoreView` values — not on any exec `Semaphore`'s `@` view. They
+//! prove properties of the **abstract state machine** (the semaphore protocol)
+//! independent of exec state. This is intentional: the blocking protocol is
+//! a spec-level model verified for internal consistency, providing assurance
+//! that the sleep/wake algorithm preserves invariants if the condvar behaves
+//! as specified in T2.
 //!
 //! ## Refinement Argument
 //!
@@ -190,14 +219,14 @@ impl Semaphore {
         Semaphore { value: value }
     }
 
-    /// Acquires the semaphore, decrementing the count by 1.
+    /// Acquires the semaphore, decrementing the count by 1 (instant-success path).
     ///
     /// # Description
     ///
-    /// In the original, this is a blocking operation that loops calling
-    /// `fetch_update()` and sleeping on a `Condvar` when the count is zero.
-    /// In the sequential model, the `spec_is_available()` precondition guarantees
-    /// success on the first attempt, so the blocking loop is not modeled.
+    /// Models the instant-success path of the original `down()`: the caller
+    /// has established that the semaphore is available (`spec_is_available()`).
+    /// For the full decision logic covering both immediate acquisition and
+    /// blocking, use `down_or_block()` instead.
     ///
     /// # Safety (Original)
     ///
@@ -212,7 +241,7 @@ impl Semaphore {
     /// # Returns
     ///
     /// The semaphore with value decremented by 1.
-    pub fn down(&mut self, ctx: Ghost<CallerContext>)
+    pub fn down_available(&mut self, ctx: Ghost<CallerContext>)
         requires
             old(self).wf(),
             old(self).spec_is_available(),

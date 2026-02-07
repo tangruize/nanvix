@@ -184,11 +184,11 @@ impl Semaphore {
     ///
     /// # Description
     ///
-    /// Models the case when `up()` increments the value and `notify_first()`
-    /// wakes a sleeping thread, which then successfully decrements the value.
-    /// The net effect: value unchanged (up then down cancel), waiters decremented.
-    /// Precondition: there must be at least one waiter, and value must be > 0
-    /// (the `up()` has already incremented it).
+    /// Models the case when `up()` increments the value from 0 to 1 and
+    /// `notify_first()` wakes a sleeping thread, which then successfully
+    /// decrements the value. The net effect: value back to 0, waiters
+    /// decremented by 1. In the protocol, this is always called with
+    /// `value == 1` (just after `up()` on an exhausted semaphore with waiters).
     ///
     /// # Parameters
     ///
@@ -200,7 +200,7 @@ impl Semaphore {
     pub open spec fn spec_wake(view: SemaphoreView) -> SemaphoreView
         recommends
             view.waiters > 0,
-            view.value > 0,
+            view.value == 1,
     {
         SemaphoreView { value: (view.value - 1) as nat, waiters: (view.waiters - 1) as nat }
     }
@@ -252,6 +252,9 @@ impl Semaphore {
     ///
     /// The semaphore view after n up-wake cycles.
     pub open spec fn spec_after_n_up_wake_cycles(view: SemaphoreView, n: nat) -> SemaphoreView
+        recommends
+            Semaphore::spec_wf(view),
+            n <= view.waiters,
         decreases n,
     {
         if n == 0 {
