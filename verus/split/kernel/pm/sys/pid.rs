@@ -64,6 +64,9 @@ impl ProcessIdentifier {
     /// Raw identifier for the kernel process.
     pub const KERNEL_RAW: i32 = 0;
 
+    /// Error message for invalid process identifier conversions.
+    const PARSE_ERROR_MESSAGE: &'static str = "invalid process identifier";
+
     /// Identifier of the kernel process.
     pub const KERNEL: ProcessIdentifier = ProcessIdentifier { value: Self::KERNEL_RAW };
 
@@ -145,7 +148,7 @@ impl ProcessIdentifier {
             result is Err ==> !self.spec_is_non_negative(),
     {
         if self.value < 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(self.value as usize)
     }
@@ -168,7 +171,7 @@ impl ProcessIdentifier {
             result is Err ==> !self.spec_is_non_negative(),
     {
         if self.value < 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(self.value as u32)
     }
@@ -191,7 +194,7 @@ impl ProcessIdentifier {
             result is Err ==> !self.spec_is_non_negative(),
     {
         if self.value < 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(self.value as u64)
     }
@@ -213,13 +216,13 @@ impl ProcessIdentifier {
     pub fn try_from_isize(raw: isize) -> (result: Result<ProcessIdentifier, Error>)
         ensures
             result is Ok ==> {
-                &&& (i32::MIN as int) <= (raw as int) <= (i32::MAX as int)
+                &&& Self::spec_in_i32_range(raw as int)
                 &&& result->Ok_0.spec_value() == raw as int
             },
-            result is Err ==> (raw as int) < (i32::MIN as int) || (raw as int) > (i32::MAX as int),
+            result is Err ==> !Self::spec_in_i32_range(raw as int),
     {
         if raw < i32::MIN as isize || raw > i32::MAX as isize {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(ProcessIdentifier { value: raw as i32 })
     }
@@ -241,13 +244,13 @@ impl ProcessIdentifier {
     pub fn try_from_i64(raw: i64) -> (result: Result<ProcessIdentifier, Error>)
         ensures
             result is Ok ==> {
-                &&& (i32::MIN as int) <= (raw as int) <= (i32::MAX as int)
+                &&& Self::spec_in_i32_range(raw as int)
                 &&& result->Ok_0.spec_value() == raw as int
             },
-            result is Err ==> (raw as int) < (i32::MIN as int) || (raw as int) > (i32::MAX as int),
+            result is Err ==> !Self::spec_in_i32_range(raw as int),
     {
         if raw < i32::MIN as i64 || raw > i32::MAX as i64 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(ProcessIdentifier { value: raw as i32 })
     }
@@ -269,14 +272,14 @@ impl ProcessIdentifier {
     pub fn try_from_usize(raw: usize) -> (result: Result<ProcessIdentifier, Error>)
         ensures
             result is Ok ==> {
-                &&& (raw as int) <= (i32::MAX as int)
+                &&& Self::spec_in_non_negative_i32_range(raw as int)
                 &&& result->Ok_0.spec_value() == raw as int
                 &&& result->Ok_0.spec_is_non_negative()
             },
-            result is Err ==> (raw as int) > (i32::MAX as int),
+            result is Err ==> !Self::spec_in_non_negative_i32_range(raw as int),
     {
         if raw > i32::MAX as usize {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(ProcessIdentifier { value: raw as i32 })
     }
@@ -298,14 +301,14 @@ impl ProcessIdentifier {
     pub fn try_from_u32(raw: u32) -> (result: Result<ProcessIdentifier, Error>)
         ensures
             result is Ok ==> {
-                &&& (raw as int) <= (i32::MAX as int)
+                &&& Self::spec_in_non_negative_i32_range(raw as int)
                 &&& result->Ok_0.spec_value() == raw as int
                 &&& result->Ok_0.spec_is_non_negative()
             },
-            result is Err ==> (raw as int) > (i32::MAX as int),
+            result is Err ==> !Self::spec_in_non_negative_i32_range(raw as int),
     {
         if raw > i32::MAX as u32 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(ProcessIdentifier { value: raw as i32 })
     }
@@ -327,14 +330,14 @@ impl ProcessIdentifier {
     pub fn try_from_u64(raw: u64) -> (result: Result<ProcessIdentifier, Error>)
         ensures
             result is Ok ==> {
-                &&& (raw as int) <= (i32::MAX as int)
+                &&& Self::spec_in_non_negative_i32_range(raw as int)
                 &&& result->Ok_0.spec_value() == raw as int
                 &&& result->Ok_0.spec_is_non_negative()
             },
-            result is Err ==> (raw as int) > (i32::MAX as int),
+            result is Err ==> !Self::spec_in_non_negative_i32_range(raw as int),
     {
         if raw > i32::MAX as u64 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
         }
         Ok(ProcessIdentifier { value: raw as i32 })
     }
@@ -434,6 +437,40 @@ impl ProcessIdentifier {
         self.value <= other.value
     }
 
+    /// Compares two ProcessIdentifiers for ordering.
+    ///
+    /// # Parameters
+    ///
+    /// - `other`: The other ProcessIdentifier to compare with.
+    ///
+    /// # Returns
+    ///
+    /// True if self is greater than other.
+    #[inline]
+    pub fn gt(&self, other: &ProcessIdentifier) -> (result: bool)
+        ensures
+            result == (self.spec_value() > other.spec_value()),
+    {
+        self.value > other.value
+    }
+
+    /// Compares two ProcessIdentifiers for ordering.
+    ///
+    /// # Parameters
+    ///
+    /// - `other`: The other ProcessIdentifier to compare with.
+    ///
+    /// # Returns
+    ///
+    /// True if self is greater than or equal to other.
+    #[inline]
+    pub fn ge(&self, other: &ProcessIdentifier) -> (result: bool)
+        ensures
+            result == (self.spec_value() >= other.spec_value()),
+    {
+        self.value >= other.value
+    }
+
     /// Creates a default ProcessIdentifier (value 0).
     ///
     /// # Returns
@@ -461,15 +498,14 @@ impl ProcessIdentifier {
 impl Default for ProcessIdentifier {
     /// Returns the default ProcessIdentifier (KERNEL, value 0).
     fn default() -> Self {
-        // Wraps the verified default_value() method.
-        ProcessIdentifier { value: 0 }
+        Self::default_value()
     }
 }
 
 impl PartialEq for ProcessIdentifier {
     /// Compares two ProcessIdentifiers for equality.
     fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
+        Self::eq(self, other)
     }
 }
 
@@ -499,28 +535,28 @@ impl core::fmt::Debug for ProcessIdentifier {
 impl From<i32> for ProcessIdentifier {
     /// Creates a ProcessIdentifier from an i32 value.
     fn from(raw: i32) -> Self {
-        ProcessIdentifier { value: raw }
+        Self::from_i32(raw)
     }
 }
 
 impl From<ProcessIdentifier> for i32 {
     /// Converts a ProcessIdentifier to an i32 value.
     fn from(pid: ProcessIdentifier) -> i32 {
-        pid.value
+        pid.into_i32()
     }
 }
 
 impl From<ProcessIdentifier> for isize {
     /// Converts a ProcessIdentifier to an isize value.
     fn from(pid: ProcessIdentifier) -> isize {
-        pid.value as isize
+        pid.into_isize()
     }
 }
 
 impl From<ProcessIdentifier> for i64 {
     /// Converts a ProcessIdentifier to an i64 value.
     fn from(pid: ProcessIdentifier) -> i64 {
-        pid.value as i64
+        pid.into_i64()
     }
 }
 
@@ -529,10 +565,7 @@ impl TryFrom<isize> for ProcessIdentifier {
 
     /// Creates a ProcessIdentifier from an isize value.
     fn try_from(raw: isize) -> Result<Self, Self::Error> {
-        if raw < i32::MIN as isize || raw > i32::MAX as isize {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(ProcessIdentifier { value: raw as i32 })
+        Self::try_from_isize(raw)
     }
 }
 
@@ -541,10 +574,7 @@ impl TryFrom<i64> for ProcessIdentifier {
 
     /// Creates a ProcessIdentifier from an i64 value.
     fn try_from(raw: i64) -> Result<Self, Self::Error> {
-        if raw < i32::MIN as i64 || raw > i32::MAX as i64 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(ProcessIdentifier { value: raw as i32 })
+        Self::try_from_i64(raw)
     }
 }
 
@@ -553,10 +583,7 @@ impl TryFrom<usize> for ProcessIdentifier {
 
     /// Creates a ProcessIdentifier from a usize value.
     fn try_from(raw: usize) -> Result<Self, Self::Error> {
-        if raw > i32::MAX as usize {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(ProcessIdentifier { value: raw as i32 })
+        Self::try_from_usize(raw)
     }
 }
 
@@ -565,10 +592,7 @@ impl TryFrom<u32> for ProcessIdentifier {
 
     /// Creates a ProcessIdentifier from a u32 value.
     fn try_from(raw: u32) -> Result<Self, Self::Error> {
-        if raw > i32::MAX as u32 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(ProcessIdentifier { value: raw as i32 })
+        Self::try_from_u32(raw)
     }
 }
 
@@ -577,10 +601,7 @@ impl TryFrom<u64> for ProcessIdentifier {
 
     /// Creates a ProcessIdentifier from a u64 value.
     fn try_from(raw: u64) -> Result<Self, Self::Error> {
-        if raw > i32::MAX as u64 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(ProcessIdentifier { value: raw as i32 })
+        Self::try_from_u64(raw)
     }
 }
 
@@ -589,10 +610,7 @@ impl TryFrom<ProcessIdentifier> for usize {
 
     /// Converts a ProcessIdentifier to a usize value.
     fn try_from(pid: ProcessIdentifier) -> Result<Self, Self::Error> {
-        if pid.value < 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(pid.value as usize)
+        pid.try_into_usize()
     }
 }
 
@@ -601,10 +619,7 @@ impl TryFrom<ProcessIdentifier> for u32 {
 
     /// Converts a ProcessIdentifier to a u32 value.
     fn try_from(pid: ProcessIdentifier) -> Result<Self, Self::Error> {
-        if pid.value < 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(pid.value as u32)
+        pid.try_into_u32()
     }
 }
 
@@ -613,9 +628,6 @@ impl TryFrom<ProcessIdentifier> for u64 {
 
     /// Converts a ProcessIdentifier to a u64 value.
     fn try_from(pid: ProcessIdentifier) -> Result<Self, Self::Error> {
-        if pid.value < 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
-        }
-        Ok(pid.value as u64)
+        pid.try_into_u64()
     }
 }

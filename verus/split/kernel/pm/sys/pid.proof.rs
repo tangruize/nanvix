@@ -86,7 +86,7 @@ impl ProcessIdentifier {
     {
     }
 
-    /// Axiom: Byte deserialization round-trip preserves bytes.
+    /// Axiom: Byte decode-then-encode round-trip preserves bytes.
     ///
     /// # Note
     ///
@@ -94,11 +94,14 @@ impl ProcessIdentifier {
     /// semantics. Verus cannot verify byte-level integer representation, so this
     /// property is documented as an axiom.
     ///
-    /// Property: for any pid, `spec_from_ne_bytes(pid.spec_to_ne_bytes()) == pid.spec_value()`
+    /// Property: for any bytes, `from_ne_bytes(bytes).to_ne_bytes() == bytes`
     #[verifier::external_body]
-    pub proof fn axiom_bytes_roundtrip(pid: ProcessIdentifier, bytes: [u8; 4])
-        ensures
-            pid.spec_to_ne_bytes() == bytes ==> Self::spec_from_ne_bytes(bytes) == pid.spec_value(),
+    pub proof fn axiom_decode_encode_roundtrip(bytes: [u8; 4])
+        ensures ({
+            let v: int = Self::spec_from_ne_bytes(bytes);
+            let pid: ProcessIdentifier = ProcessIdentifier { value: v as i32 };
+            pid.spec_to_ne_bytes() == bytes
+        }),
     {
     }
 }
