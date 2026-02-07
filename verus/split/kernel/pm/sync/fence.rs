@@ -58,15 +58,17 @@
 //! unconditionally calls `fetch_add(1, Ordering::Release)` with no guard
 //! against over-signaling (calling `signal` more than `total` times). The
 //! verified model intentionally adds `spec_is_waiting()` (`count < total`)
-//! as a precondition, enforcing the fence protocol: each fence expects
-//! exactly `total` signals, and exceeding that is a caller bug. This is a
-//! deliberate strengthening — it prevents over-signaling and `usize` overflow,
-//! making protocol violations detectable at verification time. Audit of kernel
-//! callers confirms this: the startup fence is created via `startup::init(n)`
-//! which calls `Fence::new(n)`, and each application core calls `signal()`
-//! exactly once during boot, so over-signaling would be a bug. If the runtime
-//! API is later hardened to reject over-signaling, this precondition would
-//! become a faithful model of the runtime contract.
+//! as a precondition, enforcing a strict protocol where each fence receives
+//! exactly `total` signals. This is a deliberate strengthening that prevents
+//! over-signaling and `usize` overflow. Note: the runtime tolerates
+//! over-signaling benignly (the atomic increment simply exceeds `total`, and
+//! `wait()` still terminates because `count >= total`). The startup fence in
+//! `kmain.rs` creates `Fence::new(ncores - 1)` but starts `ncores`
+//! application cores, each calling `signal()` once — the last signal
+//! over-shoots by one, which is harmless at runtime. The verified model's
+//! stricter precondition would flag this as a protocol violation, making it
+//! a conscious divergence from runtime behavior in favor of tighter
+//! verification guarantees.
 //!
 //! ## Trust Boundaries
 //!
