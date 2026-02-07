@@ -10,9 +10,13 @@ verus! {
 // Proof Lemmas — Definitional Properties
 //==================================================================================================
 //
-// The following lemmas are definition-unfolding properties that serve as
-// executable documentation and regression tests for spec changes. They are
-// automatically discharged by Verus.
+// The following lemmas are intentionally shallow definition-unfolding
+// properties. They serve as executable documentation and regression tests
+// that guard against accidental spec changes (e.g., a typo in wf() or
+// spec_is_satisfied()). They are automatically discharged by Verus and do
+// not exercise the prover in a meaningful way. The substantive protocol
+// proofs are in the "Protocol Properties" and "Concurrency Properties"
+// sections below.
 
 impl Fence {
     /// Lemma: A newly created fence has zero count and the given total.
@@ -108,18 +112,16 @@ impl Fence {
     {
     }
 
-    /// Lemma: After exactly `total` signals, the fence is satisfied.
+    /// Lemma: Equality implies satisfaction.
     ///
     /// # Description
     ///
-    /// Proves satisfaction: when the signal count equals the total, the fence
-    /// satisfaction condition (`count >= total`) holds. This captures the fact
-    /// that starting from `count == 0` and applying `total` signal operations
-    /// (each incrementing count by 1) yields `count == total`, which implies
-    /// satisfaction. Note: this is a static arithmetic entailment, not a
-    /// temporal liveness proof—it does not model the sequence of signal
-    /// operations inductively.
-    pub proof fn lemma_total_signals_satisfies(count: nat, total: nat)
+    /// A convenience entailment: when the signal count equals the total, the
+    /// satisfaction condition (`count >= total`) holds. This is a static
+    /// arithmetic fact, not an inductive proof — see
+    /// `lemma_signals_accumulate_to_satisfaction` for the inductive property
+    /// connecting signal operations to eventual satisfaction.
+    pub proof fn lemma_equality_implies_satisfaction(count: nat, total: nat)
         requires
             count == total,
         ensures

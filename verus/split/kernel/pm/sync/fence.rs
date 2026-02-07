@@ -63,12 +63,13 @@
 //! over-signaling and `usize` overflow. Note: the runtime tolerates
 //! over-signaling benignly (the atomic increment simply exceeds `total`, and
 //! `wait()` still terminates because `count >= total`). The startup fence in
-//! `kmain.rs` creates `Fence::new(ncores - 1)` but starts `ncores`
-//! application cores, each calling `signal()` once — the last signal
-//! over-shoots by one, which is harmless at runtime. The verified model's
-//! stricter precondition would flag this as a protocol violation, making it
-//! a conscious divergence from runtime behavior in favor of tighter
-//! verification guarantees.
+//! `kmain.rs` is created via `startup::init(ncores - 1)` (line 347) which
+//! internally calls `Fence::new(ncores - 1)` (line 117 receives the
+//! already-decremented value), but all `ncores` application cores call
+//! `signal()` once — the last signal over-shoots by one, which is harmless
+//! at runtime. The verified model's stricter precondition would flag this as
+//! a protocol violation, making it a conscious divergence from runtime
+//! behavior in favor of tighter verification guarantees.
 //!
 //! ## Trust Boundaries
 //!
