@@ -299,18 +299,20 @@ impl ThreadState {
     {
     }
 
-    /// Lemma: A state with zero locked mutexes is drop-safe.
+    /// Lemma: A well-formed state with zero locked mutexes is drop-safe.
     pub proof fn lemma_zero_mutexes_is_drop_safe(&self)
         requires
+            self.wf(),
             self.spec_locked_mutex_count() == 0,
         ensures
             self.spec_drop_safe(),
     {
     }
 
-    /// Lemma: A state with nonzero locked mutexes is not drop-safe.
+    /// Lemma: A well-formed state with nonzero locked mutexes is not drop-safe.
     pub proof fn lemma_nonzero_mutexes_not_drop_safe(&self)
         requires
+            self.wf(),
             self.spec_locked_mutex_count() > 0,
         ensures
             !self.spec_drop_safe(),
