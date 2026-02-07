@@ -42,7 +42,15 @@ impl ProcessIdentifier {
         self.value == 1
     }
 
-    /// Spec function: well-formedness (always true for ProcessIdentifier).
+    /// Spec function: well-formedness predicate.
+    ///
+    /// # Note
+    ///
+    /// ProcessIdentifier is a simple newtype wrapper around i32 with no
+    /// structural invariants. Any i32 value is a valid ProcessIdentifier.
+    /// The wf() predicate is therefore trivially true. Domain-specific
+    /// constraints (e.g., PIDs must be non-negative in POSIX) are
+    /// application-level concerns, not type invariants.
     pub open spec fn wf(&self) -> bool {
         true
     }
