@@ -112,13 +112,16 @@ impl Fence {
     ///
     /// # Description
     ///
-    /// Proves liveness: for any count that equals the total, the satisfaction
-    /// condition (`count >= total`) holds. This captures the fact that starting
-    /// from `count == 0` and applying `total` signal operations (each incrementing
-    /// count by 1) yields `count == total`, which implies satisfaction.
-    pub proof fn lemma_total_signals_satisfies(total: nat)
+    /// Proves liveness: if the signal count equals the total, the fence
+    /// satisfaction condition (`count >= total`) holds. This captures the fact
+    /// that starting from `count == 0` and applying `total` signal operations
+    /// (each incrementing count by 1) yields `count == total`, which implies
+    /// satisfaction.
+    pub proof fn lemma_total_signals_satisfies(count: nat, total: nat)
+        requires
+            count == total,
         ensures
-            forall|count: nat| count == total ==> #[trigger] (count >= total),
+            count >= total,
     {
     }
 
