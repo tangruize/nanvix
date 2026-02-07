@@ -267,9 +267,7 @@ impl ThreadState {
             self.wf(),
     {
         self.locked_mutex_count = self.locked_mutex_count + 1;
-        proof {
-            self.locked_mutex_set = Ghost(self.locked_mutex_set@.insert(address@));
-        }
+        self.locked_mutex_set = Ghost(self.locked_mutex_set@.insert(address@));
     }
 
     /// Takes a mutex guard, removing the address from the locked mutex set.
@@ -304,9 +302,7 @@ impl ThreadState {
             self.wf(),
     {
         self.locked_mutex_count = self.locked_mutex_count - 1;
-        proof {
-            self.locked_mutex_set = Ghost(self.locked_mutex_set@.remove(address@));
-        }
+        self.locked_mutex_set = Ghost(self.locked_mutex_set@.remove(address@));
         true
     }
 
