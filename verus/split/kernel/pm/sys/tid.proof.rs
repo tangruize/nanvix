@@ -94,9 +94,16 @@ impl ThreadIdentifier {
     /// semantics. Verus cannot verify byte-level integer representation, so this
     /// property is documented as an axiom.
     ///
+    /// The `requires` clause ensures the decoded value is within i32 range, which
+    /// guarantees the `v as i32` cast in the ensures clause is non-truncating.
+    /// Use `axiom_from_ne_bytes_in_range` to establish this precondition, or
+    /// prefer `lemma_byte_roundtrip_complete` which composes all byte axioms.
+    ///
     /// Property: for any bytes, `from_ne_bytes(bytes).to_ne_bytes() == bytes`
     #[verifier::external_body]
     pub proof fn axiom_decode_encode_roundtrip(bytes: [u8; 4])
+        requires
+            i32::MIN as int <= Self::spec_from_ne_bytes(bytes) <= i32::MAX as int,
         ensures ({
             let v: int = Self::spec_from_ne_bytes(bytes);
             let tid: ThreadIdentifier = ThreadIdentifier { value: v as i32 };
