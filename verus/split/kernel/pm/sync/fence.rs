@@ -62,10 +62,11 @@
 //! exactly `total` signals, and exceeding that is a caller bug. This is a
 //! deliberate strengthening — it prevents over-signaling and `usize` overflow,
 //! making protocol violations detectable at verification time. Audit of kernel
-//! callers confirms this: `Fence::new(ncores)` is created in `kmain.rs` with
-//! each core calling `signal()` exactly once, so over-signaling would be a
-//! bug. If the runtime API is later hardened to reject over-signaling, this
-//! precondition would become a faithful model of the runtime contract.
+//! callers confirms this: the startup fence is created via `startup::init(n)`
+//! which calls `Fence::new(n)`, and each application core calls `signal()`
+//! exactly once during boot, so over-signaling would be a bug. If the runtime
+//! API is later hardened to reject over-signaling, this precondition would
+//! become a faithful model of the runtime contract.
 //!
 //! ## Trust Boundaries
 //!
