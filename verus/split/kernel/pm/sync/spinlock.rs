@@ -82,7 +82,8 @@ pub struct Spinlock {
     pub locked: bool,
     /// Ghost identity for distinguishing lock instances.
     /// Callers must provide a unique `id` per instance at construction time.
-    pub ghost id: nat,
+    /// Wrapped in `Ghost` for zero-cost erasure at runtime.
+    pub id: Ghost<nat>,
 }
 
 //==================================================================================================
@@ -108,7 +109,7 @@ impl Spinlock {
             result@.id == id,
             result.wf(),
     {
-        Spinlock { locked: false, id: id }
+        Spinlock { locked: false, id: Ghost(id) }
     }
 
     /// Attempts to acquire the lock without spinning.

@@ -88,7 +88,7 @@ impl View for Spinlock {
     type V = SpinlockView;
 
     open spec fn view(&self) -> SpinlockView {
-        SpinlockView { locked: self.locked, id: self.id }
+        SpinlockView { locked: self.locked, id: self.id@ }
     }
 }
 
