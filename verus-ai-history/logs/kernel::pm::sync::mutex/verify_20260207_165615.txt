@@ -1,0 +1,31 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 16:56:15 CST 2026
+Module: kernel::pm::sync::mutex
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: disallowed: field expression for an opaque datatype
+  --> kernel/pm/sync/mutex.spec.rs:58:9
+   |
+46 | / pub tracked struct MutexToken {
+47 | |     /// Ghost snapshot of the mutex's view when the lock was acquired.
+48 | |     ghost view: MutexView,
+49 | | }
+   | |_- Verus treats this datatype as 'opaque' outside `lib::kernel::pm::sync::mutex` (note that Verus always considers the most restrictive field for determining this)
+...
+58 |           self.view
+   |           ^^^^^^^^^ this field expression is disallowed because of datatype opaqueness
+   |
+   = help: note that because this is a pub open spec function, this field expression must be well-formed everywhere, which is wider than `lib::kernel::pm::sync::mutex`
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::mutex (verified:0, errors:0)
