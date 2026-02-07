@@ -4,4 +4,5 @@
 pub mod interrupted;
 pub mod ready;
 pub mod running;
+pub mod sleeping;
 pub mod state;
