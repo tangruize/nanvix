@@ -18,6 +18,8 @@
 //! - `terminate()` preserves identity and well-formedness.
 //! - `admission_time()` returns the time captured at construction.
 //! - `from_state()` preserves all ThreadState properties.
+//! - Verified forwarding methods (`set_interrupt_reason`, `store_mutex_guard`,
+//!   `take_mutex_guard`) preserve identity, well-formedness, and admission time.
 //!
 //! ## Verification Model
 //!
@@ -66,11 +68,14 @@ verus! {
 
 /// Abstract model of `clock::now()`.
 ///
-/// Returns an abstract timestamp. No spec-level constraint is provided
-/// because the actual clock value is a scheduling property, not a
-/// safety or identity property.
+/// Returns an abstract timestamp. The minimal postcondition reflects that
+/// `SystemTime` values are non-negative. Stronger ordering guarantees
+/// (monotonicity) are scheduling properties outside verification scope.
 #[verifier::external_body]
-fn clock_now() -> (result: int) {
+fn clock_now() -> (result: int)
+    ensures
+        result >= 0,
+{
     unimplemented!()
 }
 
@@ -314,6 +319,80 @@ impl ReadyThread {
         self.admission_time
     }
 
+    /// Sets the interrupt reason on the underlying thread state.
+    ///
+    /// Verified forwarding method — callers should prefer this over
+    /// `thread_state_mut()` when setting interrupt reasons.
+    ///
+    /// # Parameters
+    ///
+    /// - `reason`: The interrupt reason value to set.
+    pub fn set_interrupt_reason(&mut self, reason: int)
+        requires
+            old(self).wf(),
+        ensures
+            self.spec_is_interrupted(),
+            self.spec_interrupt_reason() == Some(reason),
+            self.spec_id() == old(self).spec_id(),
+            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            self.spec_drop_safe() == old(self).spec_drop_safe(),
+            self.wf(),
+            self.spec_admission_time() == old(self).spec_admission_time(),
+    {
+        self.state.set_interrupt_reason(reason);
+    }
+
+    /// Stores a mutex guard address in the underlying thread state.
+    ///
+    /// Verified forwarding method — callers should prefer this over
+    /// `thread_state_mut()` when acquiring mutexes.
+    ///
+    /// # Parameters
+    ///
+    /// - `address`: Ghost address of the mutex being locked.
+    pub fn store_mutex_guard(&mut self, address: Ghost<int>)
+        requires
+            old(self).wf(),
+            old(self).state.locked_mutex_count < usize::MAX,
+            !old(self).spec_has_mutex(address@),
+        ensures
+            self.spec_has_mutex(address@),
+            forall|a: int| a != address@ ==>
+                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
+            !self.spec_drop_safe(),
+            self.spec_id() == old(self).spec_id(),
+            self.wf(),
+            self.spec_admission_time() == old(self).spec_admission_time(),
+    {
+        self.state.store_mutex_guard(address);
+    }
+
+    /// Takes a mutex guard address from the underlying thread state.
+    ///
+    /// Verified forwarding method — callers should prefer this over
+    /// `thread_state_mut()` when releasing mutexes.
+    ///
+    /// # Parameters
+    ///
+    /// - `address`: Ghost address of the mutex being released.
+    pub fn take_mutex_guard(&mut self, address: Ghost<int>)
+        requires
+            old(self).wf(),
+            old(self).spec_has_mutex(address@),
+        ensures
+            !self.spec_has_mutex(address@),
+            forall|a: int| a != address@ ==>
+                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
+            self.spec_id() == old(self).spec_id(),
+            self.wf(),
+            self.spec_admission_time() == old(self).spec_admission_time(),
+    {
+        self.state.take_mutex_guard(address);
+    }
+
     /// Transitions the ready thread to running state.
     ///
     /// Extracts the interrupt reason and user TDA from the state,
@@ -389,6 +468,13 @@ impl ReadyThread {
     /// Marked `#[verifier::external]` because Verus does not yet support
     /// `&mut T` return types — neither `external_body` nor normal `verus!`
     /// functions can express the signature.
+    ///
+    /// **Prefer verified forwarding methods when possible:**
+    /// - `set_interrupt_reason()` for setting interrupt reasons.
+    /// - `store_mutex_guard()` / `take_mutex_guard()` for mutex accounting.
+    ///
+    /// This escape hatch is still needed for opaque HAL operations
+    /// (e.g., `fpu_state_mut()`, `context_mut()`) that cannot be modeled.
     ///
     /// Callers that mutate the `ThreadState` through this reference operate
     /// outside the verification boundary. Callers MUST preserve:

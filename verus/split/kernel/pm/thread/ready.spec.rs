@@ -66,7 +66,8 @@ pub struct ZombieThreadView {
 
 /// Abstract exit status for interrupted threads.
 /// Models `ErrorCode::Interrupted.into()` from the original code.
-pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 0 }
+/// Value 4 corresponds to EINTR (src/libs/sysapi/src/errno.rs:21).
+pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 4 }
 
 //==================================================================================================
 // Spec Functions: ReadyThread

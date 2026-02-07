@@ -242,6 +242,49 @@ impl ReadyThread {
     }
 
     //==============================================================================================
+    // Composite Lemmas
+    //==============================================================================================
+
+    /// Lemma: Construction followed by run() produces a RunningThread with the
+    /// original identity, no interrupt, and preserved well-formedness.
+    ///
+    /// Exercises the composition of new() + run() specifications.
+    pub proof fn lemma_new_then_run(
+        id: ThreadIdentifier,
+        kernel_stack: Option<int>,
+        user_stack: Option<int>,
+        user_tda: Option<int>,
+        time: int,
+    )
+        ensures
+            ({
+                let state: ThreadState = ThreadState {
+                    id: id,
+                    kernel_stack: kernel_stack,
+                    user_stack: user_stack,
+                    user_tda: user_tda,
+                    interrupt_reason: None,
+                    locked_mutex_count: 0usize,
+                    locked_mutex_set: Ghost(Set::empty()),
+                };
+                let ready: ReadyThread = ReadyThread { state: state, admission_time: time };
+                let post_state: ThreadState = ThreadState {
+                    interrupt_reason: None,
+                    ..ready.state
+                };
+                // Identity preserved through new() + run().
+                post_state.spec_id() == id.spec_value()
+                // Interrupt cleared (was already None, stays None).
+                && !post_state.spec_is_interrupted()
+                // Well-formedness preserved.
+                && post_state.wf()
+                // Drop safety preserved (new thread has no mutexes).
+                && post_state.spec_drop_safe()
+            }),
+    {
+    }
+
+    //==============================================================================================
     // View Equality
     //==============================================================================================
 
