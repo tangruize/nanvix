@@ -23,16 +23,21 @@
 //
 // - `join_cond()` is omitted from the spec: it returns an opaque `Condvar`
 //   from the sync subsystem that cannot be meaningfully modeled in a pure
-//   spec. Synchronization correctness of thread-join operations involving
+//   spec. The verified `ThreadState` dependency module also elides `Condvar`
+//   and `join_cond()` (see state.rs header). Since the `Condvar` type does
+//   not exist in the verification model, no boundary spec can be provided
+//   here. Synchronization correctness of thread-join operations involving
 //   interrupted threads is outside the verification boundary.
 // - `ThreadState::set_interrupt_reason` accepts any `int` without constraining
 //   it to a valid `InterruptReason` variant. The constraint is enforced at
 //   the `InterruptedThread` level via `wf()` (which requires `spec_valid_reason`).
 //   Only `InterruptedThread::resume` calls `set_interrupt_reason`, and it
 //   does so with `self.reason` which is guaranteed valid by `self.wf()`.
-// - `thread_state_mut` returns `&mut ThreadState` outside the `verus!` block.
-//   Callers must preserve `wf()` and `spec_id()`. See the trust boundary
-//   documentation on that function.
+// - `thread_state_mut` returns `&mut ThreadState` and is annotated
+//   `#[verifier::external]` because Verus does not support `&mut T` return
+//   types. Intended postconditions (identity and wf preservation) are
+//   documented on the function but are NOT machine-checked. See the trust
+//   boundary documentation on that function.
 // - `ReadyThread` boundary model omits the `admission_time` field present in
 //   the real `ReadyThread`. The real `ReadyThread::from_state` sets
 //   `admission_time = clock::now()`. This is a scheduling property, not a
