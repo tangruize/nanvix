@@ -1,0 +1,100 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 10:12:01 CST 2026
+Module: pid
+Command: verus --crate-type lib lib.rs --verify-module pid
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/sys/pid.spec.rs:4:1
+  |
+4 | //! # ProcessIdentifier Specification
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+4 - //! # ProcessIdentifier Specification
+4 + // # ProcessIdentifier Specification
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/sys/pid.spec.rs:5:1
+  |
+5 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+5 - //!
+5 + //
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/sys/pid.spec.rs:6:1
+  |
+6 | //! This file contains spec functions for the ProcessIdentifier type.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |
+8 | use vstd::prelude::*;
+  | --------------------- the inner doc comment doesn't annotate this `use` import
+  |
+help: to annotate the `use` import, change the doc comment from inner to outer style
+  |
+6 - //! This file contains spec functions for the ProcessIdentifier type.
+6 + /// This file contains spec functions for the ProcessIdentifier type.
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/sys/pid.proof.rs:4:1
+  |
+4 | //! # ProcessIdentifier Proofs
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+4 - //! # ProcessIdentifier Proofs
+4 + // # ProcessIdentifier Proofs
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/sys/pid.proof.rs:5:1
+  |
+5 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+5 - //!
+5 + //
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/sys/pid.proof.rs:6:1
+  |
+6 | //! This file contains proof lemmas for the ProcessIdentifier type.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |
+8 | use vstd::prelude::*;
+  | --------------------- the inner doc comment doesn't annotate this `use` import
+  |
+help: to annotate the `use` import, change the doc comment from inner to outer style
+  |
+6 - //! This file contains proof lemmas for the ProcessIdentifier type.
+6 + /// This file contains proof lemmas for the ProcessIdentifier type.
+  |
+
+error: aborting due to 6 previous errors
+
+For more information about this error, try `rustc --explain E0753`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Cheating patterns: external_body:2
