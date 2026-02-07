@@ -526,6 +526,60 @@ impl ThreadState {
     {
     }
 
+    /// Lemma: `check_drop_safe()` faithfully models `Drop::drop()`.
+    ///
+    /// In the original code, `Drop::drop()` checks
+    /// `!self.locked_mutexes.is_empty()` and logs an error if true.
+    /// This lemma proves that under well-formedness, the runtime
+    /// `check_drop_safe()` (count == 0) is equivalent to the spec-level
+    /// `spec_drop_safe()` (set empty and finite), which in turn is
+    /// equivalent to the original `locked_mutexes.is_empty()` check.
+    pub proof fn lemma_check_drop_safe_models_drop(&self)
+        requires
+            self.wf(),
+        ensures
+            (self.locked_mutex_count == 0) == self.spec_drop_safe(),
+    {
+    }
+
+    //==============================================================================================
+    // Mutex Roundtrip Lemmas
+    //==============================================================================================
+
+    /// Lemma: store then take of the same mutex address is a no-op on the
+    /// mutex set (returns to the original set state) and preserves wf().
+    ///
+    /// This proves the internal consistency of the mutex guard operations
+    /// within the trust boundary established by T1/T2.
+    pub proof fn lemma_mutex_store_take_roundtrip(&self, address: int)
+        requires
+            self.wf(),
+            self.locked_mutex_count < usize::MAX,
+            !self.spec_has_mutex(address),
+        ensures
+            ({
+                let mid: ThreadState = ThreadState {
+                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
+                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
+                    ..*self
+                };
+                let post: ThreadState = ThreadState {
+                    locked_mutex_count: (mid.locked_mutex_count - 1) as usize,
+                    locked_mutex_set: Ghost(mid.locked_mutex_set@.remove(address)),
+                    ..mid
+                };
+                // After store then take, the set returns to original.
+                post.locked_mutex_set@ =~= self.locked_mutex_set@
+                && post.locked_mutex_count == self.locked_mutex_count
+                && post.wf()
+                // The address is no longer present.
+                && !post.spec_has_mutex(address)
+                // ID is preserved.
+                && post.spec_id() == self.spec_id()
+            }),
+    {
+    }
+
     //==============================================================================================
     // View Equality Lemmas
     //==============================================================================================

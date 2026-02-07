@@ -21,7 +21,11 @@
 //! - Drop safety (`spec_drop_safe()`): no locked mutexes remain at destruction.
 //!   This is the verification-side encoding of the `Drop` invariant — the original
 //!   `Drop::drop()` logs an error if locked mutexes remain. Newly constructed state
-//!   is always drop-safe.
+//!   is always drop-safe. The exec-level `check_drop_safe()` models the runtime
+//!   check from `Drop::drop()` (`!self.locked_mutexes.is_empty()`), and is proven
+//!   equivalent to `spec_drop_safe()` under `wf()`.
+//! - Mutex guard store/take roundtrip: inserting then removing the same address
+//!   restores the original mutex set (internal consistency of T1/T2 boundary).
 //!
 //! ## Verification Model
 //!
@@ -320,6 +324,25 @@ impl ThreadState {
     {
         self.locked_mutex_count = self.locked_mutex_count - 1;
         self.locked_mutex_set = Ghost(self.locked_mutex_set@.remove(address@));
+    }
+
+    /// Checks whether the thread state is safe to drop.
+    ///
+    /// Models the runtime check from `Drop::drop()`:
+    /// `!self.locked_mutexes.is_empty()`. Returns `true` when no mutexes
+    /// are held, meaning drop would be a no-op (no error logged).
+    ///
+    /// # Returns
+    ///
+    /// `true` if the thread holds no locked mutexes, `false` otherwise.
+    pub fn check_drop_safe(&self) -> (result: bool)
+        requires
+            self.wf(),
+        ensures
+            result == self.spec_drop_safe(),
+            result == (self.spec_locked_mutex_count() == 0),
+    {
+        self.locked_mutex_count == 0
     }
 
     /// Sets the base address for the user-space thread data area.
