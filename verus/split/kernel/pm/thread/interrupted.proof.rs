@@ -10,8 +10,9 @@
 // - Thread identifier is immutable: all operations preserve it.
 // - resume() correctly stamps the interrupt reason onto the ThreadState.
 // - resume() preserves thread identity across the state transition.
-// - resume() preserves well-formedness, mutex accounting, and drop safety.
-// - InterruptReason variants are well-formed and distinct.
+// - resume() preserves well-formedness, mutex accounting, drop safety, and stacks.
+// - Killed and TimedOut reason constants are distinct.
+// - Well-formed reasons are exhaustively one of the two valid variants.
 // - ReadyThread::from_state preserves identity and well-formedness.
 // - View equality: structurally identical InterruptedThreads have equal views.
 
@@ -26,10 +27,10 @@ impl InterruptedThread {
     //==============================================================================================
 
     /// Lemma: Construction produces a well-formed InterruptedThread.
-    pub proof fn lemma_from_state_wf(state: ThreadState, reason: InterruptReason)
+    pub proof fn lemma_from_state_wf(state: ThreadState, reason: int)
         requires
             state.wf(),
-            reason.wf(),
+            InterruptedThread::spec_valid_reason(reason),
         ensures
             ({
                 let t: InterruptedThread = InterruptedThread { state: state, reason: reason };
@@ -39,7 +40,7 @@ impl InterruptedThread {
     }
 
     /// Lemma: Construction preserves the thread identity.
-    pub proof fn lemma_from_state_preserves_id(state: ThreadState, reason: InterruptReason)
+    pub proof fn lemma_from_state_preserves_id(state: ThreadState, reason: int)
         ensures
             ({
                 let t: InterruptedThread = InterruptedThread { state: state, reason: reason };
@@ -49,11 +50,11 @@ impl InterruptedThread {
     }
 
     /// Lemma: Construction captures the reason correctly.
-    pub proof fn lemma_from_state_captures_reason(state: ThreadState, reason: InterruptReason)
+    pub proof fn lemma_from_state_captures_reason(state: ThreadState, reason: int)
         ensures
             ({
                 let t: InterruptedThread = InterruptedThread { state: state, reason: reason };
-                t.spec_reason() == reason.spec_value()
+                t.spec_reason() == reason
             }),
     {
     }
@@ -83,7 +84,7 @@ impl InterruptedThread {
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
-                    interrupt_reason: Some(self.reason.spec_value()),
+                    interrupt_reason: Some(self.reason),
                     ..self.state
                 };
                 post_state.spec_interrupt_reason() == Some(self.spec_reason())
@@ -99,7 +100,7 @@ impl InterruptedThread {
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
-                    interrupt_reason: Some(self.reason.spec_value()),
+                    interrupt_reason: Some(self.reason),
                     ..self.state
                 };
                 post_state.spec_id() == self.spec_id()
@@ -114,7 +115,7 @@ impl InterruptedThread {
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
-                    interrupt_reason: Some(self.reason.spec_value()),
+                    interrupt_reason: Some(self.reason),
                     ..self.state
                 };
                 post_state.wf()
@@ -129,7 +130,7 @@ impl InterruptedThread {
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
-                    interrupt_reason: Some(self.reason.spec_value()),
+                    interrupt_reason: Some(self.reason),
                     ..self.state
                 };
                 post_state.spec_locked_mutex_count() == self.spec_locked_mutex_count()
@@ -146,7 +147,7 @@ impl InterruptedThread {
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
-                    interrupt_reason: Some(self.reason.spec_value()),
+                    interrupt_reason: Some(self.reason),
                     ..self.state
                 };
                 post_state.spec_drop_safe()
@@ -161,12 +162,33 @@ impl InterruptedThread {
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
-                    interrupt_reason: Some(self.reason.spec_value()),
+                    interrupt_reason: Some(self.reason),
                     ..self.state
                 };
                 post_state.spec_kernel_stack() == self.spec_kernel_stack()
                 && post_state.spec_user_stack() == self.spec_user_stack()
             }),
+    {
+    }
+
+    //==============================================================================================
+    // Reason Variant Lemmas
+    //==============================================================================================
+
+    /// Lemma: Killed and TimedOut reason constants are distinct.
+    pub proof fn lemma_reasons_distinct()
+        ensures
+            INTERRUPT_REASON_KILLED() != INTERRUPT_REASON_TIMED_OUT(),
+    {
+    }
+
+    /// Lemma: A valid reason is either Killed or TimedOut (exhaustive and exclusive).
+    pub proof fn lemma_valid_reason_exhaustive(reason: int)
+        requires
+            InterruptedThread::spec_valid_reason(reason),
+        ensures
+            reason == INTERRUPT_REASON_KILLED() || reason == INTERRUPT_REASON_TIMED_OUT(),
+            !(reason == INTERRUPT_REASON_KILLED() && reason == INTERRUPT_REASON_TIMED_OUT()),
     {
     }
 
@@ -178,52 +200,9 @@ impl InterruptedThread {
     pub proof fn lemma_view_equality(a: &InterruptedThread, b: &InterruptedThread)
         requires
             a.state@ == b.state@,
-            a.reason.spec_value() == b.reason.spec_value(),
+            a.reason == b.reason,
         ensures
             a@ == b@,
-    {
-    }
-}
-
-//==================================================================================================
-// InterruptReason Lemmas
-//==================================================================================================
-
-impl InterruptReason {
-    /// Lemma: The Killed variant is well-formed.
-    pub proof fn lemma_killed_wf()
-        ensures
-            ({
-                let r: InterruptReason = InterruptReason { value: InterruptReason::KILLED_VALUE() };
-                r.wf() && r.spec_is_killed() && !r.spec_is_timed_out()
-            }),
-    {
-    }
-
-    /// Lemma: The TimedOut variant is well-formed.
-    pub proof fn lemma_timed_out_wf()
-        ensures
-            ({
-                let r: InterruptReason = InterruptReason { value: InterruptReason::TIMED_OUT_VALUE() };
-                r.wf() && r.spec_is_timed_out() && !r.spec_is_killed()
-            }),
-    {
-    }
-
-    /// Lemma: Killed and TimedOut are distinct variants.
-    pub proof fn lemma_reasons_distinct()
-        ensures
-            InterruptReason::KILLED_VALUE() != InterruptReason::TIMED_OUT_VALUE(),
-    {
-    }
-
-    /// Lemma: A well-formed reason is either Killed or TimedOut (exhaustive).
-    pub proof fn lemma_wf_exhaustive(r: &InterruptReason)
-        requires
-            r.wf(),
-        ensures
-            r.spec_is_killed() || r.spec_is_timed_out(),
-            !(r.spec_is_killed() && r.spec_is_timed_out()),
     {
     }
 }

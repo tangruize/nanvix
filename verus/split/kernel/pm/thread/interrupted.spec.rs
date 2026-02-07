@@ -2,17 +2,19 @@
 // Licensed under the MIT License.
 
 // InterruptedThread Specification.
-// Defines View types, spec functions, and invariants for InterruptedThread,
-// InterruptReason, and the boundary-type ReadyThread.
+// Defines View types, spec functions, and invariants for InterruptedThread
+// and the boundary-type ReadyThread.
 //
 // ## Verification Model
 //
 // The original `InterruptedThread` wraps a `Box<ThreadState>` and an
 // `InterruptReason` enum (Killed, TimedOut). For verification:
-// - `InterruptReason` is modeled as a struct with an `int` tag field.
-//   Well-formedness requires the tag is one of the two valid variants.
+// - `InterruptReason` is abstracted to an `int` tag value (0 = Killed,
+//   1 = TimedOut). Well-formedness requires the tag is one of the two
+//   valid variants.
 // - `InterruptedThread` holds a `ThreadState` (verified dependency) and
-//   an `InterruptReason`. Well-formedness requires both constituents are wf.
+//   a reason `int`. Well-formedness requires the state is wf and the
+//   reason is a valid variant.
 // - `ReadyThread` is a minimal boundary model of the original `ReadyThread`
 //   from the sibling `ready.rs` module. It wraps a `ThreadState` and is
 //   only used to verify the `resume` state transition.
@@ -21,7 +23,7 @@
 //
 // - spec_id: Thread identity is derived from the underlying ThreadState.
 // - spec_reason: The interrupt reason tag is accessible.
-// - wf: The compound is well-formed iff both state and reason are wf.
+// - wf: The compound is well-formed iff state is wf and reason is valid.
 // - State accessors (interrupt reason, mutex count, drop safety) are
 //   transparent pass-throughs to the underlying ThreadState specs.
 
@@ -32,13 +34,6 @@ verus! {
 //==================================================================================================
 // View Types
 //==================================================================================================
-
-/// Abstract view of an InterruptReason.
-#[verifier::ext_equal]
-pub struct InterruptReasonView {
-    /// The abstract reason tag (0 = Killed, 1 = TimedOut).
-    pub value: int,
-}
 
 /// Abstract view of an InterruptedThread.
 #[verifier::ext_equal]
@@ -57,36 +52,14 @@ pub struct ReadyThreadView {
 }
 
 //==================================================================================================
-// Spec Functions: InterruptReason
+// Spec Constants
 //==================================================================================================
 
-impl InterruptReason {
-    /// Abstract value of the Killed variant.
-    pub open spec fn KILLED_VALUE() -> int { 0 }
+/// Abstract value of the Killed interrupt reason variant.
+pub open spec fn INTERRUPT_REASON_KILLED() -> int { 0 }
 
-    /// Abstract value of the TimedOut variant.
-    pub open spec fn TIMED_OUT_VALUE() -> int { 1 }
-
-    /// Spec function: returns the abstract reason value.
-    pub open spec fn spec_value(&self) -> int {
-        self.value
-    }
-
-    /// Spec function: well-formedness (value is a valid variant).
-    pub open spec fn wf(&self) -> bool {
-        self.value == Self::KILLED_VALUE() || self.value == Self::TIMED_OUT_VALUE()
-    }
-
-    /// Spec function: checks if this is the Killed reason.
-    pub open spec fn spec_is_killed(&self) -> bool {
-        self.value == Self::KILLED_VALUE()
-    }
-
-    /// Spec function: checks if this is the TimedOut reason.
-    pub open spec fn spec_is_timed_out(&self) -> bool {
-        self.value == Self::TIMED_OUT_VALUE()
-    }
-}
+/// Abstract value of the TimedOut interrupt reason variant.
+pub open spec fn INTERRUPT_REASON_TIMED_OUT() -> int { 1 }
 
 //==================================================================================================
 // Spec Functions: InterruptedThread
@@ -100,7 +73,12 @@ impl InterruptedThread {
 
     /// Spec function: returns the interrupt reason value.
     pub open spec fn spec_reason(&self) -> int {
-        self.reason.spec_value()
+        self.reason
+    }
+
+    /// Spec function: checks if a reason tag is valid (one of the two variants).
+    pub open spec fn spec_valid_reason(reason: int) -> bool {
+        reason == INTERRUPT_REASON_KILLED() || reason == INTERRUPT_REASON_TIMED_OUT()
     }
 
     /// Spec function: well-formedness predicate.
@@ -109,7 +87,17 @@ impl InterruptedThread {
     /// - The underlying ThreadState is well-formed.
     /// - The interrupt reason is a valid variant.
     pub open spec fn wf(&self) -> bool {
-        self.state.wf() && self.reason.wf()
+        self.state.wf() && Self::spec_valid_reason(self.reason)
+    }
+
+    /// Spec function: checks if the reason is Killed.
+    pub open spec fn spec_is_killed(&self) -> bool {
+        self.reason == INTERRUPT_REASON_KILLED()
+    }
+
+    /// Spec function: checks if the reason is TimedOut.
+    pub open spec fn spec_is_timed_out(&self) -> bool {
+        self.reason == INTERRUPT_REASON_TIMED_OUT()
     }
 
     /// Spec function: returns the underlying state's interrupt reason.
@@ -168,21 +156,13 @@ impl ReadyThread {
 // View Implementations
 //==================================================================================================
 
-impl View for InterruptReason {
-    type V = InterruptReasonView;
-
-    open spec fn view(&self) -> InterruptReasonView {
-        InterruptReasonView { value: self.value }
-    }
-}
-
 impl View for InterruptedThread {
     type V = InterruptedThreadView;
 
     open spec fn view(&self) -> InterruptedThreadView {
         InterruptedThreadView {
             state: self.state@,
-            reason: self.reason.spec_value(),
+            reason: self.reason,
         }
     }
 }
