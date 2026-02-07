@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 15:14:26 CST 2026
+Module: kernel::pm::sync::condvar
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::condvar
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: this file contains an unclosed delimiter
+   --> kernel/pm/sync/condvar.proof.rs:456:13
+    |
+  7 | verus! {
+    |        - unclosed delimiter
+...
+456 | } // verus!
+    |            ^
+
+error: aborting due to 1 previous error
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::condvar (verified:0, errors:0)
