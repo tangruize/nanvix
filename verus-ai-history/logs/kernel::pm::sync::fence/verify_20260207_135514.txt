@@ -1,0 +1,24 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 13:55:14 CST 2026
+Module: kernel::pm::sync::fence
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::fence
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sync::fence
+
+error: trigger must be a function call, a field access, or arithmetic operator
+   --> kernel/pm/sync/fence.proof.rs:121:62
+    |
+121 |             forall|count: nat| count == total ==> #[trigger] (count >= total),
+    |                                                              ^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
