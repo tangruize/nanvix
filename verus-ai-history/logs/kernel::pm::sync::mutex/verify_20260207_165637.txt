@@ -1,0 +1,42 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 16:56:37 CST 2026
+Module: kernel::pm::sync::mutex
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+  --> kernel/pm/sync/mutex.spec.rs:57:9
+   |
+57 |     pub closed spec fn spec_view(&self) -> MutexView;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: verifying module kernel::pm::sync::mutex
+
+error: postcondition not satisfied
+   --> kernel/pm/sync/mutex.rs:211:13
+    |
+211 |               result.0 ==> result.1@.unwrap().spec_view() == self@,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+216 | /         if !self.locked {
+217 | |             self.locked = true;
+218 | |             self.token_issued = Ghost(true);
+219 | |             let tracked token: MutexToken = MutexToken { view: self@ };
+...   |
+222 | |             (false, Tracked(None))
+223 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 26 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error; 1 warning emitted
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 26
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::mutex (verified:26, errors:1)
