@@ -118,7 +118,7 @@ impl Fence {
     /// count by 1) yields `count == total`, which implies satisfaction.
     pub proof fn lemma_total_signals_satisfies(total: nat)
         ensures
-            forall|count: nat| count == total ==> count >= total,
+            forall|count: nat| count == total ==> #[trigger] (count >= total),
     {
     }
 
