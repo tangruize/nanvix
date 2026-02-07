@@ -725,6 +725,11 @@ impl Condvar {
             forall|i: int|
                 #![trigger s[i]]
                 0 <= i < s.len() as int ==> s[i] != entry,
+            // No kernel PID in the original queue.
+            forall|i: int|
+                #![trigger s[i]]
+                0 <= i < s.len() as int
+                ==> s[i].0 != Condvar::spec_kernel_pid(),
         ensures ({
             // After enqueue then cleanup, the original state is restored.
             let after_enqueue: Seq<(int, int)> = s.push(entry);
