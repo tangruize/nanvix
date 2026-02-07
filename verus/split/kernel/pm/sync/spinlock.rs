@@ -27,6 +27,15 @@
 //! the lock protocol (state machine correctness) without reasoning about atomicity
 //! or memory ordering.
 //!
+//! **This verified code is a specification model, not a runtime replacement.** The
+//! kernel uses the original `src/kernel/src/pm/sync/spinlock.rs` (with `AtomicBool`
+//! and spin-wait loop) at runtime. The verified model proves the state machine
+//! protocol is correct: every reachable state satisfies `wf()`, tokens are
+//! instance-bound, and lock/unlock transitions are sound. The `lock()` body
+//! delegates to `try_lock()` (a single CAS model) because, under the sequential
+//! preconditions, success is guaranteed — this proves the postconditions from
+//! verified code rather than trusting an `external_body`.
+//!
 //! ## Verification Scope
 //!
 //! This verification proves **sequential state machine correctness** of the spinlock
