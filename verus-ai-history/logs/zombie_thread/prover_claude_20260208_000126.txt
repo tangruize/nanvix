@@ -1,0 +1,208 @@
+=== Copilot Session ===
+Timestamp: 2026-02-08T00:04:11.508047
+Model: claude-opus-4.6
+Session: 0a495b8e-ee82-43b9-9c36-b83f12265a8d
+Duration: 164.6s
+Exit code: 0
+
+=== Prompt ===
+Verify src/kernel/src/pm/thread/zombie.rs using Verus.
+
+Target directory: verus/split/kernel/pm/thread
+
+This is an OS kernel component. Identify and prove the core specifications,
+invariants, and safety/liveness properties that matter for correctness.
+
+== THREE-FILE SPLIT ORGANIZATION ==
+
+You MUST produce three separate files for each module:
+
+1. **verus/split/kernel/pm/thread/zombie.rs** - Implementation (exec) code
+   - Copy the original source here as the starting point
+   - Add `use vstd::prelude::*;` and `include!` for spec/proof files
+   - Keep struct definitions, impl blocks, and exec functions inside a `verus! { }` block
+   - Add requires/ensures contracts for ALL functions (public and private)
+   - Reference lemmas from proof file; do NOT inline proofs in exec code
+
+2. **verus/split/kernel/pm/thread/zombie.spec.rs** - Specification functions
+   - Define View types (e.g., `pub struct ZombieView`) with `#[verifier::ext_equal]`
+   - Define `impl View for Zombie` trait
+   - Define `pub open spec fn` for abstract properties (wf, invariants, etc.)
+   - Wrap everything in a `verus! { }` block
+
+3. **verus/split/kernel/pm/thread/zombie.proof.rs** - Proof functions and lemmas
+   - Define `proof fn` lemmas with requires/ensures
+   - Place inside `verus! { }` block
+   - Use `impl Zombie` blocks to add proof methods
+
+Example file structure:
+```rust
+// zombie.rs (exec)
+use vstd::prelude::*;
+include!("zombie.spec.rs");
+include!("zombie.proof.rs");
+
+verus! {
+    pub struct MyType { ... }
+    impl MyType {
+        pub fn new(...) -> (result: ...) requires ... ensures ... { ... }
+    }
+}
+```
+
+```rust
+// zombie.spec.rs (spec)
+use vstd::prelude::*;
+verus! {
+    #[verifier::ext_equal]
+    pub struct MyTypeView { ... }
+    impl View for MyType {
+        type V = MyTypeView;
+        ...
+    }
+}
+```
+
+```rust
+// zombie.proof.rs (proof)
+use vstd::prelude::*;
+verus! {
+    impl MyType {
+        pub proof fn lemma_something(&self) requires ... ensures ... { ... }
+    }
+}
+```
+
+== REQUIREMENTS ==
+1. Define View types for abstract state representation
+2. Define invariants that all operations must maintain
+3. Add requires/ensures contracts for all functions (public and private impl fn)
+4. NO `assume` or `external_body` for core module functions
+   (OK for low-level dependencies like raw memory operations or HAL)
+
+== NOTE ON DEPENDENCIES ==
+Dependencies already verified: bitmap, bitmap_lib, capability, condvar, crate-trait-conflicts, error, fence, frame, frame_address, interrupted, kheap, kpage, kpool, kredzone, kstack, manager, mutex, pid, raw_array, ready, running, semaphore, slab, sleeping, spinlock, state, syntax_attr, syntax_attr2, tid, upool, ustack, vmem
+If the module depends on types from other modules, you may use `#[verifier::external_body]`
+ONLY for dependency boundary types that are not part of THIS module's core logic.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh zombie_thread
+  (This script runs verus, logs results, and commits changes automatically)
+
+Iterate until verification passes. Document your work in the module comments.
+
+=== Output ===
+
+
+I'll start by examining the source file and understanding the existing verification setup.
+
+● List directory verus/split/kernel/pm/thread
+  └ 22 files found
+
+● Read src/kernel/src/pm/thread/zombie.rs
+  └ 131 lines read
+
+● Check verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh | head -60
+  └ 61 lines...
+
+Now let me look at existing verified files for patterns, and the dependency types.
+
+● Read verus/split/kernel/pm/thread/running.rs
+  └ 500 lines read
+
+● Read verus/split/kernel/pm/thread/state.rs
+  └ 422 lines read
+
+● Read verus/split/kernel/pm/thread/running.spec.rs
+  └ 280 lines read
+
+● Read verus/split/kernel/pm/thread/running.proof.rs
+  └ 535 lines read
+
+Now let me look at the state spec and the existing mod.rs to understand the pattern better.
+
+● Read verus/split/kernel/pm/thread/mod.rs
+  └ 13 lines read
+
+● Read verus/split/kernel/pm/thread/state.spec.rs
+  └ 163 lines read
+
+Now I have a clear picture. The `ZombieThread` in the original source has: `status: ExitStatus`, `state: Box<ThreadState>`, and methods: `from_state`, `id`, `thread_state`, `thread_state_mut`, `harvest`, `status`. 
+
+I note that `running.rs` already has a boundary model of `ZombieThread`. Now I need to create the *primary* verification of ZombieThread as its own module. Let me check the verify script more carefully and create the plan.
+
+● Read verus/split/kernel/pm/thread/sleeping.rs
+  └ 439 lines read
+
+● Check verify script tail
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh | tail -80
+  └ 81 lines...
+
+Now I have a complete understanding of the patterns. Let me create the three files for `ZombieThread` verification. The `ZombieThread` is relatively simple — it holds state + status, and provides accessors plus a `harvest()` method.
+
+Key properties to verify:
+1. Construction preserves state, identity, status
+2. `id()` returns correct identifier
+3. `thread_state()` returns reference with correct identity/state
+4. `harvest()` returns the stacks from the state (modeled as take_kernel_stack/take_user_stack)
+5. `status()` returns the exit status
+6. Well-formedness preserved through all operations
+7. `thread_state_mut()` — external (Verus limitation on `&mut T` returns)
+
+● Create verus/split/kernel/pm/thread/zombie.spec.rs (+113)
+
+● Create verus/split/kernel/pm/thread/zombie.proof.rs (+228)
+
+Now create the main zombie.rs implementation file:
+
+● Create verus/split/kernel/pm/thread/zombie.rs (+203)
+
+Now add the `zombie` module to `mod.rs`:
+
+● Edit verus/split/kernel/pm/thread/mod.rs (+1)
+
+Now let's run the verification:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh zombie_thread 2>&1
+  └ 89 lines...
+
+The `old()` is for `&mut self`, but `harvest` takes `self` by value. I need to use `self` directly in the spec since it's a consuming method — the preconditions reference `self` at entry.
+
+● Edit verus/split/kernel/pm/thread/zombie.rs (+5 -5)
+
+Wait — `self` is consumed, so we can't call `take_kernel_stack()` (which takes `&mut self`). But we can just read the fields directly since `self` is owned. Let me verify:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh zombie_thread 2>&1
+  └ 25 lines...
+
+Verification passed: 21 verified, 0 errors. Let me confirm there are no cheating patterns:
+
+● Check for cheating patterns
+  $ cd /home/ubuntu/nanvix/verus/split && grep -c 'assume\s*(' kernel/pm/thread/zombie.rs
+  kernel/pm/thread/zombie.spec.rs kernel/pm/thread/zombie.proof.rs 2>/dev/null; grep -c
+  'external_body' kernel/pm/thread/zombie.rs kernel/pm/thread/zombie.spec.rs
+  kernel/pm/thread/zombie.proof.rs 2>/dev/null
+  └ 7 lines...
+
+The single `external_body` count is from the `#[verifier::external]` on `thread_state_mut()` — which is the standard pattern for `&mut T` return types that Verus cannot express, matching all sibling modules. Let me verify it's `external` not `external_body`:
+
+● Check external annotations
+  $ grep -n 'external' /home/ubuntu/nanvix/verus/split/kernel/pm/thread/zombie.rs
+  └ 5 lines...
+
+It's `#[verifier::external]` (not `external_body`), placed outside the `verus!` block — this is the exact same pattern used in `running.rs`, `sleeping.rs`, etc. The script's grep matched the string `external_body` in a comment, not an annotation.
+
+✓ Task complete
+
+
+Total usage est:        3 Premium requests
+API time spent:         2m 25.708s
+Total session time:     2m 43.305s
+Total code changes:     +550 -5
+Breakdown by AI model:
+ claude-opus-4.6         866.4k in, 8.1k out, 759.5k cached (Est. 3 Premium requests)
+
+=== End ===
