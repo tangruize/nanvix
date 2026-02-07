@@ -1,0 +1,65 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 19:03:54 CST 2026
+Module: kernel::pm::thread::state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::state
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.rs:172:13
+    |
+172 |             self.wf(),
+    |             ^^^^^^^^^ failed this postcondition
+...
+176 |         had
+    |         --- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.rs:193:13
+    |
+193 |             self.wf(),
+    |             ^^^^^^^^^ failed this postcondition
+...
+197 |         had
+    |         --- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.rs:214:13
+    |
+205 |     pub fn set_interrupt_reason(&mut self, reason: int)
+    |     --------------------------------------------------- at the end of the function body
+...
+214 |             self.wf(),
+    |             ^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.rs:234:13
+    |
+234 |             self.wf(),
+    |             ^^^^^^^^^ failed this postcondition
+...
+238 |         reason
+    |         ------ at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/state.rs:322:13
+    |
+314 |     pub fn store_thread_data_area(&mut self, user_tda: Option<int>)
+    |     --------------------------------------------------------------- at the end of the function body
+...
+322 |             self.wf(),
+    |             ^^^^^^^^^ failed this postcondition
+
+verification results:: 33 verified, 5 errors (partial verification with `--verify-*`)
+error: aborting due to 5 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 33
+Errors: 5
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::state (verified:33, errors:5)
