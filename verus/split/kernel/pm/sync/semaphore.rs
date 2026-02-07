@@ -52,6 +52,8 @@
 //! - **Condvar interaction**: The sleeping/waking protocol via `Condvar` is modeled
 //!   at the spec level via `spec_down_blocking` and `spec_wake` state transitions.
 //!   The condvar exec implementation is separately verified.
+//! - **Sequential-to-concurrent refinement**: The informal linearizability argument
+//!   in "Refinement Argument" below is not mechanically verified.
 //! - **Error propagation**: The original `down()` returns `Result<(), SleepError>`,
 //!   `try_down()` returns `Result<(), Error>` with `ErrorCode::TryAgain`, and `up()`
 //!   returns `Result<(), Error>`. The sequential model simplifies: `down()` returns
@@ -295,6 +297,8 @@ impl Semaphore {
             result == DownOutcome::Acquired ==> self@ == Semaphore::spec_down_or_block_ghost_view(old(self)@, result),
             result == DownOutcome::WouldBlock ==> old(self).spec_is_exhausted(),
             result == DownOutcome::WouldBlock ==> self@ == old(self)@,
+            result == DownOutcome::WouldBlock ==> Semaphore::spec_down_or_block_ghost_view(old(self)@, result).waiters == old(self)@.waiters + 1,
+            result == DownOutcome::WouldBlock ==> Semaphore::spec_down_or_block_ghost_view(old(self)@, result).value == 0,
             self.wf(),
     {
         if self.value > 0 {
