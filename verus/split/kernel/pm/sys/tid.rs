@@ -84,7 +84,7 @@ impl ThreadIdentifier {
     pub const KERNEL_RAW: i32 = 0;
 
     /// Error message for invalid thread identifier conversions.
-    pub const PARSE_ERROR_MESSAGE: &'static str = "invalid thread identifier";
+    pub(crate) const PARSE_ERROR_MESSAGE: &'static str = "invalid thread identifier";
 
     /// Identifier of the kernel thread.
     pub const KERNEL: ThreadIdentifier = ThreadIdentifier { value: Self::KERNEL_RAW };
@@ -102,7 +102,7 @@ impl ThreadIdentifier {
     ///
     /// A new ThreadIdentifier with the given value.
     #[inline]
-    pub fn from_i32(raw: i32) -> (result: ThreadIdentifier)
+    pub(crate) fn from_i32(raw: i32) -> (result: ThreadIdentifier)
         ensures
             result.spec_value() == raw as int,
             result@ == (ThreadIdentifierView { value: raw as int }),
@@ -116,7 +116,7 @@ impl ThreadIdentifier {
     ///
     /// The raw i32 value.
     #[inline]
-    pub fn into_i32(self) -> (result: i32)
+    pub(crate) fn into_i32(self) -> (result: i32)
         ensures
             result as int == self.spec_value(),
     {
@@ -129,7 +129,7 @@ impl ThreadIdentifier {
     ///
     /// The value as isize.
     #[inline]
-    pub fn into_isize(self) -> (result: isize)
+    pub(crate) fn into_isize(self) -> (result: isize)
         ensures
             result as int == self.spec_value(),
     {
@@ -142,7 +142,7 @@ impl ThreadIdentifier {
     ///
     /// The value as i64.
     #[inline]
-    pub fn into_i64(self) -> (result: i64)
+    pub(crate) fn into_i64(self) -> (result: i64)
         ensures
             result as int == self.spec_value(),
     {
@@ -158,7 +158,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value is negative.
-    pub fn try_into_usize(self) -> (result: Result<usize, Error>)
+    pub(crate) fn try_into_usize(self) -> (result: Result<usize, Error>)
         ensures
             result is Ok ==> {
                 &&& self.spec_is_non_negative()
@@ -185,7 +185,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value is negative.
-    pub fn try_into_u32(self) -> (result: Result<u32, Error>)
+    pub(crate) fn try_into_u32(self) -> (result: Result<u32, Error>)
         ensures
             result is Ok ==> {
                 &&& self.spec_is_non_negative()
@@ -212,7 +212,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value is negative.
-    pub fn try_into_u64(self) -> (result: Result<u64, Error>)
+    pub(crate) fn try_into_u64(self) -> (result: Result<u64, Error>)
         ensures
             result is Ok ==> {
                 &&& self.spec_is_non_negative()
@@ -244,7 +244,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value is outside the i32 range.
-    pub fn try_from_isize(raw: isize) -> (result: Result<ThreadIdentifier, Error>)
+    pub(crate) fn try_from_isize(raw: isize) -> (result: Result<ThreadIdentifier, Error>)
         ensures
             result is Ok ==> {
                 &&& Self::spec_in_i32_range(raw as int)
@@ -276,7 +276,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value is outside the i32 range.
-    pub fn try_from_i64(raw: i64) -> (result: Result<ThreadIdentifier, Error>)
+    pub(crate) fn try_from_i64(raw: i64) -> (result: Result<ThreadIdentifier, Error>)
         ensures
             result is Ok ==> {
                 &&& Self::spec_in_i32_range(raw as int)
@@ -308,7 +308,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value exceeds i32::MAX.
-    pub fn try_from_usize(raw: usize) -> (result: Result<ThreadIdentifier, Error>)
+    pub(crate) fn try_from_usize(raw: usize) -> (result: Result<ThreadIdentifier, Error>)
         ensures
             result is Ok ==> {
                 &&& Self::spec_in_non_negative_i32_range(raw as int)
@@ -341,7 +341,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value exceeds i32::MAX.
-    pub fn try_from_u32(raw: u32) -> (result: Result<ThreadIdentifier, Error>)
+    pub(crate) fn try_from_u32(raw: u32) -> (result: Result<ThreadIdentifier, Error>)
         ensures
             result is Ok ==> {
                 &&& Self::spec_in_non_negative_i32_range(raw as int)
@@ -374,7 +374,7 @@ impl ThreadIdentifier {
     /// # Errors
     ///
     /// Returns an error if the value exceeds i32::MAX.
-    pub fn try_from_u64(raw: u64) -> (result: Result<ThreadIdentifier, Error>)
+    pub(crate) fn try_from_u64(raw: u64) -> (result: Result<ThreadIdentifier, Error>)
         ensures
             result is Ok ==> {
                 &&& Self::spec_in_non_negative_i32_range(raw as int)
@@ -447,7 +447,7 @@ impl ThreadIdentifier {
     ///
     /// True if both have the same value.
     #[inline]
-    pub fn eq(&self, other: &ThreadIdentifier) -> (result: bool)
+    pub(crate) fn eq(&self, other: &ThreadIdentifier) -> (result: bool)
         ensures
             result == (self.spec_value() == other.spec_value()),
     {
@@ -464,7 +464,7 @@ impl ThreadIdentifier {
     ///
     /// True if values differ.
     #[inline]
-    pub fn ne(&self, other: &ThreadIdentifier) -> (result: bool)
+    pub(crate) fn ne(&self, other: &ThreadIdentifier) -> (result: bool)
         ensures
             result == (self.spec_value() != other.spec_value()),
     {
@@ -481,7 +481,7 @@ impl ThreadIdentifier {
     ///
     /// True if self is less than other.
     #[inline]
-    pub fn lt(&self, other: &ThreadIdentifier) -> (result: bool)
+    pub(crate) fn lt(&self, other: &ThreadIdentifier) -> (result: bool)
         ensures
             result == (self.spec_value() < other.spec_value()),
     {
@@ -498,7 +498,7 @@ impl ThreadIdentifier {
     ///
     /// True if self is less than or equal to other.
     #[inline]
-    pub fn le(&self, other: &ThreadIdentifier) -> (result: bool)
+    pub(crate) fn le(&self, other: &ThreadIdentifier) -> (result: bool)
         ensures
             result == (self.spec_value() <= other.spec_value()),
     {
@@ -515,7 +515,7 @@ impl ThreadIdentifier {
     ///
     /// True if self is greater than other.
     #[inline]
-    pub fn gt(&self, other: &ThreadIdentifier) -> (result: bool)
+    pub(crate) fn gt(&self, other: &ThreadIdentifier) -> (result: bool)
         ensures
             result == (self.spec_value() > other.spec_value()),
     {
@@ -532,7 +532,7 @@ impl ThreadIdentifier {
     ///
     /// True if self is greater than or equal to other.
     #[inline]
-    pub fn ge(&self, other: &ThreadIdentifier) -> (result: bool)
+    pub(crate) fn ge(&self, other: &ThreadIdentifier) -> (result: bool)
         ensures
             result == (self.spec_value() >= other.spec_value()),
     {
@@ -548,7 +548,7 @@ impl ThreadIdentifier {
     /// # Returns
     ///
     /// The ordering relationship between self and other.
-    pub fn cmp_ord(&self, other: &ThreadIdentifier) -> (result: core::cmp::Ordering)
+    pub(crate) fn cmp_ord(&self, other: &ThreadIdentifier) -> (result: core::cmp::Ordering)
         ensures
             result == self.spec_cmp(other),
     {
