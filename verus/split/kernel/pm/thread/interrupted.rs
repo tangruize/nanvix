@@ -103,7 +103,7 @@ impl InterruptReason {
             !result.spec_is_timed_out(),
             result.wf(),
     {
-        InterruptReason { value: 0 }
+        InterruptReason { value: 0int }
     }
 
     /// Creates a TimedOut interrupt reason.
@@ -118,7 +118,7 @@ impl InterruptReason {
             !result.spec_is_killed(),
             result.wf(),
     {
-        InterruptReason { value: 1 }
+        InterruptReason { value: 1int }
     }
 }
 
