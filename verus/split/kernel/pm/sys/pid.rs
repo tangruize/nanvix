@@ -41,13 +41,18 @@ verus! {
 ///
 /// # Note on Verification
 ///
-/// The `value` field is `pub(crate)` for Verus spec reasoning. The original type
+/// The `value` field is `pub` for Verus spec reasoning. The original type
 /// uses a tuple struct with private field. Verified code should use accessor methods
-/// (`into_i32`, `from_i32`) rather than direct field access.
+/// (`into_i32`, `from_i32`) rather than direct field access to maintain encapsulation.
+///
+/// # Representation
+///
+/// Uses `#[repr(C)]` to match the original type's FFI-compatible layout.
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ProcessIdentifier {
     /// The raw i32 value of the process identifier.
-    /// Note: pub(crate) for Verus spec access; prefer using accessor methods.
+    /// Note: pub for Verus spec access; prefer using accessor methods.
     pub value: i32,
 }
 
@@ -445,3 +450,172 @@ impl ProcessIdentifier {
 }
 
 } // verus!
+
+//==================================================================================================
+// External Trait Implementations
+//==================================================================================================
+
+// These trait implementations wrap the verified methods to provide the standard Rust API.
+// They are marked external because Verus cannot verify trait implementations directly.
+
+impl Default for ProcessIdentifier {
+    /// Returns the default ProcessIdentifier (KERNEL, value 0).
+    fn default() -> Self {
+        // Wraps the verified default_value() method.
+        ProcessIdentifier { value: 0 }
+    }
+}
+
+impl PartialEq for ProcessIdentifier {
+    /// Compares two ProcessIdentifiers for equality.
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl Eq for ProcessIdentifier {}
+
+impl PartialOrd for ProcessIdentifier {
+    /// Compares two ProcessIdentifiers for ordering.
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ProcessIdentifier {
+    /// Compares two ProcessIdentifiers for total ordering.
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.value.cmp(&other.value)
+    }
+}
+
+impl core::fmt::Debug for ProcessIdentifier {
+    /// Formats the ProcessIdentifier for debugging.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:?}", self.value)
+    }
+}
+
+impl From<i32> for ProcessIdentifier {
+    /// Creates a ProcessIdentifier from an i32 value.
+    fn from(raw: i32) -> Self {
+        ProcessIdentifier { value: raw }
+    }
+}
+
+impl From<ProcessIdentifier> for i32 {
+    /// Converts a ProcessIdentifier to an i32 value.
+    fn from(pid: ProcessIdentifier) -> i32 {
+        pid.value
+    }
+}
+
+impl From<ProcessIdentifier> for isize {
+    /// Converts a ProcessIdentifier to an isize value.
+    fn from(pid: ProcessIdentifier) -> isize {
+        pid.value as isize
+    }
+}
+
+impl From<ProcessIdentifier> for i64 {
+    /// Converts a ProcessIdentifier to an i64 value.
+    fn from(pid: ProcessIdentifier) -> i64 {
+        pid.value as i64
+    }
+}
+
+impl TryFrom<isize> for ProcessIdentifier {
+    type Error = Error;
+
+    /// Creates a ProcessIdentifier from an isize value.
+    fn try_from(raw: isize) -> Result<Self, Self::Error> {
+        if raw < i32::MIN as isize || raw > i32::MAX as isize {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(ProcessIdentifier { value: raw as i32 })
+    }
+}
+
+impl TryFrom<i64> for ProcessIdentifier {
+    type Error = Error;
+
+    /// Creates a ProcessIdentifier from an i64 value.
+    fn try_from(raw: i64) -> Result<Self, Self::Error> {
+        if raw < i32::MIN as i64 || raw > i32::MAX as i64 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(ProcessIdentifier { value: raw as i32 })
+    }
+}
+
+impl TryFrom<usize> for ProcessIdentifier {
+    type Error = Error;
+
+    /// Creates a ProcessIdentifier from a usize value.
+    fn try_from(raw: usize) -> Result<Self, Self::Error> {
+        if raw > i32::MAX as usize {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(ProcessIdentifier { value: raw as i32 })
+    }
+}
+
+impl TryFrom<u32> for ProcessIdentifier {
+    type Error = Error;
+
+    /// Creates a ProcessIdentifier from a u32 value.
+    fn try_from(raw: u32) -> Result<Self, Self::Error> {
+        if raw > i32::MAX as u32 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(ProcessIdentifier { value: raw as i32 })
+    }
+}
+
+impl TryFrom<u64> for ProcessIdentifier {
+    type Error = Error;
+
+    /// Creates a ProcessIdentifier from a u64 value.
+    fn try_from(raw: u64) -> Result<Self, Self::Error> {
+        if raw > i32::MAX as u64 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(ProcessIdentifier { value: raw as i32 })
+    }
+}
+
+impl TryFrom<ProcessIdentifier> for usize {
+    type Error = Error;
+
+    /// Converts a ProcessIdentifier to a usize value.
+    fn try_from(pid: ProcessIdentifier) -> Result<Self, Self::Error> {
+        if pid.value < 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(pid.value as usize)
+    }
+}
+
+impl TryFrom<ProcessIdentifier> for u32 {
+    type Error = Error;
+
+    /// Converts a ProcessIdentifier to a u32 value.
+    fn try_from(pid: ProcessIdentifier) -> Result<Self, Self::Error> {
+        if pid.value < 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(pid.value as u32)
+    }
+}
+
+impl TryFrom<ProcessIdentifier> for u64 {
+    type Error = Error;
+
+    /// Converts a ProcessIdentifier to a u64 value.
+    fn try_from(pid: ProcessIdentifier) -> Result<Self, Self::Error> {
+        if pid.value < 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid process identifier"));
+        }
+        Ok(pid.value as u64)
+    }
+}
