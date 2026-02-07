@@ -244,8 +244,10 @@ impl Semaphore {
     pub proof fn lemma_down_monotonic(v: nat)
         requires
             v > 0,
-        ensures
-            (v - 1) as nat < v,
+        ensures ({
+            let result: nat = (v - 1) as nat;
+            result < v
+        }),
     {
     }
 
