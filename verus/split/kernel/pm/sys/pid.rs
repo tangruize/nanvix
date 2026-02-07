@@ -84,7 +84,7 @@ impl ProcessIdentifier {
     pub const KERNEL_RAW: i32 = 0;
 
     /// Error message for invalid process identifier conversions.
-    const PARSE_ERROR_MESSAGE: &'static str = "invalid process identifier";
+    pub const PARSE_ERROR_MESSAGE: &'static str = "invalid process identifier";
 
     /// Identifier of the kernel process.
     pub const KERNEL: ProcessIdentifier = ProcessIdentifier { value: Self::KERNEL_RAW };
