@@ -441,6 +441,7 @@ impl RunningThread {
             forall|a: int| a != address@ ==>
                 self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
+            self.spec_locked_mutex_count() == 0 ==> self.spec_drop_safe(),
             self.spec_id() == old(self).spec_id(),
             self.wf(),
     {

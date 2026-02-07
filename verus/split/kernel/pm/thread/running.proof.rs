@@ -406,6 +406,7 @@ impl RunningThread {
                 && after_release.spec_drop_safe() == t.spec_drop_safe()
             }),
     {
+        // Struct literals mirror put_mutex_guard/take_mutex_guard postconditions.
         // Trigger set extensionality: insert then remove is identity for non-member.
         let s: Set<int> = t.state.locked_mutex_set@;
         assert(s.insert(address@).remove(address@) =~= s);
