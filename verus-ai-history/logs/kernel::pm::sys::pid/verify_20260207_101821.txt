@@ -1,0 +1,37 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 10:18:21 CST 2026
+Module: kernel::pm::sys::pid
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sys::pid
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+  --> kernel/pm/sys/pid.spec.rs:64:9
+   |
+64 |     pub closed spec fn spec_to_ne_bytes(&self) -> [u8; 4];
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+  --> kernel/pm/sys/pid.spec.rs:72:9
+   |
+72 |     pub closed spec fn spec_from_ne_bytes(bytes: [u8; 4]) -> int;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: struct literals are not allowed here; try surrounding the struct literal with parentheses
+   --> kernel/pm/sys/pid.proof.rs:101:13
+    |
+101 |             ProcessIdentifier { value: arbitrary() }.spec_to_ne_bytes() == bytes
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error; 2 warnings emitted
+
+
+Duration: 0s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sys::pid (verified:0, errors:0)
