@@ -539,6 +539,28 @@ impl ProcessIdentifier {
         self.value >= other.value
     }
 
+    /// Compares two ProcessIdentifiers, returning an Ordering.
+    ///
+    /// # Parameters
+    ///
+    /// - `other`: The other ProcessIdentifier to compare with.
+    ///
+    /// # Returns
+    ///
+    /// The ordering relationship between self and other.
+    pub fn cmp_ord(&self, other: &ProcessIdentifier) -> (result: core::cmp::Ordering)
+        ensures
+            result == self.spec_cmp(other),
+    {
+        if self.value < other.value {
+            core::cmp::Ordering::Less
+        } else if self.value > other.value {
+            core::cmp::Ordering::Greater
+        } else {
+            core::cmp::Ordering::Equal
+        }
+    }
+
     /// Creates a default ProcessIdentifier (value 0).
     ///
     /// # Returns
@@ -588,10 +610,9 @@ impl PartialOrd for ProcessIdentifier {
 
 impl Ord for ProcessIdentifier {
     /// Compares two ProcessIdentifiers for total ordering.
-    /// Note: accesses `value` field directly because no single verified method
-    /// returns `core::cmp::Ordering`. Consistent with verified `lt`/`le`/`gt`/`ge`.
+    /// Delegates to verified `cmp_ord` method.
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.value.cmp(&other.value)
+        self.cmp_ord(other)
     }
 }
 

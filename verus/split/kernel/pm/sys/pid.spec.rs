@@ -80,6 +80,17 @@ impl ProcessIdentifier {
     pub open spec fn spec_in_non_negative_i32_range(v: int) -> bool {
         0 <= v && v <= i32::MAX as int
     }
+
+    /// Spec function: compares two ProcessIdentifiers, returning an Ordering.
+    pub open spec fn spec_cmp(&self, other: &ProcessIdentifier) -> core::cmp::Ordering {
+        if self.spec_value() < other.spec_value() {
+            core::cmp::Ordering::Less
+        } else if self.spec_value() > other.spec_value() {
+            core::cmp::Ordering::Greater
+        } else {
+            core::cmp::Ordering::Equal
+        }
+    }
 }
 
 //==================================================================================================

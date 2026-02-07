@@ -169,6 +169,91 @@ impl ProcessIdentifier {
         Self::lemma_size_eq_i32();
         Self::lemma_align_eq_i32();
     }
+
+    //==================================================================================================
+    // Ordering Consistency Lemmas
+    //==================================================================================================
+
+    /// Lemma: `lt(a, b)` iff `!ge(a, b)`.
+    pub proof fn lemma_lt_iff_not_ge(a: &ProcessIdentifier, b: &ProcessIdentifier)
+        ensures
+            (a.spec_value() < b.spec_value()) <==> !(a.spec_value() >= b.spec_value()),
+    {
+    }
+
+    /// Lemma: `le(a, b)` iff `!gt(a, b)`.
+    pub proof fn lemma_le_iff_not_gt(a: &ProcessIdentifier, b: &ProcessIdentifier)
+        ensures
+            (a.spec_value() <= b.spec_value()) <==> !(a.spec_value() > b.spec_value()),
+    {
+    }
+
+    /// Lemma: Equality is reflexive.
+    pub proof fn lemma_eq_reflexive(a: &ProcessIdentifier)
+        ensures
+            a.spec_value() == a.spec_value(),
+    {
+    }
+
+    /// Lemma: Ordering is transitive.
+    pub proof fn lemma_lt_transitive(a: &ProcessIdentifier, b: &ProcessIdentifier, c: &ProcessIdentifier)
+        requires
+            a.spec_value() < b.spec_value(),
+            b.spec_value() < c.spec_value(),
+        ensures
+            a.spec_value() < c.spec_value(),
+    {
+    }
+
+    /// Lemma: Ordering is total — exactly one of `<`, `==`, `>` holds.
+    pub proof fn lemma_ordering_total(a: &ProcessIdentifier, b: &ProcessIdentifier)
+        ensures
+            (a.spec_value() < b.spec_value()) || (a.spec_value() == b.spec_value()) || (a.spec_value() > b.spec_value()),
+            // Mutual exclusivity.
+            !((a.spec_value() < b.spec_value()) && (a.spec_value() == b.spec_value())),
+            !((a.spec_value() < b.spec_value()) && (a.spec_value() > b.spec_value())),
+            !((a.spec_value() == b.spec_value()) && (a.spec_value() > b.spec_value())),
+    {
+    }
+
+    /// Lemma: `spec_cmp` is consistent with `lt`/`eq`/`gt`.
+    pub proof fn lemma_cmp_consistent(a: &ProcessIdentifier, b: &ProcessIdentifier)
+        ensures
+            (a.spec_cmp(b) == core::cmp::Ordering::Less) <==> (a.spec_value() < b.spec_value()),
+            (a.spec_cmp(b) == core::cmp::Ordering::Equal) <==> (a.spec_value() == b.spec_value()),
+            (a.spec_cmp(b) == core::cmp::Ordering::Greater) <==> (a.spec_value() > b.spec_value()),
+    {
+    }
+
+    //==================================================================================================
+    // Composite Byte Round-Trip Lemma
+    //==================================================================================================
+
+    /// Lemma: Complete byte round-trip properties.
+    ///
+    /// # Note
+    ///
+    /// Composes all three byte axioms into a single lemma that establishes
+    /// both encode-decode and decode-encode round-trips along with the i32
+    /// range constraint. Downstream consumers can invoke this single lemma
+    /// instead of needing to know the axiom dependency order.
+    pub proof fn lemma_byte_roundtrip_complete(pid: &ProcessIdentifier, bytes: [u8; 4])
+        ensures
+            // Encode-then-decode preserves value.
+            Self::spec_from_ne_bytes(pid.spec_to_ne_bytes()) == pid.spec_value(),
+            // Decoded value is always in i32 range.
+            i32::MIN as int <= Self::spec_from_ne_bytes(bytes) <= i32::MAX as int,
+            // Decode-then-encode preserves bytes.
+            ({
+                let v: int = Self::spec_from_ne_bytes(bytes);
+                let reconstructed: ProcessIdentifier = ProcessIdentifier { value: v as i32 };
+                reconstructed.spec_to_ne_bytes() == bytes
+            }),
+    {
+        Self::axiom_byte_roundtrip(pid);
+        Self::axiom_from_ne_bytes_in_range(bytes);
+        Self::axiom_decode_encode_roundtrip(bytes);
+    }
 }
 
 } // verus!
