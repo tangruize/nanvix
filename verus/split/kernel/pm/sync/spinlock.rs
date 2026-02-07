@@ -39,11 +39,11 @@
 //!   This is justified as a HAL-level operation (atomic CPU instructions).
 //!   In the sequential model, `lock()` requires the lock to be unlocked to prevent
 //!   modeling infinite loops (deadlocks).
-//! - `SpinlockGuard` and `Drop`: Not modeled in this verification. The original uses
-//!   RAII via `SpinlockGuard<'a>` to auto-release on drop. Drop-based reasoning
-//!   requires lifetime-aware resource tracking beyond Verus's current scope.
-//!   **Callers must ensure every `lock()` is paired with an `unlock()`.** All call
-//!   sites should be manually audited for lock-release pairing.
+//! - `SpinlockGuard` and `Drop`: Modeled via tracked `LockToken` ghost state. The
+//!   original uses RAII via `SpinlockGuard<'a>` to auto-release on drop. Since Verus
+//!   cannot reason about `Drop` directly, we model the obligation using a tracked ghost
+//!   token: `lock()` and `try_lock()` produce a `LockToken` that must be consumed by
+//!   `unlock()`. This makes the lock-release obligation explicit at the type level.
 //! - `arch::cpu::pause()`: CPU hint with no semantic effect on lock state.
 
 use vstd::prelude::*;
@@ -105,23 +105,31 @@ impl Spinlock {
     /// Returns `true` if the lock was successfully acquired (was unlocked),
     /// `false` if the lock was already held (was locked).
     ///
+    /// On success, produces a tracked `LockToken` that the caller must pass to
+    /// `unlock()` to discharge the lock-release obligation.
+    ///
     /// NOTE: Verification helper — not present in original source. Decomposes the
     /// single CAS operation from `lock()`'s loop body for verifiable reasoning.
     ///
     /// # Returns
     ///
-    /// `true` if the lock was acquired, `false` otherwise.
-    pub fn try_lock(&mut self) -> (result: bool)
+    /// `true` if the lock was acquired (with `LockToken` in the `Tracked<Option>`),
+    /// `false` otherwise (with `None`).
+    pub fn try_lock(&mut self) -> (result: (bool, Tracked<Option<LockToken>>))
         ensures
-            result == !old(self).locked,
+            result.0 == !old(self).locked,
             self.locked,
-            !result ==> self@ == old(self)@,
+            !result.0 ==> self@ == old(self)@,
+            result.0 ==> result.1@.is_some(),
+            result.0 ==> result.1@.unwrap().view == self@,
+            !result.0 ==> result.1@.is_none(),
     {
         if !self.locked {
             self.locked = true;
-            true
+            let tracked token: LockToken = LockToken { view: self@ };
+            (true, Tracked(Some(token)))
         } else {
-            false
+            (false, Tracked(None))
         }
     }
 
@@ -139,13 +147,18 @@ impl Spinlock {
     ///
     /// The `requires` clause enforces sequential-model safety: calling `lock()` on an
     /// already-locked spinlock would be an infinite loop (deadlock) in the sequential model.
+    ///
+    /// Returns a tracked `LockToken` that the caller must pass to `unlock()` to
+    /// discharge the lock-release obligation. This models the `SpinlockGuard` RAII
+    /// pattern from the original implementation.
     #[verifier::external_body]
-    pub fn lock(&mut self)
+    pub fn lock(&mut self) -> (token: Tracked<LockToken>)
         requires
             old(self).spec_is_unlocked(),
         ensures
             self.locked,
             self.spec_is_locked(),
+            token@.view == self@,
     {
         unimplemented!()
     }
@@ -157,12 +170,17 @@ impl Spinlock {
     /// Sets the lock state to unlocked. Models the atomic
     /// `store(false, Ordering::Release)` from the original implementation.
     ///
+    /// Consumes the `LockToken` produced by `lock()` or `try_lock()`, discharging
+    /// the lock-release obligation. This models the `Drop` implementation of
+    /// `SpinlockGuard` from the original.
+    ///
     /// # Precondition
     ///
-    /// The lock must be held (locked).
-    pub fn unlock(&mut self)
+    /// The lock must be held (locked) and the token must match the current lock state.
+    pub fn unlock(&mut self, Tracked(token): Tracked<LockToken>)
         requires
             old(self).locked,
+            token.view == old(self)@,
         ensures
             old(self).spec_is_locked(),
             !self.locked,

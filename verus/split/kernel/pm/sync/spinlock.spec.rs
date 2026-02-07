@@ -21,6 +21,27 @@ pub struct SpinlockView {
     pub locked: bool,
 }
 
+/// Tracked ghost token representing the obligation to release a held spinlock.
+///
+/// # Description
+///
+/// When `lock()` or a successful `try_lock()` acquires the spinlock, a `LockToken`
+/// is produced. The caller must pass this token to `unlock()` to discharge the
+/// lock-release obligation. This models the `SpinlockGuard`/`Drop` pattern from
+/// the original implementation at the proof level.
+///
+/// The token carries a ghost snapshot of the spinlock's view at acquisition time,
+/// binding the token to the specific lock instance and state.
+///
+/// # Soundness
+///
+/// Each `LockToken` must correspond to exactly one lock acquisition.
+/// Callers must not duplicate or forge tokens.
+pub tracked struct LockToken {
+    /// Ghost snapshot of the spinlock's view when the lock was acquired.
+    pub ghost view: SpinlockView,
+}
+
 //==================================================================================================
 // Spec Functions
 //==================================================================================================

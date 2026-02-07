@@ -109,35 +109,46 @@ impl Spinlock {
     /// # Description
     ///
     /// Proves a protocol property: a freshly created spinlock is always acquirable.
-    /// This connects `new()`'s postcondition to `try_lock()`'s behavior.
-    pub proof fn lemma_new_then_try_lock_succeeds()
-        ensures ({
-            let s: Spinlock = Spinlock { locked: false };
-            &&& s.spec_is_unlocked()
-            &&& !s.locked
-            // try_lock returns `!old(self).locked`, which is `!false == true`.
-            &&& !s.locked == true
-        }),
+    /// Any spinlock matching `new()`'s postcondition satisfies `try_lock()`'s success
+    /// condition.
+    pub proof fn lemma_new_then_try_lock_succeeds(s: &Spinlock)
+        requires
+            s@ == Spinlock::spec_new_view(),
+        ensures
+            s.spec_is_unlocked(),
+            !s.locked,
     {
     }
 
-    /// Lemma: Every `lock()` must be paired with an `unlock()`.
+    /// Lemma: A `LockToken` produced by a locked spinlock is valid for unlock.
     ///
     /// # Description
     ///
-    /// Documents the lock-release obligation as a proof-level property.
-    /// Since `SpinlockGuard`/`Drop` are not modeled, callers must manually
-    /// ensure every `lock()` is paired with a corresponding `unlock()`.
-    /// This lemma proves that the obligation is dischargeable: given a locked
-    /// spinlock, `unlock()` restores it to the unlocked state matching a new lock.
-    pub proof fn lemma_lock_release_obligation()
-        ensures ({
-            let locked_state: Spinlock = Spinlock { locked: true };
-            let released_state: Spinlock = Spinlock { locked: false };
-            &&& locked_state.spec_is_locked()
-            &&& released_state.spec_is_unlocked()
-            &&& released_state@ == Spinlock::spec_new_view()
-        }),
+    /// Proves the lock-release obligation is always dischargeable: a token whose
+    /// view matches a locked spinlock satisfies `unlock()`'s preconditions.
+    /// This connects the token-producing postconditions of `lock()`/`try_lock()`
+    /// to the token-consuming preconditions of `unlock()`.
+    pub proof fn lemma_lock_token_valid_for_unlock(s: &Spinlock, token: &LockToken)
+        requires
+            s.spec_is_locked(),
+            token.view == s@,
+        ensures
+            s.locked,
+            token.view.locked,
+    {
+    }
+
+    /// Lemma: The `LockToken` snapshot matches the locked state.
+    ///
+    /// # Description
+    ///
+    /// A token produced at lock-acquisition time always has `locked == true` in
+    /// its view, since the spinlock is locked at production time.
+    pub proof fn lemma_lock_token_snapshot_is_locked(token: &LockToken)
+        requires
+            token.view.locked,
+        ensures
+            token.view == (SpinlockView { locked: true }),
     {
     }
 }
