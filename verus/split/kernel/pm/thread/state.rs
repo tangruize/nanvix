@@ -10,7 +10,8 @@
 //!
 //! - Construction produces well-formed, drop-safe state with correct initial values.
 //! - Thread identifier (`id`) is immutable: all operations preserve it.
-//! - `take_kernel_stack` / `take_user_stack` follow Option::take semantics.
+//! - `take_kernel_stack` / `take_user_stack` follow Option::take semantics with
+//!   identity preservation: take returns the same abstract token that was stored.
 //! - `set_interrupt_reason` / `take_interrupt_reason` follow Option set/take semantics.
 //! - `store_thread_data_area` / `get_thread_data_area` round-trip correctly.
 //! - `store_mutex_guard` inserts an address into the ghost set (no double-lock).
@@ -28,7 +29,8 @@
 //! `UserStack`, `ContextInformation`, `FpuState`, `Condvar`, `MutexGuard`,
 //! `BTreeMap`, `Pin<Box<_>>`) from HAL, MM, and sync subsystems. For
 //! verification we abstract these away:
-//! - Stacks → `has_kernel_stack: bool`, `has_user_stack: bool` (presence flags).
+//! - Stacks → `kernel_stack: Option<int>`, `user_stack: Option<int>` (abstract
+//!   resource tokens with identity preservation via Option::take semantics).
 //! - Thread data area → `user_tda: Option<int>` (abstract address).
 //! - Interrupt reason → `interrupt_reason: Option<int>` (abstract reason tag).
 //! - Locked mutexes → `locked_mutex_count: usize` (runtime counter) paired with
@@ -83,10 +85,12 @@ verus! {
 pub struct ThreadState {
     /// Thread identifier (verified dependency).
     pub id: ThreadIdentifier,
-    /// Whether a kernel stack is present.
-    pub has_kernel_stack: bool,
-    /// Whether a user stack is present.
-    pub has_user_stack: bool,
+    /// Abstract kernel stack resource token (None = absent).
+    /// Models `Option<KernelStack>` with identity preservation.
+    pub kernel_stack: Option<int>,
+    /// Abstract user stack resource token (None = absent).
+    /// Models `Option<UserStack>` with identity preservation.
+    pub user_stack: Option<int>,
     /// Optional base address for the user-space thread data area.
     pub user_tda: Option<int>,
     /// Interrupt reason tag, if any.
@@ -108,8 +112,8 @@ impl ThreadState {
     /// # Parameters
     ///
     /// - `id`: Thread identifier.
-    /// - `has_kernel_stack`: Whether a kernel stack is provided.
-    /// - `has_user_stack`: Whether a user stack is provided.
+    /// - `kernel_stack`: Optional abstract kernel stack resource token.
+    /// - `user_stack`: Optional abstract user stack resource token.
     /// - `user_tda`: Optional base address for user-space thread data area.
     ///
     /// # Returns
@@ -118,14 +122,16 @@ impl ThreadState {
     /// and no locked mutexes.
     pub fn new(
         id: ThreadIdentifier,
-        has_kernel_stack: bool,
-        has_user_stack: bool,
+        kernel_stack: Option<int>,
+        user_stack: Option<int>,
         user_tda: Option<int>,
     ) -> (result: ThreadState)
         ensures
             result.spec_id() == id.spec_value(),
-            result.spec_has_kernel_stack() == has_kernel_stack,
-            result.spec_has_user_stack() == has_user_stack,
+            result.spec_kernel_stack() == kernel_stack,
+            result.spec_user_stack() == user_stack,
+            result.spec_has_kernel_stack() == kernel_stack.is_some(),
+            result.spec_has_user_stack() == user_stack.is_some(),
             result.spec_user_tda() == user_tda,
             !result.spec_is_interrupted(),
             result.spec_locked_mutex_count() == 0,
@@ -134,8 +140,8 @@ impl ThreadState {
     {
         ThreadState {
             id: id,
-            has_kernel_stack: has_kernel_stack,
-            has_user_stack: has_user_stack,
+            kernel_stack: kernel_stack,
+            user_stack: user_stack,
             user_tda: user_tda,
             interrupt_reason: None,
             locked_mutex_count: 0usize,
@@ -155,50 +161,56 @@ impl ThreadState {
         self.id
     }
 
-    /// Returns the kernel stack presence and clears it (Option::take).
+    /// Returns the kernel stack and clears it (Option::take semantics).
     ///
     /// # Returns
     ///
-    /// Whether a kernel stack was present before the take.
-    pub fn take_kernel_stack(&mut self) -> (result: bool)
+    /// The abstract kernel stack token that was stored, or None.
+    /// Identity preservation: returns the same token that was provided at
+    /// construction or last store.
+    pub fn take_kernel_stack(&mut self) -> (result: Option<int>)
         requires
             old(self).wf(),
         ensures
-            result == old(self).spec_has_kernel_stack(),
+            result == old(self).spec_kernel_stack(),
+            self.spec_kernel_stack().is_none(),
             !self.spec_has_kernel_stack(),
             self.spec_id() == old(self).spec_id(),
-            self.spec_has_user_stack() == old(self).spec_has_user_stack(),
+            self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
             self.wf(),
     {
-        let had: bool = self.has_kernel_stack;
-        self.has_kernel_stack = false;
-        had
+        let stack: Option<int> = self.kernel_stack;
+        self.kernel_stack = None;
+        stack
     }
 
-    /// Returns the user stack presence and clears it (Option::take).
+    /// Returns the user stack and clears it (Option::take semantics).
     ///
     /// # Returns
     ///
-    /// Whether a user stack was present before the take.
-    pub fn take_user_stack(&mut self) -> (result: bool)
+    /// The abstract user stack token that was stored, or None.
+    /// Identity preservation: returns the same token that was provided at
+    /// construction or last store.
+    pub fn take_user_stack(&mut self) -> (result: Option<int>)
         requires
             old(self).wf(),
         ensures
-            result == old(self).spec_has_user_stack(),
+            result == old(self).spec_user_stack(),
+            self.spec_user_stack().is_none(),
             !self.spec_has_user_stack(),
             self.spec_id() == old(self).spec_id(),
-            self.spec_has_kernel_stack() == old(self).spec_has_kernel_stack(),
+            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
             self.wf(),
     {
-        let had: bool = self.has_user_stack;
-        self.has_user_stack = false;
-        had
+        let stack: Option<int> = self.user_stack;
+        self.user_stack = None;
+        stack
     }
 
     /// Sets the interrupt reason for the thread.
@@ -213,8 +225,8 @@ impl ThreadState {
             self.spec_is_interrupted(),
             self.spec_interrupt_reason() == Some(reason),
             self.spec_id() == old(self).spec_id(),
-            self.spec_has_kernel_stack() == old(self).spec_has_kernel_stack(),
-            self.spec_has_user_stack() == old(self).spec_has_user_stack(),
+            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
+            self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
             self.wf(),
@@ -235,8 +247,8 @@ impl ThreadState {
             !self.spec_is_interrupted(),
             self.spec_interrupt_reason() == None::<int>,
             self.spec_id() == old(self).spec_id(),
-            self.spec_has_kernel_stack() == old(self).spec_has_kernel_stack(),
-            self.spec_has_user_stack() == old(self).spec_has_user_stack(),
+            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
+            self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
             self.wf(),
@@ -268,8 +280,8 @@ impl ThreadState {
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
             !self.spec_drop_safe(),
             self.spec_id() == old(self).spec_id(),
-            self.spec_has_kernel_stack() == old(self).spec_has_kernel_stack(),
-            self.spec_has_user_stack() == old(self).spec_has_user_stack(),
+            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
+            self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.wf(),
@@ -300,8 +312,8 @@ impl ThreadState {
             !self.spec_has_mutex(address@),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
             self.spec_id() == old(self).spec_id(),
-            self.spec_has_kernel_stack() == old(self).spec_has_kernel_stack(),
-            self.spec_has_user_stack() == old(self).spec_has_user_stack(),
+            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
+            self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_user_tda() == old(self).spec_user_tda(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.wf(),
@@ -321,8 +333,8 @@ impl ThreadState {
         ensures
             self.spec_user_tda() == user_tda,
             self.spec_id() == old(self).spec_id(),
-            self.spec_has_kernel_stack() == old(self).spec_has_kernel_stack(),
-            self.spec_has_user_stack() == old(self).spec_has_user_stack(),
+            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
+            self.spec_user_stack() == old(self).spec_user_stack(),
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
             self.wf(),

@@ -8,7 +8,8 @@
 //
 // ThreadState manages per-thread state in the kernel. For verification we model:
 // - `id` as a ThreadIdentifier (verified dependency).
-// - `kernel_stack` and `user_stack` as Option<bool> presence flags.
+// - `kernel_stack` and `user_stack` as `Option<int>` (abstract resource tokens
+//   with identity preservation via Option::take semantics).
 // - `user_tda` as Option<int> (abstract virtual address).
 // - `interrupt_reason` as Option<int> (abstract reason tag).
 // - `locked_mutexes` as a ghost `Set<int>` (abstract mutex address set) with a
@@ -36,10 +37,10 @@ verus! {
 pub struct ThreadStateView {
     /// Thread identifier value.
     pub id: int,
-    /// Whether a kernel stack is present.
-    pub has_kernel_stack: bool,
-    /// Whether a user stack is present.
-    pub has_user_stack: bool,
+    /// Abstract kernel stack resource token.
+    pub kernel_stack: Option<int>,
+    /// Abstract user stack resource token.
+    pub user_stack: Option<int>,
     /// Optional user thread data area address.
     pub user_tda: Option<int>,
     /// Optional interrupt reason tag.
@@ -60,14 +61,24 @@ impl ThreadState {
         self.id.spec_value()
     }
 
+    /// Spec function: returns the abstract kernel stack token.
+    pub open spec fn spec_kernel_stack(&self) -> Option<int> {
+        self.kernel_stack
+    }
+
     /// Spec function: returns whether a kernel stack is present.
     pub open spec fn spec_has_kernel_stack(&self) -> bool {
-        self.has_kernel_stack
+        self.kernel_stack.is_some()
+    }
+
+    /// Spec function: returns the abstract user stack token.
+    pub open spec fn spec_user_stack(&self) -> Option<int> {
+        self.user_stack
     }
 
     /// Spec function: returns whether a user stack is present.
     pub open spec fn spec_has_user_stack(&self) -> bool {
-        self.has_user_stack
+        self.user_stack.is_some()
     }
 
     /// Spec function: returns the user thread data area.
@@ -116,7 +127,7 @@ impl ThreadState {
 
     /// Spec function: checks if the thread has resources (stacks) to release.
     pub open spec fn spec_has_resources(&self) -> bool {
-        self.has_kernel_stack || self.has_user_stack
+        self.kernel_stack.is_some() || self.user_stack.is_some()
     }
 }
 
@@ -130,8 +141,8 @@ impl View for ThreadState {
     open spec fn view(&self) -> ThreadStateView {
         ThreadStateView {
             id: self.id.spec_value(),
-            has_kernel_stack: self.has_kernel_stack,
-            has_user_stack: self.has_user_stack,
+            kernel_stack: self.kernel_stack,
+            user_stack: self.user_stack,
             user_tda: self.user_tda,
             interrupt_reason: self.interrupt_reason,
             locked_mutex_count: self.locked_mutex_count as nat,

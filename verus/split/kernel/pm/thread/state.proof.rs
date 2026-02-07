@@ -27,16 +27,16 @@ impl ThreadState {
     /// Lemma: A newly constructed ThreadState is well-formed.
     pub proof fn lemma_new_is_wf(
         id: ThreadIdentifier,
-        has_kernel_stack: bool,
-        has_user_stack: bool,
+        kernel_stack: Option<int>,
+        user_stack: Option<int>,
         user_tda: Option<int>,
     )
         ensures
             ({
                 let s: ThreadState = ThreadState {
                     id: id,
-                    has_kernel_stack: has_kernel_stack,
-                    has_user_stack: has_user_stack,
+                    kernel_stack: kernel_stack,
+                    user_stack: user_stack,
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
@@ -50,16 +50,16 @@ impl ThreadState {
     /// Lemma: A newly constructed ThreadState is drop-safe (no locked mutexes).
     pub proof fn lemma_new_is_drop_safe(
         id: ThreadIdentifier,
-        has_kernel_stack: bool,
-        has_user_stack: bool,
+        kernel_stack: Option<int>,
+        user_stack: Option<int>,
         user_tda: Option<int>,
     )
         ensures
             ({
                 let s: ThreadState = ThreadState {
                     id: id,
-                    has_kernel_stack: has_kernel_stack,
-                    has_user_stack: has_user_stack,
+                    kernel_stack: kernel_stack,
+                    user_stack: user_stack,
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
@@ -73,16 +73,16 @@ impl ThreadState {
     /// Lemma: A newly constructed ThreadState has no interrupt reason.
     pub proof fn lemma_new_not_interrupted(
         id: ThreadIdentifier,
-        has_kernel_stack: bool,
-        has_user_stack: bool,
+        kernel_stack: Option<int>,
+        user_stack: Option<int>,
         user_tda: Option<int>,
     )
         ensures
             ({
                 let s: ThreadState = ThreadState {
                     id: id,
-                    has_kernel_stack: has_kernel_stack,
-                    has_user_stack: has_user_stack,
+                    kernel_stack: kernel_stack,
+                    user_stack: user_stack,
                     user_tda: user_tda,
                     interrupt_reason: None,
                     locked_mutex_count: 0,
@@ -102,7 +102,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    has_kernel_stack: false,
+                    kernel_stack: None,
                     ..*self
                 };
                 post.spec_id() == self.spec_id()
@@ -115,7 +115,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    has_user_stack: false,
+                    user_stack: None,
                     ..*self
                 };
                 post.spec_id() == self.spec_id()
@@ -171,7 +171,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    has_kernel_stack: false,
+                    kernel_stack: None,
                     ..*self
                 };
                 !post.spec_has_kernel_stack()
@@ -184,7 +184,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    has_user_stack: false,
+                    user_stack: None,
                     ..*self
                 };
                 !post.spec_has_user_stack()
@@ -330,7 +330,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    has_kernel_stack: false,
+                    kernel_stack: None,
                     ..*self
                 };
                 post.wf()
@@ -345,7 +345,7 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    has_user_stack: false,
+                    user_stack: None,
                     ..*self
                 };
                 post.wf()
@@ -459,12 +459,70 @@ impl ThreadState {
         ensures
             ({
                 let post: ThreadState = ThreadState {
-                    has_kernel_stack: false,
-                    has_user_stack: false,
+                    kernel_stack: None,
+                    user_stack: None,
                     ..*self
                 };
                 !post.spec_has_resources()
             }),
+    {
+    }
+
+    //==============================================================================================
+    // Stack Identity Lemmas
+    //==============================================================================================
+
+    /// Lemma: take_kernel_stack returns exactly what was stored.
+    pub proof fn lemma_take_kernel_stack_identity(&self, ks: int)
+        requires
+            self.spec_kernel_stack() == Some(ks),
+        ensures
+            ({
+                let post: ThreadState = ThreadState {
+                    kernel_stack: None,
+                    ..*self
+                };
+                // The taken value is the original.
+                self.spec_kernel_stack() == Some(ks)
+                // After take, it is gone.
+                && post.spec_kernel_stack().is_none()
+            }),
+    {
+    }
+
+    /// Lemma: take_user_stack returns exactly what was stored.
+    pub proof fn lemma_take_user_stack_identity(&self, us: int)
+        requires
+            self.spec_user_stack() == Some(us),
+        ensures
+            ({
+                let post: ThreadState = ThreadState {
+                    user_stack: None,
+                    ..*self
+                };
+                // The taken value is the original.
+                self.spec_user_stack() == Some(us)
+                // After take, it is gone.
+                && post.spec_user_stack().is_none()
+            }),
+    {
+    }
+
+    //==============================================================================================
+    // Drop Safety Lemmas
+    //==============================================================================================
+
+    /// Lemma: A well-formed, drop-safe state has an empty mutex set.
+    /// This connects `spec_drop_safe()` to the underlying set emptiness,
+    /// formalizing the verification-side encoding of the original
+    /// `Drop::drop()` check `self.locked_mutexes.is_empty()`.
+    pub proof fn lemma_drop_safe_means_no_mutexes(&self)
+        requires
+            self.wf(),
+            self.spec_drop_safe(),
+        ensures
+            self.spec_locked_mutex_count() == 0,
+            forall|addr: int| !self.spec_has_mutex(addr),
     {
     }
 
@@ -476,8 +534,8 @@ impl ThreadState {
     pub proof fn lemma_view_equality(a: &ThreadState, b: &ThreadState)
         requires
             a.id.spec_value() == b.id.spec_value(),
-            a.has_kernel_stack == b.has_kernel_stack,
-            a.has_user_stack == b.has_user_stack,
+            a.kernel_stack == b.kernel_stack,
+            a.user_stack == b.user_stack,
             a.user_tda == b.user_tda,
             a.interrupt_reason == b.interrupt_reason,
             a.locked_mutex_count == b.locked_mutex_count,
