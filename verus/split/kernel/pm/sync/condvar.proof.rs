@@ -609,25 +609,19 @@ impl Condvar {
         ensures ({
             let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
             // (1) The entry is absent from the result.
-            forall|k: int|
+            &&& forall|k: int|
                 #![trigger result[k]]
                 0 <= k < result.len() as int
                 ==> result[k] != (pid_val, tid_val)
-        }),
-        ensures ({
-            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
             // (2) All non-matching entries from the original are preserved.
-            forall|k: int|
+            &&& forall|k: int|
                 #![trigger result[k]]
                 0 <= k < result.len() as int
                 ==> (exists|j: int|
                     #![trigger s[j]]
                     0 <= j < s.len() as int && s[j] == result[k])
-        }),
-        ensures ({
-            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
             // (3) The result has exactly one fewer element.
-            result.len() == s.len() - 1
+            &&& result.len() == s.len() - 1
         }),
     {
         Condvar::lemma_remove_entry_absent(s, idx);
