@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 10:17:45 CST 2026
+Module: kernel::pm::sys::pid
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sys::pid
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: cannot call function `lib::kernel::pm::sys::pid::ProcessIdentifier::from_ne_bytes` with mode exec
+  --> kernel/pm/sys/pid.proof.rs:85:13
+   |
+85 |             ProcessIdentifier::from_ne_bytes(pid.to_ne_bytes()).spec_value() == pid.spec_value(),
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sys::pid (verified:0, errors:0)
