@@ -127,7 +127,11 @@ impl Semaphore {
     /// # Returns
     ///
     /// The new semaphore view with value decremented and waiters decremented.
-    pub open spec fn spec_wake(view: SemaphoreView) -> SemaphoreView {
+    pub open spec fn spec_wake(view: SemaphoreView) -> SemaphoreView
+        recommends
+            view.waiters > 0,
+            view.value > 0,
+    {
         SemaphoreView { value: (view.value - 1) as nat, waiters: (view.waiters - 1) as nat }
     }
 
@@ -139,6 +143,17 @@ impl Semaphore {
     /// if a thread is waiting (waiters > 0) and `notify_first()` is called
     /// after `up()` increments the value, exactly one waiter is woken and
     /// successfully acquires the semaphore.
+    ///
+    /// # Limitation
+    ///
+    /// This spec defines the semaphore's *expectation* of condvar behavior.
+    /// It is not imported by the condvar module (`kernel::pm::sync::condvar`)
+    /// and changes to the condvar implementation will not trigger a verification
+    /// failure here. Cross-module spec composition requires a shared interface
+    /// contract that both modules import, which is not yet implemented.
+    /// The condvar module's spec functions are defined in
+    /// `verus/split/kernel/pm/sync/condvar.spec.rs` (see `spec_notify_all_result`
+    /// and related functions).
     pub open spec fn spec_condvar_wake_after_notify(before_up: SemaphoreView, after_up: SemaphoreView) -> bool {
         &&& after_up.value == before_up.value + 1
         &&& after_up.waiters == before_up.waiters
@@ -146,6 +161,35 @@ impl Semaphore {
             let after_wake: SemaphoreView = Self::spec_wake(after_up);
             &&& after_wake.value == before_up.value
             &&& after_wake.waiters == (before_up.waiters - 1) as nat
+        }
+    }
+
+    /// Spec function: result of applying n up-wake cycles.
+    ///
+    /// # Description
+    ///
+    /// Recursively models n iterations of the up-then-wake cycle: each
+    /// iteration increments `value` by 1 (up), then applies `spec_wake`
+    /// (woken thread decrements value and waiters). Used to reason
+    /// inductively about draining all waiters.
+    ///
+    /// # Parameters
+    ///
+    /// - `view`: The current semaphore view.
+    /// - `n`: The number of up-wake cycles to apply.
+    ///
+    /// # Returns
+    ///
+    /// The semaphore view after n up-wake cycles.
+    pub open spec fn spec_after_n_up_wake_cycles(view: SemaphoreView, n: nat) -> SemaphoreView
+        decreases n,
+    {
+        if n == 0 {
+            view
+        } else {
+            let after_up: SemaphoreView = SemaphoreView { value: view.value + 1, waiters: view.waiters };
+            let after_wake: SemaphoreView = Self::spec_wake(after_up);
+            Self::spec_after_n_up_wake_cycles(after_wake, (n - 1) as nat)
         }
     }
 }

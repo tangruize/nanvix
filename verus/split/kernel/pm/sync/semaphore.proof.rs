@@ -109,12 +109,12 @@ impl Semaphore {
     }
 
     //==============================================================================================
-    // Protocol Properties -- Function Postcondition Chaining
+    // Protocol Properties -- Arithmetic Lemmas
     //==============================================================================================
     //
-    // The following lemmas reason about sequences of operations by chaining
-    // the ensures clauses of exec functions, rather than manually constructing
-    // SemaphoreView structs. This proves properties over actual state transitions.
+    // The following lemmas reason about value arithmetic matching the structure
+    // of exec function postconditions. They operate on nat values and
+    // SemaphoreView struct literals, serving as regression guards.
 
     /// Lemma: down-then-up round-trip restores the original view.
     ///
@@ -367,24 +367,43 @@ impl Semaphore {
     {
     }
 
-    /// Lemma: Blocking thread eventually acquires after `up()`.
+    /// Lemma: All waiters are eventually served after w up-wake cycles.
     ///
     /// # Description
     ///
-    /// If a semaphore has w waiters and value == 0, then after w calls to
-    /// `up()` (each followed by a wake), all waiters have acquired and
-    /// the semaphore returns to value == 0 with 0 waiters.
+    /// Starting from value == 0 with w waiters, after w up-wake cycles
+    /// (each cycle: up increments value to 1, wake decrements value back
+    /// to 0 and decrements waiters by 1), all waiters have acquired and
+    /// the semaphore reaches (value=0, waiters=0).
+    ///
+    /// Proved by induction on w, chaining `lemma_up_wake_cycle` at each step.
     pub proof fn lemma_all_waiters_eventually_served(w: nat)
         requires
             w > 0,
         ensures ({
-            // After w up-wake cycles starting from (value=0, waiters=w):
-            // each cycle decrements waiters by 1, value stays 0.
-            let final_view: SemaphoreView = SemaphoreView { value: 0, waiters: 0 };
+            let initial: SemaphoreView = SemaphoreView { value: 0, waiters: w };
+            let final_view: SemaphoreView = Semaphore::spec_after_n_up_wake_cycles(initial, w);
+            &&& Semaphore::spec_wf(initial)
+            &&& final_view == (SemaphoreView { value: 0, waiters: 0 })
             &&& Semaphore::spec_wf(final_view)
-            &&& final_view.waiters == 0
         }),
+        decreases w,
     {
+        let initial: SemaphoreView = SemaphoreView { value: 0, waiters: w };
+        assert(Semaphore::spec_wf(initial));
+
+        // Apply one up-wake cycle via lemma_up_wake_cycle.
+        Self::lemma_up_wake_cycle(initial);
+        let after_up: SemaphoreView = SemaphoreView { value: 1, waiters: w };
+        let after_one_cycle: SemaphoreView = Semaphore::spec_wake(after_up);
+        assert(after_one_cycle == (SemaphoreView { value: 0, waiters: (w - 1) as nat }));
+        assert(Semaphore::spec_wf(after_one_cycle));
+
+        if w > 1 {
+            // Inductive step: apply lemma to remaining w-1 waiters.
+            Self::lemma_all_waiters_eventually_served((w - 1) as nat);
+        }
+        // Base case: w == 1 => after_one_cycle has waiters == 0, done.
     }
 
     /// Lemma: Producer-consumer protocol state transitions.
