@@ -39,10 +39,24 @@ pub struct MutexView {
 /// The token carries a ghost snapshot of the mutex's view at acquisition time,
 /// binding the token to the specific mutex instance (via the `id` field in the view)
 /// and state. A token produced by mutex instance A cannot be used to unlock instance B,
-/// because `unlock()` requires `token.view == old(self)@` which includes identity.
+/// because `unlock()` requires `token.spec_view() == old(self)@` which includes identity.
+///
+/// The `view` field is private to prevent external code from constructing forged
+/// tokens. External callers read the token's view via `spec_view()`.
 pub tracked struct MutexToken {
     /// Ghost snapshot of the mutex's view when the lock was acquired.
-    pub ghost view: MutexView,
+    ghost view: MutexView,
+}
+
+//==================================================================================================
+// MutexToken Spec Functions
+//==================================================================================================
+
+impl MutexToken {
+    /// Spec function: returns the ghost snapshot of the mutex's view at lock time.
+    pub open spec fn spec_view(&self) -> MutexView {
+        self.view
+    }
 }
 
 //==================================================================================================

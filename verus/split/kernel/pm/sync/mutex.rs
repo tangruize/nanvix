@@ -107,12 +107,10 @@
 //! - **T2: Arc lifetime management.** The original `reference_count()` returns
 //!   `Arc::strong_count()`. The verified model does not model reference counting.
 //!   Correct lifetime management is assumed.
-//! - **T3: Token construction uniqueness.** The `MutexToken` tracked struct has
-//!   `pub ghost view`, so external code could theoretically construct a token
-//!   without calling `lock()`/`try_lock()`. The mutual exclusion guarantee relies
-//!   on the assumption that tokens are created solely via the module's API.
-//!   In a future iteration, a singleton token pattern or Verus resource algebra
-//!   could enforce this at the type level.
+//! - **T3: Token construction integrity.** The `MutexToken` tracked struct has
+//!   a private `view` field, so external code cannot construct forged tokens.
+//!   Token construction is restricted to `lock()`/`try_lock()` within this module.
+//!   External callers read the token's view via the `spec_view()` getter.
 
 use vstd::prelude::*;
 
@@ -210,7 +208,7 @@ impl Mutex {
             !result.0 ==> self@ == old(self)@,
             result.0 ==> self@.token_issued,
             result.0 ==> result.1@.is_some(),
-            result.0 ==> result.1@.unwrap().view == self@,
+            result.0 ==> result.1@.unwrap().spec_view() == self@,
             !result.0 ==> result.1@.is_none(),
             !result.0 ==> self@.token_issued == old(self)@.token_issued,
             self.wf(),
@@ -248,7 +246,7 @@ impl Mutex {
             self.spec_is_locked(),
             self@.id == old(self)@.id,
             self@.token_issued,
-            token@.view == self@,
+            token@.spec_view() == self@,
             self.wf(),
     {
         let (_success, Tracked(opt_token)) = self.try_lock();
@@ -277,7 +275,7 @@ impl Mutex {
             old(self).locked,
             old(self).wf(),
             old(self).token_issued(),
-            token.view == old(self)@,
+            token.spec_view() == old(self)@,
         ensures
             old(self).spec_is_locked(),
             !self.locked,
