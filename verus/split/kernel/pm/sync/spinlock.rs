@@ -95,20 +95,21 @@ verus! {
 ///
 /// # Representation
 ///
-/// The fields are `pub(crate)` for Verus spec reasoning within the crate.
-/// External code should use the provided methods and `View` trait rather than
-/// direct field access. The ghost `id` field provides instance identity for
-/// token binding (erased at runtime).
+/// The fields are `pub` as required by Verus for `pub open spec fn` access.
+/// Verus mandates that field expressions in `pub open spec fn` are well-formed
+/// everywhere, which requires `pub` visibility. Verified code should use the
+/// provided methods and `View` trait rather than direct field access. The ghost
+/// `id` field provides instance identity for token binding (erased at runtime).
 pub struct Spinlock {
     /// Lock state: `true` means locked, `false` means unlocked.
-    pub(crate) locked: bool,
+    pub locked: bool,
     /// Ghost identity for distinguishing lock instances.
     /// Callers must provide a unique `id` per instance at construction time.
     /// Wrapped in `Ghost` for zero-cost erasure at runtime.
-    pub(crate) id: Ghost<nat>,
+    pub id: Ghost<nat>,
     /// Ghost tracking of whether a `LockToken` is currently outstanding.
     /// Set to `true` on lock acquisition, `false` on unlock.
-    pub(crate) token_issued: Ghost<bool>,
+    pub token_issued: Ghost<bool>,
 }
 
 //==================================================================================================
