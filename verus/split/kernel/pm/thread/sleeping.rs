@@ -34,6 +34,9 @@
 //! ## Trust Boundary
 //!
 //! - `join_cond()` is omitted: returns opaque `Condvar` (sync boundary).
+//!   TODO: Add `#[verifier::external_body]` stub if Verus gains opaque token
+//!   types, to at least track condvar identity preservation across the
+//!   sleeping state. Currently, `Condvar` cannot be meaningfully modeled.
 //! - `thread_state_mut()` is `#[verifier::external]`: returns `&mut ThreadState`
 //!   which Verus cannot express. See documented trust obligations.
 //! - `ReadyThread` and `InterruptedThread` are boundary models of sibling modules.
@@ -82,6 +85,8 @@ pub struct SleepingThread {
 /// **Cross-module dependency:** When `ReadyThread` is verified independently,
 /// the postconditions of this boundary model's `from_state` must be confirmed
 /// as implied by the real `ReadyThread::from_state` spec.
+/// TODO (cross-module): Validate boundary model postconditions against
+/// real `ready.rs` module once it is independently verified.
 ///
 /// **Out of scope:** The real `ReadyThread` also holds an `admission_time`
 /// field set to `clock::now()` in `from_state`. This is a scheduling
@@ -99,6 +104,8 @@ pub struct ReadyThread {
 /// **Cross-module dependency:** When `InterruptedThread` is verified independently,
 /// the postconditions of this boundary model's `from_state` must be confirmed
 /// as implied by the real `InterruptedThread::from_state` spec.
+/// TODO (cross-module): Validate boundary model postconditions against
+/// real `interrupted.rs` module once it is independently verified.
 pub struct InterruptedThread {
     /// The underlying thread state.
     pub state: ThreadState,
@@ -205,6 +212,7 @@ impl SleepingThread {
     pub fn from_state(state: ThreadState, alarm: Option<int>) -> (result: SleepingThread)
         requires
             state.wf(),
+            alarm.is_some() ==> alarm.unwrap() >= 0,
         ensures
             result.spec_id() == state.spec_id(),
             result.spec_alarm() == alarm,
@@ -363,9 +371,12 @@ impl SleepingThread {
     /// - `ensures old(self).wf() ==> self.wf()` (well-formedness preserved).
     /// - `ensures old(self).spec_alarm() == self.spec_alarm()` (alarm preserved).
     ///
-    /// Once Verus supports `&mut T` returns, replace this with a verified
-    /// function carrying the above postconditions, or refactor callers to
-    /// use specific setter methods with per-field postconditions.
+    /// **Partial mitigation:** Callers that only need to set the thread data area
+    /// should use `set_thread_data_area()` which IS verified.
+    ///
+    /// TODO: Once Verus supports `&mut T` returns, replace this with a verified
+    /// function carrying the above postconditions, or refactor remaining callers
+    /// to use specific setter methods with per-field postconditions.
     #[verifier::external]
     pub fn thread_state_mut(&mut self) -> &mut ThreadState {
         &mut self.state

@@ -30,6 +30,7 @@ impl SleepingThread {
     pub proof fn lemma_from_state_is_wf(state: ThreadState, alarm: Option<int>)
         requires
             state.wf(),
+            alarm.is_some() ==> alarm.unwrap() >= 0,
         ensures
             ({
                 let s: SleepingThread = SleepingThread { state: state, alarm: alarm };

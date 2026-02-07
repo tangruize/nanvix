@@ -123,9 +123,11 @@ impl SleepingThread {
     }
 
     /// Spec function: well-formedness predicate.
-    /// A SleepingThread is well-formed when the underlying state is well-formed.
+    /// A SleepingThread is well-formed when the underlying state is well-formed
+    /// and the alarm (if present) is non-negative.
     pub open spec fn wf(&self) -> bool {
         self.state.wf()
+        && (self.alarm.is_some() ==> self.alarm.unwrap() >= 0)
     }
 
     /// Spec function: checks if a reason tag is valid (one of the two variants).
