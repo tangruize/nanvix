@@ -45,7 +45,11 @@ impl ErrorCode {
 
 impl Error {
     /// Creates a new error.
-    pub fn new(code: ErrorCode, reason: &'static str) -> Self {
+    pub fn new(code: ErrorCode, reason: &'static str) -> (result: Self)
+        ensures
+            result.code == code,
+            result.reason == reason,
+    {
         Self { code, reason }
     }
 
