@@ -14,7 +14,7 @@
 //! - `set_interrupt_reason` / `take_interrupt_reason` follow Option set/take semantics.
 //! - `store_thread_data_area` / `get_thread_data_area` round-trip correctly.
 //! - `store_mutex_guard` inserts an address into the ghost set (no double-lock).
-//! - `take_mutex_guard` removes an address from the ghost set (address must be held).
+//! - `take_mutex_guard` removes an address from the ghost set (precondition: address held).
 //! - Well-formedness (`wf()`): the runtime counter equals the ghost set size, and
 //!   the ghost set is finite. Preserved by all operations.
 //! - Drop safety (`spec_drop_safe()`): no locked mutexes remain at destruction.
@@ -284,22 +284,19 @@ impl ThreadState {
     ///
     /// - `address`: Ghost mutex address being released.
     ///
-    /// # Returns
-    ///
-    /// Always returns true (the precondition guarantees the address is held).
-    ///
     /// # Note
     ///
     /// The original uses `BTreeMap::remove(address)` which returns
     /// `Option<MutexGuard>`. The precondition `spec_has_mutex(address@)`
-    /// formalizes the kernel invariant that a thread only releases mutexes
-    /// it holds.
-    pub fn take_mutex_guard(&mut self, address: Ghost<int>) -> (result: bool)
+    /// converts the runtime None/Some check into a proof obligation,
+    /// which is strictly stronger: callers must prove at verification time
+    /// that they hold the mutex. This eliminates the address-not-found
+    /// case by construction.
+    pub fn take_mutex_guard(&mut self, address: Ghost<int>)
         requires
             old(self).wf(),
             old(self).spec_has_mutex(address@),
         ensures
-            result == true,
             !self.spec_has_mutex(address@),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
             self.spec_id() == old(self).spec_id(),
@@ -311,7 +308,6 @@ impl ThreadState {
     {
         self.locked_mutex_count = self.locked_mutex_count - 1;
         self.locked_mutex_set = Ghost(self.locked_mutex_set@.remove(address@));
-        true
     }
 
     /// Sets the base address for the user-space thread data area.

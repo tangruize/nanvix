@@ -102,10 +102,11 @@ impl ThreadState {
 
     /// Spec function: checks if the thread holds no locked mutexes.
     ///
-    /// This is the key safety property for drop: a thread must release
-    /// all mutexes before its state is destroyed.
+    /// Defined directly on the ghost set so the predicate is meaningful
+    /// even without `wf()`. Under `wf()`, this is equivalent to
+    /// `self.locked_mutex_count == 0`.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.locked_mutex_count as nat == 0
+        self.locked_mutex_set@.finite() && self.locked_mutex_set@.len() == 0
     }
 
     /// Spec function: checks if the thread has been interrupted.
