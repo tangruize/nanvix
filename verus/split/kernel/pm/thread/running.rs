@@ -398,6 +398,13 @@ impl RunningThread {
     /// artifact that does not exist in the original `BTreeMap::insert`. It
     /// is needed to prevent arithmetic overflow in the ghost counter. In
     /// practice this is unreachable (would require 2^64 held mutexes).
+    ///
+    /// The precondition `!spec_has_mutex(address@)` (trust assumption T1:
+    /// no double-lock) is strictly stronger than the original, which
+    /// silently overwrites via `BTreeMap::insert`. This correctly models
+    /// non-recursive mutexes where double-locking causes deadlock. If
+    /// recursive or reentrant mutex support were added, this precondition
+    /// would need to be relaxed.
     pub fn put_mutex_guard(&mut self, address: Ghost<int>)
         requires
             old(self).wf(),
