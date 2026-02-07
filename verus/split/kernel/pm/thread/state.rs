@@ -161,6 +161,8 @@ impl ThreadState {
     ///
     /// Whether a kernel stack was present before the take.
     pub fn take_kernel_stack(&mut self) -> (result: bool)
+        requires
+            old(self).wf(),
         ensures
             result == old(self).spec_has_kernel_stack(),
             !self.spec_has_kernel_stack(),
@@ -182,6 +184,8 @@ impl ThreadState {
     ///
     /// Whether a user stack was present before the take.
     pub fn take_user_stack(&mut self) -> (result: bool)
+        requires
+            old(self).wf(),
         ensures
             result == old(self).spec_has_user_stack(),
             !self.spec_has_user_stack(),
@@ -203,6 +207,8 @@ impl ThreadState {
     ///
     /// - `reason`: The interrupt reason tag to set.
     pub fn set_interrupt_reason(&mut self, reason: int)
+        requires
+            old(self).wf(),
         ensures
             self.spec_is_interrupted(),
             self.spec_interrupt_reason() == Some(reason),
@@ -222,6 +228,8 @@ impl ThreadState {
     ///
     /// The interrupt reason if one was set, or None.
     pub fn take_interrupt_reason(&mut self) -> (result: Option<int>)
+        requires
+            old(self).wf(),
         ensures
             result == old(self).spec_interrupt_reason(),
             !self.spec_is_interrupted(),
@@ -312,6 +320,8 @@ impl ThreadState {
     ///
     /// - `user_tda`: Optional thread data area address to set.
     pub fn store_thread_data_area(&mut self, user_tda: Option<int>)
+        requires
+            old(self).wf(),
         ensures
             self.spec_user_tda() == user_tda,
             self.spec_id() == old(self).spec_id(),
