@@ -76,7 +76,7 @@ pub struct ThreadState {
     /// Interrupt reason tag, if any.
     pub interrupt_reason: Option<int>,
     /// Number of locked mutexes held by this thread.
-    pub locked_mutex_count: nat,
+    pub locked_mutex_count: usize,
 }
 
 //==================================================================================================
@@ -119,7 +119,7 @@ impl ThreadState {
             has_user_stack: has_user_stack,
             user_tda: user_tda,
             interrupt_reason: None,
-            locked_mutex_count: 0,
+            locked_mutex_count: 0usize,
         }
     }
 
@@ -225,6 +225,8 @@ impl ThreadState {
     /// The original uses `BTreeMap::insert`. We model this as a count
     /// increment, abstracting away the key-value mapping.
     pub fn store_mutex_guard(&mut self)
+        requires
+            old(self).locked_mutex_count < usize::MAX,
         ensures
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
             !self.spec_drop_safe(),
@@ -263,7 +265,7 @@ impl ThreadState {
             self.wf(),
     {
         if self.locked_mutex_count > 0 {
-            self.locked_mutex_count = (self.locked_mutex_count - 1) as nat;
+            self.locked_mutex_count = self.locked_mutex_count - 1;
             true
         } else {
             false

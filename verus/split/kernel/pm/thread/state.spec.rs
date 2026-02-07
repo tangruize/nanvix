@@ -77,7 +77,7 @@ impl ThreadState {
 
     /// Spec function: returns the number of locked mutexes.
     pub open spec fn spec_locked_mutex_count(&self) -> nat {
-        self.locked_mutex_count
+        self.locked_mutex_count as nat
     }
 
     /// Spec function: well-formedness predicate.
@@ -94,7 +94,7 @@ impl ThreadState {
     /// This is the key safety property for drop: a thread must release
     /// all mutexes before its state is destroyed.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.locked_mutex_count == 0
+        self.locked_mutex_count as nat == 0
     }
 
     /// Spec function: checks if the thread has been interrupted.
@@ -122,7 +122,7 @@ impl View for ThreadState {
             has_user_stack: self.has_user_stack,
             user_tda: self.user_tda,
             interrupt_reason: self.interrupt_reason,
-            locked_mutex_count: self.locked_mutex_count,
+            locked_mutex_count: self.locked_mutex_count as nat,
         }
     }
 }
