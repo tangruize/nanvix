@@ -146,7 +146,7 @@ impl Fence {
             self.spec_is_satisfied(),
         ensures
             self.spec_is_satisfied(),
-            self.count@ >= self.total@,
+            self.count as nat >= self.total as nat,
     {
         // In the sequential model, the precondition guarantees satisfaction,
         // so the spin loop body is never entered.
@@ -189,7 +189,7 @@ impl Fence {
             self.wf(),
         ensures
             result == self.spec_is_satisfied(),
-            result == (self.count@ >= self.total@),
+            result == (self.count as nat >= self.total as nat),
     {
         self.count >= self.total
     }
@@ -202,7 +202,7 @@ impl Fence {
     pub fn get_count(&self) -> (result: usize)
         ensures
             result == self.count,
-            result@ == self.spec_count(),
+            result as nat == self.spec_count(),
     {
         self.count
     }
@@ -215,7 +215,7 @@ impl Fence {
     pub fn get_total(&self) -> (result: usize)
         ensures
             result == self.total,
-            result@ == self.spec_total(),
+            result as nat == self.spec_total(),
     {
         self.total
     }

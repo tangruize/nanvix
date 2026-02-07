@@ -39,32 +39,32 @@ impl Fence {
     /// - `signal()` increments `count` by 1, but only when `count < total`.
     /// - `wait()` is a pure observer and does not modify state.
     pub open spec fn wf(&self) -> bool {
-        self.count@ <= self.total@
+        self.count as nat <= self.total as nat
     }
 
     /// Spec function: returns whether the fence is satisfied (all signals received).
     pub open spec fn spec_is_satisfied(&self) -> bool {
-        self.count@ >= self.total@
+        self.count as nat >= self.total as nat
     }
 
     /// Spec function: returns whether the fence is waiting (not yet satisfied).
     pub open spec fn spec_is_waiting(&self) -> bool {
-        self.count@ < self.total@
+        (self.count as nat) < (self.total as nat)
     }
 
     /// Spec function: returns the number of signals received.
     pub open spec fn spec_count(&self) -> nat {
-        self.count@
+        self.count as nat
     }
 
     /// Spec function: returns the total number of signals required.
     pub open spec fn spec_total(&self) -> nat {
-        self.total@
+        self.total as nat
     }
 
     /// Spec function: returns the number of remaining signals needed.
     pub open spec fn spec_remaining(&self) -> nat {
-        (self.total@ - self.count@) as nat
+        (self.total as nat - self.count as nat) as nat
     }
 
     /// Spec function: the view of a newly created fence with the given total.
@@ -81,7 +81,7 @@ impl View for Fence {
     type V = FenceView;
 
     open spec fn view(&self) -> FenceView {
-        FenceView { count: self.count@, total: self.total@ }
+        FenceView { count: self.count as nat, total: self.total as nat }
     }
 }
 
