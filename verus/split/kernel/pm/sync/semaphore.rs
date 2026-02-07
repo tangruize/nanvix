@@ -292,6 +292,7 @@ impl Semaphore {
             result == DownOutcome::Acquired ==> self.value == old(self).value - 1,
             result == DownOutcome::Acquired ==> self@.value == old(self)@.value - 1,
             result == DownOutcome::Acquired ==> self@.waiters == old(self)@.waiters,
+            result == DownOutcome::Acquired ==> self@ == Semaphore::spec_down_or_block_ghost_view(old(self)@, result),
             result == DownOutcome::WouldBlock ==> old(self).spec_is_exhausted(),
             result == DownOutcome::WouldBlock ==> self@ == old(self)@,
             self.wf(),
