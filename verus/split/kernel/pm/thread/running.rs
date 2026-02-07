@@ -391,6 +391,13 @@ impl RunningThread {
     /// # Parameters
     ///
     /// - `address`: Ghost address of the mutex being locked.
+    ///
+    /// # Modeling Note
+    ///
+    /// The precondition `locked_mutex_count < usize::MAX` is a modeling
+    /// artifact that does not exist in the original `BTreeMap::insert`. It
+    /// is needed to prevent arithmetic overflow in the ghost counter. In
+    /// practice this is unreachable (would require 2^64 held mutexes).
     pub fn put_mutex_guard(&mut self, address: Ghost<int>)
         requires
             old(self).wf(),
