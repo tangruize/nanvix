@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sun Feb  8 00:07:38 CST 2026
+Module: kernel::pm::thread::zombie
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::zombie
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: The verifier does not yet support the following Rust feature: mut self
+   --> kernel/pm/thread/zombie.rs:154:5
+    |
+154 |     pub fn harvest(mut self) -> (result: (Option<int>, Option<int>))
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::zombie (verified:0, errors:0)
