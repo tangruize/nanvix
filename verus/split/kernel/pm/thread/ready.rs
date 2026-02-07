@@ -337,7 +337,7 @@ impl ReadyThread {
             result.user_tda == self.spec_user_tda(),
             result.running.wf(),
             result.running.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
-            forall|a: int| result.running.spec_has_mutex(a) == self.spec_has_mutex(a),
+            forall|a: int| #![auto] result.running.spec_has_mutex(a) == self.spec_has_mutex(a),
             result.running.spec_drop_safe() == self.spec_drop_safe(),
     {
         let mut state: ThreadState = self.state;
