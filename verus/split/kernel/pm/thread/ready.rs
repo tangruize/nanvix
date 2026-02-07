@@ -74,6 +74,19 @@ fn clock_now() -> (result: int) {
     unimplemented!()
 }
 
+/// Exec-level accessor for the EXIT_STATUS_INTERRUPTED spec constant.
+///
+/// Bridges the spec/exec boundary for the abstract exit status value
+/// used in `terminate()`. Marked `external_body` because `int` literals
+/// cannot be directly constructed in Verus exec code.
+#[verifier::external_body]
+fn exit_status_interrupted_value() -> (result: int)
+    ensures
+        result == EXIT_STATUS_INTERRUPTED(),
+{
+    unimplemented!()
+}
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -355,7 +368,7 @@ impl ReadyThread {
             result.spec_drop_safe() == self.spec_drop_safe(),
             result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
     {
-        let status: int = 0;
+        let status: int = exit_status_interrupted_value();
         ZombieThread::from_state(self.state, status)
     }
 }
