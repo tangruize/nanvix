@@ -167,6 +167,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !self.spec_is_non_negative()
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if self.value < 0 {
@@ -193,6 +194,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !self.spec_is_non_negative()
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if self.value < 0 {
@@ -219,6 +221,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !self.spec_is_non_negative()
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if self.value < 0 {
@@ -250,6 +253,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !Self::spec_in_i32_range(raw as int)
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if raw < i32::MIN as isize || raw > i32::MAX as isize {
@@ -281,6 +285,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !Self::spec_in_i32_range(raw as int)
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if raw < i32::MIN as i64 || raw > i32::MAX as i64 {
@@ -313,6 +318,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !Self::spec_in_non_negative_i32_range(raw as int)
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if raw > i32::MAX as usize {
@@ -345,6 +351,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !Self::spec_in_non_negative_i32_range(raw as int)
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if raw > i32::MAX as u32 {
@@ -377,6 +384,7 @@ impl ProcessIdentifier {
             result is Err ==> {
                 &&& !Self::spec_in_non_negative_i32_range(raw as int)
                 &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
         if raw > i32::MAX as u64 {

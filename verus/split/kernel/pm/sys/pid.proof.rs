@@ -134,6 +134,24 @@ impl ProcessIdentifier {
             core::mem::align_of::<ProcessIdentifier>() == 4,
     {
     }
+
+    /// Proof: Asserts layout invariants by invoking layout lemmas.
+    ///
+    /// # Note
+    ///
+    /// This is the verified equivalent of the original static assertions:
+    /// - `assert_eq_size!(ProcessIdentifier, 4)`
+    /// - `assert_eq_align!(ProcessIdentifier, 4)`
+    ///
+    /// It invokes both layout lemmas to ensure they are exercised (not dead code).
+    pub proof fn assert_layout()
+        ensures
+            core::mem::size_of::<ProcessIdentifier>() == 4,
+            core::mem::align_of::<ProcessIdentifier>() == 4,
+    {
+        Self::lemma_size_eq_i32();
+        Self::lemma_align_eq_i32();
+    }
 }
 
 } // verus!
