@@ -81,7 +81,7 @@
 //! | `notify_first()`        | `dequeue_first()`      | Models queue removal only.     |
 //! | `notify_process(pid)`   | `try_remove_by_pid()`  | Handles found and not-found.   |
 //! | `notify_thread(tid)`    | `try_remove_by_tid()`  | Handles found and not-found.   |
-//! | `notify_all()`          | `clear()`              | Models complete queue drain.   |
+//! | `notify_all()`          | `clear()`              | Returns total entries, not successful wakeup count. |
 //! | `reference_count()`     | (not modeled)          | Arc-specific, out of scope.    |
 //!
 //! ## API Divergence
@@ -142,6 +142,26 @@
 //!   The verified `enqueue()` requires `len < usize::MAX` to prevent overflow.
 //!   The original has no explicit check but this is practically guaranteed
 //!   since the number of threads is bounded by system resources.
+//! - **T4: Sequential wait protocol.** The wait protocol lemmas
+//!   (`lemma_wait_cleanup_restores_state`, `lemma_wait_protocol_preserves_wf`)
+//!   prove correctness assuming no concurrent modifications between enqueue
+//!   and cleanup. At runtime, the original `wait()` calls
+//!   `ProcessManager::sleep()` between `push_back` and `retain`, during which
+//!   other threads may call `notify_*()` and modify the queue. The sequential
+//!   model cannot capture this interleaving. The cleanup `retain()` operates
+//!   on the actual queue state at cleanup time, which may differ from the
+//!   enqueue-time state.
+//! - **T5: Search result correctness.** In `try_remove_by_pid` and
+//!   `try_remove_by_tid`, the `has_match` parameter is concrete (not ghost).
+//!   The caller must supply the correct value; the preconditions constrain
+//!   `has_match` to be consistent with `spec_contains_pid`/`spec_contains_tid`.
+//!   At runtime, the original computes this via `position()`. The model trusts
+//!   that the caller-supplied `has_match` faithfully represents the runtime
+//!   search result.
+//! - **T6: Arc lifetime management.** The original `reference_count()` returns
+//!   `Arc::strong_count()`. The verified model does not model reference
+//!   counting. Correct lifetime management (i.e., the condvar outlives all
+//!   waiters and is not dropped while threads reference it) is assumed.
 
 use vstd::prelude::*;
 
@@ -328,6 +348,12 @@ impl Condvar {
     /// `self.sleeping.borrow_mut().retain(|&mut (p, t)| p != pid || t != tid)`
     /// removes the entry after `ProcessManager::sleep()` fails. The caller
     /// provides a ghost index proving where the entry is located.
+    ///
+    /// **Note:** The original `retain()` removes *all* entries matching
+    /// `(pid, tid)`, while this model removes exactly one entry at the given
+    /// index. Under trust assumption T1 (queue element uniqueness), these are
+    /// equivalent — see `lemma_remove_entry_equivalent_to_retain` in the
+    /// proof file.
     ///
     /// # Parameters
     ///
@@ -532,11 +558,14 @@ impl Condvar {
     ///
     /// Models the original `notify_all()` which drains the entire queue. The
     /// original also calls `ProcessManager::wakeup()` for each entry, which
-    /// is not modeled here.
+    /// is not modeled here. **Note:** The returned count represents the total
+    /// number of entries removed from the queue, not the number of successful
+    /// wakeups. The original `notify_all()` returns the count of *successful*
+    /// `ProcessManager::wakeup()` calls, which may be fewer if some fail.
     ///
     /// # Returns
     ///
-    /// The number of threads that were in the queue before clearing.
+    /// The total number of entries that were in the queue before clearing.
     pub fn clear(&mut self) -> (count: usize)
         requires
             old(self).wf(),

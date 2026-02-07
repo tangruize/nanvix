@@ -191,6 +191,42 @@ impl Condvar {
     {
     }
 
+    /// Lemma: Generalized FIFO — on any non-empty queue, enqueue then dequeue_first
+    /// removes the original head, not the newly enqueued entry.
+    ///
+    /// # Description
+    ///
+    /// For any non-empty queue `s`, enqueue `entry` at the back, then
+    /// dequeue_first removes `s[0]` (the original head). The result queue
+    /// contains all original elements except the head, plus the new entry
+    /// at the back. This generalizes `lemma_fifo_ordering` beyond the
+    /// 2-element case.
+    pub proof fn lemma_fifo_ordering_general(
+        s: Seq<(int, int)>,
+        entry: (int, int),
+    )
+        requires
+            s.len() > 0,
+        ensures ({
+            let after_enqueue: Seq<(int, int)> = s.push(entry);
+            let after_dequeue: Seq<(int, int)> = after_enqueue.subrange(
+                1, after_enqueue.len() as int,
+            );
+            // The original head is at index 0 of after_enqueue.
+            &&& after_enqueue[0] == s[0]
+            // After dequeue, the head is gone.
+            &&& after_dequeue.len() == s.len()
+            // The new entry is at the back.
+            &&& after_dequeue[after_dequeue.len() as int - 1] == entry
+            // Original tail elements are preserved in order.
+            &&& forall|i: int|
+                #![trigger after_dequeue[i]]
+                0 <= i < s.len() as int - 1
+                ==> after_dequeue[i] == s[i + 1]
+        }),
+    {
+    }
+
     /// Lemma: Enqueue then dequeue on empty queue restores empty state.
     pub proof fn lemma_enqueue_dequeue_roundtrip(entry: (int, int))
         ensures ({
@@ -543,6 +579,71 @@ impl Condvar {
     {
         Condvar::lemma_remove_entry_absent(s, idx);
     }
+
+    /// Lemma: Under uniqueness, removing the single entry at index `idx` is
+    /// equivalent to filtering out all entries equal to `(pid_val, tid_val)`.
+    ///
+    /// # Description
+    ///
+    /// The original `retain(|&mut (p, t)| p != pid || t != tid)` removes *all*
+    /// matching entries. This lemma proves that under T1 (uniqueness), there
+    /// is exactly one matching entry, so removing at the known index produces
+    /// the same result as a full filter. This bridges the model's single-index
+    /// removal to the original's predicate-based `retain()`.
+    pub proof fn lemma_remove_entry_equivalent_to_retain(
+        s: Seq<(int, int)>,
+        idx: int,
+        pid_val: int,
+        tid_val: int,
+    )
+        requires
+            0 <= idx < s.len(),
+            s[idx] == (pid_val, tid_val),
+            // Uniqueness (T1).
+            forall|i: int, j: int|
+                #![trigger s[i], s[j]]
+                0 <= i < s.len() as int
+                && 0 <= j < s.len() as int
+                && i != j
+                ==> s[i] != s[j],
+        ensures ({
+            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+            // (1) The entry is absent from the result.
+            forall|k: int|
+                #![trigger result[k]]
+                0 <= k < result.len() as int
+                ==> result[k] != (pid_val, tid_val)
+        }),
+        ensures ({
+            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+            // (2) All non-matching entries from the original are preserved.
+            forall|k: int|
+                #![trigger result[k]]
+                0 <= k < result.len() as int
+                ==> (exists|j: int|
+                    #![trigger s[j]]
+                    0 <= j < s.len() as int && s[j] == result[k])
+        }),
+        ensures ({
+            let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+            // (3) The result has exactly one fewer element.
+            result.len() == s.len() - 1
+        }),
+    {
+        Condvar::lemma_remove_entry_absent(s, idx);
+        let result: Seq<(int, int)> = Condvar::spec_remove_at_seq(s, idx);
+        // Each element in result maps back to the original sequence.
+        assert forall|k: int|
+            #![trigger result[k]]
+            0 <= k < result.len() as int
+        implies (exists|j: int|
+            #![trigger s[j]]
+            0 <= j < s.len() as int && s[j] == result[k])
+        by {
+            let orig_k: int = if k < idx { k } else { k + 1 };
+            assert(result[k] == s[orig_k]);
+        }
+    }
 }
 
 //==================================================================================================
@@ -552,6 +653,11 @@ impl Condvar {
 // The following lemmas prove properties of the wait() protocol: enqueue
 // followed by conditional remove_entry on failure. This models the original
 // wait()'s cleanup path where retain() removes the entry if sleep() fails.
+//
+// **Trust assumption T4**: These lemmas assume no concurrent modifications
+// between enqueue and cleanup. At runtime, ProcessManager::sleep() blocks
+// between these steps, during which other threads may modify the queue via
+// notify_*() calls. The sequential model cannot capture this interleaving.
 
 impl Condvar {
     /// Lemma: The wait() cleanup protocol (enqueue then remove_entry on failure)
@@ -670,6 +776,23 @@ impl Condvar {
             let cv: Condvar = Condvar { len: 0, sleeping: Ghost(Seq::empty()) };
             cv.spec_drop_safe()
         }),
+    {
+    }
+
+    /// Lemma: Any well-formed condvar with `len == 0` is drop-safe.
+    ///
+    /// # Description
+    ///
+    /// Makes explicit that any operation resulting in an empty queue (not just
+    /// `new()` or `clear()`) produces a drop-safe condvar. This covers cases
+    /// where individual notify operations (`dequeue_first`, `remove_by_pid`,
+    /// etc.) happen to drain the last entry.
+    pub proof fn lemma_empty_is_drop_safe(&self)
+        requires
+            self.wf(),
+            self.len == 0,
+        ensures
+            self.spec_drop_safe(),
     {
     }
 }
