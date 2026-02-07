@@ -7,12 +7,13 @@
 verus! {
 
 //==================================================================================================
-// Proof Lemmas — Definitional Properties
+// Proof Lemmas — Definitional Properties (Regression Tests)
 //==================================================================================================
 //
 // The following lemmas are definition-unfolding properties that serve as
 // executable documentation and regression tests for spec changes. They are
-// automatically discharged by Verus.
+// automatically discharged by Verus and do not prove deep protocol properties.
+// See "Protocol Properties" section below for substantive proofs.
 
 impl Mutex {
     /// Lemma: A newly created mutex is unlocked with no token outstanding.

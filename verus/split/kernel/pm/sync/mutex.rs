@@ -115,6 +115,28 @@
 //!   construct a token without calling `lock()`/`try_lock()`. The mutual exclusion
 //!   guarantee relies on the assumption that tokens are created solely via the
 //!   module's API.
+//!
+//! ## Refinement Argument
+//!
+//! The sequential model (`&mut self`, plain `bool`) is connected to the concurrent
+//! implementation (`&self`, `AtomicBool`) by the following informal argument:
+//!
+//! 1. Each `compare_exchange(false, true, Acquire, Relaxed)` in `try_lock()` is a
+//!    linearization point: it atomically reads and conditionally writes the lock
+//!    state, so the lock-state transition is equivalent to the sequential model's
+//!    `if !self.locked { self.locked = true; ... }`.
+//! 2. Each `store(false, Release)` in `unlock_unchecked()` is a linearization point:
+//!    it atomically sets the lock state to unlocked, equivalent to the sequential
+//!    model's `self.locked = false`.
+//! 3. If the atomic operations are linearizable (guaranteed by x86 TSO and the
+//!    `Acquire`/`Release` ordering), then any concurrent execution is equivalent
+//!    to some sequential interleaving of `try_lock()`/`unlock()` calls.
+//! 4. The sequential model proves every such interleaving preserves `wf()`, so the
+//!    concurrent implementation also preserves `wf()` under linearizability.
+//!
+//! This argument is informal and not machine-checked. A formal refinement proof
+//! would require a concurrent verification framework (e.g., Iris, RustBelt) that
+//! is beyond Verus's current capabilities.
 
 use vstd::prelude::*;
 
