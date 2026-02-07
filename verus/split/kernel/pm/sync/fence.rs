@@ -37,7 +37,9 @@
 //! This verification proves **sequential state machine correctness** of the
 //! fence protocol. The following are explicitly **out of scope**:
 //! - **Concurrency and atomicity**: The sequential `&mut self` model does not
-//!   capture concurrent thread access or atomic memory ordering.
+//!   capture concurrent thread access or atomic memory ordering. A future
+//!   extension could use Verus atomic modeling (`vstd::atomic*`) or a
+//!   rely/guarantee framework to verify concurrent correctness.
 //! - **Liveness under concurrency**: Termination of `wait()` depends on
 //!   concurrent signalers making progress, which is not modeled.
 //! - **Overflow**: The model uses `usize` for count; overflow protection
@@ -51,6 +53,17 @@
 //! `signal(&mut self)` uses `&mut self` because Verus requires exclusive
 //! references for state mutation. In the concurrent original, `&self` access
 //! is safe due to `AtomicUsize` interior mutability.
+//!
+//! **`signal()` precondition strengthening:** The original `signal(&self)`
+//! unconditionally calls `fetch_add(1, Ordering::Release)` with no guard
+//! against over-signaling (calling `signal` more than `total` times). The
+//! verified model intentionally adds `spec_is_waiting()` (`count < total`)
+//! as a precondition, enforcing the fence protocol: each fence expects
+//! exactly `total` signals, and exceeding that is a caller bug. This is a
+//! deliberate strengthening — it prevents over-signaling and `usize` overflow,
+//! making protocol violations detectable at verification time. If the runtime
+//! API is later hardened to reject over-signaling, this precondition would
+//! become a faithful model of the runtime contract.
 //!
 //! ## Trust Boundaries
 //!
