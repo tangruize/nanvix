@@ -1,0 +1,97 @@
+=== Copilot Session ===
+Timestamp: 2026-02-07T21:28:18.324575
+Model: gemini-3-pro-preview
+Session: 7614e466-0881-46c0-ba6e-e59e1fb0e237
+Duration: 44.8s
+Exit code: 0
+
+=== Prompt ===
+Review the Verus verification of ready.
+
+Original source: src/kernel/src/pm/thread/ready.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - ready.rs (exec)
+  - ready.spec.rs (spec)
+  - ready.proof.rs (proof)
+
+This is an OS kernel component. Evaluate if the verification captures the
+essential correctness properties.
+
+Review criteria:
+1. COVERAGE: All functions in original source (public and private) have verified versions
+2. SPECIFICATIONS: Specs capture intended behavior (not too weak, not too strong)
+3. SOUNDNESS: No unjustified assume/external_body in core module
+4. EQUIVALENCE: Verified code is semantically equivalent to original
+5. INVARIANTS: State invariants are sufficient to prove correctness
+6. PROPERTIES: Are the key safety and liveness properties identified and proven?
+7. SPLIT QUALITY: Are spec/proof properly separated from exec code?
+
+Verification command: ./verus-ai/scripts/verify.sh ready
+
+For each issue found, provide:
+- Priority: Critical / High / Medium / Low
+- Location: Function or spec name (and which file: exec/spec/proof)
+- Description: What is wrong or missing
+- Suggested Fix: How to address it
+
+Output format (write to /home/ubuntu/nanvix/verus-ai-history/reviews/ready/gemini_r1_a1.md):
+```markdown
+# Review: ready (gemini-3-pro-preview)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+
+### Critical
+- ...
+
+### High
+- ...
+
+### Medium
+- ...
+
+### Low
+- ...
+
+## Positive Observations
+- ...
+
+## Summary
+[Overall assessment and recommendations]
+```
+
+=== Output ===
+● Read verus/split/kernel/pm/thread/ready.rs
+  └ 498 lines read
+
+● Read src/kernel/src/pm/thread/ready.rs
+  └ 222 lines read
+
+● Read verus/split/kernel/pm/thread/ready.proof.rs
+  └ 373 lines read
+
+● Read verus/split/kernel/pm/thread/ready.spec.rs
+  └ 243 lines read
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/ready
+  └ 1 line...
+
+● Run verification
+  $ ./verus-ai/scripts/verify.sh ready
+  └ 23 lines...
+
+● Create verus-ai-history/reviews/ready/gemini_r1_a1.md (+19)
+
+✓ Task complete
+
+
+Total usage est:        1 Premium request
+API time spent:         34s
+Total session time:     43s
+Total code changes:     +19 -0
+Breakdown by AI model:
+ gemini-3-pro-preview    127.5k in, 669 out, 86.5k cached (Est. 1 Premium request)
+
+=== End ===
