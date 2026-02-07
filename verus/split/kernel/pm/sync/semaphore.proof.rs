@@ -311,16 +311,17 @@ impl Semaphore {
     ///
     /// # Description
     ///
-    /// When `up()` increments value to 1 and `notify_first()` wakes a thread,
+    /// When `up()` increments value from 0 to 1 and `notify_first()` wakes a thread,
     /// the woken thread decrements value back to 0 and waiters decreases by 1.
     /// The resulting state satisfies the waiter-value invariant.
+    /// Precondition: value == 1 (just after `up()` from 0) and waiters > 0.
     pub proof fn lemma_wake_preserves_wf(view: SemaphoreView)
         requires
             view.waiters > 0,
-            view.value > 0,
+            view.value == 1,
         ensures
             Semaphore::spec_wf(Semaphore::spec_wake(view)),
-            Semaphore::spec_wake(view).value == (view.value - 1) as nat,
+            Semaphore::spec_wake(view).value == 0,
             Semaphore::spec_wake(view).waiters == (view.waiters - 1) as nat,
     {
     }
