@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb  7 12:08:23 CST 2026
+Module: kernel::pm::sys::capability
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sys::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: spec functions cannot have requires/ensures
+  --> kernel/pm/sys/capability.spec.rs:52:5
+   |
+52 |     pub open spec fn spec_from_discriminant(value: int) -> Capability
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sys::capability (verified:0, errors:0)
