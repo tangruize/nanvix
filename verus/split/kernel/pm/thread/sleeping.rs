@@ -20,6 +20,16 @@
 //! - `thread_state()` returns a reference with the same identity and full state.
 //! - `id()` correctly returns the thread identifier.
 //!
+//! ## Out of Scope
+//!
+//! - **Liveness/scheduling:** The relationship between `alarm` and eventual
+//!   wakeup/timeout is a scheduler-level property, not a module-level one.
+//!   This module only verifies that `alarm` is faithfully stored and retrieved;
+//!   the scheduler is responsible for acting on it.
+//! - **Admission time:** `ReadyThread::from_state` in the real implementation
+//!   captures `clock::now()` as `admission_time`. This scheduling property is
+//!   intentionally omitted from the boundary model.
+//!
 //! ## Verification Model
 //!
 //! The original `SleepingThread` contains complex kernel types. For verification:

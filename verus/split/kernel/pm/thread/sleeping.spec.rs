@@ -62,9 +62,15 @@ pub struct InterruptedThreadView {
 //==================================================================================================
 
 /// Abstract value of the Killed interrupt reason variant.
+/// Corresponds to `InterruptReason::Killed` in the original source.
+/// TODO (cross-module): When `InterruptReason` is independently verified,
+/// confirm `InterruptReason::Killed as int == INTERRUPT_REASON_KILLED()`.
 pub open spec fn INTERRUPT_REASON_KILLED() -> int { 0 }
 
 /// Abstract value of the TimedOut interrupt reason variant.
+/// Corresponds to `InterruptReason::TimedOut` in the original source.
+/// TODO (cross-module): When `InterruptReason` is independently verified,
+/// confirm `InterruptReason::TimedOut as int == INTERRUPT_REASON_TIMED_OUT()`.
 pub open spec fn INTERRUPT_REASON_TIMED_OUT() -> int { 1 }
 
 //==================================================================================================
