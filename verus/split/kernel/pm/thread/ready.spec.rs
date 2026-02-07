@@ -67,7 +67,9 @@ pub struct ZombieThreadView {
 
 /// Abstract exit status for interrupted threads.
 /// Models `ErrorCode::Interrupted.into()` from the original code.
-/// Value 4 corresponds to EINTR (src/libs/sysapi/src/errno.rs:21).
+/// Conversion chain: `ErrorCode::Interrupted` (#[repr(i32)] enum variant,
+/// lib.rs:47) → `From<ErrorCode> for i32` casts via `errno as i32` →
+/// yields the value of `EINTR` (errno.rs:21) = 4.
 pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 4 }
 
 //==================================================================================================
@@ -126,9 +128,10 @@ impl ReadyThread {
     }
 
     /// Spec function: well-formedness predicate.
-    /// A ReadyThread is well-formed when the underlying state is well-formed.
+    /// A ReadyThread is well-formed when the underlying state is well-formed
+    /// and the admission time is non-negative.
     pub open spec fn wf(&self) -> bool {
-        self.state.wf()
+        self.state.wf() && self.admission_time >= 0
     }
 }
 

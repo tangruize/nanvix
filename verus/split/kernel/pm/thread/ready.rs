@@ -164,6 +164,17 @@ impl RunningThread {
     /// # Returns
     ///
     /// A well-formed RunningThread preserving the state's properties.
+    ///
+    /// # Cross-Module Verification Obligations
+    ///
+    /// CROSS-MODULE-CHECK: When `running.rs` is verified, confirm the real
+    /// `RunningThread::from_state` implies all of:
+    /// - `result.spec_id() == state.spec_id()`
+    /// - `result.spec_is_interrupted() == state.spec_is_interrupted()`
+    /// - `result.spec_locked_mutex_count() == state.spec_locked_mutex_count()`
+    /// - `forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a)`
+    /// - `result.spec_drop_safe() == state.spec_drop_safe()`
+    /// - `result.wf()`
     pub fn from_state(state: ThreadState) -> (result: RunningThread)
         requires
             state.wf(),
@@ -194,6 +205,16 @@ impl ZombieThread {
     /// # Returns
     ///
     /// A well-formed ZombieThread preserving the state's properties.
+    ///
+    /// # Cross-Module Verification Obligations
+    ///
+    /// CROSS-MODULE-CHECK: When `zombie.rs` is verified, confirm the real
+    /// `ZombieThread::from_state` implies all of:
+    /// - `result.spec_id() == state.spec_id()`
+    /// - `result.spec_status() == status`
+    /// - `result.spec_drop_safe() == state.spec_drop_safe()`
+    /// - `result.spec_locked_mutex_count() == state.spec_locked_mutex_count()`
+    /// - `result.wf()`
     pub fn from_state(state: ThreadState, status: int) -> (result: ZombieThread)
         requires
             state.wf(),
@@ -408,6 +429,13 @@ impl ReadyThread {
     /// - The running thread (state with interrupt reason cleared).
     /// - The extracted interrupt reason (if any).
     /// - The user-space thread data area address (if any).
+    ///
+    /// # Modeling Note
+    ///
+    /// The real `ReadyThread::run()` also returns a `*mut ContextInformation`
+    /// raw pointer into the pinned context buffer. This aliasing raw pointer
+    /// is omitted from the verified model because it is used only for
+    /// assembly-level context switching and cannot be meaningfully specified.
     pub fn run(self) -> (result: RunResult)
         requires
             self.wf(),
@@ -486,6 +514,9 @@ impl ReadyThread {
     /// **Intended postconditions** (not machine-checked):
     /// - `ensures old(self).spec_id() == self.spec_id()` (identity preserved).
     /// - `ensures old(self).wf() ==> self.wf()` (well-formedness preserved).
+    ///
+    /// AUDIT: Each call site must be manually reviewed to confirm the above
+    /// invariants are preserved. See `process/manager/mod.rs:1154,1169`.
     #[verifier::external]
     pub fn thread_state_mut(&mut self) -> &mut ThreadState {
         &mut self.state

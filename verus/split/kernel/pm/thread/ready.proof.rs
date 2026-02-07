@@ -27,6 +27,7 @@ impl ReadyThread {
     pub proof fn lemma_from_state_is_wf(state: ThreadState, time: int)
         requires
             state.wf(),
+            time >= 0,
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: state, admission_time: time };
@@ -73,6 +74,8 @@ impl ReadyThread {
         user_tda: Option<int>,
         time: int,
     )
+        requires
+            time >= 0,
         ensures
             ({
                 let state: ThreadState = ThreadState {
