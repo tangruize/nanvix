@@ -162,6 +162,12 @@ impl InterruptedThread {
     ///
     /// A mutable reference to the underlying ThreadState. The initial
     /// state of the reference has the same identity as the thread.
+    ///
+    /// # Note on Verification
+    ///
+    /// Uses `external_body` because Verus does not yet support returning
+    /// `&mut T` from functions. The postcondition is trusted.
+    #[verifier::external_body]
     pub fn thread_state_mut(&mut self) -> (result: &mut ThreadState)
         ensures
             result.spec_id() == old(self).spec_id(),
