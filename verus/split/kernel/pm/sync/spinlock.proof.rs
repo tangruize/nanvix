@@ -73,8 +73,8 @@ impl Spinlock {
     /// Lemma: unlock on a locked spinlock produces an unlocked spinlock.
     pub proof fn lemma_unlock_produces_unlocked(id: nat)
         ensures
-            !(Spinlock { locked: false, id: id }).locked,
-            (Spinlock { locked: false, id: id }).spec_is_unlocked(),
+            !(Spinlock { locked: false, id: Ghost(id) }).locked,
+            (Spinlock { locked: false, id: Ghost(id) }).spec_is_unlocked(),
     {
     }
 
@@ -86,9 +86,9 @@ impl Spinlock {
     /// then releasing it returns to the unlocked state. Identity is preserved.
     pub proof fn lemma_lock_unlock_roundtrip(id: nat)
         ensures ({
-            let initial: Spinlock = Spinlock { locked: false, id: id };
-            let after_lock: Spinlock = Spinlock { locked: true, id: id };
-            let after_unlock: Spinlock = Spinlock { locked: false, id: id };
+            let initial: Spinlock = Spinlock { locked: false, id: Ghost(id) };
+            let after_lock: Spinlock = Spinlock { locked: true, id: Ghost(id) };
+            let after_unlock: Spinlock = Spinlock { locked: false, id: Ghost(id) };
             &&& initial.spec_is_unlocked()
             &&& after_lock.spec_is_locked()
             &&& after_unlock.spec_is_unlocked()
