@@ -92,14 +92,74 @@ impl Spinlock {
         }),
     {
     }
+
+    /// Lemma: The well-formedness invariant ensures no token is outstanding
+    /// when the lock is unlocked.
+    pub proof fn lemma_wf_unlocked_no_token(s: &Spinlock)
+        requires
+            s.wf(),
+            s.spec_is_unlocked(),
+        ensures
+            !s@.token_issued,
+    {
+    }
+
+    /// Lemma: The `LockToken` snapshot matches the locked state.
+    ///
+    /// # Description
+    ///
+    /// A token produced at lock-acquisition time always has `locked == true` in
+    /// its view, since the spinlock is locked at production time.
+    pub proof fn lemma_lock_token_snapshot_is_locked(token: &LockToken)
+        requires
+            token.view.locked,
+        ensures
+            token.view == (SpinlockView { locked: true, id: token.view.id, token_issued: token.view.token_issued }),
+    {
+    }
+
+    /// Lemma: `try_lock()` on a locked, well-formed spinlock fails.
+    ///
+    /// # Description
+    ///
+    /// Proves the contended-case property: when a spinlock is locked and
+    /// well-formed (token is outstanding), `try_lock()` will fail (return false).
+    pub proof fn lemma_try_lock_contended_fails(s: &Spinlock)
+        requires
+            s.wf(),
+            s.spec_is_locked(),
+        ensures
+            s.locked,
+            s@.token_issued,
+    {
+    }
+
+    /// Lemma: `lock()` requires `spec_is_unlocked()` to prevent sequential deadlock.
+    ///
+    /// # Description
+    ///
+    /// In the sequential `&mut self` model, calling `lock()` on an already-locked
+    /// spinlock would spin forever (no concurrent unlocker). This lemma proves
+    /// that a locked, well-formed spinlock has a token outstanding, so the caller
+    /// cannot discharge the obligation — formalizing why the precondition is
+    /// necessary for deadlock prevention.
+    pub proof fn lemma_lock_precondition_prevents_deadlock(s: &Spinlock)
+        requires
+            s.wf(),
+            s.spec_is_locked(),
+        ensures
+            s@.token_issued,
+            !s.spec_is_unlocked(),
+    {
+    }
 }
 
 //==================================================================================================
-// Proof Lemmas — Substantive Protocol Properties
+// Proof Lemmas — Protocol Properties
 //==================================================================================================
 //
-// The following lemmas prove non-trivial protocol properties that require
-// reasoning across multiple spec definitions or state transitions.
+// The following lemmas prove protocol properties that reason across multiple
+// state transitions or relate different API operations.
 
 impl Spinlock {
     /// Lemma: Lock-then-unlock round-trip restores unlocked state. Identity and
@@ -171,20 +231,6 @@ impl Spinlock {
     {
     }
 
-    /// Lemma: The `LockToken` snapshot matches the locked state.
-    ///
-    /// # Description
-    ///
-    /// A token produced at lock-acquisition time always has `locked == true` in
-    /// its view, since the spinlock is locked at production time.
-    pub proof fn lemma_lock_token_snapshot_is_locked(token: &LockToken)
-        requires
-            token.view.locked,
-        ensures
-            token.view == (SpinlockView { locked: true, id: token.view.id, token_issued: token.view.token_issued }),
-    {
-    }
-
     /// Lemma: Tokens from different lock instances cannot satisfy each other's
     /// unlock preconditions.
     ///
@@ -202,54 +248,6 @@ impl Spinlock {
             token.view == s1@,
         ensures
             token.view != s2@,
-    {
-    }
-
-    /// Lemma: The well-formedness invariant ensures no token is outstanding
-    /// when the lock is unlocked.
-    pub proof fn lemma_wf_unlocked_no_token(s: &Spinlock)
-        requires
-            s.wf(),
-            s.spec_is_unlocked(),
-        ensures
-            !s@.token_issued,
-    {
-    }
-
-    /// Lemma: `try_lock()` on a locked, well-formed spinlock fails.
-    ///
-    /// # Description
-    ///
-    /// Proves the contended-case property: when a spinlock is locked and
-    /// well-formed (token is outstanding), `try_lock()` will fail (return false).
-    /// This exercises the failure path non-vacuously, proving the CAS-failure
-    /// model is sound.
-    pub proof fn lemma_try_lock_contended_fails(s: &Spinlock)
-        requires
-            s.wf(),
-            s.spec_is_locked(),
-        ensures
-            s.locked,
-            s@.token_issued,
-    {
-    }
-
-    /// Lemma: `lock()` requires `spec_is_unlocked()` to prevent sequential deadlock.
-    ///
-    /// # Description
-    ///
-    /// In the sequential `&mut self` model, calling `lock()` on an already-locked
-    /// spinlock would spin forever (no concurrent unlocker). This lemma proves
-    /// that a locked, well-formed spinlock has a token outstanding, so the caller
-    /// cannot discharge the obligation — formalizing why the precondition is
-    /// necessary for deadlock prevention.
-    pub proof fn lemma_lock_precondition_prevents_deadlock(s: &Spinlock)
-        requires
-            s.wf(),
-            s.spec_is_locked(),
-        ensures
-            s@.token_issued,
-            !s.spec_is_unlocked(),
     {
     }
 }

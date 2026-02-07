@@ -173,6 +173,8 @@ impl Spinlock {
             old(self).wf(),
         ensures
             result.0 == !old(self).locked,
+            // Unconditional: lock is always held after try_lock (success: acquired;
+            // failure: was already locked, state unchanged).
             self.locked,
             self@.id == old(self)@.id,
             !result.0 ==> self@ == old(self)@,
