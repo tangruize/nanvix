@@ -57,6 +57,9 @@ verus! {
 //==================================================================================================
 // View Types
 //==================================================================================================
+// These View types provide the abstract state representation for cross-module
+// composition. They are exercised by lemma_view_equality and serve as the
+// canonical interface for downstream modules that consume process state transitions.
 
 /// Abstract view of a SleepingProcess (this module's primary type).
 #[verifier::ext_equal]
