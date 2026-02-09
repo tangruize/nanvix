@@ -83,8 +83,8 @@
 // - `ProcessManager::detach_pmio` → verified: `outer_detach_pmio`
 // - `ProcessManager::read_pmio` → verified: `outer_read_pmio`
 // - `ProcessManager::write_pmio` → verified: `outer_write_pmio`
-// - `ProcessManager::post_message` → verified: `outer_post_message`, `post_message`,
-//    `post_message_not_found`
+// - `ProcessManager::post_message` → verified: `outer_post_message`,
+//    `outer_post_message_not_found`, `post_message`, `post_message_not_found`
 // - `ProcessManager::add_event` → verified: `outer_add_event`
 // - `ProcessManager::remove_event` → verified: `outer_remove_event`
 // - `ProcessManager::number_buffered_messages` → verified: `outer_number_buffered_messages`,

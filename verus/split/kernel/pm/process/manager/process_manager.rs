@@ -754,6 +754,15 @@ impl ProcessManagerInner {
     /// part of the queue state machine. The queue-level effect is a no-op.
     /// The precondition `spec_process_exists(pid)` models the `find_process_mut`
     /// lookup. Capability bit values are trust boundary T3 (per-process metadata).
+    ///
+    /// ## Rationale for Not Modeling Capability State
+    ///
+    /// Capability bits do not affect process lifecycle transitions (create, schedule,
+    /// sleep, exit, terminate, harvest). They are checked by callers (e.g., `has_capability`)
+    /// before invoking privileged operations, but the process manager itself does not
+    /// branch on capability state for any queue transition. Modeling capabilities would
+    /// require a ghost map from PID to `Set<Capability>`, which is a separate verification
+    /// concern orthogonal to the queue-level safety properties proven here.
     pub fn capctl(&self, pid: i32)
         requires
             self.wf(),
@@ -1558,6 +1567,23 @@ impl ProcessManagerInner {
             self.interrupt_capable == old(self).interrupt_capable,
     {
         self.post_message(receiver_pid);
+    }
+
+    /// Models `ProcessManager::post_message` error path: receiver not found
+    /// or borrow failure.
+    ///
+    /// Covers two outer-level error cases:
+    /// 1. `try_borrow_mut()` fails (T2 borrow contention → `Err(ResourceBusy)`).
+    /// 2. `find_process_mut(pid)` / `find_process_by_tid(tid)` fails
+    ///    (receiver not found → `Err(NoSuchEntry)`).
+    /// In both cases, no state change occurs and the counter is not incremented.
+    pub fn outer_post_message_not_found(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Error path: borrow failure or receiver not found. No state change.
     }
 
     /// Models `ProcessManager::number_buffered_messages`: reads counter.
