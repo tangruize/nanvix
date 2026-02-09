@@ -127,6 +127,9 @@ impl ReadyThread {
     /// CROSS-MODULE-CHECK: When `ready.rs` is verified, confirm the real
     /// `ReadyThread::new` implies all of:
     /// - `result.spec_id() == id.spec_value()`
+    /// - `result.spec_kernel_stack() == kernel_stack`
+    /// - `result.spec_user_stack() == user_stack`
+    /// - `result.spec_user_tda() == user_tda`
     /// - `result.wf()`
     /// - `result.spec_drop_safe()`
     /// - `!result.spec_is_interrupted()`
@@ -139,6 +142,9 @@ impl ReadyThread {
     ) -> (result: ReadyThread)
         ensures
             result.spec_id() == id.spec_value(),
+            result.spec_kernel_stack() == kernel_stack,
+            result.spec_user_stack() == user_stack,
+            result.spec_user_tda() == user_tda,
             result.wf(),
             result.spec_drop_safe(),
             !result.spec_is_interrupted(),
@@ -216,6 +222,9 @@ impl ThreadManager {
             old(self).next_id.value < i32::MAX,
         ensures
             result.spec_id() == old(self).spec_next_id(),
+            result.spec_kernel_stack() == kernel_stack,
+            result.spec_user_stack() == user_stack,
+            result.spec_user_tda() == user_tda,
             result.wf(),
             result.spec_drop_safe(),
             !result.spec_is_interrupted(),

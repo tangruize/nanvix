@@ -74,6 +74,21 @@ impl ReadyThread {
         self.state.spec_id()
     }
 
+    /// Spec function: returns the abstract kernel stack token.
+    pub open spec fn spec_kernel_stack(&self) -> Option<int> {
+        self.state.spec_kernel_stack()
+    }
+
+    /// Spec function: returns the abstract user stack token.
+    pub open spec fn spec_user_stack(&self) -> Option<int> {
+        self.state.spec_user_stack()
+    }
+
+    /// Spec function: returns the user thread data area.
+    pub open spec fn spec_user_tda(&self) -> Option<int> {
+        self.state.spec_user_tda()
+    }
+
     /// Spec function: well-formedness predicate.
     pub open spec fn wf(&self) -> bool {
         self.state.wf()
