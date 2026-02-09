@@ -190,14 +190,14 @@ impl RunningProcess {
     // exit() Lemmas
     //==============================================================================================
 
-    /// Lemma: exit() zombie list content is exactly running + ready + original zombie.
+    /// Lemma: exit() zombie list content is exactly original zombie + running + ready.
     pub proof fn lemma_exit_zombie_content(&self)
         requires
             self.wf(),
         ensures
             ({
-                let new_zombie: Seq<int> = seq![self.running_thread_id@]
-                    .add(self.ready_thread_ids@).add(self.zombie_thread_ids@);
+                let new_zombie: Seq<int> = self.zombie_thread_ids@
+                    .push(self.running_thread_id@).add(self.ready_thread_ids@);
                 new_zombie.len() == 1 + self.spec_ready_count() + self.spec_zombie_count()
                 && new_zombie.len() >= 1
             }),

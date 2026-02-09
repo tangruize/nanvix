@@ -579,7 +579,7 @@ impl RunningProcess {
                     // Branch: there were ready or interrupted threads.
                     && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
                     // Sleeping threads in result include the running thread.
-                    && rp.sleeping_thread_ids@.len() >= self.spec_sleeping_count() + 1
+                    && rp.sleeping_thread_ids@.len() == self.spec_sleeping_count() + 1
                     // Zombie threads preserved.
                     && rp.zombie_thread_ids@ == self.zombie_thread_ids@
                     // Ready branch: exact content specified.
@@ -688,12 +688,12 @@ impl RunningProcess {
                     // Branch: there were interrupted or sleeping threads.
                     && (self.spec_interrupted_count() > 0
                         || self.spec_sleeping_count() > 0)
-                    // Zombie threads in result contain running + ready + original zombie.
+                    // Zombie threads in result: original zombie + running + ready (matches original ordering).
                     && rp.zombie_thread_ids@.len() ==
                         1 + self.spec_ready_count() + self.spec_zombie_count()
                     && rp.zombie_thread_ids@ ==
-                        seq![self.running_thread_id@].add(
-                            self.ready_thread_ids@).add(self.zombie_thread_ids@)
+                        self.zombie_thread_ids@.push(self.running_thread_id@).add(
+                            self.ready_thread_ids@)
                     // No sleeping threads remain (all were converted to interrupted).
                     && rp.sleeping_thread_ids@.len() == 0
                     // Exactly one interrupted thread was resumed as ready.
@@ -713,24 +713,20 @@ impl RunningProcess {
                     // Branch: no interrupted or sleeping threads.
                     && self.spec_interrupted_count() == 0
                     && self.spec_sleeping_count() == 0
-                    // Zombie list includes running + all ready + original zombie.
+                    // Zombie list: original zombie + running + all ready (matches original ordering).
                     && zp.zombie_thread_ids@.len() ==
                         1 + self.spec_ready_count() + self.spec_zombie_count()
                     && zp.zombie_thread_ids@ ==
-                        seq![self.running_thread_id@].add(
-                            self.ready_thread_ids@).add(self.zombie_thread_ids@)
+                        self.zombie_thread_ids@.push(self.running_thread_id@).add(
+                            self.ready_thread_ids@)
                 },
             },
     {
-        // Running thread becomes zombie.
-        let ghost running_zombie: Seq<int> = seq![self.running_thread_id@];
-
-        // All ready threads become zombies.
-        let ghost ready_zombies: Seq<int> = self.ready_thread_ids@;
-
-        // Combine: running zombie + ready zombies + existing zombies.
+        // Running thread becomes zombie. Original: push_back onto existing zombies.
+        // All ready threads become zombies. Original: append ready zombies after.
+        // Ordering: [original_zombies..., running_zombie, ready_zombies...]
         let ghost new_zombie_ids: Seq<int> =
-            running_zombie.add(ready_zombies).add(self.zombie_thread_ids@);
+            self.zombie_thread_ids@.push(self.running_thread_id@).add(self.ready_thread_ids@);
 
         proof {
             assert(new_zombie_ids.len() ==
@@ -873,7 +869,7 @@ impl RunningProcess {
             proof {
                 assert(self.interrupted_thread_ids@.len() >= 1);
             }
-            // Known divergence: original passes self.zombie.take() (=None) here.
+            // Historical: original passed self.zombie.take() (=None) here. Now fixed in source.
             // We correctly pass new_zombie_ids (includes exited thread).
             let ip: InterruptedProcess = InterruptedProcess {
                 pid: Ghost(self.pid@),
@@ -921,6 +917,8 @@ impl RunningProcess {
             self.wf(),
             found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid@),
             self.ready_count < u64::MAX,
+            // Solver hint: redundant given wf() and found == spec_seq_contains(...),
+            // but helps Verus prove the sleeping_count - 1 arithmetic.
             self.sleeping_count > 0 || !found,
         ensures
             match result {
