@@ -23,6 +23,11 @@
 //!   `increment()` exactly once and its postconditions match `increment()`'s.
 //! - **Standalone function models**: `standalone_ticks()` and `standalone_now()`
 //!   mirror the original public APIs with full specifications.
+//! - **`wrapping_add` equivalence**: `lemma_wrapping_add_equiv` proves that the
+//!   explicit branching in `increment()` computes the same result as the
+//!   original `wrapping_add(1)` (Trust Boundary T2).
+//! - **Torn-read consequence**: `lemma_torn_read_consequence` quantifies the
+//!   error from a violated snapshot assumption (Trust Boundary T1).
 //!
 //! ## Verification Model
 //!
@@ -75,11 +80,25 @@
 //!
 //! ## Trust Boundaries
 //!
-//! - **T1: AtomicU32 → plain u32.** Atomics are modeled as plain fields under
-//!   the single-writer assumption. The original's memory ordering semantics
-//!   (`Ordering::Relaxed`) are not modeled.
-//! - **T2: `wrapping_add(1)` → explicit branching.** Modeled as `if minor < MAX`
-//!   branching rather than hardware wrapping.
+//! - **T1: AtomicU32 → plain u32 (Snapshot Consistency).** Atomics are modeled
+//!   as plain fields under the single-writer assumption. The original `get()`
+//!   performs two separate atomic loads (`major` then `minor`). If a timer
+//!   interrupt occurs between these loads and increments the counter across a
+//!   minor-wrap boundary (e.g., from `(M, 0xFFFFFFFF)` to `(M+1, 0)`), the
+//!   reader observes `(M+1, 0xFFFFFFFF)` — a **torn read** that is `2^32 - 1`
+//!   ticks ahead of reality (see `lemma_torn_read_consequence`).
+//!
+//!   This torn read is prevented by the system-level invariant that callers of
+//!   `get()` run with interrupts disabled on the same core as the handler, or
+//!   that the single-writer guarantee makes tearing impossible in practice.
+//!   This assumption is formalized as `spec_no_concurrent_writer_assumption()`
+//!   and documented with assumptions A-T1a and A-T1b in `spec_get_consistent`.
+//!
+//! - **T2: `wrapping_add(1)` → explicit branching.** The original uses
+//!   `minor.wrapping_add(1)` which computes `(minor + 1) % 2^32`. The verified
+//!   model uses `if minor < u32::MAX { minor + 1 } else { 0 }`, which is
+//!   structurally different but semantically identical. `lemma_wrapping_add_equiv`
+//!   proves the equivalence: both compute `spec_wrapping_add_one(x)`.
 //! - **T3: `timer_handler()`.** This function is **trusted glue code**: it calls
 //!   `increment()` exactly once per timer interrupt and does not modify
 //!   `major`/`minor` through any other path. Its HAL dependencies

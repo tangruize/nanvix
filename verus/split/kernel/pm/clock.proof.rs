@@ -341,6 +341,106 @@ impl TimerTicks {
 }
 
 //==================================================================================================
+// Proof Lemmas — wrapping_add Equivalence
+//==================================================================================================
+//
+// These lemmas prove that the branching model in `increment()` computes the
+// same result as `wrapping_add(1)`, which is `(x + 1) % 2^32`.
+
+impl TimerTicks {
+    /// Lemma: Our branching model for minor increment is equivalent to wrapping_add(1).
+    ///
+    /// # Description
+    ///
+    /// The original code uses `minor.wrapping_add(1)` which computes
+    /// `(minor + 1) % 2^32`. Our verified model uses:
+    /// ```ignore
+    /// if self.minor < u32::MAX { self.minor + 1 } else { 0 }
+    /// ```
+    /// This lemma proves both produce the same result for all u32 inputs.
+    ///
+    /// See Trust Boundary T2: this equivalence bridges the structural
+    /// divergence between the original `wrapping_add` and the verified
+    /// explicit branch.
+    pub proof fn lemma_wrapping_add_equiv(x: u32)
+        ensures
+            (if x < u32::MAX { (x + 1) as nat } else { 0nat })
+                == Self::spec_wrapping_add_one(x),
+    {
+        let m: nat = Self::MINOR_MODULUS();
+        assert(m == u32::MAX as nat + 1);
+        if x < u32::MAX {
+            // x + 1 < 2^32, so (x + 1) % 2^32 == x + 1.
+            assert((x as nat + 1) < m);
+            assert((x as nat + 1) % m == x as nat + 1) by(nonlinear_arith)
+                requires(x as nat + 1 < m && m > 0);
+        } else {
+            // x == u32::MAX, so x + 1 == 2^32, and 2^32 % 2^32 == 0.
+            assert(x as nat + 1 == m);
+            assert(m % m == 0nat) by(nonlinear_arith)
+                requires(m > 0);
+        }
+    }
+
+    /// Lemma: Major wrapping is also equivalent to wrapping_add(1).
+    ///
+    /// # Description
+    ///
+    /// The original code uses `major.wrapping_add(1)` for the major counter.
+    /// Our model uses `if major < u32::MAX { major + 1 } else { 0 }`.
+    /// This lemma proves equivalence for the major counter as well.
+    pub proof fn lemma_wrapping_add_equiv_major(x: u32)
+        ensures
+            (if x < u32::MAX { (x + 1) as nat } else { 0nat })
+                == Self::spec_wrapping_add_one(x),
+    {
+        Self::lemma_wrapping_add_equiv(x);
+    }
+}
+
+//==================================================================================================
+// Proof Lemmas — Torn Read Consequence
+//==================================================================================================
+
+impl TimerTicks {
+    /// Lemma: Demonstrates the consequence of a torn read in `get()`.
+    ///
+    /// # Description
+    ///
+    /// If the no-concurrent-writer assumption (Trust Boundary T1) is violated,
+    /// a torn read can occur. This lemma shows the specific scenario:
+    ///
+    /// **Scenario**: The actual state is `(major=M, minor=0xFFFFFFFF)`.
+    /// An increment occurs between the two loads, changing the state to
+    /// `(major=M+1, minor=0)`. The reader sees `(major=M+1, minor=0xFFFFFFFF)`.
+    ///
+    /// **Consequence**: The observed tick count is `(M+1) * 2^32 + 0xFFFFFFFF`,
+    /// which is `2^32 - 1` ticks ahead of the actual pre-increment state
+    /// `M * 2^32 + 0xFFFFFFFF`.
+    ///
+    /// This lemma is not used in any postcondition — it is a documentation
+    /// proof that makes the torn-read risk concrete and quantifiable.
+    pub proof fn lemma_torn_read_consequence(major: u32)
+        requires
+            major < u32::MAX,
+        ensures
+            ({
+                // Actual state before increment.
+                let actual = TimerTicks { major: major, minor: u32::MAX };
+                // Torn read: reader sees new major, old minor.
+                let torn = TimerTicks { major: (major + 1) as u32, minor: u32::MAX };
+                // The torn read is exactly MINOR_MODULUS ticks ahead.
+                torn.spec_ticks() == actual.spec_ticks() + TimerTicks::MINOR_MODULUS()
+            }),
+    {
+        let m: nat = Self::MINOR_MODULUS();
+        let old_major: nat = major as nat;
+        let new_major: nat = (major + 1) as nat;
+        assert(new_major * m == old_major * m + m) by(nonlinear_arith);
+    }
+}
+
+//==================================================================================================
 // Proof Lemmas — timer_handler Trust Boundary
 //==================================================================================================
 

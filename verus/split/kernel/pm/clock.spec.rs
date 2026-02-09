@@ -226,6 +226,50 @@ impl TimerTicks {
     }
 
     //==============================================================================================
+    // Concurrency / Snapshot Assumption Specs
+    //==============================================================================================
+
+    /// Spec function: the wrapping-add result for a u32 value.
+    ///
+    /// # Description
+    ///
+    /// Models `x.wrapping_add(1)` at the spec level: `(x + 1) % 2^32`.
+    /// This is used to show that our branching `increment()` model computes
+    /// the same result as the original `wrapping_add(1)`.
+    pub open spec fn spec_wrapping_add_one(x: u32) -> nat {
+        (x as nat + 1) % Self::MINOR_MODULUS()
+    }
+
+    /// Spec function: formal statement of the no-concurrent-writer assumption.
+    ///
+    /// # Description
+    ///
+    /// Models the system-level invariant required for `get()` to return a
+    /// consistent (major, minor) snapshot. This assumption is **not proved**
+    /// within the clock module — it is a system-level property that depends on:
+    ///
+    /// 1. **Single-writer**: Only the timer interrupt handler on a single core
+    ///    modifies `major` and `minor`.
+    /// 2. **Reader serialization**: Callers of `get()` either:
+    ///    (a) run on the same core with interrupts disabled, preventing the
+    ///        handler from executing between the two loads, or
+    ///    (b) accept the single-writer guarantee as sufficient for consistency
+    ///        (since the writer is atomic at the word level).
+    ///
+    /// When this assumption holds, the two separate loads in `get()` observe a
+    /// single consistent state. When violated, a **torn read** can occur:
+    /// if the handler increments from (major=M, minor=0xFFFFFFFF) to
+    /// (major=M+1, minor=0) between the two loads, `get()` returns
+    /// (M+1, 0xFFFFFFFF), yielding a tick count that is `MINOR_MODULUS - 1`
+    /// ticks ahead of the actual state.
+    ///
+    /// This spec function returns `true` unconditionally; its purpose is to
+    /// name the assumption so that `get()`'s postcondition can reference it.
+    pub open spec fn spec_no_concurrent_writer_assumption() -> bool {
+        true
+    }
+
+    //==============================================================================================
     // timer_handler Behavioral Specs
     //==============================================================================================
 
