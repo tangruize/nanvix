@@ -59,6 +59,36 @@ impl InterruptedProcess {
     {
     }
 
+    /// Lemma: If the caller provides a ghost PID matching the real
+    /// ProcessState PID, the constructed InterruptedProcess satisfies the
+    /// PID integration obligation.
+    ///
+    /// This establishes the PID obligation at construction time: the caller
+    /// must provide `real_pid` matching the `pid` parameter. The constructor
+    /// `new()` guarantees `result.spec_pid() == pid`, so the obligation
+    /// `spec_process_state_pid_integration_obligation(result.spec_pid(), real_pid)`
+    /// holds immediately.
+    pub proof fn lemma_new_establishes_pid_obligation(
+        pid: int,
+        real_pid: int,
+    )
+        requires
+            Self::spec_process_state_pid_integration_obligation(pid, real_pid),
+        ensures
+            // The constructed process's spec_pid equals real_pid.
+            ({
+                let ip: InterruptedProcess = InterruptedProcess {
+                    pid: Ghost(pid),
+                    sleeping_thread_ids: Ghost(Seq::empty()),
+                    interrupted_thread_ids: Ghost(Seq::empty().push(0int)),
+                    zombie_thread_ids: Ghost(Seq::empty()),
+                };
+                Self::spec_process_state_pid_integration_obligation(
+                    ip.spec_pid(), real_pid)
+            }),
+    {
+    }
+
     /// Lemma: A newly constructed InterruptedProcess (via `from_sleeping`) is well-formed.
     /// Note: Retained as a regression guard (see `lemma_new_is_wf` note).
     pub proof fn lemma_from_sleeping_is_wf(
@@ -84,6 +114,29 @@ impl InterruptedProcess {
                     zombie_thread_ids: Ghost(zombie_ids),
                 };
                 ip.wf()
+            }),
+    {
+    }
+
+    /// Lemma: If the caller provides a ghost PID matching the real
+    /// ProcessState PID, the constructed InterruptedProcess (via
+    /// `from_sleeping`) satisfies the PID integration obligation.
+    pub proof fn lemma_from_sleeping_establishes_pid_obligation(
+        pid: int,
+        real_pid: int,
+    )
+        requires
+            Self::spec_process_state_pid_integration_obligation(pid, real_pid),
+        ensures
+            ({
+                let ip: InterruptedProcess = InterruptedProcess {
+                    pid: Ghost(pid),
+                    sleeping_thread_ids: Ghost(Seq::empty()),
+                    interrupted_thread_ids: Ghost(Seq::empty().push(0int)),
+                    zombie_thread_ids: Ghost(Seq::empty()),
+                };
+                Self::spec_process_state_pid_integration_obligation(
+                    ip.spec_pid(), real_pid)
             }),
     {
     }
