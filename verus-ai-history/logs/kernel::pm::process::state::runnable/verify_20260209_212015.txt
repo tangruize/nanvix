@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:20:15 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: cannot access spec-mode place in executable context
+   --> kernel/pm/process/state/runnable.rs:604:9
+    |
+604 |         result_val
+    |         ^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:0, errors:0)
