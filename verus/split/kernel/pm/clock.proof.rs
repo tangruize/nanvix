@@ -228,6 +228,10 @@ impl TimerTicks {
                 major * TimerTicks::MINOR_MODULUS() + minor == n
             }),
     {
+        let m: nat = TimerTicks::MINOR_MODULUS();
+        assert(m > 0);
+        assert((n / m) * m + n % m == n) by(nonlinear_arith)
+            requires(m > 0);
     }
 }
 
