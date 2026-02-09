@@ -1,8 +1,14 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-// InterruptedProcess Specification.
+// InterruptedProcess Specification (Design-Level Verification).
 // This file contains spec functions and View types for the InterruptedProcess type.
+//
+// ## Verification Scope
+//
+// This is a design-level (ghost model) specification. The spec functions define
+// abstract properties over ghost sequences of thread IDs. Structural equivalence
+// with the real executable code is assumed (see interrupted.rs header).
 //
 // ## Verification Model
 //

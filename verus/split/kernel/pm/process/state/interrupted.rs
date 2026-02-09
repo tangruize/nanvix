@@ -1,11 +1,27 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # InterruptedProcess Implementation
+//! # InterruptedProcess — Design Verification
 //!
 //! Represents a process that was interrupted in the Nanvix kernel.
 //! An InterruptedProcess has at least one interrupted thread, optional
 //! sleeping threads, and optional zombie threads.
+//!
+//! ## Verification Scope
+//!
+//! This is a **design-level (ghost model) verification**, not an
+//! implementation verification. All struct fields are `Ghost<...>` types
+//! and functions operate on ghost sequences. The verification proves that
+//! the *state transition logic* is correct — threads are not lost or
+//! duplicated, well-formedness invariants are preserved, and process
+//! identity is immutable — but does NOT verify the executable Rust code
+//! in `src/kernel/src/pm/process/state/interrupted.rs` directly.
+//!
+//! Structural equivalence between the ghost model and the real
+//! implementation (e.g., correct `VecDeque` method calls, absence of
+//! panics, memory safety) is assumed. Verifying the executable code
+//! would require `external_body` wrappers for standard library containers
+//! and `exec`-mode functions operating on real data, which is future work.
 //!
 //! ## Verified Properties
 //!
@@ -85,6 +101,11 @@
 //!   external_body). The original returns `&ProcessState` / `&mut ProcessState`;
 //!   since ProcessState is abstracted to PID and all fields are ghost, the
 //!   frame condition holds trivially without trusted assumptions.
+//!   **ProcessState abstraction gap:** There is no verified link between the
+//!   ghost PID field and the real `ProcessState`'s internal PID. The model
+//!   assumes the ghost PID accurately reflects the real state. If
+//!   `ProcessState` becomes independently verifiable, an invariant linking
+//!   `self.pid@ == process_state.pid()` should be added.
 //!
 //! ## Fields
 //!

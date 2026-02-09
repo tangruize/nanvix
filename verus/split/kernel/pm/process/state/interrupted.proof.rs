@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-// InterruptedProcess Proofs.
+// InterruptedProcess Proofs (Design-Level Verification).
 //
 // Key proven properties:
 // - Construction (new, from_sleeping) produces well-formed state with correct identity.
