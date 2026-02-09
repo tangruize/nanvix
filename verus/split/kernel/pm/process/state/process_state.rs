@@ -89,6 +89,10 @@
 //!   cannot be used in exec-level `if` conditions. The preconditions constrain
 //!   these parameters to exactly match the ghost state, so any caller that
 //!   satisfies the precondition must have computed the correct value.
+//!   **Caller burden:** This shifts correctness responsibility to call sites —
+//!   callers must derive oracle values from runtime data structures (e.g.,
+//!   `BTreeMap::contains_key()`) and the BTreeMap↔ghost map correspondence
+//!   (T2) is the critical link ensuring the oracle values are correct.
 //!
 //! ## Verification Scope
 //!
@@ -174,6 +178,10 @@ pub struct ProcessState {
 
 impl ProcessState {
     /// Creates a new ProcessState.
+    ///
+    /// The original constructor takes `(pid, vmem)`. The `Vmem` parameter is
+    /// omitted here because Vmem is an opaque HAL boundary type outside the
+    /// verification scope (see Trust Assumption T4).
     ///
     /// # Parameters
     ///
@@ -647,6 +655,8 @@ impl ProcessState {
         ensures
             result is Ok ==> {
                 &&& old(self).spec_has_pmio(port_number@)
+                // The removed entry had the requested port number.
+                &&& old(self).ghost_pmio@[found_idx@] == port_number@
                 &&& self.spec_pmio_count() == old(self).spec_pmio_count() - 1
                 &&& self.spec_pid() == old(self).spec_pid()
                 &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
@@ -794,6 +804,8 @@ impl ProcessState {
     /// The original returns `Option<Message>` (dequeuing from the mailbox).
     /// Mailbox semantics are intentionally out of scope; the stub only
     /// asserts frame conditions on the verified state fields.
+    // TODO: If mailbox semantics are brought into verification scope,
+    // this stub would need a ghost message queue and dequeue postconditions.
     #[verifier::external_body]
     pub fn receive_message_stub(&mut self)
         requires

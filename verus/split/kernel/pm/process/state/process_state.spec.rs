@@ -122,6 +122,10 @@ impl ProcessState {
     /// - The capabilities are well-formed.
     /// - All mutex reference counts are positive.
     /// - All condvar reference counts are positive.
+    ///
+    /// Note: PMIO port uniqueness is NOT enforced, matching the original's
+    /// `LinkedList` semantics which allows duplicate port numbers. Adding the
+    /// same port twice creates two entries; removing it removes only the first.
     pub open spec fn wf(&self) -> bool {
         &&& self.ghost_mutexes@.dom().finite()
         &&& self.ghost_mutexes@.dom().len() == self.mutex_count as nat
