@@ -451,36 +451,26 @@ impl RunningProcess {
     {
         if tag == 0u8 {
             // Zombie found — remove it from the zombie list.
+            // Construct the new zombie list to exactly match spec_try_join_zombie_post.
             proof {
-                // tag == 0 means spec_has_zombie_thread(tid@), so zombie list is non-empty.
                 assert(old(self).spec_has_zombie_thread(tid@));
                 assert(old(self).zombie_thread_ids@.len() > 0);
                 assert(old(self).zombie_count > 0);
             }
 
-            let ghost found_idx: int = choose|i: int|
-                0 <= i < self.zombie_thread_ids@.len()
-                && self.zombie_thread_ids@[i] == tid@;
-
+            // Use the spec function directly to define the new zombie list.
+            // This guarantees structural equality with the postcondition.
             let ghost new_zombie_ids: Seq<int> =
-                Self::spec_remove_at(self.zombie_thread_ids@, found_idx);
+                old(self).spec_try_join_zombie_post(tid@);
 
             proof {
-                Self::lemma_remove_at_length(self.zombie_thread_ids@, found_idx);
-
-                // Show our new_zombie_ids equals spec_try_join_zombie_post.
-                // spec_try_join_zombie_post uses the same choose predicate over
-                // the same zombie_thread_ids (pre-mutation). Since choose is
-                // deterministic, both produce the same index.
-                let spec_idx: int = choose|i: int|
+                // Prove the length is correct.
+                // spec_try_join_zombie_post uses choose + spec_remove_at.
+                let idx: int = choose|i: int|
                     0 <= i < old(self).zombie_thread_ids@.len()
                     && old(self).zombie_thread_ids@[i] == tid@;
-                // At this point, self.zombie_thread_ids@ == old(self).zombie_thread_ids@
-                // (not yet mutated), so found_idx == spec_idx.
-                assert(found_idx == spec_idx);
-                assert(new_zombie_ids =~= Self::spec_remove_at(
-                    old(self).zombie_thread_ids@, spec_idx));
-                assert(new_zombie_ids =~= old(self).spec_try_join_zombie_post(tid@));
+                Self::lemma_remove_at_length(old(self).zombie_thread_ids@, idx);
+                assert(new_zombie_ids.len() == old(self).zombie_thread_ids@.len() - 1);
             }
 
             self.zombie_thread_ids = Ghost(new_zombie_ids);
