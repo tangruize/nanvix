@@ -7,15 +7,19 @@
 // Key proven properties:
 // - Construction produces well-formed state with correct initial values.
 // - PID is immutable across all operations.
-// - run() selects earliest admission time thread, preserves PID and total count.
+// - run() derives min-index via `lemma_earliest_ready_index_bounds` (no oracle),
+//   selects earliest admission time thread, preserves PID and total count.
 //   Postcondition specifies exact remaining thread list contents.
 // - terminate() converts ready→zombie, sleeping→interrupted, preserves PID.
+//   Uses oracle `has_interrupted` (justified: nat is ghost-only).
 //   Postcondition specifies exact resulting list contents and correct branching.
-// - wakeup() moves sleeping→ready, preserves PID and total count.
+// - wakeup() derives search index via proof-level `choose` (no index oracle),
+//   moves sleeping→ready, preserves PID and total count.
 //   Postcondition specifies exact list contents after the move.
 // - add_thread() increases ready count by 1, preserves PID and other lists.
 //   Postcondition specifies exact list contents.
-// - earliest_admission_time() returns the minimum over ready thread admission times.
+// - earliest_admission_time: `spec_min_index_rec` is proven in-bounds and
+//   minimality via `lemma_min_index_rec_bounds` (inductive proof on seq length).
 // - find_thread() spec model verifies exhaustive search and list-variant consistency.
 // - spec_remove_at() helper has proven length and element preservation properties.
 // - Well-formedness is preserved by all operations.

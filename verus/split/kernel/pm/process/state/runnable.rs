@@ -54,13 +54,12 @@
 //!   simple accessors to `Box<ProcessState>` — their correctness is trivial.
 //! - Thread state transitions (ReadyThread::terminate(), SleepingThread::interrupt(),
 //!   SleepingThread::wakeup()) are modeled as ID-preserving operations.
-//! - **Oracle parameters:** `run()` takes `selected_idx` and `wakeup()` takes
-//!   `found`/`found_idx` as oracle parameters. These push the algorithmic
-//!   correctness (the for-loop that finds the minimum admission time in `run()`,
-//!   the sleeping thread search in `wakeup()`) to the caller. The preconditions
-//!   ensure the oracle values match the ghost state, so correctness is preserved
-//!   at the protocol level. The iterative search algorithms themselves are not
-//!   verified — this is an explicit trust assumption.
+//! - **Oracle parameters:** `terminate()` takes `has_interrupted` as an oracle
+//!   parameter because the branch decision depends on ghost-level `nat` comparisons.
+//!   The precondition constrains the oracle to match ghost state.
+//!   `run()` derives its min-index internally via `lemma_earliest_ready_index_bounds`.
+//!   `wakeup()` derives its search index internally via proof-level `choose`;
+//!   only the `found` boolean remains as oracle (exec-level branching required).
 //! - **`find_thread()` and `find_thread_mut()`** are omitted from the exec-level
 //!   model because they return reference types (`ThreadRef`, `ThreadRefMut`) that
 //!   Verus cannot express. A spec-only model (`spec_find_thread`) is provided
