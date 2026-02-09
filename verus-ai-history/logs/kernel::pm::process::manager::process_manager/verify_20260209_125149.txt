@@ -1,0 +1,41 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 12:51:49 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::manager::process_manager
+
+error: postcondition not satisfied
+   --> kernel/pm/process/manager/process_manager.proof.rs:184:13
+    |
+174 | /     pub proof fn lemma_union_disjoint_len(
+175 | |         a: Set<int>,
+176 | |         b: Set<int>,
+177 | |     )
+    | |_____- at the end of the function body
+...
+184 |               a.union(b).len() == a.len() + b.len(),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/process/manager/process_manager.rs:195:13
+    |
+195 |             self.wf(),
+    |             ^^^^^^^^^ failed this postcondition
+...
+217 |         pid
+    |         --- at the end of the function body
+
+verification results:: 30 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 30
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager (verified:30, errors:2)
