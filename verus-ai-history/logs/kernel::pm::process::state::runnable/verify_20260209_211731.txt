@@ -1,0 +1,33 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:17:31 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: invalid suffix `nat` for number literal
+   --> kernel/pm/process/state/runnable.rs:385:49
+    |
+385 |         if self.interrupted_thread_ids@.len() > 0nat || self.sleeping_thread_ids@.len() > 0nat {
+    |                                                 ^^^^ invalid suffix `nat`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: invalid suffix `nat` for number literal
+   --> kernel/pm/process/state/runnable.rs:385:91
+    |
+385 |         if self.interrupted_thread_ids@.len() > 0nat || self.sleeping_thread_ids@.len() > 0nat {
+    |                                                                                           ^^^^ invalid suffix `nat`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: aborting due to 2 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:0, errors:0)
