@@ -388,7 +388,8 @@ impl RunnableProcess {
         ensures
             exists|idx: int| 0 <= idx < self.ready_admission_times@.len()
                 && forall|j: int| 0 <= j < self.ready_admission_times@.len()
-                    ==> self.ready_admission_times@[idx] <= self.ready_admission_times@[j],
+                    ==> #[trigger] self.ready_admission_times@[idx]
+                        <= #[trigger] self.ready_admission_times@[j],
     {
         Self::lemma_seq_has_min(&self.ready_admission_times@, self.ready_admission_times@.len() as int);
     }
@@ -400,7 +401,7 @@ impl RunnableProcess {
             n <= s.len(),
         ensures
             exists|idx: int| 0 <= idx < n
-                && forall|j: int| 0 <= j < n ==> s[idx] <= s[j],
+                && forall|j: int| 0 <= j < n ==> (#[trigger] s[idx]) <= (#[trigger] s[j]),
         decreases n,
     {
         if n == 1 {
@@ -408,16 +409,26 @@ impl RunnableProcess {
         } else {
             Self::lemma_seq_has_min(s, n - 1);
             let prev_min_idx: int = choose|idx: int| 0 <= idx < n - 1
-                && forall|j: int| 0 <= j < n - 1 ==> s[idx] <= s[j];
+                && forall|j: int| 0 <= j < n - 1 ==> (#[trigger] s[idx]) <= (#[trigger] s[j]);
             if s[n - 1] < s[prev_min_idx] {
                 // New element is smaller.
-                assert(forall|j: int| 0 <= j < n - 1 ==> s[prev_min_idx] <= s[j]);
-                assert(s[n - 1] < s[prev_min_idx]);
-                assert(forall|j: int| 0 <= j < n ==> s[n - 1] <= s[j]);
+                assert forall|j: int| 0 <= j < n implies (#[trigger] s[n - 1]) <= (#[trigger] s[j])
+                by {
+                    if j < n - 1 {
+                        assert(s[prev_min_idx] <= s[j]);
+                        assert(s[n - 1] <= s[j]);
+                    }
+                }
             } else {
                 // Previous min is still min.
-                assert(s[prev_min_idx] <= s[n - 1]);
-                assert(forall|j: int| 0 <= j < n ==> s[prev_min_idx] <= s[j]);
+                assert forall|j: int| 0 <= j < n implies (#[trigger] s[prev_min_idx]) <= (#[trigger] s[j])
+                by {
+                    if j < n - 1 {
+                        assert(s[prev_min_idx] <= s[j]);
+                    } else {
+                        assert(s[prev_min_idx] <= s[n - 1]);
+                    }
+                }
             }
         }
     }
