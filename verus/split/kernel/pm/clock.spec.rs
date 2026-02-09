@@ -183,15 +183,46 @@ impl TimerTicks {
     /// `major * MINOR_MODULUS + minor`, which is exactly `spec_ticks()`.
     /// This establishes that the pair is a consistent snapshot.
     ///
-    /// # Note on Atomics
+    /// # Trust Boundary T1: Atomic Snapshot Consistency
     ///
-    /// The original `get()` loads `major` and `minor` in two separate atomic
-    /// loads. Under the single-writer assumption (timer interrupt handler on
-    /// one core), tearing cannot occur because the writer is not concurrent
-    /// with the reader. This consistency property is assumed, not proved —
-    /// see Trust Boundary T1.
+    /// The original `get()` performs two separate atomic loads:
+    /// ```ignore
+    /// (self.major.load(ORDER), self.minor.load(ORDER))
+    /// ```
+    /// Under the **single-writer assumption** (only the timer interrupt handler
+    /// on one core modifies the counter), tearing cannot occur because the
+    /// writer is not concurrent with the reader (interrupts are serialized on
+    /// the same core, and `get()` is called with interrupts disabled or from
+    /// the same interrupt context).
+    ///
+    /// This consistency property is **assumed**, not proved. The assumption is:
+    /// - **A-T1a**: No concurrent writer modifies `major` or `minor` between
+    ///   the two loads in `get()`.
+    /// - **A-T1b**: The memory ordering (`Ordering::Relaxed` with single-writer)
+    ///   ensures visibility of the latest write.
+    ///
+    /// These assumptions hold under Nanvix's architecture: the timer handler
+    /// runs in interrupt context on a single core, and `get()` callers either
+    /// run on the same core (serialized by interrupt enable/disable) or on
+    /// other cores where the atomic visibility guarantee is sufficient.
     pub open spec fn spec_get_consistent(&self, major: u32, minor: u32) -> bool {
         major as nat * Self::MINOR_MODULUS() + minor as nat == self.spec_ticks()
+    }
+
+    //==============================================================================================
+    // SystemTime Model
+    //==============================================================================================
+
+    /// Spec function: models the success condition of `SystemTime::new()`.
+    ///
+    /// # Description
+    ///
+    /// `SystemTime::new(seconds, nanoseconds)` returns `Some(...)` iff
+    /// `nanoseconds < NANOSECONDS_PER_SECOND`. This spec function captures
+    /// that condition, allowing us to prove that the `unreachable!()` path
+    /// in the original `now()` is dead code.
+    pub open spec fn spec_system_time_new_succeeds(nanoseconds: nat) -> bool {
+        nanoseconds < Self::NANOSECONDS_PER_SECOND()
     }
 
     //==============================================================================================

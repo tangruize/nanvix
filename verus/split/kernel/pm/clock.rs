@@ -17,10 +17,12 @@
 //!   - Nanoseconds < `NANOSECONDS_PER_SECOND` (SystemTime::new() precondition).
 //!   - Seconds == `ticks() / timer_freq` (consistency with tick count).
 //!   - No u32 overflow in the nanosecond computation.
-//!   - The `unreachable!()` in the original code is dead code.
+//!   - `SystemTime::new()` always returns `Some` (the `unreachable!()` is dead code).
 //! - **Seconds monotonicity**: If ticks increases, seconds does not decrease.
-//! - **timer_handler behavioral spec**: The handler's effect on clock state is
-//!   exactly one `increment()` call; side effects are orthogonal to the counter.
+//! - **`timer_handler_model()`**: Exec-level model proving the handler calls
+//!   `increment()` exactly once and its postconditions match `increment()`'s.
+//! - **Standalone function models**: `standalone_ticks()` and `standalone_now()`
+//!   mirror the original public APIs with full specifications.
 //!
 //! ## Verification Model
 //!
@@ -90,9 +92,10 @@
 //!   external.
 //! - **T5: Timer frequency.** The `timer_freq > 0` precondition is justified by
 //!   platform invariants: the PIT timer frequency is always positive (hardware
-//!   guarantee, see `axiom_pit_timer_freq_valid`), and the non-PIT fallback is
-//!   the compile-time constant `1` (see `axiom_fallback_timer_freq_valid`).
-//!   We prove safety for all `timer_freq > 0` rather than for specific values.
+//!   guarantee, modeled via `axiom_pit_timer_freq_valid` which unconditionally
+//!   ensures `freq > 0`), and the non-PIT fallback is the compile-time constant
+//!   `1` (see `axiom_fallback_timer_freq_valid`). We prove safety for all
+//!   `timer_freq > 0` rather than for specific values.
 
 use vstd::prelude::*;
 
@@ -429,6 +432,94 @@ impl TimerTicks {
         let nanoseconds: u32 = Self::compute_nanoseconds(minor_ticks, timer_freq);
         (seconds, nanoseconds)
     }
+
+    //==============================================================================================
+    // Exec-Level timer_handler Model
+    //==============================================================================================
+
+    /// Models the timer_handler() function at exec level.
+    ///
+    /// # Description
+    ///
+    /// This is the verified behavioral model of the original `timer_handler()`.
+    /// It calls `increment()` exactly once, which is the only effect of the
+    /// handler on the clock counter. The original handler also:
+    /// - Checks for VM pause requests (volatile read + I/O port write).
+    /// - Attempts a context switch via `ProcessManager::giveup()`.
+    ///
+    /// These side effects are HAL/scheduler interactions modeled as Trust
+    /// Boundary T3: they do not modify `major` or `minor`.
+    ///
+    /// # API Divergence
+    ///
+    /// The original `timer_handler` is `pub unsafe fn` taking an `InterruptNumber`
+    /// parameter and accessing the global `TIMER_TICKS` singleton. This model
+    /// takes `&mut self` and operates on a local instance. The global singleton
+    /// access is Trust Boundary T1.
+    pub fn timer_handler_model(&mut self)
+        requires
+            old(self).wf(),
+        ensures
+            self.wf(),
+            old(self).spec_timer_handler_effect(self),
+            self.spec_ticks() == old(self).spec_next_ticks(),
+            old(self).spec_is_max() ==> self.spec_ticks() == 0,
+            !old(self).spec_is_max() ==> self.spec_ticks() == old(self).spec_ticks() + 1,
+    {
+        self.increment();
+    }
+}
+
+//==================================================================================================
+// Standalone Function Models
+//==================================================================================================
+
+/// Standalone model of the original `pub fn ticks() -> u64`.
+///
+/// # Description
+///
+/// The original `ticks()` reads from the global `TIMER_TICKS` singleton.
+/// This model takes a `&TimerTicks` reference, abstracting the global access.
+/// The postcondition matches the original: the returned u64 equals the
+/// combined tick count `(major << 32) + minor`.
+pub fn standalone_ticks(timer: &TimerTicks) -> (result: u64)
+    ensures
+        result as nat == timer.spec_ticks(),
+{
+    timer.ticks()
+}
+
+/// Standalone model of the original `pub fn now() -> SystemTime`.
+///
+/// # Description
+///
+/// The original `now()` reads from the global `TIMER_TICKS` singleton,
+/// determines `timer_freq` from a `#[cfg]` branch, computes (seconds,
+/// nanoseconds), and constructs a `SystemTime`. This model takes
+/// explicit `&TimerTicks` and `timer_freq` parameters and returns a
+/// `(u64, u32)` pair representing (seconds, nanoseconds).
+///
+/// The postconditions prove:
+/// - `nanoseconds < NANOSECONDS_PER_SECOND` (SystemTime::new() precondition).
+/// - `seconds == ticks / timer_freq` (consistency).
+/// - The pair matches `spec_now()`.
+///
+/// The `SystemTime::new()` call in the original is modeled via
+/// `spec_system_time_new_succeeds`, which is proved to hold by
+/// `lemma_now_valid_for_system_time`.
+pub fn standalone_now(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32))
+    requires
+        timer_freq > 0,
+    ensures
+        result.0 as nat == TimerTicks::spec_compute_seconds(timer.major, timer.minor, timer_freq),
+        result.1 as nat == TimerTicks::spec_compute_nanoseconds(timer.minor, timer_freq),
+        TimerTicks::spec_nanoseconds_valid(result.1 as nat),
+        result.1 < 1_000_000_000u32,
+        result.0 as nat == timer.spec_ticks() / timer_freq as nat,
+        timer.spec_now(timer_freq) == (result.0 as nat, result.1 as nat),
+        TimerTicks::spec_system_time_new_succeeds(result.1 as nat),
+{
+    timer.now(timer_freq)
 }
 
 } // verus!

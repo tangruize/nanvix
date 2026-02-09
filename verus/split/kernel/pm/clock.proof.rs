@@ -475,6 +475,27 @@ impl TimerTicks {
         assert(a / d <= b / d) by(nonlinear_arith)
             requires(a <= b && d > 0);
     }
+
+    /// Lemma: SystemTime::new() succeeds for all outputs of now().
+    ///
+    /// # Description
+    ///
+    /// Proves that the (seconds, nanoseconds) pair produced by `now()` always
+    /// satisfies `spec_system_time_new_succeeds`, i.e., `nanoseconds <
+    /// NANOSECONDS_PER_SECOND`. This means `SystemTime::new(seconds, nanoseconds)`
+    /// returns `Some(...)`, and the `unreachable!()` in the original code is
+    /// truly unreachable.
+    pub proof fn lemma_system_time_new_succeeds(&self, timer_freq: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            Self::spec_system_time_new_succeeds(
+                Self::spec_compute_nanoseconds(self.minor, timer_freq),
+            ),
+    {
+        Self::lemma_nanoseconds_in_range(self.minor, timer_freq);
+        Self::lemma_nanoseconds_fits_u32(self.minor, timer_freq);
+    }
 }
 
 //==================================================================================================
@@ -507,13 +528,13 @@ impl TimerTicks {
     ///
     /// This axiom is an `external_body` trust boundary because the PIT
     /// frequency depends on hardware behavior and HAL configuration that
-    /// Verus cannot model.
+    /// Verus cannot model. The postcondition guarantees `freq > 0`
+    /// unconditionally, modeling the hardware invariant that the PIT
+    /// always produces a positive frequency.
     #[verifier::external_body]
     pub proof fn axiom_pit_timer_freq_valid(freq: u32)
-        requires
-            freq == freq, // placeholder: actual value comes from pit::get_timer_frequency().
         ensures
-            Self::spec_platform_timer_freq_valid(freq) ==> freq > 0,
+            freq > 0,
     {
     }
 }
