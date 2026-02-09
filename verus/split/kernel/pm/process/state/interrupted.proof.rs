@@ -209,6 +209,39 @@ impl InterruptedProcess {
     {
     }
 
+    /// Refinement assumption: the original `find_thread()` implementation
+    /// (which uses `iter().find(|t| t.id() == tid)` on each list in
+    /// priority order: interrupted → sleeping → zombie) produces a result
+    /// that matches `spec_find_thread()`.
+    ///
+    /// This cannot be verified within this module because:
+    /// 1. Verus cannot express the reference-typed return value (`ThreadRef`).
+    /// 2. The ghost sequences have no executable counterpart to iterate over.
+    ///
+    /// This lemma documents the semantic equivalence assumption. When Verus
+    /// supports reference-typed returns or executable ghost iteration, this
+    /// should be replaced with a verified implementation.
+    pub proof fn lemma_find_thread_refinement_assumption(&self, tid: int)
+        requires
+            self.wf(),
+        ensures
+            // The spec search order matches the original: interrupted first.
+            self.spec_has_interrupted_thread(tid) ==>
+                self.spec_find_thread(tid) == Some(0int),
+            // Sleeping is searched only if not found in interrupted.
+            !self.spec_has_interrupted_thread(tid) && self.spec_has_sleeping_thread(tid) ==>
+                self.spec_find_thread(tid) == Some(1int),
+            // Zombie is searched last.
+            !self.spec_has_interrupted_thread(tid)
+                && !self.spec_has_sleeping_thread(tid)
+                && self.spec_has_zombie_thread(tid) ==>
+                self.spec_find_thread(tid) == Some(2int),
+            // Not found in any list.
+            !self.spec_has_thread(tid) ==>
+                self.spec_find_thread(tid) == None::<int>,
+    {
+    }
+
     //==============================================================================================
     // View Equality
     //==============================================================================================

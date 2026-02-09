@@ -51,9 +51,15 @@
 //   search logic (e.g., wrong predicate, wrong collection order) would not
 //   be caught. If Verus adds support for executable iteration over ghost
 //   sequences or reference-typed returns, this should be revisited.
-// - `state()` / `state_mut()` return references to ProcessState; modeled
-//   as external_body with frame conditions.
-// - The standalone `interrupt()` function is modeled as ID-preserving.
+// - `state()` / `state_mut()` return references to ProcessState in the original.
+//   In the verification model, ProcessState is abstracted to PID and all fields
+//   are ghost, so these are implemented as pure ghost returns without
+//   external_body. The original `state_mut()` allows mutation of inner
+//   ProcessState fields (e.g., capabilities); since our model only tracks PID,
+//   the frame condition holds trivially.
+// - The standalone `interrupt()` function is modeled as ID-preserving with
+//   an explicit `InterruptReason::Killed` tag (spec constant
+//   `INTERRUPT_REASON_KILLED`).
 
 use vstd::prelude::*;
 
@@ -211,6 +217,13 @@ impl InterruptedProcess {
         &&& new_self.sleeping_thread_ids@ == old_self.sleeping_thread_ids@
         &&& new_self.zombie_thread_ids@ == old_self.zombie_thread_ids@
     }
+
+    /// Spec constant: interrupt reason for `Killed`.
+    ///
+    /// Models `InterruptReason::Killed` from the original source. The standalone
+    /// `interrupt()` function always uses this reason. Value 0 is an abstract tag;
+    /// the actual enum discriminant in the kernel is not relied upon.
+    pub open spec fn INTERRUPT_REASON_KILLED() -> int { 0 }
 }
 
 //==================================================================================================
