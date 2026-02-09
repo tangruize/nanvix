@@ -88,13 +88,15 @@
 //!   reader observes `(M+1, 0xFFFFFFFF)` — a **torn read** that is `2^32`
 //!   (`MINOR_MODULUS`) ticks ahead of reality (see `lemma_torn_read_consequence`).
 //!
-//!   This assumption is formalized as the opaque spec predicate
-//!   `spec_no_concurrent_writer_assumption()`, which is introduced into the
-//!   proof environment via the `external_body` axiom `axiom_no_concurrent_writer()`.
-//!   Because the spec is opaque (not `open`), Z3 cannot unfold it to `true` —
-//!   any proof chain that depends on snapshot consistency must explicitly invoke
-//!   the axiom or receive the predicate from `get()`'s postcondition. The trust
-//!   boundary assumptions are documented as A-T1a and A-T1b in `spec_get_consistent`.
+//!   This assumption is formalized as the opaque uninterpreted spec predicate
+//!   `spec_no_concurrent_writer_assumption()`, which is a **precondition** on
+//!   `get()` and `now()`. Callers must obtain this predicate by invoking the
+//!   `external_body` axiom `axiom_no_concurrent_writer()` — the axiom is the
+//!   sole entry point for the assumption. Because the spec is uninterpreted,
+//!   Z3 cannot unfold it, and because it is a `requires` (not unconditionally
+//!   granted), callers must explicitly establish the assumption before reading
+//!   the counter. The trust boundary assumptions are documented as A-T1a and
+//!   A-T1b in `spec_get_consistent`.
 //!
 //! - **T2: `wrapping_add(1)` → explicit branching.** The original uses
 //!   `minor.wrapping_add(1)` which computes `(minor + 1) % 2^32`. The verified
@@ -191,26 +193,26 @@ impl TimerTicks {
     ///
     /// The original performs two separate atomic loads. Under the single-writer
     /// assumption (timer interrupt handler on one core), the pair is always a
-    /// consistent snapshot — see Trust Boundary T1. The postcondition
-    /// `spec_get_consistent` ties the returned pair to `spec_ticks()`.
+    /// consistent snapshot — see Trust Boundary T1. The caller must establish
+    /// `spec_no_concurrent_writer_assumption()` (via `axiom_no_concurrent_writer`)
+    /// before calling `get()`, making the trust boundary mechanically enforced.
     ///
     /// # Returns
     ///
     /// A tuple of (major, minor) tick counts.
     pub fn get(&self) -> (result: (u32, u32))
+        requires
+            // Trust Boundary T1: the caller must establish that no concurrent
+            // writer can modify major/minor between the two reads.
+            Self::spec_no_concurrent_writer_assumption(),
         ensures
             result.0 == self.major,
             result.1 == self.minor,
             result.0 as nat == self.spec_major(),
             result.1 as nat == self.spec_minor(),
             self.spec_get_consistent(result.0, result.1),
-            // Trust Boundary T1: snapshot consistency depends on the
-            // no-concurrent-writer assumption (see spec documentation).
             Self::spec_no_concurrent_writer_assumption(),
     {
-        proof {
-            Self::axiom_no_concurrent_writer();
-        }
         (self.major, self.minor)
     }
 
@@ -450,6 +452,7 @@ impl TimerTicks {
     pub fn now(&self, timer_freq: u32) -> (result: (u64, u32))
         requires
             timer_freq > 0,
+            Self::spec_no_concurrent_writer_assumption(),
         ensures
             result.0 as nat == Self::spec_compute_seconds(self.major, self.minor, timer_freq),
             result.1 as nat == Self::spec_compute_nanoseconds(self.minor, timer_freq),
@@ -541,6 +544,7 @@ pub fn standalone_ticks(timer: &TimerTicks) -> (result: u64)
 pub fn standalone_now(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32))
     requires
         timer_freq > 0,
+        TimerTicks::spec_no_concurrent_writer_assumption(),
     ensures
         result.0 as nat == TimerTicks::spec_compute_seconds(timer.major, timer.minor, timer_freq),
         result.1 as nat == TimerTicks::spec_compute_nanoseconds(timer.minor, timer_freq),
