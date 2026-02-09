@@ -56,10 +56,19 @@
 //! the invariant is enforced by proof obligations:
 //! - All constructors (`new`, `default`) guarantee `wf()` in their postconditions.
 //! - `set`/`clear` guarantee `old(self).wf() ==> self.wf()` (conditional preservation).
+//! - `lemma_api_preserves_wf` proves the inductive step for any operation sequence.
 //! - Downstream modules that require `wf()` can assert it as a precondition,
 //!   knowing that any value produced through the API satisfies it.
 //! This pattern matches the Nanvix verification crate convention where `wf()`
 //! is a proof-level obligation, not a runtime-enforced type invariant.
+//!
+//! **Known deviation:** The verified executable interface is strictly more
+//! permissive than the original source because the `pub bits` field allows
+//! direct construction and mutation that bypasses the `set`/`clear` API. This
+//! is an unavoidable consequence of Verus's visibility rules (see above).
+//! The verification guarantees correctness for the API-reachable state space;
+//! values constructed by directly writing to `bits` are outside the verified
+//! contract and are not guaranteed to satisfy `wf()`.
 //!
 //! ## Closed-World Assumption
 //!
