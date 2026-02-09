@@ -181,7 +181,7 @@ impl RunnableProcess {
     {
         choose|idx: int| 0 <= idx < self.ready_admission_times@.len()
             && forall|j: int| 0 <= j < self.ready_admission_times@.len()
-                ==> self.ready_admission_times@[idx] <= self.ready_admission_times@[j]
+                ==> #[trigger] self.ready_admission_times@[idx] <= #[trigger] self.ready_admission_times@[j]
     }
 
     /// Spec function: returns the earliest admission time among ready threads.
