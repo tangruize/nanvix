@@ -1,0 +1,60 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:43:37 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0592]: duplicate definitions with name `spec_find_thread`
+   --> kernel/pm/process/state/runnable.spec.rs:233:5
+    |
+217 |     pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+    |     ----------------------------------------------------------------- other definition for `spec_find_thread`
+...
+233 |     pub open spec fn spec_find_thread(s: Seq<int>, tid: int) -> bool {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definitions for `spec_find_thread`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/runnable.proof.rs:525:36
+    |
+525 |             Self::spec_find_thread(self.sleeping_thread_ids@, tid@),
+    |             ---------------------- ^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&RunnableProcess`, found `Seq<int>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected reference `&kernel::pm::process::state::runnable::RunnableProcess`
+                  found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: method defined here
+   --> kernel/pm/process/state/runnable.spec.rs:217:22
+    |
+217 |     pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+    |                      ^^^^^^^^^^^^^^^^ -----
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/runnable.rs:469:45
+    |
+469 |             found == Self::spec_find_thread(self.sleeping_thread_ids@, tid@),
+    |                      ---------------------- ^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&RunnableProcess`, found `Seq<int>`
+    |                      |
+    |                      arguments to this function are incorrect
+    |
+    = note: expected reference `&kernel::pm::process::state::runnable::RunnableProcess`
+                  found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: method defined here
+   --> kernel/pm/process/state/runnable.spec.rs:217:22
+    |
+217 |     pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+    |                      ^^^^^^^^^^^^^^^^ -----
+
+error: aborting due to 3 previous errors
+
+Some errors have detailed explanations: E0308, E0592.
+For more information about an error, try `rustc --explain E0308`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:0, errors:0)
