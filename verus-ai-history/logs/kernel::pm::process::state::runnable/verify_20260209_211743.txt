@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:17:43 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: The Verus types 'nat' and 'int' can only be used in ghost code (e.g., in a 'spec' or 'proof' function, inside a 'proof' block, or when assigning to a 'ghost' or 'tracked' variable)
+   --> kernel/pm/process/state/runnable.rs:385:12
+    |
+385 |         if self.interrupted_thread_ids@.len() as int > 0 || self.sleeping_thread_ids@.len() as int > 0 {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: The Verus types 'nat' and 'int' can only be used in ghost code (e.g., in a 'spec' or 'proof' function, inside a 'proof' block, or when assigning to a 'ghost' or 'tracked' variable)
+   --> kernel/pm/process/state/runnable.rs:385:61
+    |
+385 |         if self.interrupted_thread_ids@.len() as int > 0 || self.sleeping_thread_ids@.len() as int > 0 {
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 2 previous errors
+
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:0, errors:0)
