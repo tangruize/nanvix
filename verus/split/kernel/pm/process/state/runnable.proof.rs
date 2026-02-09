@@ -507,7 +507,7 @@ impl RunnableProcess {
             !self.spec_has_sleeping_thread(tid),
             !self.spec_has_zombie_thread(tid),
         ensures
-            self.spec_find_thread(tid) == None,
+            self.spec_find_thread(tid) == None::<int>,
     {
     }
 
