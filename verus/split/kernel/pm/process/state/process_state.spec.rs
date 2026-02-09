@@ -122,6 +122,7 @@ impl ProcessState {
     /// - The capabilities are well-formed.
     /// - All mutex reference counts are positive.
     /// - All condvar reference counts are positive.
+    /// - All PMIO port numbers are valid u16 values (0..=0xFFFF).
     ///
     /// Note: PMIO port uniqueness is NOT enforced, matching the original's
     /// `LinkedList` semantics which allows duplicate port numbers. Adding the
@@ -138,6 +139,10 @@ impl ProcessState {
                 self.ghost_mutexes@[addr] > 0
         &&& forall|addr: int| #![auto] self.ghost_conditions@.contains_key(addr) ==>
                 self.ghost_conditions@[addr] > 0
+        // PMIO port numbers must be valid u16 values (0..=0xFFFF),
+        // matching the original's `u16` port number type.
+        &&& forall|i: int| #![auto] 0 <= i < self.ghost_pmio@.len() ==>
+                0 <= self.ghost_pmio@[i] <= 0xFFFF
     }
 
     /// Spec function: checks if the mutex map is at capacity.

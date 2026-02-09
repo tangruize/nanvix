@@ -601,10 +601,11 @@ impl ProcessState {
     ///
     /// # Parameters
     ///
-    /// - `port_number`: Abstract port number to add.
+    /// - `port_number`: Abstract port number to add (must be a valid u16 value).
     pub fn add_pmio(&mut self, port_number: Ghost<int>)
         requires
             old(self).wf(),
+            0 <= port_number@ <= 0xFFFF,
         ensures
             self.spec_pmio_count() == old(self).spec_pmio_count() + 1,
             self.spec_pid() == old(self).spec_pid(),
