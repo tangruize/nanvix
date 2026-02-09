@@ -646,6 +646,7 @@ impl ProcessState {
     ) -> (result: Result<(), Error>)
         requires
             old(self).wf(),
+            0 <= port_number@ <= 0xFFFF,
             found == old(self).spec_has_pmio(port_number@),
             // If found, the ghost index must be valid, point to the matching port,
             // and be the FIRST occurrence (matching `iter().position()` semantics).
