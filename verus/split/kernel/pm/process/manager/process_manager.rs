@@ -216,16 +216,26 @@ impl ProcessManagerInner {
             assert(!self.ghost_suspended@.contains(pid as int));
             assert(!self.ghost_interrupted@.contains(pid as int));
             assert(!self.ghost_zombies@.contains(pid as int));
-            // After incrementing next_pid, all existing PIDs (including the new one)
-            // are still < next_pid + 1.
-            assert((pid as int) < (pid as int + 1));
-            // Existing PIDs in ready are < next_pid = pid, so < pid + 1.
-            assert(forall |p: int| self.ghost_ready@.contains(p) ==> p < pid as int);
-            // The new pid is also < pid + 1.
-            assert((pid as int) < ((pid + 1) as int));
+            // Running PID not in new ready set (it wasn't before, and it's != pid
+            // because running_pid < next_pid = pid, so running_pid != pid).
+            assert(self.running_pid as int != pid as int);
+            assert(!self.ghost_ready@.insert(pid as int).contains(self.running_pid as int));
             // All PIDs in the new ready set are < pid + 1.
             assert(forall |p: int| self.ghost_ready@.insert(pid as int).contains(p)
                 ==> 0 <= p && p < (pid + 1) as int);
+            // PID bounds for other sets still hold with new next_pid.
+            assert(forall |p: int| self.ghost_suspended@.contains(p)
+                ==> p < (pid + 1) as int);
+            assert(forall |p: int| self.ghost_interrupted@.contains(p)
+                ==> p < (pid + 1) as int);
+            assert(forall |p: int| self.ghost_zombies@.contains(p)
+                ==> p < (pid + 1) as int);
+            // Running PID is still < new next_pid.
+            assert((self.running_pid as int) < (pid + 1) as int);
+            // Counts bounded: total + 1 still <= i32::MAX since total was < i32::MAX.
+            assert((self.ready_count + 1) as int + (self.suspended_count as int)
+                + (self.interrupted_count as int) + (self.zombie_count as int) + 1
+                <= i32::MAX as int);
         }
 
         self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
