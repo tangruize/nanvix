@@ -47,13 +47,24 @@ impl Capabilities {
                 (post_bits & Self::spec_mask(cap)) != 0u8
             }),
     {
-        let mask: u8 = Self::spec_mask(cap);
         let b: u8 = pre.spec_bits();
-        let result: u8 = (b | mask) as u8;
-        assert((result & mask) != 0u8) by (bit_vector)
-            requires
-                result == (b | mask) as u8,
-        ;
+        match cap {
+            Capability::ExceptionControl => {
+                assert(((b | 1u8) as u8 & 1u8) != 0u8) by (bit_vector);
+            },
+            Capability::InterruptControl => {
+                assert(((b | 2u8) as u8 & 2u8) != 0u8) by (bit_vector);
+            },
+            Capability::IoManagement => {
+                assert(((b | 4u8) as u8 & 4u8) != 0u8) by (bit_vector);
+            },
+            Capability::MemoryManagement => {
+                assert(((b | 8u8) as u8 & 8u8) != 0u8) by (bit_vector);
+            },
+            Capability::ProcessManagement => {
+                assert(((b | 16u8) as u8 & 16u8) != 0u8) by (bit_vector);
+            },
+        }
     }
 
     /// Lemma: Clearing a capability bit ensures `has` returns false for that capability.
@@ -64,13 +75,24 @@ impl Capabilities {
                 (post_bits & Self::spec_mask(cap)) == 0u8
             }),
     {
-        let mask: u8 = Self::spec_mask(cap);
         let b: u8 = pre.spec_bits();
-        let result: u8 = (b & !mask) as u8;
-        assert((result & mask) == 0u8) by (bit_vector)
-            requires
-                result == (b & !mask) as u8,
-        ;
+        match cap {
+            Capability::ExceptionControl => {
+                assert(((b & !1u8) as u8 & 1u8) == 0u8) by (bit_vector);
+            },
+            Capability::InterruptControl => {
+                assert(((b & !2u8) as u8 & 2u8) == 0u8) by (bit_vector);
+            },
+            Capability::IoManagement => {
+                assert(((b & !4u8) as u8 & 4u8) == 0u8) by (bit_vector);
+            },
+            Capability::MemoryManagement => {
+                assert(((b & !8u8) as u8 & 8u8) == 0u8) by (bit_vector);
+            },
+            Capability::ProcessManagement => {
+                assert(((b & !16u8) as u8 & 16u8) == 0u8) by (bit_vector);
+            },
+        }
     }
 
     /// Lemma: Distinct capabilities have disjoint (non-overlapping) masks.
@@ -80,16 +102,44 @@ impl Capabilities {
         ensures
             Self::spec_mask(a) & Self::spec_mask(b) == 0u8,
     {
-        assert(1u8 & 2u8 == 0u8) by (bit_vector);
-        assert(1u8 & 4u8 == 0u8) by (bit_vector);
-        assert(1u8 & 8u8 == 0u8) by (bit_vector);
-        assert(1u8 & 16u8 == 0u8) by (bit_vector);
-        assert(2u8 & 4u8 == 0u8) by (bit_vector);
-        assert(2u8 & 8u8 == 0u8) by (bit_vector);
-        assert(2u8 & 16u8 == 0u8) by (bit_vector);
-        assert(4u8 & 8u8 == 0u8) by (bit_vector);
-        assert(4u8 & 16u8 == 0u8) by (bit_vector);
-        assert(8u8 & 16u8 == 0u8) by (bit_vector);
+        // Exhaustive case analysis on both capabilities.
+        match a {
+            Capability::ExceptionControl => { match b {
+                Capability::InterruptControl => { assert(1u8 & 2u8 == 0u8) by (bit_vector); },
+                Capability::IoManagement => { assert(1u8 & 4u8 == 0u8) by (bit_vector); },
+                Capability::MemoryManagement => { assert(1u8 & 8u8 == 0u8) by (bit_vector); },
+                Capability::ProcessManagement => { assert(1u8 & 16u8 == 0u8) by (bit_vector); },
+                _ => {},
+            }},
+            Capability::InterruptControl => { match b {
+                Capability::ExceptionControl => { assert(2u8 & 1u8 == 0u8) by (bit_vector); },
+                Capability::IoManagement => { assert(2u8 & 4u8 == 0u8) by (bit_vector); },
+                Capability::MemoryManagement => { assert(2u8 & 8u8 == 0u8) by (bit_vector); },
+                Capability::ProcessManagement => { assert(2u8 & 16u8 == 0u8) by (bit_vector); },
+                _ => {},
+            }},
+            Capability::IoManagement => { match b {
+                Capability::ExceptionControl => { assert(4u8 & 1u8 == 0u8) by (bit_vector); },
+                Capability::InterruptControl => { assert(4u8 & 2u8 == 0u8) by (bit_vector); },
+                Capability::MemoryManagement => { assert(4u8 & 8u8 == 0u8) by (bit_vector); },
+                Capability::ProcessManagement => { assert(4u8 & 16u8 == 0u8) by (bit_vector); },
+                _ => {},
+            }},
+            Capability::MemoryManagement => { match b {
+                Capability::ExceptionControl => { assert(8u8 & 1u8 == 0u8) by (bit_vector); },
+                Capability::InterruptControl => { assert(8u8 & 2u8 == 0u8) by (bit_vector); },
+                Capability::IoManagement => { assert(8u8 & 4u8 == 0u8) by (bit_vector); },
+                Capability::ProcessManagement => { assert(8u8 & 16u8 == 0u8) by (bit_vector); },
+                _ => {},
+            }},
+            Capability::ProcessManagement => { match b {
+                Capability::ExceptionControl => { assert(16u8 & 1u8 == 0u8) by (bit_vector); },
+                Capability::InterruptControl => { assert(16u8 & 2u8 == 0u8) by (bit_vector); },
+                Capability::IoManagement => { assert(16u8 & 4u8 == 0u8) by (bit_vector); },
+                Capability::MemoryManagement => { assert(16u8 & 8u8 == 0u8) by (bit_vector); },
+                _ => {},
+            }},
+        }
     }
 
     /// Lemma: Setting a capability preserves other bits.

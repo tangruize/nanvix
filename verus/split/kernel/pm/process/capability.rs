@@ -119,7 +119,12 @@ impl Capabilities {
             self.spec_has(capability),
     {
         let mask: u8 = Self::to_mask(capability);
+        let ghost pre = *self;
         self.bits = self.bits | mask;
+
+        proof {
+            Capabilities::lemma_set_then_has(pre, capability);
+        }
     }
 
     /// Clears a capability bit.
@@ -138,7 +143,12 @@ impl Capabilities {
             !self.spec_has(capability),
     {
         let mask: u8 = Self::to_mask(capability);
+        let ghost pre = *self;
         self.bits = self.bits & !mask;
+
+        proof {
+            Capabilities::lemma_clear_then_not_has(pre, capability);
+        }
     }
 
     /// Tests whether a capability bit is set.
