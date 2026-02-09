@@ -263,14 +263,16 @@ impl TimerTicks {
     /// (M+1, 0xFFFFFFFF), yielding a tick count that is `MINOR_MODULUS`
     /// (`2^32`) ticks ahead of the actual state.
     ///
-    /// This spec function returns `true` unconditionally; its purpose is to
-    /// name the assumption so that `get()`'s postcondition can reference it.
-    /// It is **documentation-only**: the `true` return value means it imposes
-    /// no mechanical constraint, but its presence in `get()`'s ensures clause
-    /// makes the trust boundary visible in the proof chain.
-    pub open spec fn spec_no_concurrent_writer_assumption() -> bool {
-        true
-    }
+    /// This spec function is deliberately **opaque** (not `open`): it cannot
+    /// be unfolded by Z3 to `true`, so any proof that depends on snapshot
+    /// consistency must explicitly assume or propagate this predicate. This
+    /// makes the trust boundary mechanically visible in the proof chain.
+    ///
+    /// The assumption is introduced into the proof environment via
+    /// `axiom_no_concurrent_writer()` in the proof file, which is an
+    /// `external_body` axiom. Only code paths that invoke this axiom (or
+    /// receive it from `get()`'s postcondition) can rely on consistency.
+    pub spec fn spec_no_concurrent_writer_assumption() -> bool;
 
     //==============================================================================================
     // timer_handler Behavioral Specs

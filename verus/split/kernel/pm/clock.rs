@@ -88,11 +88,13 @@
 //!   reader observes `(M+1, 0xFFFFFFFF)` — a **torn read** that is `2^32`
 //!   (`MINOR_MODULUS`) ticks ahead of reality (see `lemma_torn_read_consequence`).
 //!
-//!   This torn read is prevented by the system-level invariant that callers of
-//!   `get()` run with interrupts disabled on the same core as the handler, or
-//!   that the single-writer guarantee makes tearing impossible in practice.
-//!   This assumption is formalized as `spec_no_concurrent_writer_assumption()`
-//!   and documented with assumptions A-T1a and A-T1b in `spec_get_consistent`.
+//!   This assumption is formalized as the opaque spec predicate
+//!   `spec_no_concurrent_writer_assumption()`, which is introduced into the
+//!   proof environment via the `external_body` axiom `axiom_no_concurrent_writer()`.
+//!   Because the spec is opaque (not `open`), Z3 cannot unfold it to `true` —
+//!   any proof chain that depends on snapshot consistency must explicitly invoke
+//!   the axiom or receive the predicate from `get()`'s postcondition. The trust
+//!   boundary assumptions are documented as A-T1a and A-T1b in `spec_get_consistent`.
 //!
 //! - **T2: `wrapping_add(1)` → explicit branching.** The original uses
 //!   `minor.wrapping_add(1)` which computes `(minor + 1) % 2^32`. The verified
@@ -111,9 +113,10 @@
 //!   external.
 //! - **T5: Timer frequency.** The `timer_freq > 0` precondition is justified by
 //!   platform invariants: the PIT timer frequency is always positive (hardware
-//!   guarantee, modeled via `axiom_pit_timer_freq_valid` which unconditionally
-//!   ensures `freq > 0`), and the non-PIT fallback is the compile-time constant
-//!   `1` (see `axiom_fallback_timer_freq_valid`). We prove safety for all
+//!   guarantee, modeled via `axiom_pit_timer_freq_valid` which returns a ghost
+//!   value with `ensures freq > 0`, modeling `pit::get_timer_frequency()`), and
+//!   the non-PIT fallback is the compile-time constant `1` (see
+//!   `axiom_fallback_timer_freq_valid`). We prove safety for all
 //!   `timer_freq > 0` rather than for specific values.
 
 use vstd::prelude::*;
@@ -205,6 +208,9 @@ impl TimerTicks {
             // no-concurrent-writer assumption (see spec documentation).
             Self::spec_no_concurrent_writer_assumption(),
     {
+        proof {
+            Self::axiom_no_concurrent_writer();
+        }
         (self.major, self.minor)
     }
 

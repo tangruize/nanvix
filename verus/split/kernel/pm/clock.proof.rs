@@ -636,12 +636,53 @@ impl TimerTicks {
     /// Unlike a parameterized axiom, this form cannot be misused: the
     /// caller receives a value satisfying `freq > 0` but cannot choose
     /// which value it is.
+    ///
+    /// This models the HAL call `pit::get_timer_frequency()` from the
+    /// original `now()`. The link is:
+    /// ```ignore
+    /// #[cfg(feature = "pit")]
+    /// let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
+    /// ```
+    /// The axiom's postcondition (`freq > 0`) is the minimum guarantee
+    /// needed by `compute_nanoseconds` and `compute_seconds`.
     #[verifier::external_body]
     pub proof fn axiom_pit_timer_freq_valid() -> (freq: u32)
         ensures
             freq > 0,
     {
         unimplemented!()
+    }
+}
+
+//==================================================================================================
+// Proof Lemmas — Snapshot Consistency Axiom
+//==================================================================================================
+
+impl TimerTicks {
+    /// Axiom: The no-concurrent-writer assumption holds.
+    ///
+    /// # Description
+    ///
+    /// This `external_body` axiom introduces
+    /// `spec_no_concurrent_writer_assumption()` into the proof environment.
+    /// It models the system-level guarantee that:
+    ///
+    /// - The timer interrupt handler is the only writer to `major`/`minor`.
+    /// - Callers of `get()` run with interrupts disabled (or on the same
+    ///   core as the handler), preventing torn reads.
+    ///
+    /// Code paths that depend on snapshot consistency must either:
+    /// 1. Invoke this axiom directly, or
+    /// 2. Receive the predicate from `get()`'s postcondition.
+    ///
+    /// This is Trust Boundary T1. The assumption cannot be proved within
+    /// the clock module because it depends on the interrupt controller
+    /// configuration and the kernel's scheduling discipline.
+    #[verifier::external_body]
+    pub proof fn axiom_no_concurrent_writer()
+        ensures
+            Self::spec_no_concurrent_writer_assumption(),
+    {
     }
 }
 
