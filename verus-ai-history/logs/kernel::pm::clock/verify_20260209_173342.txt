@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 17:33:42 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::clock
+
+error: assertion failed
+   --> kernel/pm/clock.proof.rs:439:16
+    |
+439 |         assert(new_major * m == old_major * m + m) by(nonlinear_arith);
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 51 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 51
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::clock (verified:51, errors:1)
