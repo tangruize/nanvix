@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 22:52:50 CST 2026
+Module: kernel::pm::process::state::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::running
+
+error: possible arithmetic underflow/overflow
+   --> kernel/pm/process/state/running.rs:682:26
+    |
+682 |             ready_count: self.ready_count + 1,
+    |                          ^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 31 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 31
+Errors: 1
+Status: FAILED
+No changes to commit in verus/
