@@ -27,24 +27,39 @@
 //! - `NonEmptyVecDeque<InterruptedThread>` -> `Seq<int>` of thread IDs (ghost).
 //! - `Option<NonEmptyVecDeque<SleepingThread>>` -> `Seq<int>` (empty = None).
 //! - `Option<NonEmptyVecDeque<ZombieThread>>` -> `Seq<int>` (empty = None).
-//! - `InterruptReason` -> elided (does not affect state machine logic).
+//! - `InterruptReason` -> modeled as spec constant `INTERRUPT_REASON_KILLED`.
+//!   The standalone `interrupt()` function returns this tag explicitly.
 //!
 //! ## Trust Boundary
 //!
 //! - `RunnableProcess` is a boundary model of the sibling module. Its `wf()`
 //!   includes no-duplicates and pairwise-disjoint conditions matching the
 //!   structural integrity of the real type. `ready_admission_times` models
-//!   the parallel admission time array; `resume()` initializes it to `[0]`.
+//!   the parallel admission time array.
 //!   Note: The `InterruptedProcess` boundary model in `runnable.spec.rs`
 //!   omits `sleeping_thread_ids`; cross-module linking involving sleeping
 //!   threads must use this module's primary model.
 //! - Thread state transitions (resume()) are ID-preserving.
-//! - `find_thread()` / `find_thread_mut()` return reference types that Verus
-//!   cannot express; modeled spec-only via `spec_find_thread()`. The original
-//!   performs linear searches through `iter().find(...)` across three
-//!   collections with priority order (interrupted → sleeping → zombie). The
-//!   spec captures the search order but does not verify the executable search
-//!   implementation. If Verus adds reference-typed return support, revisit.
+//! - `resume()` takes `admission_time: Ghost<int>` as an oracle parameter.
+//!   In the original code, admission time is set by `clock::now()`. Since the
+//!   clock is a HAL boundary outside this module's scope, the oracle pattern
+//!   with caller-side obligations is used (consistent with `sleeping.rs`'s
+//!   `wakeup_alarm` oracle approach). Callers must tie this value to
+//!   `spec_clock_now()` when temporal properties are verified.
+//! - `find_thread()` / `find_thread_mut()` are **spec-level models** — they
+//!   compute `spec_find_thread()` directly and do not model the executable
+//!   search implementation. The original code performs linear searches through
+//!   `iter().find(...)` across three collections with priority order
+//!   (interrupted → sleeping → zombie). The spec captures this search order.
+//!   **Trust gap:** The executable iterator-based search is NOT verified. Any
+//!   bug in the real search (e.g., wrong predicate, wrong collection order)
+//!   would not be caught. This is a fundamental Verus limitation: reference-typed
+//!   return values (`Option<ThreadRef<'_>>`) cannot be expressed in Verus, and
+//!   ghost sequences have no executable counterpart to iterate over. The
+//!   `lemma_find_thread_refinement_assumption` documents the semantic equivalence
+//!   assumption and its scope. If Verus adds support for reference-typed returns
+//!   or executable ghost iteration, this should be replaced with a verified
+//!   implementation.
 //! - `state()` / `state_mut()` are implemented as pure ghost returns (no
 //!   external_body). The original returns `&ProcessState` / `&mut ProcessState`;
 //!   since ProcessState is abstracted to PID and all fields are ghost, the
@@ -360,8 +375,13 @@ impl InterruptedProcess {
 
     /// Finds a thread by its identifier and returns which list it belongs to.
     ///
-    /// Models the original `InterruptedProcess::find_thread(tid)`.
-    /// Returns the abstract list variant from `spec_find_thread()`:
+    /// **Spec-level model** of the original `InterruptedProcess::find_thread(tid)`.
+    /// This function computes `spec_find_thread()` directly in ghost mode.
+    /// It does NOT model the executable `iter().find(...)` search — see
+    /// `lemma_find_thread_refinement_assumption` for the trust assumption
+    /// connecting this spec to the real implementation.
+    ///
+    /// Returns the abstract list variant:
     /// - `Some(0)`: interrupted thread.
     /// - `Some(1)`: sleeping thread.
     /// - `Some(2)`: zombie thread.
@@ -383,8 +403,9 @@ impl InterruptedProcess {
 
     /// Finds a thread by its identifier (mutable variant).
     ///
-    /// Models the original `InterruptedProcess::find_thread_mut(tid)`.
-    /// Same semantics as `find_thread()`. Frame condition: self is unchanged.
+    /// **Spec-level model** of the original `InterruptedProcess::find_thread_mut(tid)`.
+    /// Same trust scope as `find_thread()` — see its documentation.
+    /// Frame condition: self is unchanged.
     ///
     /// # Parameters
     ///

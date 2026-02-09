@@ -42,15 +42,16 @@
 //   the runnable module's boundary only models the `new()` path (no sleeping
 //   threads). Cross-module linking involving sleeping threads in an
 //   InterruptedProcess must use this module's primary model.
-// - `find_thread()` / `find_thread_mut()` return reference types that
-//   Verus cannot express; modeled spec-only via `spec_find_thread()`.
-//   The original code performs linear searches through `iter().find(...)`
-//   across three collections with priority order (interrupted → sleeping →
-//   zombie). The spec model captures the search order but does not verify
-//   any executable search implementation. Any bug in the actual iterator-based
-//   search logic (e.g., wrong predicate, wrong collection order) would not
-//   be caught. If Verus adds support for executable iteration over ghost
-//   sequences or reference-typed returns, this should be revisited.
+// - `find_thread()` / `find_thread_mut()` are spec-level models that compute
+//   `spec_find_thread()` directly. They do NOT model the executable search.
+//   The original performs linear searches through `iter().find(...)` across
+//   three collections with priority order (interrupted → sleeping → zombie).
+//   The spec captures this search order but the executable iterator-based
+//   logic is NOT verified. `lemma_find_thread_refinement_assumption`
+//   documents the semantic equivalence assumption. Trust scope: the search
+//   predicate (`thread.id() == tid`) and collection ordering must match
+//   `spec_find_thread`. If Verus adds reference-typed return support or
+//   executable ghost iteration, replace with a verified implementation.
 // - `state()` / `state_mut()` return references to ProcessState in the original.
 //   In the verification model, ProcessState is abstracted to PID and all fields
 //   are ghost, so these are implemented as pure ghost returns without
@@ -60,6 +61,9 @@
 // - The standalone `interrupt()` function is modeled as ID-preserving with
 //   an explicit `InterruptReason::Killed` tag (spec constant
 //   `INTERRUPT_REASON_KILLED`).
+// - `resume()` takes `admission_time` as an oracle parameter. In the original,
+//   this is `clock::now()`. The clock is a HAL boundary; callers must tie the
+//   oracle to `spec_admission_time_valid()` for temporal correctness.
 
 use vstd::prelude::*;
 
@@ -224,6 +228,33 @@ impl InterruptedProcess {
     /// `interrupt()` function always uses this reason. Value 0 is an abstract tag;
     /// the actual enum discriminant in the kernel is not relied upon.
     pub open spec fn INTERRUPT_REASON_KILLED() -> int { 0 }
+
+    /// Spec function: models a clock reading for admission time.
+    ///
+    /// In the original code, `resume()` calls `clock::now()` to obtain the
+    /// admission time for the newly ready thread. This spec function serves as
+    /// a cross-module contract point: callers of `resume()` must provide an
+    /// `admission_time` oracle satisfying:
+    ///   `admission_time@ == Self::spec_clock_now(clock_state)`
+    /// where `clock_state` is the abstract clock state at the call site.
+    ///
+    /// The clock model is a HAL boundary — this module does not define it.
+    /// This spec is provided so that callers can express the obligation.
+    /// The `clock_state` parameter is an opaque abstract value representing
+    /// the current time context.
+    pub open spec fn spec_clock_now(clock_state: int) -> int {
+        clock_state
+    }
+
+    /// Spec function: validates that an admission time oracle was obtained
+    /// from a valid clock reading.
+    ///
+    /// Callers of `resume()` should satisfy this predicate to establish
+    /// semantic equivalence with the original `clock::now()` call.
+    pub open spec fn spec_admission_time_valid(admission_time: int, clock_state: int) -> bool {
+        admission_time == Self::spec_clock_now(clock_state)
+        && admission_time >= 0
+    }
 }
 
 //==================================================================================================

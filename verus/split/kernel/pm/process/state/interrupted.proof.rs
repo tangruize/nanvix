@@ -257,6 +257,23 @@ impl InterruptedProcess {
             a@ == b@,
     {
     }
+
+    //==============================================================================================
+    // Admission Time Lemmas
+    //==============================================================================================
+
+    /// Lemma: A valid admission time (per spec_admission_time_valid) satisfies
+    /// the resume() precondition.
+    pub proof fn lemma_valid_admission_time_satisfies_resume_precondition(
+        admission_time: int,
+        clock_state: int,
+    )
+        requires
+            Self::spec_admission_time_valid(admission_time, clock_state),
+        ensures
+            admission_time >= 0,
+    {
+    }
 }
 
 //==================================================================================================
