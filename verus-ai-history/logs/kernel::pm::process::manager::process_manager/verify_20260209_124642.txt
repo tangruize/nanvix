@@ -1,0 +1,258 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 12:46:42 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+  --> kernel/pm/process/manager/process_manager.proof.rs:99:24
+   |
+99 |         vstd::set_lib::lemma_len_insert::<int>(old_ready, old_running);
+   |                        ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+   |
+  --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+   |
+   = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.proof.rs:100:24
+    |
+100 |         vstd::set_lib::lemma_len_remove::<int>(old_ready.insert(old_running), chosen);
+    |                        ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.proof.rs:117:24
+    |
+117 |         vstd::set_lib::lemma_len_insert::<int>(old_ready, old_running);
+    |                        ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.proof.rs:118:24
+    |
+118 |         vstd::set_lib::lemma_len_remove::<int>(old_ready.insert(old_running), chosen);
+    |                        ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.proof.rs:201:24
+    |
+201 |         vstd::set_lib::lemma_len_remove::<int>(suspended, pid);
+    |                        ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.proof.rs:216:24
+    |
+216 |         vstd::set_lib::lemma_len_insert::<int>(ready, pid);
+    |                        ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:241:28
+    |
+241 |             vstd::set_lib::lemma_len_insert::<int>(self.ghost_ready@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:341:28
+    |
+341 |             vstd::set_lib::lemma_len_insert::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:345:28
+    |
+345 |             vstd::set_lib::lemma_len_remove::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:440:28
+    |
+440 |             vstd::set_lib::lemma_len_insert::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:443:28
+    |
+443 |             vstd::set_lib::lemma_len_remove::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:533:28
+    |
+533 |             vstd::set_lib::lemma_len_insert::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:536:28
+    |
+536 |             vstd::set_lib::lemma_len_remove::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:584:28
+    |
+584 |             vstd::set_lib::lemma_len_insert::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:587:28
+    |
+587 |             vstd::set_lib::lemma_len_remove::<int>(
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:709:28
+    |
+709 |             vstd::set_lib::lemma_len_remove::<int>(self.ghost_ready@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:710:28
+    |
+710 |             vstd::set_lib::lemma_len_insert::<int>(self.ghost_zombies@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:747:28
+    |
+747 |             vstd::set_lib::lemma_len_remove::<int>(self.ghost_ready@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:748:28
+    |
+748 |             vstd::set_lib::lemma_len_insert::<int>(self.ghost_interrupted@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:785:28
+    |
+785 |             vstd::set_lib::lemma_len_remove::<int>(self.ghost_suspended@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:786:28
+    |
+786 |             vstd::set_lib::lemma_len_insert::<int>(self.ghost_interrupted@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:827:28
+    |
+827 |             vstd::set_lib::lemma_len_remove::<int>(self.ghost_zombies@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_remove` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:927:28
+    |
+927 |             vstd::set_lib::lemma_len_remove::<int>(self.ghost_suspended@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_union`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:800:1
+    |
+    = note: similarly named function `lemma_len_union` defined here
+
+error[E0425]: cannot find function `lemma_len_insert` in module `vstd::set_lib`
+   --> kernel/pm/process/manager/process_manager.rs:928:28
+    |
+928 |             vstd::set_lib::lemma_len_insert::<int>(self.ghost_interrupted@, pid as int);
+    |                            ^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `lemma_len_intersect`
+    |
+   --> /home/runner/work/verus/verus/source/vstd/set_lib.rs:848:1
+    |
+    = note: similarly named function `lemma_len_intersect` defined here
+
+error: aborting due to 24 previous errors
+
+For more information about this error, try `rustc --explain E0425`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager (verified:0, errors:0)
