@@ -89,6 +89,55 @@ impl TimerTicks {
     pub open spec fn spec_new_view() -> TimerTicksView {
         TimerTicksView { ticks: 0 }
     }
+
+    //==============================================================================================
+    // now() Arithmetic Specs
+    //==============================================================================================
+
+    /// Constant: nanoseconds per second (1,000,000,000).
+    pub open spec fn NANOSECONDS_PER_SECOND() -> nat {
+        1_000_000_000
+    }
+
+    /// Spec function: checks if a timer frequency is valid (non-zero).
+    pub open spec fn spec_timer_freq_valid(timer_freq: u32) -> bool {
+        timer_freq > 0
+    }
+
+    /// Spec function: computes the nanosecond component of the current time.
+    ///
+    /// # Description
+    ///
+    /// Models the original expression:
+    /// `(minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq)`.
+    pub open spec fn spec_compute_nanoseconds(minor_ticks: u32, timer_freq: u32) -> nat
+        recommends timer_freq > 0,
+    {
+        (minor_ticks as nat % timer_freq as nat) * (Self::NANOSECONDS_PER_SECOND() / timer_freq as nat)
+    }
+
+    /// Spec function: computes the seconds component of the current time.
+    ///
+    /// # Description
+    ///
+    /// Models the original expression:
+    /// `(((major_ticks as u64) << 32) + (minor_ticks as u64)) / (timer_freq as u64)`.
+    pub open spec fn spec_compute_seconds(major_ticks: u32, minor_ticks: u32, timer_freq: u32) -> nat
+        recommends timer_freq > 0,
+    {
+        let total_ticks: nat = major_ticks as nat * Self::MINOR_MODULUS() + minor_ticks as nat;
+        total_ticks / timer_freq as nat
+    }
+
+    /// Spec function: checks if nanoseconds are valid for SystemTime::new().
+    ///
+    /// # Description
+    ///
+    /// SystemTime::new(seconds, nanoseconds) returns None iff
+    /// nanoseconds >= NANOSECONDS_PER_SECOND.
+    pub open spec fn spec_nanoseconds_valid(nanoseconds: nat) -> bool {
+        nanoseconds < Self::NANOSECONDS_PER_SECOND()
+    }
 }
 
 //==================================================================================================

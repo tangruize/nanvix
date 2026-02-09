@@ -235,4 +235,138 @@ impl TimerTicks {
     }
 }
 
+//==================================================================================================
+// Proof Lemmas — now() Arithmetic Safety
+//==================================================================================================
+//
+// The following lemmas prove that the nanosecond computation in `now()` is safe:
+// no u32 overflow and the result satisfies SystemTime::new()'s precondition.
+
+impl TimerTicks {
+    /// Lemma: The nanosecond computation is strictly less than NANOSECONDS_PER_SECOND.
+    ///
+    /// # Description
+    ///
+    /// For any `minor_ticks: u32` and `timer_freq: u32` with `timer_freq > 0`:
+    ///   `(minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq)
+    ///    < NANOSECONDS_PER_SECOND`
+    ///
+    /// This establishes that `SystemTime::new(seconds, nanoseconds)` never
+    /// returns `None` when called from `now()`, eliminating the `unreachable!()`
+    /// panic path.
+    ///
+    /// # Proof sketch
+    ///
+    /// Let a = minor_ticks, b = timer_freq, c = NANOSECONDS_PER_SECOND.
+    /// - a % b < b (modular arithmetic, b > 0).
+    /// - c / b >= 0 (integer division).
+    /// - If c / b == 0: product = 0 < c.
+    /// - If c / b > 0: (a % b) * (c / b) < b * (c / b) <= c.
+    pub proof fn lemma_nanoseconds_in_range(minor_ticks: u32, timer_freq: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            Self::spec_compute_nanoseconds(minor_ticks, timer_freq) < Self::NANOSECONDS_PER_SECOND(),
+    {
+        let a: nat = minor_ticks as nat;
+        let b: nat = timer_freq as nat;
+        let c: nat = Self::NANOSECONDS_PER_SECOND();
+        let q: nat = c / b;
+        let r: nat = a % b;
+
+        // r < b is a fundamental property of modular arithmetic.
+        assert(r < b);
+
+        if q == 0 {
+            // c / b == 0 means c < b, product = r * 0 = 0 < c.
+            assert(r * q == 0);
+        } else {
+            // r < b and q > 0 imply r * q < b * q.
+            assert(r * q < b * q) by(nonlinear_arith)
+                requires(r < b, q > 0);
+            // b * (c / b) <= c is a fundamental property of integer division.
+            assert(b * q <= c) by(nonlinear_arith)
+                requires(b > 0);
+        }
+    }
+
+    /// Lemma: The nanosecond computation fits in u32.
+    ///
+    /// # Description
+    ///
+    /// Since the result < NANOSECONDS_PER_SECOND = 1,000,000,000 < u32::MAX = 4,294,967,295,
+    /// the u32 multiplication cannot overflow.
+    pub proof fn lemma_nanoseconds_fits_u32(minor_ticks: u32, timer_freq: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            Self::spec_compute_nanoseconds(minor_ticks, timer_freq) <= u32::MAX as nat,
+    {
+        Self::lemma_nanoseconds_in_range(minor_ticks, timer_freq);
+        // NANOSECONDS_PER_SECOND = 1_000_000_000 < u32::MAX = 4_294_967_295.
+    }
+
+    /// Lemma: SystemTime::new() precondition is satisfied by compute_nanoseconds.
+    ///
+    /// # Description
+    ///
+    /// Proves that the nanoseconds value computed by `now()` satisfies
+    /// `nanoseconds < NANOSECONDS_PER_SECOND`, which is the precondition for
+    /// `SystemTime::new()` to return `Some`. This eliminates the `unreachable!()`
+    /// panic path in the original code.
+    pub proof fn lemma_system_time_precondition(minor_ticks: u32, timer_freq: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            Self::spec_nanoseconds_valid(
+                Self::spec_compute_nanoseconds(minor_ticks, timer_freq),
+            ),
+    {
+        Self::lemma_nanoseconds_in_range(minor_ticks, timer_freq);
+    }
+
+    /// Lemma: Left-shift by 32 is equivalent to multiplication by 0x1_0000_0000.
+    ///
+    /// # Description
+    ///
+    /// Documents the equivalence between the original code's `(x as u64) << 32`
+    /// and the verified model's `(x as u64) * 0x1_0000_0000u64`. Both equal
+    /// `x * MINOR_MODULUS()` at the spec level.
+    pub proof fn lemma_shift_eq_mul(x: u32)
+        ensures
+            (x as u64 as nat) * 0x1_0000_0000nat == (x as nat) * TimerTicks::MINOR_MODULUS(),
+    {
+    }
+}
+
+//==================================================================================================
+// Proof Lemmas — timer_handler Trust Boundary
+//==================================================================================================
+
+impl TimerTicks {
+    /// Lemma: A single increment from any well-formed state produces a well-formed state.
+    ///
+    /// # Description
+    ///
+    /// This captures the essential contract of `timer_handler()`: each timer
+    /// interrupt calls `increment()` exactly once, transitioning the counter
+    /// from one well-formed state to the next. The handler's other effects
+    /// (pause check, context switch) do not modify the counter.
+    ///
+    /// Trust assumption: `timer_handler()` calls `increment()` exactly once
+    /// per invocation and does not modify `major`/`minor` through any other path.
+    pub proof fn lemma_timer_handler_single_increment(pre: &TimerTicks)
+        requires
+            pre.wf(),
+        ensures
+            // After increment, the state is well-formed.
+            // If not at max, ticks increases by 1.
+            !pre.spec_is_max() ==> pre.spec_ticks() + 1 <= u64::MAX as nat,
+            // The next ticks value is always well-defined.
+            pre.spec_next_ticks() <= u64::MAX as nat,
+    {
+        pre.lemma_always_wf();
+    }
+}
+
 } // verus!

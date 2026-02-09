@@ -13,6 +13,10 @@
 //! - `get()` returns the current (major, minor) values.
 //! - `ticks()` correctly combines major and minor into a u64.
 //! - Monotonicity: each non-wrapping increment increases the tick count.
+//! - **`now()` arithmetic safety**: The nanosecond computation
+//!   `(minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq)`
+//!   does not overflow `u32` and produces a value strictly less than
+//!   `NANOSECONDS_PER_SECOND`, ensuring `SystemTime::new()` never returns `None`.
 //!
 //! ## Verification Model
 //!
@@ -32,20 +36,54 @@
 //! - The split (major, minor) representation correctly models a 64-bit counter.
 //! - Wrapping behavior at u64::MAX is handled correctly.
 //! - The `ticks()` combination does not overflow.
+//! - The `now()` nanosecond computation is safe and satisfies
+//!   `SystemTime::new()`'s precondition (`nanoseconds < NANOSECONDS_PER_SECOND`).
 //!
 //! Explicitly **out of scope**:
 //! - **Concurrency**: The sequential model does not capture concurrent access.
-//! - **Timer interrupt handling**: `timer_handler()` depends on HAL and
-//!   ProcessManager, which are external.
-//! - **SystemTime conversion**: `now()` depends on platform-specific timer
-//!   frequency and SystemTime, which are external.
+//! - **SystemTime construction**: `SystemTime::new()` is external; we model
+//!   only its precondition (`nanoseconds < NANOSECONDS_PER_SECOND`).
+//! - **Platform-specific timer frequency**: The actual `timer_freq` value is
+//!   determined at runtime; we prove safety for all `timer_freq > 0`.
+//!
+//! ## API Divergence
+//!
+//! **`&self` → `&mut self` for `increment()`:** The original `increment(&self)`
+//! uses `AtomicU32` interior mutability, allowing shared-reference access. The
+//! verified model uses `&mut self` because Verus requires exclusive references
+//! for state mutation. This `&mut self` requirement is strictly stronger than
+//! the original's `&self` + single-writer assumption. The verified model does
+//! **not** prove absence of data races — it proves sequential arithmetic
+//! correctness under the assumption that only one writer exists (the timer
+//! interrupt handler on a single core).
+//!
+//! **Global singleton not modeled:** The original code uses a `static TIMER_TICKS`
+//! global variable. The verified model operates on arbitrary `TimerTicks`
+//! instances, not the global singleton. The singleton access pattern is trusted.
+//!
+//! **`pub` fields:** Fields `minor` and `major` are `pub` in the verified version
+//! (required for Verus `pub open spec fn` access) but private in the original.
+//! Since `wf()` is universally true (`lemma_always_wf`), this does not introduce
+//! unsoundness, but it weakens encapsulation. The original enforces that only
+//! `new()` and `increment()` create/modify `TimerTicks` values.
 //!
 //! ## Trust Boundaries
 //!
-//! - `AtomicU32` is modeled as plain `u32` (sequential single-writer assumption).
-//! - `wrapping_add(1)` is modeled as explicit branching on u32::MAX.
-//! - `timer_handler()` and `now()` are not included as they depend on
-//!   external OS state (InterruptNumber, ProcessManager, SystemTime).
+//! - **T1: AtomicU32 → plain u32.** Atomics are modeled as plain fields under
+//!   the single-writer assumption. The original's memory ordering semantics
+//!   (`Ordering::Relaxed`) are not modeled.
+//! - **T2: `wrapping_add(1)` → explicit branching.** Modeled as `if minor < MAX`
+//!   branching rather than hardware wrapping.
+//! - **T3: `timer_handler()`.** This function is **trusted glue code**: it calls
+//!   `increment()` exactly once per timer interrupt and does not modify
+//!   `major`/`minor` through any other path. Its HAL dependencies
+//!   (`InterruptNumber`, `ProcessManager`, platform-specific `#[cfg]` blocks)
+//!   are external to the verification. The verified `increment()` contract
+//!   establishes what each call achieves, but the handler-level invariant
+//!   (single-call-per-interrupt) is assumed, not proved.
+//! - **T4: `SystemTime::new()`.** Modeled only via its precondition
+//!   (`nanoseconds < NANOSECONDS_PER_SECOND`). The actual SystemTime type is
+//!   external.
 
 use vstd::prelude::*;
 
@@ -71,7 +109,11 @@ verus! {
 ///
 /// # Representation
 ///
-/// Fields are `pub` for Verus spec reasoning. The original uses AtomicU32.
+/// Fields are `pub` for Verus spec reasoning (required by `pub open spec fn`).
+/// The original uses `AtomicU32` with private fields. External construction of
+/// arbitrary `TimerTicks` values is possible in the verified model but not in
+/// the original. Since `wf()` is universally true (see `lemma_always_wf`),
+/// this does not introduce unsoundness.
 pub struct TimerTicks {
     /// Low 32 bits of the tick counter.
     pub minor: u32,
@@ -130,6 +172,14 @@ impl TimerTicks {
     ///
     /// Models `wrapping_add(1)` on the minor counter. When the minor counter
     /// wraps to 0, the major counter is also incremented (wrapping if at max).
+    ///
+    /// # API Divergence
+    ///
+    /// The original uses `&self` with `AtomicU32` interior mutability. This
+    /// verified model uses `&mut self` because Verus requires exclusive
+    /// references for state mutation. The `&mut self` requirement is strictly
+    /// stronger than `&self` + single-writer: it proves correctness under
+    /// exclusive access but does not prove absence of data races.
     ///
     /// # Returns
     ///
@@ -215,6 +265,10 @@ impl TimerTicks {
 
     /// Checks if the counter is at the maximum value.
     ///
+    /// # Description
+    ///
+    /// Verification-only helper; not present in the original source.
+    ///
     /// # Returns
     ///
     /// `true` if ticks == u64::MAX, `false` otherwise.
@@ -229,6 +283,10 @@ impl TimerTicks {
     }
 
     /// Checks if the counter is zero.
+    ///
+    /// # Description
+    ///
+    /// Verification-only helper; not present in the original source.
     ///
     /// # Returns
     ///
@@ -246,6 +304,69 @@ impl TimerTicks {
             }
         }
         self.minor == 0 && self.major == 0
+    }
+
+    /// Computes the nanosecond component of the current time.
+    ///
+    /// # Description
+    ///
+    /// Models the arithmetic from the original `now()` function:
+    /// `(minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq)`.
+    ///
+    /// This function proves that the computation:
+    /// - Does not overflow `u32`.
+    /// - Produces a result strictly less than `NANOSECONDS_PER_SECOND` (1,000,000,000),
+    ///   which satisfies the precondition of `SystemTime::new()`.
+    ///
+    /// # Parameters
+    ///
+    /// - `minor_ticks`: The current minor tick count.
+    /// - `timer_freq`: The timer frequency in Hz. Must be > 0.
+    ///
+    /// # Returns
+    ///
+    /// The nanosecond component, guaranteed < `NANOSECONDS_PER_SECOND`.
+    pub fn compute_nanoseconds(minor_ticks: u32, timer_freq: u32) -> (result: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            result as nat == Self::spec_compute_nanoseconds(minor_ticks, timer_freq),
+            Self::spec_nanoseconds_valid(result as nat),
+            result < 1_000_000_000u32,
+    {
+        proof {
+            Self::lemma_nanoseconds_in_range(minor_ticks, timer_freq);
+        }
+        (minor_ticks % timer_freq) * (1_000_000_000u32 / timer_freq)
+    }
+
+    /// Computes the seconds component of the current time.
+    ///
+    /// # Description
+    ///
+    /// Models the seconds computation from the original `now()` function:
+    /// `(((major_ticks as u64) << 32) + (minor_ticks as u64)) / (timer_freq as u64)`.
+    ///
+    /// # Parameters
+    ///
+    /// - `major_ticks`: The current major tick count.
+    /// - `minor_ticks`: The current minor tick count.
+    /// - `timer_freq`: The timer frequency in Hz. Must be > 0.
+    ///
+    /// # Returns
+    ///
+    /// The seconds component.
+    pub fn compute_seconds(major_ticks: u32, minor_ticks: u32, timer_freq: u32) -> (result: u64)
+        requires
+            timer_freq > 0,
+        ensures
+            result as nat == Self::spec_compute_seconds(major_ticks, minor_ticks, timer_freq),
+    {
+        proof {
+            assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
+        }
+        let total_ticks: u64 = (major_ticks as u64) * 0x1_0000_0000u64 + (minor_ticks as u64);
+        total_ticks / (timer_freq as u64)
     }
 }
 
