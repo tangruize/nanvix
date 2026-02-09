@@ -63,24 +63,6 @@ impl SleepingProcess {
     }
 
     //==============================================================================================
-    // terminate() Lemmas
-    //==============================================================================================
-
-    /// Lemma: terminate() preserves total thread count.
-    /// Sleeping threads become interrupted; zombie threads are preserved.
-    pub proof fn lemma_terminate_preserves_total_threads(&self)
-        requires
-            self.wf(),
-        ensures
-            ({
-                let new_interrupted_len: nat = self.spec_sleeping_count();
-                new_interrupted_len + self.spec_zombie_count()
-                    == self.spec_total_thread_count()
-            }),
-    {
-    }
-
-    //==============================================================================================
     // wakeup() Lemmas
     //==============================================================================================
 
@@ -91,17 +73,6 @@ impl SleepingProcess {
         ensures
             exists|i: int| 0 <= i < self.sleeping_thread_ids@.len()
                 && self.sleeping_thread_ids@[i] == tid@,
-    {
-    }
-
-    /// Lemma: If wf() holds and spec_seq_contains is true for the sleeping list,
-    /// then sleeping_count > 0.
-    pub proof fn lemma_wf_and_found_implies_sleeping_positive(&self, tid: int)
-        requires
-            self.wf(),
-            Self::spec_seq_contains(self.sleeping_thread_ids@, tid),
-        ensures
-            self.sleeping_count > 0,
     {
     }
 
@@ -125,24 +96,6 @@ impl SleepingProcess {
             0 <= j < s.len() - 1,
         ensures
             Self::spec_remove_at(s, idx)[j] == if j < idx { s[j] } else { s[j + 1] },
-    {
-    }
-
-    //==============================================================================================
-    // wakeup_alarm() Lemmas
-    //==============================================================================================
-
-    /// Lemma: wakeup_alarm() with expired threads produces well-formed InterruptedProcess.
-    pub proof fn lemma_wakeup_alarm_expired_is_wf(
-        interrupted_ids: Seq<int>,
-        remaining_ids: Seq<int>,
-        sleeping_ids: Seq<int>,
-    )
-        requires
-            interrupted_ids.len() > 0,
-            interrupted_ids.len() + remaining_ids.len() == sleeping_ids.len(),
-        ensures
-            interrupted_ids.len() >= 1,
     {
     }
 

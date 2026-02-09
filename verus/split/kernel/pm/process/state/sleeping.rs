@@ -312,7 +312,6 @@ impl SleepingProcess {
 
         proof {
             self.lemma_spec_find_sleeping_index(tid);
-            self.lemma_wf_and_found_implies_sleeping_positive(tid@);
         }
 
         let ghost new_sleeping_ids: Seq<int> =
