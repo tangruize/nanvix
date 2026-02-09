@@ -272,7 +272,7 @@ impl TimerTicks {
     /// `axiom_no_concurrent_writer()` in the proof file, which is an
     /// `external_body` axiom. Only code paths that invoke this axiom (or
     /// receive it from `get()`'s postcondition) can rely on consistency.
-    pub spec fn spec_no_concurrent_writer_assumption() -> bool;
+    pub uninterp spec fn spec_no_concurrent_writer_assumption() -> bool;
 
     //==============================================================================================
     // timer_handler Behavioral Specs
