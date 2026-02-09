@@ -587,6 +587,8 @@ impl RunningProcess {
         requires
             self.wf(),
             found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid@),
+            self.ready_count < u64::MAX,
+            self.sleeping_count > 0 || !found,
         ensures
             match result {
                 Ok(r) => {
