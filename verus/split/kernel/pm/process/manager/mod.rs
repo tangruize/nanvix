@@ -1,7 +1,4 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-pub mod process;
-pub mod sync;
-pub mod sys;
-pub mod thread;
+pub mod process_manager;
