@@ -141,8 +141,8 @@ impl ProcessState {
                 self.ghost_conditions@[addr] > 0
         // PMIO port numbers must be valid u16 values (0..=0xFFFF),
         // matching the original's `u16` port number type.
-        &&& forall|i: int| #![auto] 0 <= i < self.ghost_pmio@.len() ==>
-                0 <= self.ghost_pmio@[i] <= 0xFFFF
+        &&& forall|i: int| 0 <= i < self.ghost_pmio@.len() ==>
+                0 <= #[trigger] self.ghost_pmio@[i] && self.ghost_pmio@[i] <= 0xFFFF
     }
 
     /// Spec function: checks if the mutex map is at capacity.
