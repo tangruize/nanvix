@@ -1,0 +1,45 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:45:30 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+[rust_verify/src/verifier.rs:100:17] &note = "recommendation not met"
+[rust_verify/src/verifier.rs:100:17] &sp.as_string = "vstd/seq.rs:62:13: 62:32 (#0)"
+note: recommendation not met
+   --> kernel/pm/process/state/runnable.rs:309:52
+    |
+309 |                 result.spec_running_thread_id() == self.ready_thread_ids@[sel]
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: recommendation not met
+   --> kernel/pm/process/state/runnable.rs:311:21
+    |
+311 |                     Self::spec_remove_at(self.ready_thread_ids@, sel)
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: kernel/pm/process/state/runnable.spec.rs:240:20
+    |
+240 |         recommends 0 <= idx < s.len()
+    |                    ------------------ recommendation not met
+
+error: assertion failed
+   --> kernel/pm/process/state/runnable.rs:340:20
+    |
+340 |             assert(0 <= selected_idx < self.ready_admission_times@.len());
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 38 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 38
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:38, errors:1)
