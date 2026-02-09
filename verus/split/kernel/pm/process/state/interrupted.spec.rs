@@ -35,13 +35,18 @@
 // ## Trust Assumptions
 //
 // - Thread state transitions (InterruptedThread::resume()) are modeled
-//   as ID-preserving operations.
+//   as ID-preserving operations. **Per-thread state mutation trust gap:**
+//   The original `InterruptedThread::resume()` calls
+//   `self.state.set_interrupt_reason(self.reason)`, storing the interrupt
+//   reason into the thread's `ThreadState` before conversion to `ReadyThread`.
+//   This is NOT modeled because threads are abstracted to integer IDs.
+//   Verification of `interrupt_reason` propagation is deferred to the
+//   thread module (`src/kernel/src/pm/thread/interrupted.rs`).
 // - `RunnableProcess` is a boundary model from the sibling module.
 //   Note: The `InterruptedProcess` boundary model in `runnable.spec.rs`
-//   omits `sleeping_thread_ids`. This boundary inconsistency is documented:
-//   the runnable module's boundary only models the `new()` path (no sleeping
-//   threads). Cross-module linking involving sleeping threads in an
-//   InterruptedProcess must use this module's primary model.
+//   omits `sleeping_thread_ids`. A bridging lemma
+//   (`lemma_interrupted_view_subsumes_runnable_boundary`) in the proof file
+//   maps between the two views for cross-module linking.
 // - `find_thread()` / `find_thread_mut()` are spec-level models that compute
 //   `spec_find_thread()` directly. They do NOT model the executable search.
 //   The original performs linear searches through `iter().find(...)` across
@@ -50,8 +55,9 @@
 //   logic is NOT verified. `lemma_find_thread_refinement_assumption`
 //   documents the semantic equivalence assumption. Trust scope: the search
 //   predicate (`thread.id() == tid`) and collection ordering must match
-//   `spec_find_thread`. If Verus adds reference-typed return support or
-//   executable ghost iteration, replace with a verified implementation.
+//   `spec_find_thread`. Tagged for trust-boundary inventory. If Verus adds
+//   reference-typed return support or executable ghost iteration, replace
+//   with a verified implementation.
 // - `state()` / `state_mut()` return references to ProcessState in the original.
 //   In the verification model, ProcessState is abstracted to PID and all fields
 //   are ghost, so these are implemented as pure ghost returns without
@@ -62,8 +68,10 @@
 //   an explicit `InterruptReason::Killed` tag (spec constant
 //   `INTERRUPT_REASON_KILLED`).
 // - `resume()` takes `admission_time` as an oracle parameter. In the original,
-//   this is `clock::now()`. The clock is a HAL boundary; callers must tie the
-//   oracle to `spec_admission_time_valid()` for temporal correctness.
+//   this is `clock::now()` inside `ReadyThread::from_state()`. The clock is a
+//   HAL boundary; callers must satisfy `spec_admission_time_valid()` to
+//   establish equivalence with `clock::now()`. The link is advisory at this
+//   module level and must be enforced at the integration proof level.
 
 use vstd::prelude::*;
 

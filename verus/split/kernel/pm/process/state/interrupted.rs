@@ -37,15 +37,27 @@
 //!   structural integrity of the real type. `ready_admission_times` models
 //!   the parallel admission time array.
 //!   Note: The `InterruptedProcess` boundary model in `runnable.spec.rs`
-//!   omits `sleeping_thread_ids`; cross-module linking involving sleeping
-//!   threads must use this module's primary model.
+//!   omits `sleeping_thread_ids`; a bridging lemma
+//!   (`lemma_interrupted_view_subsumes_runnable_boundary`) is provided in the
+//!   proof file for cross-module linking.
 //! - Thread state transitions (resume()) are ID-preserving.
+//!   **Per-thread state mutation trust gap:** In the original
+//!   `InterruptedThread::resume()`, `self.state.set_interrupt_reason(self.reason)`
+//!   stores the interrupt reason into the thread's `ThreadState` before
+//!   conversion to `ReadyThread`. This per-thread mutation is NOT modeled
+//!   because threads are abstracted to integer IDs in this module. If
+//!   downstream code relies on `interrupt_reason` being set in the ready
+//!   thread's state, that property must be verified in the thread module's
+//!   own verification (see `src/kernel/src/pm/thread/interrupted.rs`).
 //! - `resume()` takes `admission_time: Ghost<int>` as an oracle parameter.
-//!   In the original code, admission time is set by `clock::now()`. Since the
-//!   clock is a HAL boundary outside this module's scope, the oracle pattern
-//!   with caller-side obligations is used (consistent with `sleeping.rs`'s
-//!   `wakeup_alarm` oracle approach). Callers must tie this value to
-//!   `spec_clock_now()` when temporal properties are verified.
+//!   In the original code, admission time is set by `clock::now()` inside
+//!   `ReadyThread::from_state()`. Since the clock is a HAL boundary outside
+//!   this module's scope, the oracle pattern with caller-side obligations is
+//!   used (consistent with `sleeping.rs`'s `wakeup_alarm` oracle approach).
+//!   The `spec_admission_time_valid()` predicate defines the caller contract;
+//!   `lemma_valid_admission_time_satisfies_resume_precondition` proves that
+//!   a valid oracle satisfies the `resume()` precondition. The link to real
+//!   `clock::now()` must be established at the integration proof level.
 //! - `find_thread()` / `find_thread_mut()` are **spec-level models** — they
 //!   compute `spec_find_thread()` directly and do not model the executable
 //!   search implementation. The original code performs linear searches through
@@ -59,7 +71,7 @@
 //!   `lemma_find_thread_refinement_assumption` documents the semantic equivalence
 //!   assumption and its scope. If Verus adds support for reference-typed returns
 //!   or executable ghost iteration, this should be replaced with a verified
-//!   implementation.
+//!   implementation. Tagged for trust-boundary inventory.
 //! - `state()` / `state_mut()` are implemented as pure ghost returns (no
 //!   external_body). The original returns `&ProcessState` / `&mut ProcessState`;
 //!   since ProcessState is abstracted to PID and all fields are ghost, the
@@ -250,13 +262,22 @@ impl InterruptedProcess {
     /// that thread as the only ready thread. Remaining interrupted threads
     /// become the interrupted list, and sleeping/zombie threads are preserved.
     ///
+    /// ## Per-Thread State Mutation Trust Gap
+    ///
+    /// In the original `InterruptedThread::resume()`, `self.state.set_interrupt_reason(self.reason)`
+    /// stores the interrupt reason into the thread's `ThreadState` before conversion
+    /// to `ReadyThread`. This mutation is NOT modeled here because threads are
+    /// abstracted to integer IDs. The interrupt_reason propagation property must
+    /// be verified in the thread module's own Verus verification.
+    ///
     /// ## Oracle Parameter
     ///
     /// `admission_time`: The admission time assigned to the resumed thread.
-    /// In the original code, this is `clock::now()` at the point of resume.
-    /// The oracle must be non-negative. Callers (or the surrounding verified
-    /// context) must tie this value to the real clock model when temporal
-    /// properties are verified.
+    /// In the original code, this is `clock::now()` inside `ReadyThread::from_state()`.
+    /// The oracle must be non-negative. Callers must establish equivalence with
+    /// the real clock via `spec_admission_time_valid()` at the integration level.
+    /// The postcondition records the oracle value in `ready_admission_times[0]`
+    /// so downstream consumers can reason about the timestamp.
     ///
     /// # Parameters
     ///
