@@ -285,6 +285,11 @@ impl ProcessState {
     /// `Arc::strong_count()` after `Mutex::new` + `.clone()`.
     /// Returns the reference count of the returned clone.
     ///
+    /// **Known over-approximation (inherited from original):** The capacity check
+    /// `self.mutexes.len() >= MUTEX_OPEN_MAX` runs before consulting the entry.
+    /// At capacity, this rejects even existing keys whose `or_insert_with` would
+    /// not grow the map. The spec faithfully models this behavior.
+    ///
     /// # Parameters
     ///
     /// - `mutex_addr`: Abstract address of the mutex.
@@ -293,12 +298,11 @@ impl ProcessState {
     /// # Returns
     ///
     /// On success, returns the ghost reference count of the cloned mutex.
-    /// If the map is full and the address is not already present, returns an OutOfMemory error.
+    /// If the map is full, returns an OutOfMemory error (even for existing keys).
     ///
     /// # Errors
     ///
-    /// Returns `ErrorCode::OutOfMemory` when the maximum number of mutexes
-    /// has been reached and the address is not already present.
+    /// Returns `ErrorCode::OutOfMemory` when the map is at capacity.
     pub fn get_mutex(&mut self, mutex_addr: Ghost<int>, already_present: bool) -> (result: Result<Ghost<nat>, Error>)
         requires
             old(self).wf(),
@@ -327,8 +331,10 @@ impl ProcessState {
                 &&& result->Err_0.code == ErrorCode::OutOfMemory
                 &&& old(self).spec_mutexes_full()
                 &&& self.spec_pid() == old(self).spec_pid()
+                &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
                 &&& self.spec_cond_count() == old(self).spec_cond_count()
+                &&& self.spec_pmio_ports() == old(self).spec_pmio_ports()
                 &&& forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
                 &&& forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a)
                 &&& self.wf()
@@ -411,8 +417,10 @@ impl ProcessState {
                 &&& !old(self).spec_has_mutex(mutex_addr@)
                 &&& result->Err_0.code == ErrorCode::NoSuchEntry
                 &&& self.spec_pid() == old(self).spec_pid()
+                &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
                 &&& self.spec_cond_count() == old(self).spec_cond_count()
+                &&& self.spec_pmio_ports() == old(self).spec_pmio_ports()
                 &&& forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
                 &&& forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a)
                 &&& self.wf()
@@ -438,6 +446,9 @@ impl ProcessState {
     /// Same reference-counting model as `get_mutex`: new entries get ref_count = 2
     /// (BTreeMap entry + returned clone), existing entries get ref_count incremented by 1.
     ///
+    /// **Known over-approximation (inherited from original):** Same as `get_mutex` —
+    /// capacity check runs before consulting the entry, rejecting existing keys at capacity.
+    ///
     /// # Parameters
     ///
     /// - `cond_addr`: Abstract address of the condition variable.
@@ -446,12 +457,11 @@ impl ProcessState {
     /// # Returns
     ///
     /// On success, returns the ghost reference count of the cloned condvar.
-    /// If the map is full and the address is not already present, returns an error.
+    /// If the map is full, returns an OutOfMemory error (even for existing keys).
     ///
     /// # Errors
     ///
-    /// Returns `ErrorCode::OutOfMemory` when the maximum number of condition
-    /// variables has been reached and the address is not already present.
+    /// Returns `ErrorCode::OutOfMemory` when the map is at capacity.
     pub fn get_cond(&mut self, cond_addr: Ghost<int>, already_present: bool) -> (result: Result<Ghost<nat>, Error>)
         requires
             old(self).wf(),
@@ -477,8 +487,10 @@ impl ProcessState {
                 &&& result->Err_0.code == ErrorCode::OutOfMemory
                 &&& old(self).spec_conditions_full()
                 &&& self.spec_pid() == old(self).spec_pid()
+                &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
                 &&& self.spec_cond_count() == old(self).spec_cond_count()
+                &&& self.spec_pmio_ports() == old(self).spec_pmio_ports()
                 &&& forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
                 &&& forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a)
                 &&& self.wf()
@@ -556,8 +568,10 @@ impl ProcessState {
                 &&& !old(self).spec_has_cond(cond_addr@)
                 &&& result->Err_0.code == ErrorCode::NoSuchEntry
                 &&& self.spec_pid() == old(self).spec_pid()
+                &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
                 &&& self.spec_cond_count() == old(self).spec_cond_count()
+                &&& self.spec_pmio_ports() == old(self).spec_pmio_ports()
                 &&& forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
                 &&& forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a)
                 &&& self.wf()
@@ -646,8 +660,10 @@ impl ProcessState {
                 &&& !old(self).spec_has_pmio(port_number@)
                 &&& result->Err_0.code == ErrorCode::NoSuchEntry
                 &&& self.spec_pid() == old(self).spec_pid()
+                &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
                 &&& self.spec_cond_count() == old(self).spec_cond_count()
+                &&& self.spec_pmio_ports() == old(self).spec_pmio_ports()
                 &&& forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
                 &&& forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a)
                 &&& self.wf()
@@ -752,6 +768,10 @@ impl ProcessState {
     }
 
     /// Stub: post_message preserves verified state.
+    ///
+    /// Mailbox semantics (ordering, delivery guarantees) are intentionally
+    /// out of scope. The original `post_message` enqueues a `Message` into the
+    /// process mailbox. The stub only asserts frame conditions.
     #[verifier::external_body]
     pub fn post_message_stub(&mut self)
         requires
@@ -770,6 +790,10 @@ impl ProcessState {
     }
 
     /// Stub: receive_message preserves verified state.
+    ///
+    /// The original returns `Option<Message>` (dequeuing from the mailbox).
+    /// Mailbox semantics are intentionally out of scope; the stub only
+    /// asserts frame conditions on the verified state fields.
     #[verifier::external_body]
     pub fn receive_message_stub(&mut self)
         requires

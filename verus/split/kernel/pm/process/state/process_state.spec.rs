@@ -147,13 +147,13 @@ impl ProcessState {
     }
 
     /// Spec constant: maximum number of mutexes per process.
-    /// Matches `MUTEX_OPEN_MAX` from `build/kernel_config.toml`.
+    /// Matches `mutex_open_max = 32` at `build/kernel_config.toml:40`.
     pub open spec fn MUTEX_MAX() -> usize {
         32usize
     }
 
     /// Spec constant: maximum number of condition variables per process.
-    /// Matches `COND_OPEN_MAX` from `build/kernel_config.toml`.
+    /// Matches `cond_open_max = 32` at `build/kernel_config.toml:45`.
     pub open spec fn COND_MAX() -> usize {
         32usize
     }
