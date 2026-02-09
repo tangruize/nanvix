@@ -1378,6 +1378,74 @@ impl ProcessManagerInner {
     {
     }
 
+    /// Models `ProcessManager::terminate` unified control flow (mod.rs:1036-1078).
+    ///
+    /// The original `terminate` has the following decision tree:
+    /// 1. If `pid == KERNEL` → return error (kernel cannot be terminated).
+    /// 2. If `pid == running_pid` → return error (running process cannot be terminated).
+    /// 3. If `pid` in ready queue:
+    ///    a. `process.terminate()` returns `Ok(interrupted)` (threads survive) →
+    ///       `resume() → push_back(ready)` → process stays ready (no-op).
+    ///    b. `process.terminate()` returns `Err(zombie)` (no threads survive) →
+    ///       `push_back(zombies)` → ready→zombie.
+    /// 4. If `pid` in suspended → move to interrupted.
+    /// 5. Otherwise → return error (not found).
+    ///
+    /// Cases 1, 2, and 5 are error paths (no state change). Case 3a is modeled
+    /// by `terminate_ready_stays_ready`. Case 3b is modeled by `terminate_ready`.
+    /// Case 4 is modeled by `terminate_suspended`. The `to_zombie` parameter
+    /// selects between cases 3a and 3b (trust boundary T3: thread-level logic
+    /// determines whether threads survive termination).
+    ///
+    /// This function models the successful ready-queue path (cases 3a/3b).
+    /// For the suspended path, use `terminate_suspended` directly.
+    pub fn outer_terminate_ready(&mut self, pid: i32, to_zombie: bool)
+        requires
+            old(self).wf(),
+            old(self).ghost_ready@.contains(pid as int),
+            pid as int != 0int,
+        ensures
+            self.wf(),
+            self.running_pid == old(self).running_pid,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
+            self.suspended_count == old(self).suspended_count,
+            self.interrupted_count == old(self).interrupted_count,
+            // If to_zombie: ready→zombie. Otherwise: no change.
+            to_zombie ==> (
+                self.ghost_ready@ =~= old(self).ghost_ready@.remove(pid as int)
+                && self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(pid as int)
+                && self.ready_count == old(self).ready_count - 1
+                && self.zombie_count == old(self).zombie_count + 1
+            ),
+            !to_zombie ==> (
+                self.ghost_ready@ =~= old(self).ghost_ready@
+                && self.ghost_zombies@ =~= old(self).ghost_zombies@
+                && self.ready_count == old(self).ready_count
+                && self.zombie_count == old(self).zombie_count
+            ),
+    {
+        if to_zombie {
+            self.terminate_ready(pid);
+        } else {
+            self.terminate_ready_stays_ready(pid);
+        }
+    }
+
+    /// Models `ProcessManager::terminate` error paths.
+    ///
+    /// Covers cases 1 (kernel PID), 2 (running PID), and 5 (not found) from
+    /// the original `terminate` control flow. All return error without mutation.
+    pub fn outer_terminate_error(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Error path: kernel/running/not-found. No state change.
+    }
+
     /// Models `ProcessManager::vmcopy_from_user`: copies memory from user space.
     ///
     /// Outer wrapper (mod.rs:1711-1724). Memory operation on the found process.

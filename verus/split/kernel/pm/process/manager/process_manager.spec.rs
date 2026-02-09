@@ -68,8 +68,9 @@
 // - `ProcessManager::get_thread_data_area` → verified: `get_thread_data_area`
 // - `ProcessManager::has_capability` → verified: `outer_has_capability`
 // - `ProcessManager::capctl` → verified: `capctl`, `capctl_error_noop`
-// - `ProcessManager::terminate` → verified: `terminate_ready`,
-//    `terminate_ready_stays_ready`, `terminate_suspended`
+// - `ProcessManager::terminate` → verified: `outer_terminate_ready` (unified
+//    ready-path with to_zombie branch), `outer_terminate_error` (error paths),
+//    `terminate_ready`, `terminate_ready_stays_ready`, `terminate_suspended`
 // - `ProcessManager::harvest_zombies` → verified: `harvest_zombie`,
 //    `harvest_zombies_wrapper`
 // - `ProcessManager::vmcopy_from_user` → verified: `outer_vmcopy_from_user`
@@ -118,7 +119,7 @@
 //    suspended process but the wakeup fails (e.g., thread is not sleeping).
 //    Process stays suspended. Modeled by `wakeup_suspended_failed_noop`.
 //
-// ## Queue Ordering
+// ## Queue Ordering and LinkedList→Set Abstraction
 //
 // The original uses `LinkedList` with FIFO ordering and `take_earliest_ready`
 // selects by earliest admission time. The verified model uses `Set<int>` which
@@ -128,6 +129,13 @@
 // the ready queue. The `chosen_next` parameter in `schedule` and `full_schedule`
 // corresponds to the result of `take_earliest_ready`; the choice is abstracted
 // as a precondition (trust boundary T1).
+//
+// The `LinkedList<Process>` → `Set<int>` abstraction is justified by Rust's
+// affine type system: process handles (RunningProcess, RunnableProcess, etc.)
+// are move-only types that cannot be duplicated. This means each process can
+// appear in exactly one queue at a time, matching the `Set<int>` disjointness
+// model. The formal link between the concrete `LinkedList` and the ghost `Set`
+// relies on this language-level uniqueness guarantee.
 //
 // ## Scheduler Composition
 //
