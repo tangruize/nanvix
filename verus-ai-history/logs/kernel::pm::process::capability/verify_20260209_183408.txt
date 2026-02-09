@@ -1,0 +1,38 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 18:34:08 CST 2026
+Module: kernel::pm::process::capability
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::capability
+
+error: postcondition not satisfied
+   --> kernel/pm/process/capability.rs:126:13
+    |
+126 |             result.wf(),
+    |             ^^^^^^^^^^^ failed this postcondition
+127 |     {
+128 |         Capabilities { bits: 0u8 }
+    |         -------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/process/capability.rs:217:13
+    |
+217 |             result.wf(),
+    |             ^^^^^^^^^^^ failed this postcondition
+218 |     {
+219 |         Capabilities { bits: 0u8 }
+    |         -------------------------- at the end of the function body
+
+verification results:: 81 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 5s
+Exit code: 1
+
+=== Summary ===
+Verified: 81
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::capability (verified:81, errors:2)
