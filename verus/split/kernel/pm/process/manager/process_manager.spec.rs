@@ -127,7 +127,7 @@ impl ProcessManagerInner {
     pub open spec fn spec_counts_bounded(&self) -> bool {
         (self.ready_count as int) + (self.suspended_count as int)
             + (self.interrupted_count as int) + (self.zombie_count as int) + 1
-            <= i32::MAX as int
+            < i32::MAX as int
         && (self.number_buffered_messages as int) < usize::MAX as int
     }
 
