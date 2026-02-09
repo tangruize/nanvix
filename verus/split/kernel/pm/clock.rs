@@ -26,8 +26,10 @@
 //! - **`wrapping_add` equivalence**: `lemma_wrapping_add_equiv` proves that the
 //!   explicit branching in `increment()` computes the same result as the
 //!   original `wrapping_add(1)` (Trust Boundary T2).
-//! - **Torn-read consequence**: `lemma_torn_read_consequence` quantifies the
-//!   error from a violated snapshot assumption (Trust Boundary T1).
+//! - **Torn-read consequence**: `lemma_torn_read_consequence_x86` quantifies the
+//!   x86-realistic torn-read error (reader behind by `MINOR_MODULUS` ticks), and
+//!   `lemma_torn_read_consequence` covers the weak-memory theoretical case
+//!   (reader ahead by `MINOR_MODULUS` ticks). Both are Trust Boundary T1.
 //!
 //! ## Verification Model
 //!
@@ -82,21 +84,27 @@
 //!
 //! - **T1: AtomicU32 → plain u32 (Snapshot Consistency).** Atomics are modeled
 //!   as plain fields under the single-writer assumption. The original `get()`
-//!   performs two separate atomic loads (`major` then `minor`). If a timer
-//!   interrupt occurs between these loads and increments the counter across a
-//!   minor-wrap boundary (e.g., from `(M, 0xFFFFFFFF)` to `(M+1, 0)`), the
-//!   reader observes `(M+1, 0xFFFFFFFF)` — a **torn read** that is `2^32`
-//!   (`MINOR_MODULUS`) ticks ahead of reality (see `lemma_torn_read_consequence`).
+//!   loads `major` first, then `minor`. If a timer interrupt fires between the
+//!   two loads and increments across a minor-wrap boundary (from `(M, 0xFFFFFFFF)`
+//!   to `(M+1, 0)`), the reader observes a **torn read**:
+//!
+//!   - **x86-realistic** (load-load ordered): reader sees `(M, 0)` — old major,
+//!     new minor — which is `MINOR_MODULUS` ticks *behind* the post-increment
+//!     state (see `lemma_torn_read_consequence_x86`).
+//!   - **Weak-memory theoretical**: reader sees `(M+1, 0xFFFFFFFF)` — new major,
+//!     old minor — which is `MINOR_MODULUS` ticks *ahead* of the pre-increment
+//!     state (see `lemma_torn_read_consequence`). This cannot occur on x86-TSO.
 //!
 //!   This assumption is formalized as the opaque uninterpreted spec predicate
 //!   `spec_no_concurrent_writer_assumption()`, which is a **precondition** on
-//!   `get()` and `now()`. Callers must obtain this predicate by invoking the
-//!   `external_body` axiom `axiom_no_concurrent_writer()` — the axiom is the
-//!   sole entry point for the assumption. Because the spec is uninterpreted,
-//!   Z3 cannot unfold it, and because it is a `requires` (not unconditionally
-//!   granted), callers must explicitly establish the assumption before reading
-//!   the counter. The trust boundary assumptions are documented as A-T1a and
-//!   A-T1b in `spec_get_consistent`.
+//!   `get()`, `now()`, `standalone_ticks()`, and `standalone_now()`. Callers
+//!   must obtain this predicate by invoking the `external_body` axiom
+//!   `axiom_no_concurrent_writer()` — the axiom is the sole entry point for
+//!   the assumption. Because the spec is uninterpreted, Z3 cannot unfold it,
+//!   and because it is a `requires` (not unconditionally granted), callers must
+//!   explicitly establish the assumption before reading the counter. The trust
+//!   boundary assumptions are documented as A-T1a and A-T1b in
+//!   `spec_get_consistent`.
 //!
 //! - **T2: `wrapping_add(1)` → explicit branching.** The original uses
 //!   `minor.wrapping_add(1)` which computes `(minor + 1) % 2^32`. The verified
@@ -512,15 +520,22 @@ impl TimerTicks {
 ///
 /// # Description
 ///
-/// The original `ticks()` reads from the global `TIMER_TICKS` singleton.
-/// This model takes a `&TimerTicks` reference, abstracting the global access.
-/// The postcondition matches the original: the returned u64 equals the
-/// combined tick count `(major << 32) + minor`.
+/// The original `ticks()` reads from the global `TIMER_TICKS` singleton via
+/// `TIMER_TICKS.get()`, which performs two separate atomic loads. This model
+/// mirrors that by calling `get()` and combining the result, requiring
+/// `spec_no_concurrent_writer_assumption()` to match the original's implicit
+/// dependency on snapshot consistency (Trust Boundary T1).
 pub fn standalone_ticks(timer: &TimerTicks) -> (result: u64)
+    requires
+        TimerTicks::spec_no_concurrent_writer_assumption(),
     ensures
         result as nat == timer.spec_ticks(),
 {
-    timer.ticks()
+    let (major, minor): (u32, u32) = timer.get();
+    proof {
+        assert(u32::MAX as nat * TimerTicks::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
+    }
+    (major as u64) * 0x1_0000_0000u64 + (minor as u64)
 }
 
 /// Standalone model of the original `pub fn now() -> SystemTime`.
@@ -540,7 +555,9 @@ pub fn standalone_ticks(timer: &TimerTicks) -> (result: u64)
 ///
 /// The `SystemTime::new()` call in the original is modeled via
 /// `spec_system_time_new_succeeds`, which is proved to hold by
-/// `lemma_now_valid_for_system_time`.
+/// `lemma_now_valid_for_system_time`. Since `nanoseconds < NANOSECONDS_PER_SECOND`
+/// is guaranteed by the postcondition, `SystemTime::new()` always returns `Some`,
+/// making the `unreachable!()` branch in the original `now()` dead code.
 pub fn standalone_now(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32))
     requires
         timer_freq > 0,

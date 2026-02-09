@@ -258,10 +258,13 @@ impl TimerTicks {
     ///
     /// When this assumption holds, the two separate loads in `get()` observe a
     /// single consistent state. When violated, a **torn read** can occur:
-    /// if the handler increments from (major=M, minor=0xFFFFFFFF) to
-    /// (major=M+1, minor=0) between the two loads, `get()` returns
-    /// (M+1, 0xFFFFFFFF), yielding a tick count that is `MINOR_MODULUS`
-    /// (`2^32`) ticks ahead of the actual state.
+    ///
+    /// - **x86-realistic** (`get()` loads major then minor, x86-TSO orders loads):
+    ///   reader sees `(M, 0)` — old major, new minor — `MINOR_MODULUS` ticks
+    ///   *behind* reality (see `lemma_torn_read_consequence_x86`).
+    /// - **Weak-memory theoretical** (load reordering possible): reader sees
+    ///   `(M+1, 0xFFFFFFFF)` — new major, old minor — `MINOR_MODULUS` ticks
+    ///   *ahead* of reality (see `lemma_torn_read_consequence`).
     ///
     /// This spec function is deliberately **opaque** (not `open`): it cannot
     /// be unfolded by Z3 to `true`, so any proof that depends on snapshot

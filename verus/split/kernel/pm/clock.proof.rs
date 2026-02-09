@@ -408,7 +408,11 @@ impl TimerTicks {
     /// # Description
     ///
     /// If the no-concurrent-writer assumption (Trust Boundary T1) is violated,
-    /// a torn read can occur. This lemma shows the specific scenario:
+    /// a torn read can occur. This lemma models the **reverse-reordering** case
+    /// where the reader observes the *new* major before the *old* minor. This
+    /// could theoretically occur under weak memory models with load reordering,
+    /// but **not on x86** (x86-TSO guarantees load-load order). See
+    /// `lemma_torn_read_consequence_x86` for the x86-realistic scenario.
     ///
     /// **Scenario**: The actual state is `(major=M, minor=0xFFFFFFFF)`.
     /// An increment occurs between the two loads, changing the state to
@@ -439,6 +443,55 @@ impl TimerTicks {
         assert(new_major == old_major + 1);
         assert(new_major * m == old_major * m + m) by(nonlinear_arith)
             requires(new_major == old_major + 1);
+    }
+
+    /// Lemma: x86-realistic torn read — reader sees old major, new minor.
+    ///
+    /// # Description
+    ///
+    /// On x86 (Nanvix's only target), loads are ordered (x86-TSO): a load of
+    /// `major` followed by a load of `minor` cannot observe the minor from a
+    /// *later* store than the major's. The only torn-read scenario is:
+    ///
+    /// 1. Reader loads `major` → gets `M` (pre-increment value).
+    /// 2. Timer interrupt fires: state goes from `(M, 0xFFFFFFFF)` to `(M+1, 0)`.
+    /// 3. Reader loads `minor` → gets `0` (post-increment value).
+    /// 4. Reader observes `(M, 0)`.
+    ///
+    /// **Consequence**: The observed tick count is `M * 2^32 + 0`, which is
+    /// `MINOR_MODULUS` (`2^32`) ticks *behind* the actual post-increment
+    /// state `(M+1) * 2^32 + 0`. Equivalently, it is `u32::MAX` ticks
+    /// behind the pre-increment state `M * 2^32 + 0xFFFFFFFF`.
+    ///
+    /// This is the realistic torn-read hazard for Nanvix's x86 target.
+    pub proof fn lemma_torn_read_consequence_x86(major: u32)
+        requires
+            major < u32::MAX,
+        ensures
+            ({
+                // Actual state after increment (what the handler just wrote).
+                let actual_post = TimerTicks { major: (major + 1) as u32, minor: 0u32 };
+                // Torn read: reader sees old major, new minor.
+                let torn = TimerTicks { major: major, minor: 0u32 };
+                // The torn read is exactly MINOR_MODULUS ticks behind post-increment.
+                actual_post.spec_ticks() == torn.spec_ticks() + TimerTicks::MINOR_MODULUS()
+            }),
+            ({
+                // Alternatively: torn read is u32::MAX ticks behind pre-increment.
+                let actual_pre = TimerTicks { major: major, minor: u32::MAX };
+                let torn = TimerTicks { major: major, minor: 0u32 };
+                actual_pre.spec_ticks() == torn.spec_ticks() + u32::MAX as nat
+            }),
+    {
+        let m: nat = Self::MINOR_MODULUS();
+        let old_major: nat = major as nat;
+        let new_major: nat = (major + 1) as nat;
+        assert(new_major == old_major + 1);
+        // Post-increment ticks = (M+1) * M + 0, torn ticks = M * M + 0.
+        assert(new_major * m == old_major * m + m) by(nonlinear_arith)
+            requires(new_major == old_major + 1);
+        // Pre-increment ticks = M * M + 0xFFFFFFFF, torn ticks = M * M + 0.
+        assert(m == u32::MAX as nat + 1);
     }
 }
 
@@ -636,6 +689,13 @@ impl TimerTicks {
     /// Unlike a parameterized axiom, this form cannot be misused: the
     /// caller receives a value satisfying `freq > 0` but cannot choose
     /// which value it is.
+    ///
+    /// **Lower-bound guarantee only:** This axiom guarantees positivity
+    /// (`freq > 0`) but does not constrain the returned value to equal the
+    /// actual PIT frequency. If a future proof needs to reason about the
+    /// specific frequency value (e.g., to bound time resolution), a
+    /// stronger axiom binding the return value to `pit::get_timer_frequency()`
+    /// would be required.
     ///
     /// This models the HAL call `pit::get_timer_frequency()` from the
     /// original `now()`. The link is:
