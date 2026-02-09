@@ -136,8 +136,8 @@ impl RunnableProcess {
         ensures
             ({
                 let running: RunningProcess = RunningProcess {
-                    pid: self.pid.spec_value(),
-                    running_thread_id: self.ready_thread_ids@[selected_idx],
+                    pid: Ghost(self.pid.spec_value()),
+                    running_thread_id: Ghost(self.ready_thread_ids@[selected_idx]),
                     ready_thread_ids: Ghost(
                         self.ready_thread_ids@.subrange(0, selected_idx)
                             .add(self.ready_thread_ids@.subrange(
@@ -465,8 +465,8 @@ impl RunningProcess {
         ensures
             ({
                 let r: RunningProcess = RunningProcess {
-                    pid: pid,
-                    running_thread_id: running_tid,
+                    pid: Ghost(pid),
+                    running_thread_id: Ghost(running_tid),
                     ready_thread_ids: Ghost(Seq::empty()),
                     interrupted_thread_ids: Ghost(Seq::empty()),
                     sleeping_thread_ids: Ghost(Seq::empty()),
@@ -490,7 +490,7 @@ impl InterruptedProcess {
         ensures
             ({
                 let ip: InterruptedProcess = InterruptedProcess {
-                    pid: pid,
+                    pid: Ghost(pid),
                     interrupted_thread_ids: Ghost(interrupted_ids),
                     zombie_thread_ids: Ghost(zombie_ids),
                 };
@@ -512,9 +512,9 @@ impl ZombieProcess {
         ensures
             ({
                 let zp: ZombieProcess = ZombieProcess {
-                    pid: pid,
+                    pid: Ghost(pid),
                     zombie_thread_ids: Ghost(zombie_ids),
-                    status: status,
+                    status: Ghost(status),
                 };
                 zp.wf()
             }),

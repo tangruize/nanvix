@@ -217,12 +217,12 @@ impl RunnableProcess {
 impl RunningProcess {
     /// Spec function: returns the process identifier value.
     pub open spec fn spec_pid(&self) -> int {
-        self.pid
+        self.pid@
     }
 
     /// Spec function: returns the running thread ID.
     pub open spec fn spec_running_thread_id(&self) -> int {
-        self.running_thread_id
+        self.running_thread_id@
     }
 
     /// Spec function: well-formedness predicate.
@@ -238,7 +238,7 @@ impl RunningProcess {
 impl InterruptedProcess {
     /// Spec function: returns the process identifier value.
     pub open spec fn spec_pid(&self) -> int {
-        self.pid
+        self.pid@
     }
 
     /// Spec function: well-formedness predicate.
@@ -254,12 +254,12 @@ impl InterruptedProcess {
 impl ZombieProcess {
     /// Spec function: returns the process identifier value.
     pub open spec fn spec_pid(&self) -> int {
-        self.pid
+        self.pid@
     }
 
     /// Spec function: returns the exit status.
     pub open spec fn spec_status(&self) -> int {
-        self.status
+        self.status@
     }
 
     /// Spec function: well-formedness predicate.
@@ -292,8 +292,8 @@ impl View for RunningProcess {
 
     open spec fn view(&self) -> RunningProcessView {
         RunningProcessView {
-            pid: self.pid,
-            running_thread_id: self.running_thread_id,
+            pid: self.pid@,
+            running_thread_id: self.running_thread_id@,
             ready_thread_ids: self.ready_thread_ids@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
@@ -307,7 +307,7 @@ impl View for InterruptedProcess {
 
     open spec fn view(&self) -> InterruptedProcessView {
         InterruptedProcessView {
-            pid: self.pid,
+            pid: self.pid@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
         }
@@ -319,9 +319,9 @@ impl View for ZombieProcess {
 
     open spec fn view(&self) -> ZombieProcessView {
         ZombieProcessView {
-            pid: self.pid,
+            pid: self.pid@,
             zombie_thread_ids: self.zombie_thread_ids@,
-            status: self.status,
+            status: self.status@,
         }
     }
 }

@@ -123,11 +123,12 @@ pub struct RunnableProcess {
 /// A process that is running (boundary model).
 ///
 /// Models the original `RunningProcess` from the sibling module.
+/// All fields are ghost since this is a purely abstract boundary model.
 pub struct RunningProcess {
-    /// Process identifier value.
-    pub pid: int,
+    /// Process identifier (from the inner ProcessState).
+    pub pid: Ghost<int>,
     /// The running thread ID.
-    pub running_thread_id: int,
+    pub running_thread_id: Ghost<int>,
     /// Remaining ready thread IDs.
     pub ready_thread_ids: Ghost<Seq<int>>,
     /// Interrupted thread IDs.
@@ -143,7 +144,7 @@ pub struct RunningProcess {
 /// Models the original `InterruptedProcess` from the sibling module.
 pub struct InterruptedProcess {
     /// Process identifier value.
-    pub pid: int,
+    pub pid: Ghost<int>,
     /// Interrupted thread IDs (non-empty).
     pub interrupted_thread_ids: Ghost<Seq<int>>,
     /// Zombie thread IDs.
@@ -155,11 +156,11 @@ pub struct InterruptedProcess {
 /// Models the original `ZombieProcess` from the sibling module.
 pub struct ZombieProcess {
     /// Process identifier value.
-    pub pid: int,
+    pub pid: Ghost<int>,
     /// Zombie thread IDs (non-empty).
     pub zombie_thread_ids: Ghost<Seq<int>>,
     /// Exit status.
-    pub status: int,
+    pub status: Ghost<int>,
 }
 
 /// Result of `RunnableProcess::terminate()`.
@@ -322,8 +323,8 @@ impl RunnableProcess {
         }
 
         RunningProcess {
-            pid: self.pid.spec_value(),
-            running_thread_id: selected_tid,
+            pid: Ghost(self.pid.spec_value()),
+            running_thread_id: Ghost(selected_tid),
             ready_thread_ids: Ghost(remaining_ready),
             interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
             sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
@@ -397,7 +398,7 @@ impl RunnableProcess {
                 assert(new_interrupted_ids.len() >= 1);
             }
             TerminateResult::Interrupted(InterruptedProcess {
-                pid: self.pid.spec_value(),
+                pid: Ghost(self.pid.spec_value()),
                 interrupted_thread_ids: Ghost(new_interrupted_ids),
                 zombie_thread_ids: Ghost(new_zombie_ids),
             })
@@ -409,9 +410,9 @@ impl RunnableProcess {
             }
             let status: int = exit_status_interrupted_value();
             TerminateResult::Zombie(ZombieProcess {
-                pid: self.pid.spec_value(),
+                pid: Ghost(self.pid.spec_value()),
                 zombie_thread_ids: Ghost(new_zombie_ids),
-                status: status,
+                status: Ghost(status),
             })
         }
     }
