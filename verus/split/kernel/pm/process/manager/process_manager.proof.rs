@@ -182,8 +182,19 @@ impl ProcessManagerInner {
         ensures
             a.union(b).finite(),
             a.union(b).len() == a.len() + b.len(),
+        decreases a.len(),
     {
-        vstd::set_lib::lemma_len_union::<int>(a, b);
+        if a.len() == 0 {
+            a.lemma_len0_is_empty();
+            assert(a.union(b) =~= b);
+        } else {
+            let x: int = a.choose();
+            let a1: Set<int> = a.remove(x);
+            assert(!b.contains(x));
+            assert(a1.disjoint(b));
+            assert(a.union(b).remove(x) =~= a1.union(b));
+            Self::lemma_union_disjoint_len(a1, b);
+        }
     }
 
     //==============================================================================================

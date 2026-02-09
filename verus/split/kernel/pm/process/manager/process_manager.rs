@@ -208,6 +208,14 @@ impl ProcessManagerInner {
 
         proof {
             self.lemma_next_pid_is_fresh();
+            // PID is fresh: not in any ghost set, so insert adds exactly 1.
+            assert(!self.ghost_ready@.contains(pid as int));
+            assert(self.ghost_ready@.insert(pid as int).len()
+                == self.ghost_ready@.len() + 1);
+            // The new PID won't violate disjointness since it's not in any set.
+            assert(!self.ghost_suspended@.contains(pid as int));
+            assert(!self.ghost_interrupted@.contains(pid as int));
+            assert(!self.ghost_zombies@.contains(pid as int));
         }
 
         self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
