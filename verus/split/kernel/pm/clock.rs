@@ -149,9 +149,13 @@ impl TimerTicks {
             proof {
                 assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
                 // old(self).minor < u32::MAX, so old(self).spec_minor() <= u32::MAX - 1.
-                assert(old(self).spec_minor() <= u32::MAX as nat - 1);
+                assert(old(self).spec_minor() < u32::MAX as nat);
                 assert(old(self).spec_major() <= u32::MAX as nat);
-                // old(self).spec_ticks() <= u32::MAX * M + (u32::MAX - 1) = u64::MAX - 1 < u64::MAX.
+                Self::lemma_nat_mul_le_mono(
+                    old(self).spec_major(), u32::MAX as nat, Self::MINOR_MODULUS(),
+                );
+                // Now: old.major * M <= u32::MAX * M.
+                // old.ticks = old.major * M + old.minor <= u32::MAX * M + (u32::MAX - 1) < u64::MAX.
                 assert(!old(self).spec_is_max());
                 self.lemma_always_wf();
             }
@@ -162,9 +166,12 @@ impl TimerTicks {
                 proof {
                     assert(Self::MINOR_MODULUS() == u32::MAX as nat + 1);
                     assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
-                    // old(self).major < u32::MAX, so old(self).spec_ticks() < u64::MAX.
+                    // old(self).major < u32::MAX, so old(self) is not at max.
                     assert(old(self).spec_major() < u32::MAX as nat);
-                    assert(old(self).spec_ticks() == old(self).spec_major() * Self::MINOR_MODULUS() + u32::MAX as nat);
+                    Self::lemma_nat_mul_le_mono(
+                        old(self).spec_major(), u32::MAX as nat - 1, Self::MINOR_MODULUS(),
+                    );
+                    // old.major * M <= (u32::MAX - 1) * M, so old.ticks < u64::MAX.
                     assert(old(self).spec_ticks() < u64::MAX as nat);
                     assert(!old(self).spec_is_max());
                     // (old.major + 1) * M = old.major * M + M = old.major * M + u32::MAX + 1.

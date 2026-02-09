@@ -159,6 +159,22 @@ impl TimerTicks {
 //==================================================================================================
 
 impl TimerTicks {
+    /// Lemma: Multiplication is monotone for natural numbers.
+    ///
+    /// # Description
+    ///
+    /// If a <= b, then a * c <= b * c. This is used to bound
+    /// spec_major() * MINOR_MODULUS() by u32::MAX * MINOR_MODULUS().
+    pub proof fn lemma_nat_mul_le_mono(a: nat, b: nat, c: nat)
+        requires
+            a <= b,
+        ensures
+            a * c <= b * c,
+    {
+        assert(a * c <= b * c) by(nonlinear_arith)
+            requires(a <= b);
+    }
+
     /// Lemma: The ticks computation doesn't overflow u64.
     pub proof fn lemma_ticks_no_overflow(major: u32, minor: u32)
         ensures
