@@ -428,6 +428,63 @@ impl Capabilities {
             self.wf(),
     {
     }
+
+    /// Lemma: The Capability enum is closed — every instance is one of the 5
+    /// known variants.
+    ///
+    /// # Description
+    ///
+    /// This proves the closed-world assumption: the `Capability` enum has exactly
+    /// 5 variants, and any `Capability` value must be one of them. This is a
+    /// consequence of Rust's exhaustive enum semantics and is verified here by
+    /// exhaustive match. If a new variant were added to `Capability`, this match
+    /// (and all others in this module) would fail to compile.
+    pub proof fn lemma_enum_is_closed(cap: Capability)
+        ensures
+            cap == Capability::ExceptionControl
+            || cap == Capability::InterruptControl
+            || cap == Capability::IoManagement
+            || cap == Capability::MemoryManagement
+            || cap == Capability::ProcessManagement,
+    {
+        match cap {
+            Capability::ExceptionControl => {},
+            Capability::InterruptControl => {},
+            Capability::IoManagement => {},
+            Capability::MemoryManagement => {},
+            Capability::ProcessManagement => {},
+        }
+    }
+
+    /// Lemma: All capability masks only use bits 0..=4 (no upper bits set).
+    ///
+    /// # Description
+    ///
+    /// This connects the `spec_mask` values to the `wf()` invariant by proving
+    /// that OR-ing any capability mask into a well-formed bitfield cannot set
+    /// bits 5, 6, or 7. This is the foundation of `lemma_set_preserves_wf`.
+    pub proof fn lemma_all_masks_valid(cap: Capability)
+        ensures
+            Self::spec_mask_is_valid(cap),
+    {
+        match cap {
+            Capability::ExceptionControl => {
+                assert(1u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            },
+            Capability::InterruptControl => {
+                assert(2u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            },
+            Capability::IoManagement => {
+                assert(4u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            },
+            Capability::MemoryManagement => {
+                assert(8u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            },
+            Capability::ProcessManagement => {
+                assert(16u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            },
+        }
+    }
 }
 
 } // verus!

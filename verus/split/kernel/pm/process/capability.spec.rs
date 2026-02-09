@@ -86,9 +86,26 @@ impl Capabilities {
     /// A Capabilities value is well-formed when only valid capability bits
     /// (0..=4) are set. The upper 3 bits (5, 6, 7) must not be set.
     /// All constructors (`new`, `default`) produce well-formed values, and
-    /// `set`/`clear` preserve well-formedness.
+    /// `set`/`clear` preserve well-formedness (proven as conditional postcondition).
+    ///
+    /// This is the module-level invariant. Values constructed via the public API
+    /// always satisfy `wf()`. The `pub bits` field allows constructing non-`wf`
+    /// values, but such values are outside the intended usage; the verification
+    /// guarantees correctness for the API-reachable state space.
     pub open spec fn wf(&self) -> bool {
         self.bits & 0b1110_0000u8 == 0u8
+    }
+
+    /// Spec function: predicate asserting that every valid capability mask
+    /// only uses bits in the lower 5 positions (0..=4).
+    ///
+    /// # Note
+    ///
+    /// This is a consequence of the closed-world enum: since all 5 discriminants
+    /// are in [0, 4], all masks are powers of 2 up to 2^4 = 16, and none set
+    /// bits 5, 6, or 7. This connects `spec_mask` to `wf()`.
+    pub open spec fn spec_mask_is_valid(cap: Capability) -> bool {
+        Self::spec_mask(cap) & 0b1110_0000u8 == 0u8
     }
 }
 

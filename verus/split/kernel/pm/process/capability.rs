@@ -18,6 +18,7 @@
 //! - `set` then `clear` is a roundtrip (restores original when bit was clear).
 //! - `clear` then `set` is a roundtrip (restores original when bit was set).
 //! - Explicit mask values match the original `1 << discriminant` formula.
+//! - The Capability enum is closed: every instance is one of the 5 known variants.
 //! - View equality implies bitfield equality.
 //!
 //! ## Verification Additions
@@ -32,9 +33,24 @@
 //!   `1 << discriminant` to avoid dependence on enum layout or `#[repr]`
 //!   annotations. Equivalence to the original formula is proven by
 //!   `lemma_mask_matches_discriminant`.
-//! - `pub bits` field: required by Verus for spec-level field access across
-//!   module boundaries. The original uses a private tuple field `(u8)`.
-//!   This is a known verification-required deviation from the original API.
+//! - `pub bits` field: required by Verus for spec-level field access in
+//!   `pub open spec fn` definitions. Verus requires that field access in a
+//!   `pub open spec fn` be well-formed everywhere the spec fn is visible;
+//!   since the spec fns are `pub`, the field must also be `pub`. This is the
+//!   established pattern in the Nanvix verification crate (cf. `ProcessIdentifier.value`).
+//!   The original uses a private tuple field `(u8)`. External code should use
+//!   the `set`/`clear`/`has` API rather than accessing `bits` directly. The
+//!   `wf()` predicate serves as a module-level invariant that all API-constructed
+//!   values satisfy and all operations preserve.
+//!
+//! ## Closed-World Assumption
+//!
+//! The `Capability` enum is exhaustively verified in `sys::pm::capability` with
+//! exactly 5 variants (discriminants 0..=4). The explicit `match` in `spec_mask`
+//! and `to_mask` covers all variants; adding a new variant to `Capability` would
+//! cause a compile-time error in every `match` expression throughout both the
+//! original and verified code. The `lemma_enum_is_closed` proof additionally
+//! verifies that every `Capability` instance is one of the 5 known variants.
 //!
 //! ## Trust Boundary
 //!
@@ -67,9 +83,12 @@ verus! {
 /// # Note
 ///
 /// The `bits` field is `pub` because Verus requires public fields for spec-level
-/// access in `pub open spec fn` definitions across module boundaries. The original
-/// source uses a private tuple struct `Capabilities(u8)`. External code should use
-/// the `set`/`clear`/`has` API rather than accessing `bits` directly.
+/// access in `pub open spec fn` definitions. This is a Verus constraint: field
+/// expressions in `pub open spec fn` must be well-formed everywhere the spec fn
+/// is visible. The original source uses a private tuple struct `Capabilities(u8)`.
+/// External code should use the `set`/`clear`/`has` API rather than accessing
+/// `bits` directly. The `wf()` predicate is the module-level invariant:
+/// all API-constructed values satisfy it and all operations preserve it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Capabilities {
     /// The raw bitfield value.
@@ -93,6 +112,7 @@ impl Capabilities {
     /// Uses explicit match rather than `1 << discriminant` to avoid dependence
     /// on enum layout or `#[repr]` annotations. The equivalence to the original
     /// source's shift-based formula is proven by `lemma_mask_matches_discriminant`.
+    /// Adding a new variant to `Capability` would cause a compile-time error here.
     ///
     /// # Parameters
     ///
@@ -140,15 +160,13 @@ impl Capabilities {
     /// # Ensures
     ///
     /// - The target bit is set in the result.
-    /// - All other bits are unchanged.
-    /// - Well-formedness is preserved.
+    /// - All other bits are unchanged (bitfield equals `old | mask`).
+    /// - If the input was well-formed, the output is well-formed.
     pub fn set(&mut self, capability: Capability)
-        requires
-            old(self).wf(),
         ensures
             self.spec_bits() == old(self).spec_set(capability),
             self.spec_has(capability),
-            self.wf(),
+            old(self).wf() ==> self.wf(),
     {
         let mask: u8 = Self::to_mask(capability);
         let ghost pre = *self;
@@ -156,7 +174,9 @@ impl Capabilities {
 
         proof {
             Capabilities::lemma_set_then_has(pre, capability);
-            Capabilities::lemma_set_preserves_wf(pre, capability);
+            if pre.wf() {
+                Capabilities::lemma_set_preserves_wf(pre, capability);
+            }
         }
     }
 
@@ -169,15 +189,13 @@ impl Capabilities {
     /// # Ensures
     ///
     /// - The target bit is cleared in the result.
-    /// - All other bits are unchanged.
-    /// - Well-formedness is preserved.
+    /// - All other bits are unchanged (bitfield equals `old & !mask`).
+    /// - If the input was well-formed, the output is well-formed.
     pub fn clear(&mut self, capability: Capability)
-        requires
-            old(self).wf(),
         ensures
             self.spec_bits() == old(self).spec_clear(capability),
             !self.spec_has(capability),
-            self.wf(),
+            old(self).wf() ==> self.wf(),
     {
         let mask: u8 = Self::to_mask(capability);
         let ghost pre = *self;
@@ -185,7 +203,9 @@ impl Capabilities {
 
         proof {
             Capabilities::lemma_clear_then_not_has(pre, capability);
-            Capabilities::lemma_clear_preserves_wf(pre, capability);
+            if pre.wf() {
+                Capabilities::lemma_clear_preserves_wf(pre, capability);
+            }
         }
     }
 
