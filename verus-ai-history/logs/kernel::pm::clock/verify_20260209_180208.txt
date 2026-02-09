@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 18:02:08 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::clock
+
+error: possible arithmetic underflow/overflow
+   --> kernel/pm/clock.rs:538:5
+    |
+538 |     (major as u64) * 0x1_0000_0000u64 + (minor as u64)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 53 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 53
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::clock (verified:53, errors:1)
