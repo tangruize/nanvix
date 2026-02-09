@@ -436,7 +436,9 @@ impl TimerTicks {
         let m: nat = Self::MINOR_MODULUS();
         let old_major: nat = major as nat;
         let new_major: nat = (major + 1) as nat;
-        assert(new_major * m == old_major * m + m) by(nonlinear_arith);
+        assert(new_major == old_major + 1);
+        assert(new_major * m == old_major * m + m) by(nonlinear_arith)
+            requires(new_major == old_major + 1);
     }
 }
 
