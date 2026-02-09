@@ -1,0 +1,54 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 17:08:15 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::clock
+
+error: assertion failed
+   --> kernel/pm/clock.proof.rs:288:20
+    |
+288 |             assert(b * q <= c) by(nonlinear_arith)
+    |                    ^^^^^^^^^^ assertion failed
+
+
+thread '<unnamed>' (3764180) panicked at rust_verify/src/verifier.rs:833:21:
+internal error: generated ill-typed AIR code: error 'error 'error 'error 'error 'error 'error 'use of undeclared snapshot snap%PRE' in expression '(old snap%PRE self!)'' in expression '(Poly%lib!kernel.pm.clock.TimerTicks. (old snap%PRE self!))'' in expression '(lib!kernel.pm.clock.impl&%0.spec_major.? (Poly%lib!kernel.pm.clock.TimerTicks. (old
+   snap%PRE self!
+)))'' in expression '(Add (lib!kernel.pm.clock.impl&%0.spec_major.? (Poly%lib!kernel.pm.clock.TimerTicks.
+   (old snap%PRE self!)
+  )
+ ) 1
+)'' in expression '(nClip (Add (lib!kernel.pm.clock.impl&%0.spec_major.? (Poly%lib!kernel.pm.clock.TimerTicks.
+    (old snap%PRE self!)
+   )
+  ) 1
+))'' in expression '(Mul (nClip (Add (lib!kernel.pm.clock.impl&%0.spec_major.? (Poly%lib!kernel.pm.clock.TimerTicks.
+     (old snap%PRE self!)
+    )
+   ) 1
+  )
+ ) (lib!kernel.pm.clock.impl&%0.MINOR_MODULUS.? (I 0))
+)'' in expression '(nClip (Mul (nClip (Add (lib!kernel.pm.clock.impl&%0.spec_major.? (Poly%lib!kernel.pm.clock.TimerTicks.
+      (old snap%PRE self!)
+     )
+    ) 1
+   )
+  ) (lib!kernel.pm.clock.impl&%0.MINOR_MODULUS.? (I 0))
+))'
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread '<unnamed>' (3764180) panicked at rust_verify/src/verifier.rs:2215:29:
+worker thread panicked
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::clock (verified:0, errors:0)
