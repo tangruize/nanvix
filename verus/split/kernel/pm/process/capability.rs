@@ -93,7 +93,6 @@ impl Capabilities {
             self.spec_bits() == old(self).spec_set(capability),
             self.spec_has(capability),
     {
-        let old_self: Ghost<Capabilities> = Ghost(*old(self));
         let d: u32 = capability.to_u32();
 
         proof {
@@ -102,11 +101,19 @@ impl Capabilities {
 
         assert(d <= 4u32);
         assert(d < 8);
+
+        let old_bits: Ghost<u8> = Ghost(self.0);
+
         self.0 = self.0 | (1u8 << d);
 
-        proof {
-            Capabilities::lemma_set_then_has(*old_self, capability);
-        }
+        assert(self.0 == (old_bits@ | (1u8 << d)) as u8);
+
+        // Prove the target bit is set.
+        assert((self.0 & (1u8 << d)) != 0u8) by (bit_vector)
+            requires
+                self.0 == (old_bits@ | (1u8 << d)) as u8,
+                0 <= d <= 4,
+        ;
     }
 
     /// Clears a capability bit.
@@ -124,7 +131,6 @@ impl Capabilities {
             self.spec_bits() == old(self).spec_clear(capability),
             !self.spec_has(capability),
     {
-        let old_self: Ghost<Capabilities> = Ghost(*old(self));
         let d: u32 = capability.to_u32();
 
         proof {
@@ -133,11 +139,19 @@ impl Capabilities {
 
         assert(d <= 4u32);
         assert(d < 8);
+
+        let old_bits: Ghost<u8> = Ghost(self.0);
+
         self.0 = self.0 & !(1u8 << d);
 
-        proof {
-            Capabilities::lemma_clear_then_not_has(*old_self, capability);
-        }
+        assert(self.0 == (old_bits@ & !(1u8 << d)) as u8);
+
+        // Prove the target bit is cleared.
+        assert((self.0 & (1u8 << d)) == 0u8) by (bit_vector)
+            requires
+                self.0 == (old_bits@ & !(1u8 << d)) as u8,
+                0 <= d <= 4,
+        ;
     }
 
     /// Tests whether a capability bit is set.
