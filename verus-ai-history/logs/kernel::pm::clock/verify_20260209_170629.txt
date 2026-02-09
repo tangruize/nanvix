@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 17:06:29 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: requires/recommends needs a bool expression
+   --> kernel/pm/clock.proof.rs:286:25
+    |
+286 |                 requires(r < b, q > 0);
+    |                         ^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::clock (verified:0, errors:0)
