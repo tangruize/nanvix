@@ -283,7 +283,7 @@ impl TimerTicks {
         } else {
             // r < b and q > 0 imply r * q < b * q.
             assert(r * q < b * q) by(nonlinear_arith)
-                requires(r < b, q > 0);
+                requires(r < b && q > 0);
             // b * (c / b) <= c is a fundamental property of integer division.
             assert(b * q <= c) by(nonlinear_arith)
                 requires(b > 0);
