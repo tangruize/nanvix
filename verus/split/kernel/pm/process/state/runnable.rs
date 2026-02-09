@@ -320,6 +320,12 @@ impl RunnableProcess {
         proof { self.lemma_earliest_admission_time_exists(); }
         let ghost selected_idx: int = self.spec_earliest_ready_index();
 
+        proof {
+            // The lemma guarantees existence; tie it to the chosen index.
+            assert(0 <= selected_idx < self.ready_admission_times@.len());
+            assert(0 <= selected_idx < self.ready_thread_ids@.len());
+        }
+
         let ghost selected_tid: int = self.ready_thread_ids@[selected_idx as int];
         let ghost remaining_ready: Seq<int> =
             self.ready_thread_ids@.subrange(0, selected_idx)
