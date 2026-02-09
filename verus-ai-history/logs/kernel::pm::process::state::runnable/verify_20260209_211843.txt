@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:18:43 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: cannot call function `lib::kernel::pm::sys::pid::ProcessIdentifier::spec_value` with mode spec
+   --> kernel/pm/process/state/runnable.rs:325:18
+    |
+325 |             pid: self.pid.spec_value(),
+    |                  ^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:0, errors:0)
