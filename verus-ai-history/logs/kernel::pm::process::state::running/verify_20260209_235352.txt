@@ -1,0 +1,37 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 23:53:52 CST 2026
+Module: kernel::pm::process::state::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::running
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/running.rs:442:13
+    |
+442 | /             (tag == 0u8) ==> (
+443 | |                 self.zombie_thread_ids@ == old(self).spec_try_join_zombie_post(tid@)
+444 | |                 && self.zombie_count as nat == old(self).spec_zombie_count() - 1
+445 | |             ),
+    | |_____________^ failed this postcondition
+...
+452 | /         if tag == 0u8 {
+453 | |             // Zombie found — remove it from the zombie list.
+454 | |             proof {
+...   |
+477 | |             tag
+478 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 42 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 42
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::running (verified:42, errors:1)
