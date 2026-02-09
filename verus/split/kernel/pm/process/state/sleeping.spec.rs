@@ -44,7 +44,10 @@
 // - `RunnableProcess` and `InterruptedProcess` are boundary models from
 //   sibling modules.
 // - `find_thread()` and `find_thread_mut()` are modeled spec-only because
-//   they return reference types that Verus cannot express.
+//   they return reference types that Verus cannot express. Importantly,
+//   `find_thread_mut()` yields `&mut` access; any mutation through it is
+//   **outside** the scope of this verification model. Callers must ensure
+//   that mutations preserve wf() as a caller-side proof obligation.
 // - `state()` / `state_mut()` are elided (ProcessState access modeled via PID).
 
 use vstd::prelude::*;

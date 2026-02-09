@@ -285,6 +285,8 @@ impl SleepingProcess {
                         && rp.sleeping_thread_ids@ ==
                             Self::spec_remove_at(self.sleeping_thread_ids@, idx))
                     && rp.sleeping_thread_ids@.len() == self.spec_sleeping_count() - 1
+                    // The woken thread is no longer in the sleeping list.
+                    && !Self::spec_seq_contains(rp.sleeping_thread_ids@, tid@)
                     // Zombie threads preserved.
                     && rp.zombie_thread_ids@ == self.zombie_thread_ids@
                 },
@@ -335,6 +337,9 @@ impl SleepingProcess {
 
             // Prove new_sleeping_ids matches spec_remove_at.
             assert(new_sleeping_ids =~= Self::spec_remove_at(s, idx));
+
+            // Prove the woken thread is no longer in the sleeping list.
+            Self::lemma_remove_at_removes_element(s, idx);
 
             // Prove single-element ready list properties.
             let ready: Seq<int> = Seq::<int>::empty().push(tid@);
@@ -441,6 +446,8 @@ impl SleepingProcess {
                 zombie_thread_ids: Ghost(self.zombie_thread_ids@),
             })
         } else {
+            // No alarm expired: the process remains sleeping with all state unchanged.
+            // sleeping_count, sleeping_thread_ids, and zombie_thread_ids are identity-preserved.
             Err(SleepingProcess {
                 pid: Ghost(self.pid@),
                 sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
@@ -466,6 +473,10 @@ impl SleepingProcess {
     pub fn add_thread(self, ready_tid: Ghost<int>) -> (result: RunnableProcess)
         requires
             self.wf(),
+            // The added thread must not collide with existing sleeping or zombie threads.
+            // In the original code, Rust ownership prevents this; we enforce it explicitly.
+            !Self::spec_seq_contains(self.sleeping_thread_ids@, ready_tid@),
+            !Self::spec_seq_contains(self.zombie_thread_ids@, ready_tid@),
         ensures
             result.spec_pid() == self.spec_pid(),
             result.wf(),

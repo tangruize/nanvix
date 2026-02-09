@@ -99,6 +99,55 @@ impl SleepingProcess {
     {
     }
 
+    /// Lemma: Removing an element from a no-duplicates sequence preserves no-duplicates.
+    pub proof fn lemma_remove_at_no_duplicates(s: Seq<int>, idx: int)
+        requires
+            0 <= idx < s.len(),
+            Self::spec_no_duplicates(s),
+        ensures
+            Self::spec_no_duplicates(Self::spec_remove_at(s, idx)),
+    {
+        let result: Seq<int> = Self::spec_remove_at(s, idx);
+        assert forall|i: int, j: int| 0 <= i < j < result.len()
+            implies result[i] != result[j]
+        by {
+            Self::lemma_remove_at_preserves_others(s, idx, i);
+            Self::lemma_remove_at_preserves_others(s, idx, j);
+            let si: int = if i < idx { i } else { i + 1 };
+            let sj: int = if j < idx { j } else { j + 1 };
+            assert(0 <= si < sj < s.len());
+            assert(s[si] != s[sj]);
+        }
+    }
+
+    /// Lemma: Removing an element at index `idx` from a no-duplicates sequence
+    /// means that element no longer appears in the result.
+    pub proof fn lemma_remove_at_removes_element(s: Seq<int>, idx: int)
+        requires
+            0 <= idx < s.len(),
+            Self::spec_no_duplicates(s),
+        ensures
+            !Self::spec_seq_contains(Self::spec_remove_at(s, idx), s[idx]),
+    {
+        let result: Seq<int> = Self::spec_remove_at(s, idx);
+        let val: int = s[idx];
+        Self::lemma_remove_at_length(s, idx);
+        if Self::spec_seq_contains(result, val) {
+            let witness: int = choose|k: int| 0 <= k < result.len() && result[k] == val;
+            Self::lemma_remove_at_preserves_others(s, idx, witness);
+            let orig_idx: int = if witness < idx { witness } else { witness + 1 };
+            assert(s[orig_idx] == val);
+            assert(s[idx] == val);
+            assert(orig_idx != idx);
+            // But no_duplicates says s[idx] != s[orig_idx] when idx != orig_idx.
+            if orig_idx < idx {
+                assert(0 <= orig_idx < idx < s.len());
+            } else {
+                assert(0 <= idx < orig_idx < s.len());
+            }
+        }
+    }
+
     //==============================================================================================
     // add_thread() Lemmas
     //==============================================================================================
