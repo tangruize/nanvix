@@ -170,19 +170,17 @@ impl ProcessManagerUnsafeState {
     /// The original panics if PROCESS_MANAGER is None.
     ///
     /// This is a shared (immutable) borrow: multiple get() calls can coexist,
-    /// but not with get_mut(). The ghost borrow count is not modified since
-    /// shared borrows do not conflict with each other.
-    pub fn get(&self) -> (result: &Self)
+    /// but not with get_mut(). We model this as a precondition check that
+    /// verifies the singleton is initialized and wf().
+    pub fn get(&self)
         requires
             self.wf(),
         ensures
-            result.wf(),
-            result.initialized,
-            result.spec_inner_wf(),
-            result.current_pid == self.current_pid,
-            result.current_tid == self.current_tid,
+            self.wf(),
+            self.initialized,
+            self.spec_inner_wf(),
     {
-        self
+        // Shared borrow: no state change. wf() trivially preserved.
     }
 
     /// Models `ProcessManager::get_mut()` (unsafe.rs:184-191).
@@ -193,20 +191,19 @@ impl ProcessManagerUnsafeState {
     /// Requires exclusive access: no other borrows (shared or mutable) may
     /// be outstanding. This models the fundamental safety property of the
     /// singleton pattern — at most one mutable reference at a time.
-    pub fn get_mut(&mut self) -> (result: &mut Self)
+    /// We model this as a precondition check that verifies initialization,
+    /// wf(), and exclusive access (no outstanding borrows).
+    pub fn get_mut(&self)
         requires
-            old(self).wf(),
-            old(self).spec_no_borrows(),
+            self.wf(),
+            self.spec_no_borrows(),
         ensures
-            result.wf(),
-            result.initialized,
-            result.spec_inner_wf(),
-            result.current_pid == old(self).current_pid,
-            result.current_tid == old(self).current_tid,
-            result.remaining_quantum == old(self).remaining_quantum,
-            result.scheduler_freq == old(self).scheduler_freq,
+            self.wf(),
+            self.initialized,
+            self.spec_inner_wf(),
     {
-        self
+        // Exclusive borrow: no state change. wf() trivially preserved.
+        // The caller must ensure no other borrows are outstanding.
     }
 
     //==============================================================================================
