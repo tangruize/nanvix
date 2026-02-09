@@ -198,7 +198,6 @@ impl SleepingProcess {
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.sleeping_count == old(self).sleeping_count,
-            self.wf() == old(self).wf(),
     {
         unimplemented!()
     }
