@@ -21,6 +21,23 @@ impl Capabilities {
             !Capabilities::spec_default().spec_has(Capability::MemoryManagement),
             !Capabilities::spec_default().spec_has(Capability::ProcessManagement),
     {
+        // Each mask ANDed with 0 is 0.
+        assert(0u8 & 1u8 == 0u8) by (bit_vector);
+        assert(0u8 & 2u8 == 0u8) by (bit_vector);
+        assert(0u8 & 4u8 == 0u8) by (bit_vector);
+        assert(0u8 & 8u8 == 0u8) by (bit_vector);
+        assert(0u8 & 16u8 == 0u8) by (bit_vector);
+    }
+
+    /// Lemma: The spec_mask for each variant is a single distinct bit.
+    pub proof fn lemma_masks_distinct()
+        ensures
+            Capabilities::spec_mask(Capability::ExceptionControl) == 1u8,
+            Capabilities::spec_mask(Capability::InterruptControl) == 2u8,
+            Capabilities::spec_mask(Capability::IoManagement) == 4u8,
+            Capabilities::spec_mask(Capability::MemoryManagement) == 8u8,
+            Capabilities::spec_mask(Capability::ProcessManagement) == 16u8,
+    {
     }
 
     /// Lemma: Setting a capability bit ensures `has` returns true for that capability.
@@ -28,19 +45,14 @@ impl Capabilities {
         ensures
             ({
                 let post_bits: u8 = pre.spec_set(cap);
-                (post_bits & (1u8 << cap.spec_discriminant())) != 0u8
+                (post_bits & Self::spec_mask(cap)) != 0u8
             }),
     {
-        cap.lemma_discriminant_bounds();
-        let d: int = cap.spec_discriminant();
-        assert(0 <= d <= 4);
-        let mask: u8 = (1u8 << d);
+        let mask: u8 = Self::spec_mask(cap);
         let result: u8 = (pre.spec_bits() | mask) as u8;
-        assert(result & mask == mask) by (bit_vector)
+        assert((result & mask) != 0u8) by (bit_vector)
             requires
-                mask == (1u8 << d),
                 result == (pre.spec_bits() | mask) as u8,
-                0 <= d <= 4,
         ;
     }
 
@@ -49,80 +61,65 @@ impl Capabilities {
         ensures
             ({
                 let post_bits: u8 = pre.spec_clear(cap);
-                (post_bits & (1u8 << cap.spec_discriminant())) == 0u8
+                (post_bits & Self::spec_mask(cap)) == 0u8
             }),
     {
-        cap.lemma_discriminant_bounds();
-        let d: int = cap.spec_discriminant();
-        assert(0 <= d <= 4);
-        let mask: u8 = (1u8 << d);
+        let mask: u8 = Self::spec_mask(cap);
         let result: u8 = (pre.spec_bits() & !mask) as u8;
-        assert(result & mask == 0u8) by (bit_vector)
+        assert((result & mask) == 0u8) by (bit_vector)
             requires
-                mask == (1u8 << d),
                 result == (pre.spec_bits() & !mask) as u8,
-                0 <= d <= 4,
         ;
     }
 
     /// Lemma: Setting a capability preserves other bits.
     pub proof fn lemma_set_preserves_other(pre: Capabilities, cap_set: Capability, cap_other: Capability)
         requires
-            cap_set.spec_discriminant() != cap_other.spec_discriminant(),
+            Self::spec_mask(cap_set) != Self::spec_mask(cap_other),
         ensures
             ({
                 let post_bits: u8 = pre.spec_set(cap_set);
-                ((post_bits & (1u8 << cap_other.spec_discriminant())) != 0u8)
+                ((post_bits & Self::spec_mask(cap_other)) != 0u8)
                 ==
-                ((pre.spec_bits() & (1u8 << cap_other.spec_discriminant())) != 0u8)
+                ((pre.spec_bits() & Self::spec_mask(cap_other)) != 0u8)
             }),
     {
-        cap_set.lemma_discriminant_bounds();
-        cap_other.lemma_discriminant_bounds();
-        let ds: int = cap_set.spec_discriminant();
-        let do_: int = cap_other.spec_discriminant();
-        let mask_s: u8 = (1u8 << ds);
-        let mask_o: u8 = (1u8 << do_);
+        let mask_s: u8 = Self::spec_mask(cap_set);
+        let mask_o: u8 = Self::spec_mask(cap_other);
         let result: u8 = (pre.spec_bits() | mask_s) as u8;
-        assert((result & mask_o != 0u8) == (pre.spec_bits() & mask_o != 0u8)) by (bit_vector)
-            requires
-                mask_s == (1u8 << ds),
-                mask_o == (1u8 << do_),
-                result == (pre.spec_bits() | mask_s) as u8,
-                0 <= ds <= 4,
-                0 <= do_ <= 4,
-                ds != do_,
-        ;
+
+        // Enumerate all valid mask pairs to help the solver.
+        assert forall|ms: u8, mo: u8, b: u8|
+            ms != mo && (ms == 1u8 || ms == 2u8 || ms == 4u8 || ms == 8u8 || ms == 16u8)
+            && (mo == 1u8 || mo == 2u8 || mo == 4u8 || mo == 8u8 || mo == 16u8)
+        implies
+            #[trigger] (((b | ms) as u8) & mo != 0u8) == (b & mo != 0u8)
+        by (bit_vector);
     }
 
     /// Lemma: Clearing a capability preserves other bits.
     pub proof fn lemma_clear_preserves_other(pre: Capabilities, cap_clear: Capability, cap_other: Capability)
         requires
-            cap_clear.spec_discriminant() != cap_other.spec_discriminant(),
+            Self::spec_mask(cap_clear) != Self::spec_mask(cap_other),
         ensures
             ({
                 let post_bits: u8 = pre.spec_clear(cap_clear);
-                ((post_bits & (1u8 << cap_other.spec_discriminant())) != 0u8)
+                ((post_bits & Self::spec_mask(cap_other)) != 0u8)
                 ==
-                ((pre.spec_bits() & (1u8 << cap_other.spec_discriminant())) != 0u8)
+                ((pre.spec_bits() & Self::spec_mask(cap_other)) != 0u8)
             }),
     {
-        cap_clear.lemma_discriminant_bounds();
-        cap_other.lemma_discriminant_bounds();
-        let dc: int = cap_clear.spec_discriminant();
-        let do_: int = cap_other.spec_discriminant();
-        let mask_c: u8 = (1u8 << dc);
-        let mask_o: u8 = (1u8 << do_);
+        let mask_c: u8 = Self::spec_mask(cap_clear);
+        let mask_o: u8 = Self::spec_mask(cap_other);
         let result: u8 = (pre.spec_bits() & !mask_c) as u8;
-        assert((result & mask_o != 0u8) == (pre.spec_bits() & mask_o != 0u8)) by (bit_vector)
-            requires
-                mask_c == (1u8 << dc),
-                mask_o == (1u8 << do_),
-                result == (pre.spec_bits() & !mask_c) as u8,
-                0 <= dc <= 4,
-                0 <= do_ <= 4,
-                dc != do_,
-        ;
+
+        // Enumerate all valid mask pairs to help the solver.
+        assert forall|mc: u8, mo: u8, b: u8|
+            mc != mo && (mc == 1u8 || mc == 2u8 || mc == 4u8 || mc == 8u8 || mc == 16u8)
+            && (mo == 1u8 || mo == 2u8 || mo == 4u8 || mo == 8u8 || mo == 16u8)
+        implies
+            #[trigger] (((b & !mc) as u8) & mo != 0u8) == (b & mo != 0u8)
+        by (bit_vector);
     }
 
     /// Lemma: Setting an already-set bit is idempotent.
@@ -132,14 +129,11 @@ impl Capabilities {
         ensures
             pre.spec_set(cap) == pre.spec_bits(),
     {
-        cap.lemma_discriminant_bounds();
-        let d: int = cap.spec_discriminant();
-        let mask: u8 = (1u8 << d);
+        let mask: u8 = Self::spec_mask(cap);
         assert((pre.spec_bits() | mask) as u8 == pre.spec_bits()) by (bit_vector)
             requires
                 (pre.spec_bits() & mask) != 0u8,
-                mask == (1u8 << d),
-                0 <= d <= 4,
+                mask == 1u8 || mask == 2u8 || mask == 4u8 || mask == 8u8 || mask == 16u8,
         ;
     }
 
@@ -150,14 +144,11 @@ impl Capabilities {
         ensures
             pre.spec_clear(cap) == pre.spec_bits(),
     {
-        cap.lemma_discriminant_bounds();
-        let d: int = cap.spec_discriminant();
-        let mask: u8 = (1u8 << d);
+        let mask: u8 = Self::spec_mask(cap);
         assert((pre.spec_bits() & !mask) as u8 == pre.spec_bits()) by (bit_vector)
             requires
                 (pre.spec_bits() & mask) == 0u8,
-                mask == (1u8 << d),
-                0 <= d <= 4,
+                mask == 1u8 || mask == 2u8 || mask == 4u8 || mask == 8u8 || mask == 16u8,
         ;
     }
 

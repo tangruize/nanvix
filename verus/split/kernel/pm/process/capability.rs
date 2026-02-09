@@ -68,6 +68,28 @@ impl Capabilities {
         Capabilities { bits: 0u8 }
     }
 
+    /// Computes the bitmask for a given capability.
+    ///
+    /// # Parameters
+    ///
+    /// - `capability`: The capability whose mask to compute.
+    ///
+    /// # Returns
+    ///
+    /// A single-bit u8 mask for the capability.
+    fn to_mask(capability: Capability) -> (result: u8)
+        ensures
+            result == Self::spec_mask(capability),
+    {
+        match capability {
+            Capability::ExceptionControl => 1u8,
+            Capability::InterruptControl => 2u8,
+            Capability::IoManagement => 4u8,
+            Capability::MemoryManagement => 8u8,
+            Capability::ProcessManagement => 16u8,
+        }
+    }
+
     /// Creates a new, empty Capabilities value.
     ///
     /// # Returns
@@ -96,26 +118,14 @@ impl Capabilities {
             self.spec_bits() == old(self).spec_set(capability),
             self.spec_has(capability),
     {
-        let d: u32 = capability.to_u32();
-
-        proof {
-            capability.lemma_discriminant_bounds();
-        }
-
-        assert(d <= 4u32);
-        assert(d < 8);
-
+        let mask: u8 = Self::to_mask(capability);
         let old_bits: Ghost<u8> = Ghost(self.bits);
-
-        self.bits = self.bits | (1u8 << d);
-
-        assert(self.bits == (old_bits@ | (1u8 << d)) as u8);
+        self.bits = self.bits | mask;
 
         // Prove the target bit is set.
-        assert((self.bits & (1u8 << d)) != 0u8) by (bit_vector)
+        assert((self.bits & mask) != 0u8) by (bit_vector)
             requires
-                self.bits == (old_bits@ | (1u8 << d)) as u8,
-                0 <= d <= 4,
+                self.bits == (old_bits@ | mask) as u8,
         ;
     }
 
@@ -134,26 +144,14 @@ impl Capabilities {
             self.spec_bits() == old(self).spec_clear(capability),
             !self.spec_has(capability),
     {
-        let d: u32 = capability.to_u32();
-
-        proof {
-            capability.lemma_discriminant_bounds();
-        }
-
-        assert(d <= 4u32);
-        assert(d < 8);
-
+        let mask: u8 = Self::to_mask(capability);
         let old_bits: Ghost<u8> = Ghost(self.bits);
-
-        self.bits = self.bits & !(1u8 << d);
-
-        assert(self.bits == (old_bits@ & !(1u8 << d)) as u8);
+        self.bits = self.bits & !mask;
 
         // Prove the target bit is cleared.
-        assert((self.bits & (1u8 << d)) == 0u8) by (bit_vector)
+        assert((self.bits & mask) == 0u8) by (bit_vector)
             requires
-                self.bits == (old_bits@ & !(1u8 << d)) as u8,
-                0 <= d <= 4,
+                self.bits == (old_bits@ & !mask) as u8,
         ;
     }
 
@@ -170,15 +168,8 @@ impl Capabilities {
         ensures
             result == self.spec_has(capability),
     {
-        let d: u32 = capability.to_u32();
-
-        proof {
-            capability.lemma_discriminant_bounds();
-        }
-
-        assert(d <= 4u32);
-        assert(d < 8);
-        (self.bits & (1u8 << d)) != 0u8
+        let mask: u8 = Self::to_mask(capability);
+        (self.bits & mask) != 0u8
     }
 }
 

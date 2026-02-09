@@ -27,19 +27,34 @@ impl Capabilities {
         self.bits
     }
 
+    /// Spec function: returns the bitmask for a given capability.
+    ///
+    /// Maps each variant to its corresponding single-bit mask:
+    /// ExceptionControl -> 0x01, InterruptControl -> 0x02, IoManagement -> 0x04,
+    /// MemoryManagement -> 0x08, ProcessManagement -> 0x10.
+    pub open spec fn spec_mask(cap: Capability) -> u8 {
+        match cap {
+            Capability::ExceptionControl => 1u8,
+            Capability::InterruptControl => 2u8,
+            Capability::IoManagement => 4u8,
+            Capability::MemoryManagement => 8u8,
+            Capability::ProcessManagement => 16u8,
+        }
+    }
+
     /// Spec function: checks whether a specific capability bit is set.
     pub open spec fn spec_has(&self, cap: Capability) -> bool {
-        (self.bits & (1u8 << cap.spec_discriminant())) != 0u8
+        (self.bits & Self::spec_mask(cap)) != 0u8
     }
 
     /// Spec function: returns the bitfield after setting a capability bit.
     pub open spec fn spec_set(&self, cap: Capability) -> u8 {
-        (self.bits | (1u8 << cap.spec_discriminant())) as u8
+        (self.bits | Self::spec_mask(cap)) as u8
     }
 
     /// Spec function: returns the bitfield after clearing a capability bit.
     pub open spec fn spec_clear(&self, cap: Capability) -> u8 {
-        (self.bits & !(1u8 << cap.spec_discriminant())) as u8
+        (self.bits & !Self::spec_mask(cap)) as u8
     }
 
     /// Spec function: well-formedness predicate.
