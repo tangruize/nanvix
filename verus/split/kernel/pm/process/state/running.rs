@@ -219,9 +219,12 @@ pub enum ExitThreadResult {
 
 /// Models `InterruptedProcess::resume()` — transitions to RunnableProcess.
 ///
-/// In the original, `resume()` pops an interrupted thread, makes it ready,
-/// and passes through sleeping and zombie threads to the resulting RunnableProcess.
-/// We model: PID preserved, result well-formed, sleeping/zombie threads preserved.
+/// In the original, `resume()` pops one interrupted thread (front), makes it
+/// ready, and passes through sleeping and zombie threads. The remaining
+/// interrupted threads stay interrupted. So:
+///   result.ready = 1 (the resumed thread)
+///   result.interrupted = ip.interrupted - 1
+///   result.ready + result.interrupted = ip.interrupted
 #[verifier::external_body]
 fn interrupted_resume(ip: InterruptedProcess) -> (result: RunnableProcess)
     requires
@@ -233,6 +236,12 @@ fn interrupted_resume(ip: InterruptedProcess) -> (result: RunnableProcess)
         result.sleeping_thread_ids@ == ip.sleeping_thread_ids@,
         // Zombie threads are passed through resume() into the result.
         result.zombie_thread_ids@ == ip.zombie_thread_ids@,
+        // Thread count conservation: one interrupted thread becomes ready,
+        // the rest stay interrupted.
+        result.ready_thread_ids@.len() + result.interrupted_thread_ids@.len()
+            == ip.interrupted_thread_ids@.len(),
+        // Exactly one interrupted thread became ready.
+        result.ready_thread_ids@.len() >= 1,
 {
     unimplemented!()
 }

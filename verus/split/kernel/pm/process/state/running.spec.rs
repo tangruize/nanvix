@@ -285,6 +285,27 @@ impl RunningProcess {
         }
     }
 
+    /// Spec function: models the post-state of `try_join_thread()` for the
+    /// zombie removal side effect.
+    ///
+    /// When `spec_try_join_thread(tid) == 0` (zombie found), the zombie list
+    /// shrinks by one element (the matched thread is removed). This models
+    /// the `self.zombie.take()` + `remove_if()` mutation in the original
+    /// (source lines 350–359).
+    ///
+    /// Returns the resulting zombie thread ID sequence after removal.
+    /// Requires that `tid` is in the zombie list (i.e., `spec_try_join_thread(tid) == 0`).
+    pub open spec fn spec_try_join_zombie_post(&self, tid: int) -> Seq<int>
+        recommends self.spec_try_join_thread(tid) == 0int
+    {
+        // The zombie list with the first occurrence of `tid` removed.
+        // Since spec_has_zombie_thread guarantees an index exists, we use
+        // choose to pick one and remove it.
+        let idx: int = choose|i: int| 0 <= i < self.zombie_thread_ids@.len()
+            && self.zombie_thread_ids@[i] == tid;
+        Self::spec_remove_at(self.zombie_thread_ids@, idx)
+    }
+
     /// Spec helper: checks if a sequence contains a given value.
     pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid

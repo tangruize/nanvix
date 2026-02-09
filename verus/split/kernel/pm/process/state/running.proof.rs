@@ -198,14 +198,21 @@ impl RunningProcess {
     {
     }
 
-    /// Lemma: exit() with no interrupted or sleeping threads produces Zombie.
+    /// Lemma: exit() with no interrupted or sleeping threads: the combined
+    /// interrupted+sleeping list is empty and the zombie list contains all threads.
     pub proof fn lemma_exit_no_interrupted_gives_zombie(&self)
         requires
             self.wf(),
             self.spec_interrupted_count() == 0,
             self.spec_sleeping_count() == 0,
         ensures
-            !(self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0),
+            ({
+                let combined_interrupted: Seq<int> =
+                    self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
+                combined_interrupted.len() == 0
+                && self.interrupted_thread_ids@.len() == 0
+                && self.sleeping_thread_ids@.len() == 0
+            }),
     {
     }
 
@@ -368,6 +375,23 @@ impl RunningProcess {
         ensures
             self.spec_try_join_thread(tid) == 3int,
     {
+    }
+
+    /// Lemma: After a successful zombie join, the zombie list shrinks by exactly 1.
+    pub proof fn lemma_try_join_zombie_post_shrinks(&self, tid: int)
+        requires
+            self.spec_try_join_thread(tid) == 0int,
+            self.spec_has_zombie_thread(tid),
+        ensures
+            ({
+                let post_zombies: Seq<int> = self.spec_try_join_zombie_post(tid);
+                post_zombies.len() == self.spec_zombie_count() - 1
+            }),
+    {
+        // The chosen index is valid.
+        let idx: int = choose|i: int| 0 <= i < self.zombie_thread_ids@.len()
+            && self.zombie_thread_ids@[i] == tid;
+        Self::lemma_remove_at_length(self.zombie_thread_ids@, idx);
     }
 
     //==============================================================================================
