@@ -1,0 +1,57 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 12:49:08 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0599]: no function or associated item named `lemma_wakeup_suspended_len` found for struct `kernel::pm::process::manager::process_manager::ProcessManagerInner` in the current scope
+   --> kernel/pm/process/manager/process_manager.rs:616:19
+    |
+ 77 | pub struct ProcessManagerInner {
+    | ------------------------------ function or associated item `lemma_wakeup_suspended_len` not found for this struct
+...
+616 |             Self::lemma_wakeup_suspended_len(self.ghost_suspended@, pid as int);
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^ function or associated item not found in `kernel::pm::process::manager::process_manager::ProcessManagerInner`
+    |
+note: if you're trying to build a new `kernel::pm::process::manager::process_manager::ProcessManagerInner`, consider using `kernel::pm::process::manager::process_manager::ProcessManagerInner::new` which returns `kernel::pm::process::manager::process_manager::ProcessManagerInner`
+   --> kernel/pm/process/manager/process_manager.rs:123:5
+    |
+123 |     pub fn new(interrupt_capable: bool) -> (result: Self)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no function or associated item named `lemma_wakeup_ready_len` found for struct `kernel::pm::process::manager::process_manager::ProcessManagerInner` in the current scope
+   --> kernel/pm/process/manager/process_manager.rs:617:19
+    |
+ 77 | pub struct ProcessManagerInner {
+    | ------------------------------ function or associated item `lemma_wakeup_ready_len` not found for this struct
+...
+617 |             Self::lemma_wakeup_ready_len(self.ghost_ready@, pid as int);
+    |                   ^^^^^^^^^^^^^^^^^^^^^^ function or associated item not found in `kernel::pm::process::manager::process_manager::ProcessManagerInner`
+    |
+note: if you're trying to build a new `kernel::pm::process::manager::process_manager::ProcessManagerInner`, consider using `kernel::pm::process::manager::process_manager::ProcessManagerInner::new` which returns `kernel::pm::process::manager::process_manager::ProcessManagerInner`
+   --> kernel/pm/process/manager/process_manager.rs:123:5
+    |
+123 |     pub fn new(interrupt_capable: bool) -> (result: Self)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `lemma_schedule_ready_len` with a similar name
+   --> kernel/pm/process/manager/process_manager.proof.rs:91:5
+    |
+ 91 | /     pub proof fn lemma_schedule_ready_len(
+ 92 | |         old_ready: Set<int>,
+ 93 | |         old_running: int,
+ 94 | |         chosen: int,
+ 95 | |     )
+    | |_____^
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0599`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager (verified:0, errors:0)
