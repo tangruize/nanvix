@@ -6,7 +6,7 @@
 # Usage: ./verify.sh [module_name]
 #
 # This script:
-# 1. Runs Verus verification
+# 1. Runs Verus verification from verus/split/ directory
 # 2. Logs results with timestamp
 # 3. Commits all changes in verus/ directory
 
@@ -14,12 +14,42 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-VERUS_DIR="$PROJECT_ROOT/verus"
+VERUS_DIR="$PROJECT_ROOT/verus/split"
 HISTORY_DIR="$PROJECT_ROOT/verus-ai-history"
 LOGS_DIR="$HISTORY_DIR/logs"
 
 MODULE="${1:-}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
+# If MODULE is a short name (no ::), try to find the full module path.
+if [ -n "$MODULE" ] && [[ ! "$MODULE" == *"::"* ]]; then
+    # Search for a matching module file in the split directory.
+    FOUND_PATH=$(find "$VERUS_DIR" -name "${MODULE}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
+    if [ -z "$FOUND_PATH" ]; then
+        # Fallback: replace underscores with / to form a path pattern.
+        # e.g., sys_capability -> sys/capability, then search for that suffix.
+        ALT_PATH=$(echo "$MODULE" | sed 's|_|/|g')
+        FOUND_PATH=$(find "$VERUS_DIR" -path "*/${ALT_PATH}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
+    fi
+    if [ -z "$FOUND_PATH" ]; then
+        # Fallback: reverse underscore-separated segments and search.
+        # e.g., running_thread -> thread/running, then search for that suffix.
+        IFS='_' read -ra PARTS <<< "$MODULE"
+        if [ "${#PARTS[@]}" -eq 2 ]; then
+            REV_PATH="${PARTS[1]}/${PARTS[0]}"
+            FOUND_PATH=$(find "$VERUS_DIR" -path "*/${REV_PATH}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
+        fi
+    fi
+    if [ -n "$FOUND_PATH" ]; then
+        # Convert file path to module path.
+        # e.g., /path/verus/split/kernel/pm/sys/pid.rs -> kernel::pm::sys::pid
+        REL_PATH="${FOUND_PATH#$VERUS_DIR/}"
+        REL_PATH="${REL_PATH%.rs}"
+        FULL_MODULE=$(echo "$REL_PATH" | sed 's|/|::|g')
+        echo "Resolved module: $MODULE -> $FULL_MODULE"
+        MODULE="$FULL_MODULE"
+    fi
+fi
 
 # Create module-specific log directory if module is specified.
 if [ -n "$MODULE" ]; then
@@ -43,6 +73,7 @@ echo "=== Verus Verification ===" | tee "$LOG_FILE"
 echo "Timestamp: $(date)" | tee -a "$LOG_FILE"
 echo "Module: ${MODULE:-all}" | tee -a "$LOG_FILE"
 echo "Command: $VERUS_CMD" | tee -a "$LOG_FILE"
+echo "Working dir: $VERUS_DIR" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 
 # Run verification and capture output.
@@ -78,17 +109,28 @@ else
 fi
 echo "Status: $STATUS" | tee -a "$LOG_FILE"
 
-# Check for cheating patterns.
+# Check for cheating patterns across all split files for the module.
 CHEATING=""
 cd "$VERUS_DIR"
-if [ -n "$MODULE" ] && [ -f "${MODULE}.rs" ]; then
-    ASSUME_COUNT=$(grep -c 'assume\s*(' "${MODULE}.rs" 2>/dev/null || true)
-    EXTERNAL_COUNT=$(grep -c 'external_body' "${MODULE}.rs" 2>/dev/null || true)
-    # Handle empty or multi-line output.
-    ASSUME_COUNT=$(echo "$ASSUME_COUNT" | head -1 | tr -d '[:space:]')
-    EXTERNAL_COUNT=$(echo "$EXTERNAL_COUNT" | head -1 | tr -d '[:space:]')
-    [ -z "$ASSUME_COUNT" ] && ASSUME_COUNT=0
-    [ -z "$EXTERNAL_COUNT" ] && EXTERNAL_COUNT=0
+if [ -n "$MODULE" ]; then
+    # Search recursively in the split directory for all files related to this module.
+    ALL_MODULE_FILES=$(find . -name "${MODULE}.rs" -o -name "${MODULE}.spec.rs" -o -name "${MODULE}.proof.rs" -o -name "lib.rs" -path "*/${MODULE}/*" -o -name "lib.spec.rs" -path "*/${MODULE}/*" -o -name "lib.proof.rs" -path "*/${MODULE}/*" 2>/dev/null || true)
+
+    ASSUME_COUNT=0
+    EXTERNAL_COUNT=0
+    for f in $ALL_MODULE_FILES; do
+        if [ -f "$f" ]; then
+            AC=$(grep -c 'assume\s*(' "$f" 2>/dev/null || true)
+            EC=$(grep -c 'external_body' "$f" 2>/dev/null || true)
+            AC=$(echo "$AC" | head -1 | tr -d '[:space:]')
+            EC=$(echo "$EC" | head -1 | tr -d '[:space:]')
+            [ -z "$AC" ] && AC=0
+            [ -z "$EC" ] && EC=0
+            ASSUME_COUNT=$((ASSUME_COUNT + AC))
+            EXTERNAL_COUNT=$((EXTERNAL_COUNT + EC))
+        fi
+    done
+
     if [ "$ASSUME_COUNT" -gt 0 ] 2>/dev/null; then
         CHEATING="assume:$ASSUME_COUNT"
     fi

@@ -207,6 +207,18 @@ def load_workflow_state(module_name: str) -> Optional[WorkflowState]:
     return WorkflowState(**data)
 
 
+def _module_fmt(module: ModuleConfig) -> dict:
+    """Return common format kwargs for prompt templates from a ModuleConfig."""
+    return {
+        "module_name": module.name,
+        "source_path": module.source_path,
+        "output_dir": module.output_dir(),
+        "file_stem": module.file_stem,
+        "type_name": module.file_stem.title().replace("_", ""),
+        "verus_cmd": module.verus_cmd(),
+    }
+
+
 def run_initial_prover(module: ModuleConfig) -> tuple[bool, CopilotSession]:
     """
     Run the initial prover to generate Verus code with retry mechanism.
@@ -221,10 +233,9 @@ def run_initial_prover(module: ModuleConfig) -> tuple[bool, CopilotSession]:
     existing_modules = get_existing_modules()
     deps_str = ", ".join(existing_modules) if existing_modules else "none"
 
+    fmt = _module_fmt(module)
     prompt = PROVER_PROMPT.format(
-        source_path=module.source_path,
-        module_name=module.name,
-        verus_cmd=module.verus_cmd(),
+        **fmt,
         dependencies=deps_str,
     )
 
@@ -248,11 +259,10 @@ def run_initial_prover(module: ModuleConfig) -> tuple[bool, CopilotSession]:
         git_commit_module(module.name, f"[verus-ai] Prover RETRY {retry_num}: {module.name}")
 
         retry_prompt = PROVER_RETRY_PROMPT.format(
-            module_name=module.name,
+            **fmt,
             retry_num=retry_num,
             max_retries=INITIAL_PROVER_RETRIES,
             verus_output=verus_output[:2000],  # Truncate to avoid token overflow.
-            verus_cmd=module.verus_cmd(),
         )
 
         # Use run_copilot to resume the session.
@@ -296,7 +306,7 @@ def run_single_review(
         inner_attempt: Current inner attempt within this reviewer (1-based).
         session: Optional session to resume (within same reviewer's inner loop).
     """
-    model_short = model.split("-")[0]  # e.g., "claude" from "claude-opus-4.5"
+    model_short = model.split("-")[0]  # e.g., "claude" from "claude-opus-4.6"
     # Organize reviews by module subdirectory.
     # Naming: {model}_r{outer}_a{inner}.md (e.g., claude_r1_a2.md)
     module_review_dir = REVIEWS_DIR / module.name
@@ -310,6 +320,8 @@ def run_single_review(
         prompt = REVIEW_FOLLOWUP_PROMPT.format(
             previous_review_file=previous_review,
             module_name=module.name,
+            output_dir=module.output_dir(),
+            file_stem=module.file_stem,
             review_file=review_file,
             result_file=result_file,
         )
@@ -318,6 +330,8 @@ def run_single_review(
         prompt = REVIEWER_PROMPT.format(
             module_name=module.name,
             source_path=module.source_path,
+            output_dir=module.output_dir(),
+            file_stem=module.file_stem,
             verus_cmd=module.verus_cmd(),
             review_file=review_file,
             model_name=model,
@@ -385,12 +399,16 @@ def run_prover_fix(
             review_file=review_refs,
             module_name=module.name,
             source_path=module.source_path,
+            output_dir=module.output_dir(),
+            file_stem=module.file_stem,
             dependencies=deps_str,
         )
     else:
         prompt = PROVER_FIX_PROMPT.format(
             review_file=review_refs,
             module_name=module.name,
+            output_dir=module.output_dir(),
+            file_stem=module.file_stem,
             verus_cmd=module.verus_cmd(),
         )
 
@@ -512,6 +530,8 @@ def run_workflow(
     module_name: Optional[str] = None,
     resume: bool = False,
     fresh_prover: bool = False,
+    output_subdir: Optional[str] = None,
+    file_stem: Optional[str] = None,
 ) -> bool:
     """
     Run the complete verification workflow for a module.
@@ -527,12 +547,19 @@ def run_workflow(
         module_name: Optional module name.
         resume: Whether to resume from saved state.
         fresh_prover: If True, start new prover session each outer round (default: False).
+        output_subdir: Optional output subdirectory under verus/split/.
+        file_stem: Optional file stem for the three-file split.
 
     Returns:
         True if verification succeeded (all reviewers passed).
     """
     # Create module config.
-    module = ModuleConfig.from_source_path(source_path, module_name)
+    module = ModuleConfig.from_source_path(
+        source_path,
+        module_name,
+        output_subdir=output_subdir,
+        file_stem=file_stem,
+    )
 
     # Check source file exists.
     full_source_path = PROJECT_ROOT / module.source_path
@@ -549,6 +576,8 @@ def run_workflow(
     print(f"VERUS AI VERIFICATION WORKFLOW")
     print(f"Module: {module.name}")
     print(f"Source: {module.source_path}")
+    print(f"Output: {module.output_dir()}/")
+    print(f"Files:  {module.file_stem}.rs, {module.file_stem}.spec.rs, {module.file_stem}.proof.rs")
     print(f"Max outer rounds: {config.MAX_OUTER_ITERATIONS}")
     print(f"Max inner attempts per reviewer: {MAX_INNER_ITERATIONS}")
     if resume:
@@ -666,12 +695,26 @@ def find_source_path(module_name: str) -> Optional[str]:
         # General mm.
         f"src/kernel/src/mm/{module_name}.rs",
         f"src/kernel/src/mm/{module_name}/mod.rs",
+        # Process management (scheduler).
+        f"src/kernel/src/pm/{module_name}.rs",
+        f"src/kernel/src/pm/{module_name}/mod.rs",
+        # PM thread states.
+        f"src/kernel/src/pm/thread/{module_name}.rs",
+        # PM process states.
+        f"src/kernel/src/pm/process/{module_name}.rs",
+        f"src/kernel/src/pm/process/state/{module_name}.rs",
+        f"src/kernel/src/pm/process/manager/{module_name}.rs",
+        f"src/kernel/src/pm/process/manager/mod.rs",
+        # PM synchronization.
+        f"src/kernel/src/pm/sync/{module_name}.rs",
         # Kernel libs.
         f"src/kernel/src/libs/{module_name}.rs",
         f"src/kernel/src/libs/{module_name}/mod.rs",
         # HAL/arch.
         f"src/kernel/src/hal/{module_name}.rs",
         f"src/kernel/src/hal/arch/x86/mem/{module_name}.rs",
+        # System libs PM types.
+        f"src/libs/sys/src/sys/pm/{module_name}.rs",
     ]
 
     for path in possible_paths:
@@ -713,6 +756,8 @@ def run_simplify(module_name: str, source_path: Optional[str] = None) -> bool:
     prompt = SIMPLIFY_PROOF_PROMPT.format(
         module_name=module_name,
         source_path=source_path,
+        output_dir=f"verus/split/{module_name}",
+        file_stem=module_name,
         timestamp=timestamp,
     )
 
@@ -784,6 +829,8 @@ def run_consistency_check(module_name: str, source_path: Optional[str] = None) -
     prompt = CHECK_CONSISTENCY_PROMPT.format(
         module_name=module_name,
         source_path=source_path,
+        output_dir=f"verus/split/{module_name}",
+        file_stem=module_name,
         timestamp=timestamp,
     )
 
@@ -859,6 +906,8 @@ def run_strengthen_liveness(module_name: str, source_path: Optional[str] = None)
     prompt = STRENGTHEN_SPECS_PROMPT.format(
         module_name=module_name,
         source_path=source_path,
+        output_dir=f"verus/split/{module_name}",
+        file_stem=module_name,
         timestamp=timestamp,
     )
 
@@ -973,6 +1022,8 @@ Post-processing commands:
     verify_parser = subparsers.add_parser("verify", help="Verify a source file")
     verify_parser.add_argument("source", help="Source file path")
     verify_parser.add_argument("--name", help="Module name (default: inferred from filename)")
+    verify_parser.add_argument("--output-subdir", help="Output subdirectory under verus/split/ (default: module name)")
+    verify_parser.add_argument("--file-stem", help="File stem for split files (default: module name)")
     verify_parser.add_argument("--fresh-prover", action="store_true", help="Start new prover session each outer round (default: keep same session)")
 
     # Continue command.
@@ -1010,7 +1061,16 @@ Post-processing commands:
 
     if args.command == "verify":
         fresh_prover = getattr(args, 'fresh_prover', False)
-        success = run_workflow(args.source, module_name=args.name, resume=False, fresh_prover=fresh_prover)
+        output_subdir = getattr(args, 'output_subdir', None)
+        file_stem = getattr(args, 'file_stem', None)
+        success = run_workflow(
+            args.source,
+            module_name=args.name,
+            resume=False,
+            fresh_prover=fresh_prover,
+            output_subdir=output_subdir,
+            file_stem=file_stem,
+        )
         return 0 if success else 1
 
     elif args.command == "continue":

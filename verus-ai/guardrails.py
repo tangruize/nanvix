@@ -3,6 +3,9 @@
 
 """
 Cheating detection and guardrails for the Verus AI verification workflow.
+
+Supports both legacy single-file modules (verus/{name}.rs) and the three-file
+split organization (verus/split/{subdir}/{stem}.rs + .spec.rs + .proof.rs).
 """
 
 import re
@@ -11,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from config import CHEATING_PATTERNS, PROJECT_ROOT, VERUS_DIR
+from config import CHEATING_PATTERNS, PROJECT_ROOT, VERUS_DIR, VERUS_SPLIT_DIR
 
 
 @dataclass
@@ -104,18 +107,77 @@ def detect_cheating(file_path: Path) -> CheatingReport:
     return report
 
 
-def detect_cheating_in_module(module_name: str) -> CheatingReport:
+def _find_module_files(module_name: str) -> List[Path]:
     """
-    Detect cheating patterns in a module.
+    Find all files belonging to a module (split or legacy).
 
     Parameters:
         module_name: Name of the module.
 
     Returns:
-        CheatingReport with detection results.
+        List of file paths to scan.
     """
-    file_path = VERUS_DIR / f"{module_name}.rs"
-    return detect_cheating(file_path)
+    files = []
+
+    # Check split directory: search for {stem}.rs, {stem}.spec.rs, {stem}.proof.rs.
+    if VERUS_SPLIT_DIR.exists():
+        for rs_file in VERUS_SPLIT_DIR.rglob(f"{module_name}.rs"):
+            files.append(rs_file)
+        for rs_file in VERUS_SPLIT_DIR.rglob(f"{module_name}.spec.rs"):
+            files.append(rs_file)
+        for rs_file in VERUS_SPLIT_DIR.rglob(f"{module_name}.proof.rs"):
+            files.append(rs_file)
+        # Also check lib.rs pattern (e.g., libs/bitmap/lib.rs).
+        for rs_file in VERUS_SPLIT_DIR.rglob("lib.rs"):
+            if rs_file.parent.name == module_name:
+                files.append(rs_file)
+                spec_file = rs_file.parent / "lib.spec.rs"
+                proof_file = rs_file.parent / "lib.proof.rs"
+                if spec_file.exists():
+                    files.append(spec_file)
+                if proof_file.exists():
+                    files.append(proof_file)
+
+    # Check legacy single-file.
+    legacy_file = VERUS_DIR / f"{module_name}.rs"
+    if legacy_file.exists():
+        files.append(legacy_file)
+
+    return files
+
+
+def detect_cheating_in_module(module_name: str) -> CheatingReport:
+    """
+    Detect cheating patterns in a module (supports split files).
+
+    Parameters:
+        module_name: Name of the module.
+
+    Returns:
+        CheatingReport with aggregated detection results.
+    """
+    files = _find_module_files(module_name)
+
+    if not files:
+        # Fall back to legacy path.
+        file_path = VERUS_DIR / f"{module_name}.rs"
+        return detect_cheating(file_path)
+
+    # Aggregate reports from all files.
+    combined = CheatingReport(file_path=files[0])
+    for f in files:
+        report = detect_cheating(f)
+        combined.assume_count += report.assume_count
+        combined.external_body_count += report.external_body_count
+        combined.admit_count += report.admit_count
+        combined.trusted_count += report.trusted_count
+        for pattern_name, line_numbers in report.locations.items():
+            prefixed = [f"{f.name}:{ln}" for ln in line_numbers]
+            if pattern_name not in combined.locations:
+                combined.locations[pattern_name] = []
+            combined.locations[pattern_name].extend(line_numbers)
+
+    return combined
 
 
 def detect_cheating_all() -> List[CheatingReport]:
@@ -126,9 +188,19 @@ def detect_cheating_all() -> List[CheatingReport]:
         List of CheatingReports.
     """
     reports = []
+
+    # Check split directory.
+    if VERUS_SPLIT_DIR.exists():
+        for rs_file in VERUS_SPLIT_DIR.rglob("*.rs"):
+            if rs_file.name in ("lib.rs", "mod.rs"):
+                continue
+            reports.append(detect_cheating(rs_file))
+
+    # Check legacy directory.
     for rs_file in VERUS_DIR.glob("*.rs"):
         if rs_file.name != "lib.rs":
             reports.append(detect_cheating(rs_file))
+
     return reports
 
 
@@ -155,7 +227,7 @@ def run_verus(module_name: str = "", timeout: int = 120, use_script: bool = True
         cmd = ["verus", "--crate-type", "lib", "lib.rs"]
         if module_name:
             cmd.extend(["--verify-module", module_name])
-        cwd = VERUS_DIR
+        cwd = VERUS_SPLIT_DIR
 
     try:
         result = subprocess.run(
@@ -250,6 +322,25 @@ def git_diff_module(module_name: str) -> str:
     Returns:
         Diff string.
     """
+    # Try split directory first.
+    files = _find_module_files(module_name)
+    if files:
+        diffs = []
+        for f in files:
+            try:
+                result = subprocess.run(
+                    ["git", "diff", str(f)],
+                    cwd=PROJECT_ROOT,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.stdout:
+                    diffs.append(result.stdout)
+            except Exception:
+                pass
+        return "\n".join(diffs)
+
+    # Fall back to legacy.
     file_path = VERUS_DIR / f"{module_name}.rs"
     if not file_path.exists():
         return ""

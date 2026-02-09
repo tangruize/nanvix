@@ -21,7 +21,7 @@ class CopilotSession:
     """Represents a Copilot chat session."""
 
     session_id: Optional[str] = None
-    model: str = "claude-opus-4.5"
+    model: str = "claude-opus-4.6"
     log_file: Optional[Path] = None
 
 
@@ -282,5 +282,5 @@ def load_session(name: str) -> Optional[CopilotSession]:
 
     return CopilotSession(
         session_id=data.get("session_id"),
-        model=data.get("model", "claude-opus-4.5"),
+        model=data.get("model", "claude-opus-4.6"),
     )

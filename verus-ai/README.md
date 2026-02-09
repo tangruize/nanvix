@@ -69,8 +69,8 @@ The prover generates an initial Verus verification:
 ### Phase 2: Multi-Model Review
 
 Three reviewers independently analyze the code:
-- **claude-opus-4.5**: Comprehensive primary review
-- **gpt-5.1-codex-max**: Alternative perspective
+- **claude-opus-4.6**: Comprehensive primary review
+- **gpt-5.2-codex**: Alternative perspective
 - **gemini-3-pro-preview**: Additional coverage
 
 Each reviewer checks:
@@ -100,10 +100,10 @@ Edit `config.py` to customize:
 
 ```python
 # Models
-PROVER_MODEL = "claude-opus-4.5"
+PROVER_MODEL = "claude-opus-4.6"
 REVIEWER_MODELS = [
-    "claude-opus-4.5",
-    "gpt-5.1-codex-max", 
+    "claude-opus-4.6",
+    "gpt-5.2-codex", 
     "gemini-3-pro-preview",
 ]
 

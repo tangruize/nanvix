@@ -3,28 +3,96 @@
 
 """
 Prompt templates for the Verus AI verification workflow.
+
+Prompts are domain-agnostic and support the three-file split organization:
+  - {name}.rs       (exec: implementation with requires/ensures)
+  - {name}.spec.rs  (spec: View types, spec functions, invariants)
+  - {name}.proof.rs (proof: lemmas and proof functions)
 """
 
 PROVER_PROMPT = """
 Verify {source_path} using Verus.
 
-Target: Create a verified Verus implementation in verus/{module_name}.rs
+Target directory: {output_dir}
 
-This is an OS kernel memory management component. Identify and prove the core
-specifications, invariants, and safety/liveness properties that matter for correctness.
+This is an OS kernel component. Identify and prove the core specifications,
+invariants, and safety/liveness properties that matter for correctness.
 
-Requirements:
-1. First run: cp {source_path} verus/{module_name}.rs
-2. Define View types for abstract state representation
-3. Define invariants that all operations must maintain
-4. Add requires/ensures contracts for all functions (public and private impl fn)
-5. Your proof must NOT contain any `assume` or `external_body` for core module functions
-   (OK for low-level dependencies like raw memory operations)
+== THREE-FILE SPLIT ORGANIZATION ==
 
-Verification command: ./verus-ai/scripts/verify.sh {module_name}
-  (This script runs verus, logs results, and commits changes automatically)
+You MUST produce three separate files for each module:
 
+1. **{output_dir}/{file_stem}.rs** - Implementation (exec) code
+   - Copy the original source here as the starting point
+   - Add `use vstd::prelude::*;` and `include!` for spec/proof files
+   - Keep struct definitions, impl blocks, and exec functions inside a `verus! {{ }}` block
+   - Add requires/ensures contracts for ALL functions (public and private)
+   - Reference lemmas from proof file; do NOT inline proofs in exec code
+
+2. **{output_dir}/{file_stem}.spec.rs** - Specification functions
+   - Define View types (e.g., `pub struct {type_name}View`) with `#[verifier::ext_equal]`
+   - Define `impl View for {type_name}` trait
+   - Define `pub open spec fn` for abstract properties (wf, invariants, etc.)
+   - Wrap everything in a `verus! {{ }}` block
+
+3. **{output_dir}/{file_stem}.proof.rs** - Proof functions and lemmas
+   - Define `proof fn` lemmas with requires/ensures
+   - Place inside `verus! {{ }}` block
+   - Use `impl {type_name}` blocks to add proof methods
+
+Example file structure:
+```rust
+// {file_stem}.rs (exec)
+use vstd::prelude::*;
+include!("{file_stem}.spec.rs");
+include!("{file_stem}.proof.rs");
+
+verus! {{
+    pub struct MyType {{ ... }}
+    impl MyType {{
+        pub fn new(...) -> (result: ...) requires ... ensures ... {{ ... }}
+    }}
+}}
+```
+
+```rust
+// {file_stem}.spec.rs (spec)
+use vstd::prelude::*;
+verus! {{
+    #[verifier::ext_equal]
+    pub struct MyTypeView {{ ... }}
+    impl View for MyType {{
+        type V = MyTypeView;
+        ...
+    }}
+}}
+```
+
+```rust
+// {file_stem}.proof.rs (proof)
+use vstd::prelude::*;
+verus! {{
+    impl MyType {{
+        pub proof fn lemma_something(&self) requires ... ensures ... {{ ... }}
+    }}
+}}
+```
+
+== REQUIREMENTS ==
+1. Define View types for abstract state representation
+2. Define invariants that all operations must maintain
+3. Add requires/ensures contracts for all functions (public and private impl fn)
+4. NO `assume` or `external_body` for core module functions
+   (OK for low-level dependencies like raw memory operations or HAL)
+
+== NOTE ON DEPENDENCIES ==
 Dependencies already verified: {dependencies}
+If the module depends on types from other modules, you may use `#[verifier::external_body]`
+ONLY for dependency boundary types that are not part of THIS module's core logic.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh {module_name}
+  (This script runs verus, logs results, and commits changes automatically)
 
 Iterate until verification passes. Document your work in the module comments.
 """.strip()
@@ -34,10 +102,13 @@ REVIEWER_PROMPT = """
 Review the Verus verification of {module_name}.
 
 Original source: {source_path}
-Verified code: verus/{module_name}.rs
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
 
-This is an OS kernel memory management component. Evaluate if the verification
-captures the essential correctness properties.
+This is an OS kernel component. Evaluate if the verification captures the
+essential correctness properties.
 
 Review criteria:
 1. COVERAGE: All functions in original source (public and private) have verified versions
@@ -46,12 +117,13 @@ Review criteria:
 4. EQUIVALENCE: Verified code is semantically equivalent to original
 5. INVARIANTS: State invariants are sufficient to prove correctness
 6. PROPERTIES: Are the key safety and liveness properties identified and proven?
+7. SPLIT QUALITY: Are spec/proof properly separated from exec code?
 
 Verification command: ./verus-ai/scripts/verify.sh {module_name}
 
 For each issue found, provide:
 - Priority: Critical / High / Medium / Low
-- Location: Function or spec name
+- Location: Function or spec name (and which file: exec/spec/proof)
 - Description: What is wrong or missing
 - Suggested Fix: How to address it
 
@@ -88,13 +160,16 @@ PROVER_FIX_PROMPT = """
 A reviewer has identified issues in your Verus verification.
 
 Review file: {review_file}
-Module: verus/{module_name}.rs
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
 
 Please address each issue:
 1. If the issue is valid, fix it and explain your change
 2. If the issue is not applicable, explain why it can be rejected
 
-After fixing, run: cd verus && {verus_cmd}
+After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
 
 Update the module until verification passes with all issues addressed.
 """.strip()
@@ -105,11 +180,14 @@ You are starting a NEW verification session for {module_name}.
 
 == CONTEXT ==
 Original source: {source_path}
-Verified code: verus/{module_name}.rs
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
 Dependencies already verified: {dependencies}
 
-This is an OS kernel memory management component. The existing verified code needs
-improvements based on reviewer feedback.
+This is an OS kernel component. The existing verified code needs improvements
+based on reviewer feedback.
 
 == REVIEWER ISSUES ==
 Review file(s): {review_file}
@@ -124,6 +202,7 @@ Please read the review file(s) carefully and address each issue:
 2. All functions must have requires/ensures contracts
 3. NO assume or unjustified external_body for core module functions
 4. Verify semantic equivalence with original source
+5. Maintain the three-file split: exec, spec, proof
 
 == VERIFICATION ==
 Run: ./verus-ai/scripts/verify.sh {module_name}
@@ -136,7 +215,10 @@ Document significant changes in module comments.
 PROVER_RETRY_PROMPT = """
 Verus verification failed. Please fix the errors and try again.
 
-Module: verus/{module_name}.rs
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
 Retry attempt: {retry_num} of {max_retries}
 
 Verus output:
@@ -144,7 +226,7 @@ Verus output:
 {verus_output}
 ```
 
-Fix the verification errors and run: {verus_cmd}
+Fix the verification errors and run: ./verus-ai/scripts/verify.sh {module_name}
 
 Continue until verification passes (0 errors).
 """.strip()
@@ -154,7 +236,10 @@ REVIEW_FOLLOWUP_PROMPT = """
 The prover has addressed your previous review.
 
 Previous review: {previous_review_file}
-Updated module: verus/{module_name}.rs
+Updated module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
 
 Re-review with a critical and skeptical mindset:
 1. Were previous issues ACTUALLY fixed, or just claimed to be fixed?
@@ -194,14 +279,19 @@ Write justifications as comments in the code or in a separate TRUST_BOUNDARY.md 
 #==================================================================================================
 
 SIMPLIFY_PROOF_PROMPT = """
-Simplify the Verus verification in verus/{module_name}.rs
+Simplify the Verus verification in {output_dir}/
+
+Files:
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
 
 Reference: {source_path}
 
 == WHAT TO SIMPLIFY ==
 1. Remove truly redundant lemmas (duplicate proofs of the same property)
 2. Remove redundant postconditions implied by others in the same function
-3. Condense verbose inline proofs into reusable lemmas
+3. Condense verbose inline proofs into reusable lemmas in the proof file
 4. Remove debug artifacts (unnecessary asserts, TODO comments, dead code)
 
 == CRITICAL: WHAT IS "REDUNDANT"? ==
@@ -232,7 +322,10 @@ CHECK_CONSISTENCY_PROMPT = """
 Check and FIX semantic consistency between the original source and verified Verus code.
 
 Original source: {source_path}
-Verified code: verus/{module_name}.rs
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
 
 == YOUR TASK ==
 1. Identify all inconsistencies between original and verified code
@@ -256,8 +349,8 @@ Verified code: verus/{module_name}.rs
    - New exec functions: REMOVE or justify why they preserve semantics
 
 4. **Type Mismatches**: Check for silent type changes.
-   - **FIXABLE**: Wrong integer types (u32 vs u64) → Fix to match original
-   - **UNFIXABLE**: Pointer to usize (Verus limitation) → Document in report
+   - **FIXABLE**: Wrong integer types (u32 vs u64) -> Fix to match original
+   - **UNFIXABLE**: Pointer to usize (Verus limitation) -> Document in report
 
 5. **Control Flow Changes**: Early returns, error handling differences.
    - **ACTION**: Fix to match original control flow where possible
@@ -302,8 +395,8 @@ After making fixes, write a report to verus-ai-history/consistency/{module_name}
 ## Function Coverage
 | Original Function | Verified Function | Status |
 |-------------------|-------------------|--------|
-| fn foo()          | fn foo()          | ✅ OK  |
-| fn bar()          | fn bar()          | ✅ FIXED |
+| fn foo()          | fn foo()          | OK     |
+| fn bar()          | fn bar()          | FIXED  |
 
 ## Verification Status
 - Before fixes: [PASS/FAIL]
@@ -316,7 +409,12 @@ After making fixes, write a report to verus-ai-history/consistency/{module_name}
 
 
 STRENGTHEN_SPECS_PROMPT = """
-Strengthen weak specifications in verus/{module_name}.rs
+Strengthen weak specifications in {output_dir}/
+
+Files:
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
 
 Reference: {source_path}
 
