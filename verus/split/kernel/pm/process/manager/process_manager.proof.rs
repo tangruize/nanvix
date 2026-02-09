@@ -84,23 +84,10 @@ impl ProcessManagerInner {
     // Schedule Lemmas
     //==============================================================================================
 
-    /// Lemma: After schedule, the new ready set is finite.
-    pub proof fn lemma_schedule_ready_finite(
-        old_ready: Set<int>,
-        old_running: int,
-        chosen: int,
-    )
-        requires
-            old_ready.finite(),
-            old_ready.insert(old_running).contains(chosen),
-        ensures
-            old_ready.insert(old_running).remove(chosen).finite(),
-    {
-        vstd::set_lib::lemma_len_insert::<int>(old_ready, old_running);
-        vstd::set_lib::lemma_len_remove::<int>(old_ready.insert(old_running), chosen);
-    }
-
     /// Lemma: After schedule, the ready set cardinality is unchanged.
+    ///
+    /// Insert old_running (not in old_ready) adds 1, then remove chosen
+    /// (which is in the extended set) subtracts 1, netting zero change.
     pub proof fn lemma_schedule_ready_len(
         old_ready: Set<int>,
         old_running: int,
@@ -114,8 +101,11 @@ impl ProcessManagerInner {
             old_ready.insert(old_running).remove(chosen).finite(),
             old_ready.insert(old_running).remove(chosen).len() == old_ready.len(),
     {
-        vstd::set_lib::lemma_len_insert::<int>(old_ready, old_running);
-        vstd::set_lib::lemma_len_remove::<int>(old_ready.insert(old_running), chosen);
+        // Broadcast axioms handle insert/remove len reasoning.
+        assert(old_ready.insert(old_running).len() == old_ready.len() + 1);
+        let with_old: Set<int> = old_ready.insert(old_running);
+        assert(with_old.contains(chosen));
+        assert(with_old.remove(chosen).len() == with_old.len() - 1);
     }
 
     //==============================================================================================
@@ -159,61 +149,21 @@ impl ProcessManagerInner {
             self.spec_ready_with_running().contains(chosen),
             chosen >= 0,
         ensures
-            // Kernel is running or in the new ready set.
             chosen == 0int || self.ghost_ready@.insert(
                 self.running_pid as int
             ).remove(chosen).contains(0int),
     {
         if chosen == 0int {
-            // Kernel is chosen to run. Trivially alive.
         } else {
-            // Kernel was either running or in ready.
             if self.running_pid as int == 0int {
-                // Kernel was running, now goes to ready.
                 assert(self.ghost_ready@.insert(0int).remove(chosen).contains(0int));
             } else {
-                // Kernel was in ready.
                 assert(self.ghost_ready@.contains(0int));
-                assert(chosen != 0int);
                 assert(self.ghost_ready@.insert(
                     self.running_pid as int
                 ).remove(chosen).contains(0int));
             }
         }
-    }
-
-    //==============================================================================================
-    // Wakeup / Resume Lemmas
-    //==============================================================================================
-
-    /// Lemma: After wakeup, the suspended set shrinks by one.
-    pub proof fn lemma_wakeup_suspended_len(
-        suspended: Set<int>,
-        pid: int,
-    )
-        requires
-            suspended.finite(),
-            suspended.contains(pid),
-        ensures
-            suspended.remove(pid).finite(),
-            suspended.remove(pid).len() == suspended.len() - 1,
-    {
-        vstd::set_lib::lemma_len_remove::<int>(suspended, pid);
-    }
-
-    /// Lemma: After wakeup, the ready set grows by one.
-    pub proof fn lemma_wakeup_ready_len(
-        ready: Set<int>,
-        pid: int,
-    )
-        requires
-            ready.finite(),
-            !ready.contains(pid),
-        ensures
-            ready.insert(pid).finite(),
-            ready.insert(pid).len() == ready.len() + 1,
-    {
-        vstd::set_lib::lemma_len_insert::<int>(ready, pid);
     }
 
     //==============================================================================================

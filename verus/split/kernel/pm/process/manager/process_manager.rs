@@ -238,7 +238,7 @@ impl ProcessManagerInner {
             // The new PID is fresh (not in any existing set).
             self.lemma_next_pid_is_fresh();
             // Cardinality: inserting a fresh element adds 1.
-            vstd::set_lib::lemma_len_insert::<int>(self.ghost_ready@, pid as int);
+            // Broadcast axiom handles insert len.
             self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
         }
 
@@ -338,13 +338,9 @@ impl ProcessManagerInner {
         proof {
             // Old running is not in suspended (by running_exclusive).
             // So insert adds 1.
-            vstd::set_lib::lemma_len_insert::<int>(
-                self.ghost_suspended@, old_running as int
-            );
+            // Broadcast axiom handles insert len.
             // Chosen is in ready. Remove subtracts 1.
-            vstd::set_lib::lemma_len_remove::<int>(
-                self.ghost_ready@, chosen_next as int
-            );
+            // Broadcast axiom handles remove len.
 
             self.ghost_suspended = Ghost(
                 self.ghost_suspended@.insert(old_running as int)
@@ -437,12 +433,8 @@ impl ProcessManagerInner {
         self.running_pid = chosen_next;
 
         proof {
-            vstd::set_lib::lemma_len_insert::<int>(
-                self.ghost_zombies@, old_running as int
-            );
-            vstd::set_lib::lemma_len_remove::<int>(
-                self.ghost_ready@, chosen_next as int
-            );
+            // Broadcast axiom handles insert len.
+            // Broadcast axiom handles remove len.
 
             self.ghost_zombies = Ghost(
                 self.ghost_zombies@.insert(old_running as int)
@@ -530,12 +522,8 @@ impl ProcessManagerInner {
         self.running_pid = chosen_next;
 
         proof {
-            vstd::set_lib::lemma_len_insert::<int>(
-                self.ghost_suspended@, old_running as int
-            );
-            vstd::set_lib::lemma_len_remove::<int>(
-                self.ghost_ready@, chosen_next as int
-            );
+            // Broadcast axiom handles insert len.
+            // Broadcast axiom handles remove len.
 
             self.ghost_suspended = Ghost(
                 self.ghost_suspended@.insert(old_running as int)
@@ -581,12 +569,8 @@ impl ProcessManagerInner {
         self.running_pid = chosen_next;
 
         proof {
-            vstd::set_lib::lemma_len_insert::<int>(
-                self.ghost_zombies@, old_running as int
-            );
-            vstd::set_lib::lemma_len_remove::<int>(
-                self.ghost_ready@, chosen_next as int
-            );
+            // Broadcast axiom handles insert len.
+            // Broadcast axiom handles remove len.
 
             self.ghost_zombies = Ghost(
                 self.ghost_zombies@.insert(old_running as int)
@@ -706,8 +690,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         proof {
-            vstd::set_lib::lemma_len_remove::<int>(self.ghost_ready@, pid as int);
-            vstd::set_lib::lemma_len_insert::<int>(self.ghost_zombies@, pid as int);
+            // Broadcast axiom handles remove len.
+            // Broadcast axiom handles insert len.
 
             self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
             self.ghost_zombies = Ghost(self.ghost_zombies@.insert(pid as int));
@@ -744,8 +728,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         proof {
-            vstd::set_lib::lemma_len_remove::<int>(self.ghost_ready@, pid as int);
-            vstd::set_lib::lemma_len_insert::<int>(self.ghost_interrupted@, pid as int);
+            // Broadcast axiom handles remove len.
+            // Broadcast axiom handles insert len.
 
             self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
             self.ghost_interrupted = Ghost(
@@ -782,8 +766,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         proof {
-            vstd::set_lib::lemma_len_remove::<int>(self.ghost_suspended@, pid as int);
-            vstd::set_lib::lemma_len_insert::<int>(self.ghost_interrupted@, pid as int);
+            // Broadcast axiom handles remove len.
+            // Broadcast axiom handles insert len.
 
             self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
             self.ghost_interrupted = Ghost(
@@ -824,7 +808,7 @@ impl ProcessManagerInner {
             !self.spec_process_exists(pid as int),
     {
         proof {
-            vstd::set_lib::lemma_len_remove::<int>(self.ghost_zombies@, pid as int);
+            // Broadcast axiom handles remove len.
 
             self.ghost_zombies = Ghost(self.ghost_zombies@.remove(pid as int));
         }
@@ -924,8 +908,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         proof {
-            vstd::set_lib::lemma_len_remove::<int>(self.ghost_suspended@, pid as int);
-            vstd::set_lib::lemma_len_insert::<int>(self.ghost_interrupted@, pid as int);
+            // Broadcast axiom handles remove len.
+            // Broadcast axiom handles insert len.
 
             self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
             self.ghost_interrupted = Ghost(
