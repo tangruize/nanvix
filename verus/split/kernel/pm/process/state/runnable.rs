@@ -49,14 +49,26 @@
 //!   boundary model postconditions must be confirmed as implied by the real
 //!   implementations.
 //! - `clock_now()` is `external_body`: returns a non-negative timestamp.
-//! - `ProcessState` operations (state(), state_mut()) are elided since we
-//!   only track the PID for identity verification.
+//! - `ProcessState` operations (`state()`, `state_mut()`) are elided since we
+//!   only track the PID for identity verification. The original functions are
+//!   simple accessors to `Box<ProcessState>` — their correctness is trivial.
 //! - Thread state transitions (ReadyThread::terminate(), SleepingThread::interrupt(),
 //!   SleepingThread::wakeup()) are modeled as ID-preserving operations.
-//! - `find_thread()` and `find_thread_mut()` are omitted from the verified model
-//!   because they return reference types (`ThreadRef`, `ThreadRefMut`) that Verus
-//!   cannot express. Their correctness is implied by the thread list membership
-//!   invariants.
+//! - **Oracle parameters:** `run()` takes `selected_idx` and `wakeup()` takes
+//!   `found`/`found_idx` as oracle parameters. These push the algorithmic
+//!   correctness (the for-loop that finds the minimum admission time in `run()`,
+//!   the sleeping thread search in `wakeup()`) to the caller. The preconditions
+//!   ensure the oracle values match the ghost state, so correctness is preserved
+//!   at the protocol level. The iterative search algorithms themselves are not
+//!   verified — this is an explicit trust assumption.
+//! - **`find_thread()` and `find_thread_mut()`** are omitted from the exec-level
+//!   model because they return reference types (`ThreadRef`, `ThreadRefMut`) that
+//!   Verus cannot express. A spec-only model (`spec_find_thread`) is provided
+//!   that verifies the exhaustive search logic and correct list variant selection.
+//! - **`earliest_admission_time()`** is modeled as spec-only
+//!   (`spec_earliest_admission_time`) because the return type `SystemTime` maps
+//!   to ghost `int` in our model. The `lemma_earliest_admission_time_exists`
+//!   proof verifies that a minimum exists in the non-empty ready thread sequence.
 
 use crate::kernel::pm::sys::pid::ProcessIdentifier;
 use vstd::prelude::*;
@@ -296,9 +308,11 @@ impl RunnableProcess {
         ensures
             result.spec_pid() == self.spec_pid(),
             result.spec_running_thread_id() == self.ready_thread_ids@[selected_idx@],
-            // Remaining ready threads are the original minus the selected one.
+            // Remaining ready threads are exactly the original minus the selected one.
+            result.ready_thread_ids@ ==
+                Self::spec_remove_at(self.ready_thread_ids@, selected_idx@),
             result.ready_thread_ids@.len() == self.spec_ready_count() - 1,
-            // Other lists are preserved.
+            // Other lists are preserved exactly.
             result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
             result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
@@ -358,12 +372,19 @@ impl RunnableProcess {
                 TerminateResult::Interrupted(ip) => {
                     // PID preserved.
                     ip.spec_pid() == self.spec_pid()
-                    // Has interrupted threads.
-                    && ip.interrupted_thread_ids@.len() >= 1
+                    // Interrupted threads are exactly original interrupted + sleeping→interrupted.
+                    && ip.interrupted_thread_ids@.len() ==
+                        self.spec_interrupted_count() + self.spec_sleeping_count()
+                    && ip.interrupted_thread_ids@ ==
+                        self.interrupted_thread_ids@.add(self.sleeping_thread_ids@)
                     // Zombie threads include all original ready + original zombie.
                     && ip.zombie_thread_ids@.len() ==
                         self.spec_ready_count() + self.spec_zombie_count()
+                    && ip.zombie_thread_ids@ ==
+                        self.ready_thread_ids@.add(self.zombie_thread_ids@)
                     && ip.wf()
+                    // Branch taken iff there were interrupted or sleeping threads.
+                    && has_interrupted
                 },
                 TerminateResult::Zombie(zp) => {
                     // PID preserved.
@@ -374,8 +395,12 @@ impl RunnableProcess {
                     // Zombie threads include all original ready + original zombie.
                     && zp.zombie_thread_ids@.len() ==
                         self.spec_ready_count() + self.spec_zombie_count()
+                    && zp.zombie_thread_ids@ ==
+                        self.ready_thread_ids@.add(self.zombie_thread_ids@)
                     && zp.spec_status() == EXIT_STATUS_INTERRUPTED()
                     && zp.wf()
+                    // Branch taken iff there were no interrupted or sleeping threads.
+                    && !has_interrupted
                 },
             },
     {
@@ -452,6 +477,17 @@ impl RunnableProcess {
                     && r.spec_sleeping_count() == self.spec_sleeping_count() - 1
                     && r.spec_interrupted_count() == self.spec_interrupted_count()
                     && r.spec_zombie_count() == self.spec_zombie_count()
+                    // Content specs: ready list gets the woken thread appended.
+                    && r.ready_thread_ids@.len() == self.ready_thread_ids@.len() + 1
+                    && (forall|i: int| 0 <= i < self.ready_thread_ids@.len()
+                        ==> r.ready_thread_ids@[i] == self.ready_thread_ids@[i])
+                    && r.ready_thread_ids@[self.ready_thread_ids@.len() as int] == tid@
+                    // Sleeping list has the found thread removed.
+                    && r.sleeping_thread_ids@ ==
+                        Self::spec_remove_at(self.sleeping_thread_ids@, found_idx@)
+                    // Other lists preserved exactly.
+                    && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
+                    && r.zombie_thread_ids@ == self.zombie_thread_ids@
                     && r.wf()
                 },
                 Err(r) => {
@@ -461,6 +497,12 @@ impl RunnableProcess {
                     && r.spec_sleeping_count() == self.spec_sleeping_count()
                     && r.spec_interrupted_count() == self.spec_interrupted_count()
                     && r.spec_zombie_count() == self.spec_zombie_count()
+                    // Content preserved exactly.
+                    && r.ready_thread_ids@ == self.ready_thread_ids@
+                    && r.ready_admission_times@ == self.ready_admission_times@
+                    && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
+                    && r.sleeping_thread_ids@ == self.sleeping_thread_ids@
+                    && r.zombie_thread_ids@ == self.zombie_thread_ids@
                     && r.wf()
                 },
             },
@@ -544,6 +586,13 @@ impl RunnableProcess {
             result.spec_interrupted_count() == self.spec_interrupted_count(),
             result.spec_sleeping_count() == self.spec_sleeping_count(),
             result.spec_zombie_count() == self.spec_zombie_count(),
+            // Content specs: ready list gets the new thread appended.
+            result.ready_thread_ids@ == self.ready_thread_ids@.push(ready_tid@),
+            result.ready_admission_times@ == self.ready_admission_times@.push(ready_time@),
+            // Other lists preserved exactly.
+            result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
+            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
+            result.zombie_thread_ids@ == self.zombie_thread_ids@,
             result.wf(),
     {
         let ghost new_ready_ids: Seq<int> = self.ready_thread_ids@.push(ready_tid@);

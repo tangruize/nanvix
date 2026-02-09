@@ -8,10 +8,16 @@
 // - Construction produces well-formed state with correct initial values.
 // - PID is immutable across all operations.
 // - run() selects earliest admission time thread, preserves PID and total count.
+//   Postcondition specifies exact remaining thread list contents.
 // - terminate() converts ready→zombie, sleeping→interrupted, preserves PID.
+//   Postcondition specifies exact resulting list contents and correct branching.
 // - wakeup() moves sleeping→ready, preserves PID and total count.
+//   Postcondition specifies exact list contents after the move.
 // - add_thread() increases ready count by 1, preserves PID and other lists.
+//   Postcondition specifies exact list contents.
 // - earliest_admission_time() returns the minimum over ready thread admission times.
+// - find_thread() spec model verifies exhaustive search and list-variant consistency.
+// - spec_remove_at() helper has proven length and element preservation properties.
 // - Well-formedness is preserved by all operations.
 
 use vstd::prelude::*;
@@ -193,26 +199,41 @@ impl RunnableProcess {
     }
 
     /// Lemma: terminate() with no sleeping and no interrupted threads produces ZombieProcess.
+    /// The has_interrupted oracle must be false, so terminate() takes the Zombie branch.
     pub proof fn lemma_terminate_no_interrupted_gives_zombie(&self)
         requires
             self.wf(),
             self.spec_interrupted_count() == 0,
             self.spec_sleeping_count() == 0,
         ensures
-            // With no interrupted or sleeping threads, terminate() must produce
-            // a ZombieProcess (the Err branch).
-            true,
+            // has_interrupted is false under these conditions.
+            !(self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0),
+            // The resulting zombie threads contain all ready + original zombie.
+            ({
+                let zombie_ids: Seq<int> = self.ready_thread_ids@.add(self.zombie_thread_ids@);
+                zombie_ids.len() == self.spec_ready_count() + self.spec_zombie_count()
+                && zombie_ids.len() >= 1
+            }),
     {
     }
 
     /// Lemma: terminate() with interrupted threads produces InterruptedProcess.
+    /// The has_interrupted oracle must be true, so terminate() takes the Interrupted branch.
     pub proof fn lemma_terminate_with_interrupted_gives_interrupted(&self)
         requires
             self.wf(),
             self.spec_interrupted_count() > 0,
         ensures
-            // With interrupted threads, terminate() produces an InterruptedProcess (the Ok branch).
-            true,
+            // has_interrupted is true under these conditions.
+            (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0),
+            // The resulting interrupted list is non-empty.
+            ({
+                let interrupted_ids: Seq<int> =
+                    self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
+                interrupted_ids.len() >= 1
+                && interrupted_ids.len() ==
+                    self.spec_interrupted_count() + self.spec_sleeping_count()
+            }),
     {
     }
 
@@ -224,8 +245,15 @@ impl RunnableProcess {
             self.spec_interrupted_count() == 0,
             self.spec_sleeping_count() > 0,
         ensures
-            // Sleeping threads are converted to interrupted, so the result is InterruptedProcess.
-            true,
+            // has_interrupted is true because sleeping_count > 0.
+            (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0),
+            // The resulting interrupted list contains exactly the sleeping threads.
+            ({
+                let interrupted_ids: Seq<int> =
+                    self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
+                interrupted_ids.len() == self.spec_sleeping_count()
+                && interrupted_ids.len() >= 1
+            }),
     {
     }
 
@@ -455,6 +483,65 @@ impl RunnableProcess {
                 forall|i: int| 0 <= i < self.ready_admission_times@.len()
                     ==> self.ready_admission_times@[i] >= 0
             }),
+    {
+    }
+
+    //==============================================================================================
+    // find_thread() Lemmas
+    //==============================================================================================
+
+    /// Lemma: spec_find_thread returns Some(0) iff the thread is in the ready list.
+    pub proof fn lemma_find_thread_ready(&self, tid: int)
+        requires
+            self.spec_has_ready_thread(tid),
+        ensures
+            self.spec_find_thread(tid) == Some(0int),
+    {
+    }
+
+    /// Lemma: spec_find_thread returns None iff the thread is not in any list.
+    pub proof fn lemma_find_thread_not_found(&self, tid: int)
+        requires
+            !self.spec_has_ready_thread(tid),
+            !self.spec_has_interrupted_thread(tid),
+            !self.spec_has_sleeping_thread(tid),
+            !self.spec_has_zombie_thread(tid),
+        ensures
+            self.spec_find_thread(tid) == None,
+    {
+    }
+
+    /// Lemma: spec_find_thread result is consistent with spec_has_thread.
+    pub proof fn lemma_find_thread_iff_has_thread(&self, tid: int)
+        ensures
+            self.spec_find_thread(tid).is_some() <==> self.spec_has_thread(tid),
+    {
+    }
+
+    //==============================================================================================
+    // Content Preservation Lemmas
+    //==============================================================================================
+
+    /// Lemma: spec_remove_at produces a sequence of length len - 1.
+    pub proof fn lemma_remove_at_length(s: Seq<int>, idx: int)
+        requires
+            0 <= idx < s.len(),
+        ensures
+            Self::spec_remove_at(s, idx).len() == s.len() - 1,
+    {
+        let left: Seq<int> = s.subrange(0, idx);
+        let right: Seq<int> = s.subrange(idx + 1, s.len() as int);
+        assert(left.len() == idx as nat);
+        assert(right.len() == (s.len() - idx as nat - 1) as nat);
+    }
+
+    /// Lemma: spec_remove_at preserves elements before and after the removed index.
+    pub proof fn lemma_remove_at_preserves_others(s: Seq<int>, idx: int, j: int)
+        requires
+            0 <= idx < s.len(),
+            0 <= j < s.len() - 1,
+        ensures
+            Self::spec_remove_at(s, idx)[j] == if j < idx { s[j] } else { s[j + 1] },
     {
     }
 
