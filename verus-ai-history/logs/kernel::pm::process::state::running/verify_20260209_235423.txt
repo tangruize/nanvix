@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 23:54:23 CST 2026
+Module: kernel::pm::process::state::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::running
+
+error: assertion failed
+   --> kernel/pm/process/state/running.rs:483:24
+    |
+483 |                 assert(new_zombie_ids =~= old(self).spec_try_join_zombie_post(tid@));
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 42 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 42
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::running (verified:42, errors:1)
