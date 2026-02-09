@@ -242,13 +242,31 @@ impl RunnableProcess {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
+    /// Spec function: recursively finds the index of minimum in `s[0..n]`.
+    pub open spec fn spec_min_index_rec(s: Seq<int>, n: int) -> int
+        recommends 1 <= n <= s.len()
+        decreases n
+    {
+        if n == 1 {
+            0int
+        } else {
+            let prev: int = Self::spec_min_index_rec(s, n - 1);
+            if s[n - 1] < s[prev] {
+                n - 1
+            } else {
+                prev
+            }
+        }
+    }
+
     /// Spec function: finds the index of the ready thread with earliest admission time.
     pub open spec fn spec_earliest_ready_index(&self) -> int
         recommends self.ready_thread_ids@.len() > 0
     {
-        choose|idx: int| 0 <= idx < self.ready_admission_times@.len()
-            && forall|j: int| 0 <= j < self.ready_admission_times@.len()
-                ==> #[trigger] self.ready_admission_times@[idx] <= #[trigger] self.ready_admission_times@[j]
+        Self::spec_min_index_rec(
+            self.ready_admission_times@,
+            self.ready_admission_times@.len() as int,
+        )
     }
 
     /// Spec function: returns the earliest admission time among ready threads.

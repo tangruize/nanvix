@@ -433,9 +433,47 @@ impl RunnableProcess {
         }
     }
 
+    /// Lemma: spec_min_index_rec is in bounds and selects the minimum.
+    proof fn lemma_min_index_rec_bounds(s: &Seq<int>, n: int)
+        requires
+            1 <= n <= s.len(),
+        ensures
+            ({
+                let idx: int = RunnableProcess::spec_min_index_rec(*s, n);
+                0 <= idx < n
+                && forall|j: int| 0 <= j < n
+                    ==> (#[trigger] s[idx]) <= (#[trigger] s[j])
+            }),
+        decreases n,
+    {
+        if n == 1 {
+            // Base case: spec_min_index_rec returns 0, only element.
+        } else {
+            Self::lemma_min_index_rec_bounds(s, n - 1);
+            let prev: int = RunnableProcess::spec_min_index_rec(*s, n - 1);
+            if s[n - 1] < s[prev] {
+                // New element is smaller.
+                assert forall|j: int| 0 <= j < n
+                    implies (#[trigger] s[n - 1]) <= (#[trigger] s[j])
+                by {
+                    if j < n - 1 {
+                        assert(s[prev] <= s[j]);
+                    }
+                }
+            } else {
+                // Previous min is still min.
+                assert forall|j: int| 0 <= j < n
+                    implies (#[trigger] s[prev]) <= (#[trigger] s[j])
+                by {
+                    if j == n - 1 {
+                        assert(s[prev] <= s[n - 1]);
+                    }
+                }
+            }
+        }
+    }
+
     /// Lemma: spec_earliest_ready_index is in bounds and selects the minimum.
-    /// This bridges `lemma_seq_has_min` to the `choose`
-    /// used in `spec_earliest_ready_index`.
     pub proof fn lemma_earliest_ready_index_bounds(&self)
         requires
             self.wf(),
@@ -449,14 +487,10 @@ impl RunnableProcess {
                         <= #[trigger] self.ready_admission_times@[j]
             }),
     {
-        // Build a local reference with the same identity as self.ready_admission_times@.
-        let n: int = self.ready_admission_times@.len() as int;
-        Self::lemma_seq_has_min(&self.ready_admission_times@, n);
-
-        // Now the existential is proven for self.ready_admission_times@.
-        // spec_earliest_ready_index uses choose|idx| P(self.ready_admission_times@, idx).
-        // After establishing exists|idx| P, the choose|idx| P satisfies P.
-        // Verus should now resolve this.
+        Self::lemma_min_index_rec_bounds(
+            &self.ready_admission_times@,
+            self.ready_admission_times@.len() as int,
+        );
     }
 
     /// Helper: A non-empty sequence of ints has a minimum element within the first n elements.
