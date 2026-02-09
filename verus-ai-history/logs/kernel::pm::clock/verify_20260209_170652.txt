@@ -1,0 +1,50 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 17:06:52 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::clock
+
+error: assertion failed
+   --> kernel/pm/clock.proof.rs:288:20
+    |
+288 |             assert(b * q <= c) by(nonlinear_arith)
+    |                    ^^^^^^^^^^ assertion failed
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/clock.rs:187:5
+    |
+187 |     pub fn increment(&mut self) -> (result: u32)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/clock.rs:194:13
+    |
+194 |             !old(self).spec_is_max() ==> self.spec_ticks() == old(self).spec_ticks() + 1,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+243 |         self.minor
+    |         ---------- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/clock.rs:195:13
+    |
+195 |             self.spec_ticks() == old(self).spec_next_ticks(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+243 |         self.minor
+    |         ---------- at the end of the function body
+
+verification results:: 31 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 3 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 31
+Errors: 2
+Status: FAILED
+No changes to commit in verus/
