@@ -33,6 +33,28 @@ impl RunningProcess {
     // Construction Lemmas
     //==============================================================================================
 
+    /// Lemma: wf_strict() implies wf(). Useful for callers that maintain strict
+    /// well-formedness and need to call functions requiring only wf().
+    pub proof fn lemma_wf_strict_implies_wf(&self)
+        requires
+            self.wf_strict(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Lemma: mutation_frame_preserved preserves well-formedness.
+    /// If the old state was well-formed and the frame condition holds,
+    /// then the new state is also well-formed.
+    pub proof fn lemma_mutation_frame_preserves_wf(old_self: &RunningProcess, new_self: &RunningProcess)
+        requires
+            old_self.wf(),
+            RunningProcess::mutation_frame_preserved(old_self, new_self),
+        ensures
+            new_self.wf(),
+    {
+    }
+
     /// Lemma: A newly constructed RunningProcess is well-formed.
     pub proof fn lemma_new_is_wf(
         pid: int,

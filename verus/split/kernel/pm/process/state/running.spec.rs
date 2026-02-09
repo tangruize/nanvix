@@ -360,6 +360,30 @@ impl RunningProcess {
         &&& Self::spec_seqs_disjoint(self.interrupted_thread_ids@, self.zombie_thread_ids@)
         &&& Self::spec_seqs_disjoint(self.sleeping_thread_ids@, self.zombie_thread_ids@)
     }
+
+    /// Spec function: frame condition for mutable accessors (`state_mut()`, `running_mut()`).
+    ///
+    /// From the verification model's perspective, mutations via `state_mut()` and
+    /// `running_mut()` must not change any modeled fields. In the original code:
+    /// - `state_mut()` allows changing ProcessState fields (e.g., capabilities)
+    ///   but must not change the process identity (PID).
+    /// - `running_mut()` allows changing RunningThread fields (e.g., priority)
+    ///   but must not change the thread identity (running thread ID).
+    ///
+    /// Callers must ensure this frame condition holds after any mutation.
+    /// This obligation is discharged when ProcessState and RunningThread are verified.
+    pub open spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
+        &&& new_self.spec_pid() == old_self.spec_pid()
+        &&& new_self.spec_running_thread_id() == old_self.spec_running_thread_id()
+        &&& new_self.ready_thread_ids@ == old_self.ready_thread_ids@
+        &&& new_self.interrupted_thread_ids@ == old_self.interrupted_thread_ids@
+        &&& new_self.sleeping_thread_ids@ == old_self.sleeping_thread_ids@
+        &&& new_self.zombie_thread_ids@ == old_self.zombie_thread_ids@
+        &&& new_self.ready_count == old_self.ready_count
+        &&& new_self.interrupted_count == old_self.interrupted_count
+        &&& new_self.sleeping_count == old_self.sleeping_count
+        &&& new_self.zombie_count == old_self.zombie_count
+    }
 }
 
 //==================================================================================================
