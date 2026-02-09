@@ -21,7 +21,6 @@ impl Capabilities {
             !Capabilities::spec_default().spec_has(Capability::MemoryManagement),
             !Capabilities::spec_default().spec_has(Capability::ProcessManagement),
     {
-        // Each mask ANDed with 0 is 0.
         assert(0u8 & 1u8 == 0u8) by (bit_vector);
         assert(0u8 & 2u8 == 0u8) by (bit_vector);
         assert(0u8 & 4u8 == 0u8) by (bit_vector);
@@ -49,10 +48,11 @@ impl Capabilities {
             }),
     {
         let mask: u8 = Self::spec_mask(cap);
-        let result: u8 = (pre.spec_bits() | mask) as u8;
+        let b: u8 = pre.spec_bits();
+        let result: u8 = (b | mask) as u8;
         assert((result & mask) != 0u8) by (bit_vector)
             requires
-                result == (pre.spec_bits() | mask) as u8,
+                result == (b | mask) as u8,
         ;
     }
 
@@ -65,10 +65,11 @@ impl Capabilities {
             }),
     {
         let mask: u8 = Self::spec_mask(cap);
-        let result: u8 = (pre.spec_bits() & !mask) as u8;
+        let b: u8 = pre.spec_bits();
+        let result: u8 = (b & !mask) as u8;
         assert((result & mask) == 0u8) by (bit_vector)
             requires
-                result == (pre.spec_bits() & !mask) as u8,
+                result == (b & !mask) as u8,
         ;
     }
 
@@ -79,7 +80,6 @@ impl Capabilities {
         ensures
             Self::spec_mask(a) & Self::spec_mask(b) == 0u8,
     {
-        // Exhaustive match: all 5 masks are distinct powers of 2.
         assert(1u8 & 2u8 == 0u8) by (bit_vector);
         assert(1u8 & 4u8 == 0u8) by (bit_vector);
         assert(1u8 & 8u8 == 0u8) by (bit_vector);
@@ -108,7 +108,6 @@ impl Capabilities {
         let mask_o: u8 = Self::spec_mask(cap_other);
         let b: u8 = pre.spec_bits();
 
-        // All valid masks are distinct powers of 2, so distinct masks don't overlap.
         Self::lemma_distinct_masks_disjoint(cap_set, cap_other);
 
         assert(((b | mask_s) as u8 & mask_o != 0u8) == (b & mask_o != 0u8)) by (bit_vector)
@@ -133,7 +132,6 @@ impl Capabilities {
         let mask_o: u8 = Self::spec_mask(cap_other);
         let b: u8 = pre.spec_bits();
 
-        // All valid masks are distinct powers of 2, so distinct masks don't overlap.
         Self::lemma_distinct_masks_disjoint(cap_clear, cap_other);
 
         assert(((b & !mask_c) as u8 & mask_o != 0u8) == (b & mask_o != 0u8)) by (bit_vector)
@@ -150,9 +148,10 @@ impl Capabilities {
             pre.spec_set(cap) == pre.spec_bits(),
     {
         let mask: u8 = Self::spec_mask(cap);
-        assert((pre.spec_bits() | mask) as u8 == pre.spec_bits()) by (bit_vector)
+        let b: u8 = pre.spec_bits();
+        assert((b | mask) as u8 == b) by (bit_vector)
             requires
-                (pre.spec_bits() & mask) != 0u8,
+                (b & mask) != 0u8,
                 mask == 1u8 || mask == 2u8 || mask == 4u8 || mask == 8u8 || mask == 16u8,
         ;
     }
@@ -165,9 +164,10 @@ impl Capabilities {
             pre.spec_clear(cap) == pre.spec_bits(),
     {
         let mask: u8 = Self::spec_mask(cap);
-        assert((pre.spec_bits() & !mask) as u8 == pre.spec_bits()) by (bit_vector)
+        let b: u8 = pre.spec_bits();
+        assert((b & !mask) as u8 == b) by (bit_vector)
             requires
-                (pre.spec_bits() & mask) == 0u8,
+                (b & mask) == 0u8,
                 mask == 1u8 || mask == 2u8 || mask == 4u8 || mask == 8u8 || mask == 16u8,
         ;
     }

@@ -119,14 +119,7 @@ impl Capabilities {
             self.spec_has(capability),
     {
         let mask: u8 = Self::to_mask(capability);
-        let old_bits: Ghost<u8> = Ghost(self.bits);
         self.bits = self.bits | mask;
-
-        // Prove the target bit is set.
-        assert((self.bits & mask) != 0u8) by (bit_vector)
-            requires
-                self.bits == (old_bits@ | mask) as u8,
-        ;
     }
 
     /// Clears a capability bit.
@@ -145,14 +138,7 @@ impl Capabilities {
             !self.spec_has(capability),
     {
         let mask: u8 = Self::to_mask(capability);
-        let old_bits: Ghost<u8> = Ghost(self.bits);
         self.bits = self.bits & !mask;
-
-        // Prove the target bit is cleared.
-        assert((self.bits & mask) == 0u8) by (bit_vector)
-            requires
-                self.bits == (old_bits@ & !mask) as u8,
-        ;
     }
 
     /// Tests whether a capability bit is set.
