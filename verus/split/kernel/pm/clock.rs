@@ -225,12 +225,9 @@ impl TimerTicks {
                     assert(old(self).spec_ticks() < u64::MAX as nat);
                     assert(!old(self).spec_is_max());
                     // self.major = old.major + 1, self.minor = 0.
-                    // new_ticks = (old.major + 1) * M + 0.
-                    // old_ticks = old.major * M + u32::MAX = old.major * M + (M - 1).
-                    // new_ticks = old.major * M + M = old_ticks + 1.
-                    assert((old(self).spec_major() + 1) * Self::MINOR_MODULUS()
-                        == old(self).spec_major() * Self::MINOR_MODULUS() + Self::MINOR_MODULUS())
-                        by(nonlinear_arith);
+                    let om: nat = old(self).spec_major();
+                    let m: nat = Self::MINOR_MODULUS();
+                    assert((om + 1) * m == om * m + m) by(nonlinear_arith);
                     self.lemma_always_wf();
                 }
             } else {
