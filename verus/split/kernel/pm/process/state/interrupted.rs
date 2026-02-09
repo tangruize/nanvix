@@ -426,9 +426,11 @@ impl InterruptedProcess {
 
     /// Verified wrapper: resumes with a clock-validated admission time.
     ///
-    /// This is a stronger entry point for callers that have access to the
-    /// clock state. It requires `spec_admission_time_valid()` — enforcing
-    /// the link to `clock::now()` — and delegates to `resume()`.
+    /// **Verification-only helper** — this function does NOT exist in the
+    /// original source (`src/kernel/src/pm/process/state/interrupted.rs`).
+    /// It is provided as a stronger entry point for integration proofs that
+    /// have access to the clock state, requiring `spec_admission_time_valid()`
+    /// to enforce the link to `clock::now()`. Delegates to `resume()`.
     ///
     /// Use this instead of `resume()` when the caller can provide a
     /// verified clock state. The postconditions are identical to `resume()`
