@@ -581,4 +581,73 @@ pub fn standalone_now(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32
     timer.now(timer_freq)
 }
 
+/// Exec-level model of the original `now()` for the fallback path.
+///
+/// # Description
+///
+/// Models the `#[cfg(not(feature = "pit"))]` branch of the original `now()`:
+/// ```ignore
+/// let timer_freq: u32 = 1;
+/// let (major_ticks, minor_ticks) = TIMER_TICKS.get();
+/// let seconds = (((major_ticks as u64) << 32) + (minor_ticks as u64)) / (timer_freq as u64);
+/// let nanoseconds = (minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq);
+/// match SystemTime::new(seconds, nanoseconds) { Some(t) => t, None => unreachable!() }
+/// ```
+///
+/// This function hardcodes `timer_freq = 1` (the compile-time constant) and
+/// proves all postconditions including `SystemTime::new()` success, eliminating
+/// the `unreachable!()` path. The `SystemTime::new()` call is modeled via
+/// `spec_system_time_new_succeeds`.
+pub fn now_fallback_model(timer: &TimerTicks) -> (result: (u64, u32))
+    requires
+        TimerTicks::spec_no_concurrent_writer_assumption(),
+    ensures
+        result.0 as nat == TimerTicks::spec_compute_seconds(timer.major, timer.minor, 1u32),
+        result.1 as nat == TimerTicks::spec_compute_nanoseconds(timer.minor, 1u32),
+        TimerTicks::spec_nanoseconds_valid(result.1 as nat),
+        result.1 < 1_000_000_000u32,
+        TimerTicks::spec_system_time_new_succeeds(result.1 as nat),
+        result.0 as nat == timer.spec_ticks() / 1nat,
+        timer.spec_now(1u32) == (result.0 as nat, result.1 as nat),
+{
+    // #[cfg(not(feature = "pit"))]
+    let timer_freq: u32 = 1u32;
+    timer.now(timer_freq)
+}
+
+/// Exec-level model of the original `now()` for the PIT path.
+///
+/// # Description
+///
+/// Models the `#[cfg(feature = "pit")]` branch of the original `now()`:
+/// ```ignore
+/// let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
+/// ```
+///
+/// Since `pit::get_timer_frequency()` is a HAL function that Verus cannot
+/// call, this model takes `timer_freq` as a parameter with the precondition
+/// `timer_freq > 0` — the same guarantee provided by
+/// `axiom_pit_timer_freq_valid()`. A caller would:
+/// 1. Invoke `axiom_pit_timer_freq_valid()` to obtain a ghost `freq > 0`.
+/// 2. Call this function with the actual PIT frequency at runtime.
+///
+/// The postconditions prove `SystemTime::new()` success for any PIT frequency.
+pub fn now_pit_model(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32))
+    requires
+        timer_freq > 0,
+        TimerTicks::spec_no_concurrent_writer_assumption(),
+    ensures
+        result.0 as nat == TimerTicks::spec_compute_seconds(timer.major, timer.minor, timer_freq),
+        result.1 as nat == TimerTicks::spec_compute_nanoseconds(timer.minor, timer_freq),
+        TimerTicks::spec_nanoseconds_valid(result.1 as nat),
+        result.1 < 1_000_000_000u32,
+        TimerTicks::spec_system_time_new_succeeds(result.1 as nat),
+        result.0 as nat == timer.spec_ticks() / timer_freq as nat,
+        timer.spec_now(timer_freq) == (result.0 as nat, result.1 as nat),
+{
+    // #[cfg(feature = "pit")]
+    // let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
+    timer.now(timer_freq)
+}
+
 } // verus!
