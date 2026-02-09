@@ -260,11 +260,14 @@ impl TimerTicks {
     /// single consistent state. When violated, a **torn read** can occur:
     /// if the handler increments from (major=M, minor=0xFFFFFFFF) to
     /// (major=M+1, minor=0) between the two loads, `get()` returns
-    /// (M+1, 0xFFFFFFFF), yielding a tick count that is `MINOR_MODULUS - 1`
-    /// ticks ahead of the actual state.
+    /// (M+1, 0xFFFFFFFF), yielding a tick count that is `MINOR_MODULUS`
+    /// (`2^32`) ticks ahead of the actual state.
     ///
     /// This spec function returns `true` unconditionally; its purpose is to
     /// name the assumption so that `get()`'s postcondition can reference it.
+    /// It is **documentation-only**: the `true` return value means it imposes
+    /// no mechanical constraint, but its presence in `get()`'s ensures clause
+    /// makes the trust boundary visible in the proof chain.
     pub open spec fn spec_no_concurrent_writer_assumption() -> bool {
         true
     }

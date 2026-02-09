@@ -415,8 +415,8 @@ impl TimerTicks {
     /// `(major=M+1, minor=0)`. The reader sees `(major=M+1, minor=0xFFFFFFFF)`.
     ///
     /// **Consequence**: The observed tick count is `(M+1) * 2^32 + 0xFFFFFFFF`,
-    /// which is `2^32 - 1` ticks ahead of the actual pre-increment state
-    /// `M * 2^32 + 0xFFFFFFFF`.
+    /// which is `2^32` (`MINOR_MODULUS`) ticks ahead of the actual pre-increment
+    /// state `M * 2^32 + 0xFFFFFFFF`.
     ///
     /// This lemma is not used in any postcondition — it is a documentation
     /// proof that makes the torn-read risk concrete and quantifiable.
@@ -630,14 +630,18 @@ impl TimerTicks {
     ///
     /// This axiom is an `external_body` trust boundary because the PIT
     /// frequency depends on hardware behavior and HAL configuration that
-    /// Verus cannot model. The postcondition guarantees `freq > 0`
-    /// unconditionally, modeling the hardware invariant that the PIT
-    /// always produces a positive frequency.
+    /// Verus cannot model. It returns a ghost `u32` value representing the
+    /// PIT frequency, with the postcondition that this value is positive.
+    ///
+    /// Unlike a parameterized axiom, this form cannot be misused: the
+    /// caller receives a value satisfying `freq > 0` but cannot choose
+    /// which value it is.
     #[verifier::external_body]
-    pub proof fn axiom_pit_timer_freq_valid(freq: u32)
+    pub proof fn axiom_pit_timer_freq_valid() -> (freq: u32)
         ensures
             freq > 0,
     {
+        unimplemented!()
     }
 }
 

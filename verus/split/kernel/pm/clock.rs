@@ -85,8 +85,8 @@
 //!   performs two separate atomic loads (`major` then `minor`). If a timer
 //!   interrupt occurs between these loads and increments the counter across a
 //!   minor-wrap boundary (e.g., from `(M, 0xFFFFFFFF)` to `(M+1, 0)`), the
-//!   reader observes `(M+1, 0xFFFFFFFF)` — a **torn read** that is `2^32 - 1`
-//!   ticks ahead of reality (see `lemma_torn_read_consequence`).
+//!   reader observes `(M+1, 0xFFFFFFFF)` — a **torn read** that is `2^32`
+//!   (`MINOR_MODULUS`) ticks ahead of reality (see `lemma_torn_read_consequence`).
 //!
 //!   This torn read is prevented by the system-level invariant that callers of
 //!   `get()` run with interrupts disabled on the same core as the handler, or
@@ -201,6 +201,9 @@ impl TimerTicks {
             result.0 as nat == self.spec_major(),
             result.1 as nat == self.spec_minor(),
             self.spec_get_consistent(result.0, result.1),
+            // Trust Boundary T1: snapshot consistency depends on the
+            // no-concurrent-writer assumption (see spec documentation).
+            Self::spec_no_concurrent_writer_assumption(),
     {
         (self.major, self.minor)
     }
@@ -225,6 +228,9 @@ impl TimerTicks {
     /// The new minor tick value after incrementing.
     pub fn increment(&mut self) -> (result: u32)
         requires
+            // Note: wf() is universally true for any (u32, u32) pair (see
+            // lemma_always_wf). This precondition is retained for documentation
+            // and forward-compatibility if wf() is ever strengthened.
             old(self).wf(),
         ensures
             self.wf(),
