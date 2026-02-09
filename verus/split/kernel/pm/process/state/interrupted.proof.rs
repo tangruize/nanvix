@@ -15,7 +15,8 @@
 // - Well-formedness (including thread ID uniqueness and disjointness) is
 //   preserved by all operations.
 // - View equality: identical fields produce equal views.
-// - Bridging lemma for cross-module boundary model linking.
+// - Projection lemma for cross-module boundary model linking (extracts
+//   runnable-compatible tuple with invariants).
 // - Admission time oracle satisfies resume() precondition.
 
 use vstd::prelude::*;
@@ -322,32 +323,45 @@ impl RunnableProcess {
     {
     }
 
-    /// Bridging lemma: Maps between InterruptedProcessView (this module's primary
-    /// model, which includes sleeping_thread_ids) and the boundary model used in
-    /// the sibling runnable module (which omits sleeping_thread_ids).
+    /// Projection lemma: Extracts the fields that the runnable module's boundary
+    /// `InterruptedProcess` type carries (pid, interrupted_thread_ids,
+    /// zombie_thread_ids) from this module's primary `InterruptedProcess`.
     ///
-    /// Purpose: The `InterruptedProcess` boundary model in `runnable.spec.rs`
-    /// omits `sleeping_thread_ids` for simplicity. This lemma proves that the
-    /// projection from InterruptedProcessView to the fields shared by both
-    /// boundary models is consistent: pid, interrupted_thread_ids, and
-    /// zombie_thread_ids agree. Callers performing cross-module reasoning can
-    /// use this lemma to bridge between the two views.
-    pub proof fn lemma_interrupted_view_subsumes_runnable_boundary(
+    /// The runnable module's boundary `InterruptedProcess` (in `runnable.rs`)
+    /// has only three fields and omits `sleeping_thread_ids`. This lemma
+    /// provides a concrete tuple projection `(pid, interrupted_ids, zombie_ids)`
+    /// matching that boundary shape, so downstream integration proofs can
+    /// map from this module's richer model to the runnable module's simpler one.
+    ///
+    /// **Limitation:** This lemma cannot reference the runnable module's actual
+    /// `InterruptedProcess` struct (Verus modules are verified independently).
+    /// It provides the projection as a tuple; the integration proof must
+    /// construct the runnable module's boundary type from these values.
+    pub proof fn lemma_project_to_runnable_boundary(
         ip: InterruptedProcess,
-    )
+    ) -> (projection: (int, Seq<int>, Seq<int>))
         requires
             ip.wf(),
         ensures
-            // The primary view's fields subsume the boundary model fields.
-            ip@.pid == ip.pid@,
-            ip@.interrupted_thread_ids == ip.interrupted_thread_ids@,
-            ip@.zombie_thread_ids == ip.zombie_thread_ids@,
-            ip@.sleeping_thread_ids == ip.sleeping_thread_ids@,
-            // The sleeping field is additional information not present in the
-            // runnable module's boundary model. This establishes the superset
-            // relationship.
-            ip@.interrupted_thread_ids.len() >= 1,
+            // Projection fields match the primary model.
+            projection.0 == ip@.pid,
+            projection.1 == ip@.interrupted_thread_ids,
+            projection.2 == ip@.zombie_thread_ids,
+            // The projected fields satisfy the runnable module's boundary wf()
+            // preconditions (interrupted_thread_ids non-empty, no-duplicates,
+            // disjointness between interrupted and zombie).
+            projection.1.len() >= 1,
+            InterruptedProcess::spec_no_duplicates(projection.1),
+            InterruptedProcess::spec_no_duplicates(projection.2),
+            InterruptedProcess::spec_seqs_disjoint(projection.1, projection.2),
+            // The primary model carries additional sleeping_thread_ids not
+            // present in the runnable module's boundary.
+            InterruptedProcess::spec_seqs_disjoint(
+                ip@.sleeping_thread_ids, projection.1),
+            InterruptedProcess::spec_seqs_disjoint(
+                ip@.sleeping_thread_ids, projection.2),
     {
+        (ip@.pid, ip@.interrupted_thread_ids, ip@.zombie_thread_ids)
     }
 }
 

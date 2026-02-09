@@ -37,9 +37,11 @@
 //!   structural integrity of the real type. `ready_admission_times` models
 //!   the parallel admission time array.
 //!   Note: The `InterruptedProcess` boundary model in `runnable.spec.rs`
-//!   omits `sleeping_thread_ids`; a bridging lemma
-//!   (`lemma_interrupted_view_subsumes_runnable_boundary`) is provided in the
-//!   proof file for cross-module linking.
+//!   omits `sleeping_thread_ids`; a projection lemma
+//!   (`lemma_project_to_runnable_boundary`) is provided in the proof file
+//!   that extracts `(pid, interrupted_ids, zombie_ids)` matching the runnable
+//!   module's boundary shape with all relevant invariants proven. Integration
+//!   proofs must construct the runnable module's boundary type from this tuple.
 //! - Thread state transitions (resume()) are ID-preserving.
 //!   **Per-thread state mutation trust gap:** In the original
 //!   `InterruptedThread::resume()`, `self.state.set_interrupt_reason(self.reason)`

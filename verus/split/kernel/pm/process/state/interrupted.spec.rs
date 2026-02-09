@@ -44,9 +44,12 @@
 //   thread module (`src/kernel/src/pm/thread/interrupted.rs`).
 // - `RunnableProcess` is a boundary model from the sibling module.
 //   Note: The `InterruptedProcess` boundary model in `runnable.spec.rs`
-//   omits `sleeping_thread_ids`. A bridging lemma
-//   (`lemma_interrupted_view_subsumes_runnable_boundary`) in the proof file
-//   maps between the two views for cross-module linking.
+//   omits `sleeping_thread_ids`. A projection lemma
+//   (`lemma_project_to_runnable_boundary`) in the proof file extracts
+//   `(pid, interrupted_ids, zombie_ids)` matching the runnable module's
+//   boundary shape with invariants (non-empty, no-duplicates, disjointness)
+//   proven. Integration proofs must construct the runnable module's boundary
+//   type from this tuple.
 // - `find_thread()` / `find_thread_mut()` are spec-level models that compute
 //   `spec_find_thread()` directly. They do NOT model the executable search.
 //   The original performs linear searches through `iter().find(...)` across
