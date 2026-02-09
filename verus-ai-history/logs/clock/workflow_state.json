@@ -6,6 +6,7 @@
   "prover_session_id": "60ea6f0f-97af-4ffa-9f90-88397905dde1",
   "completed": false,
   "final_grades": {
-    "claude": "A"
+    "claude": "A",
+    "gpt": "C"
   }
 }
