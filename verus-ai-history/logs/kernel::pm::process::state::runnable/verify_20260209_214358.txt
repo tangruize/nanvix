@@ -1,0 +1,54 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:43:58 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/process/state/runnable.rs:301:5
+    |
+301 |     pub fn run(self) -> (result: RunningProcess)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+[rust_verify/src/verifier.rs:100:17] &note = "recommendation not met"
+[rust_verify/src/verifier.rs:100:17] &sp.as_string = "vstd/seq.rs:62:13: 62:32 (#0)"
+note: recommendation not met
+   --> kernel/pm/process/state/runnable.rs:323:39
+    |
+323 |         let ghost selected_tid: int = self.ready_thread_ids@[selected_idx as int];
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+[rust_verify/src/verifier.rs:100:17] &note = "recommendation not met"
+[rust_verify/src/verifier.rs:100:17] &sp.as_string = "vstd/seq.rs:116:13: 116:64 (#0)"
+note: recommendation not met
+   --> kernel/pm/process/state/runnable.rs:325:13
+    |
+325 |             self.ready_thread_ids@.subrange(0, selected_idx)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> kernel/pm/process/state/runnable.rs:337:20
+    |
+337 |             assert(left.len() == idx as nat);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> kernel/pm/process/state/runnable.rs:338:20
+    |
+338 |             assert(right.len() == (s.len() - idx as nat - 1) as nat);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 38 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 38
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:38, errors:1)
