@@ -319,16 +319,25 @@ impl RunnableProcess {
         // Derive the minimum index via proof.
         proof { self.lemma_earliest_admission_time_exists(); }
 
-        // Use choose to select the min index, which is guaranteed to exist by the lemma.
-        let ghost selected_idx: int = choose|idx: int|
-            0 <= idx < self.ready_admission_times@.len()
-            && forall|j: int| 0 <= j < self.ready_admission_times@.len()
-                ==> #[trigger] self.ready_admission_times@[idx]
-                    <= #[trigger] self.ready_admission_times@[j];
+        // The lemma guarantees existence. Use spec_earliest_ready_index directly.
+        // spec_earliest_ready_index uses choose with the same predicate as the lemma.
+        // We need a proof-level assertion that the existential is satisfiable
+        // so the choose is well-defined and produces a valid index.
+        let ghost selected_idx: int = self.spec_earliest_ready_index();
 
         proof {
-            // The choose is well-defined because lemma_earliest_admission_time_exists
-            // established the existential. Assert bounds.
+            // The lemma ensures: exists|idx| 0 <= idx < len && forall ...
+            // Since spec_earliest_ready_index is `choose` with the same predicate,
+            // and the existential is satisfied, the chosen value satisfies it.
+            // We need to show the bounds explicitly.
+            let witness_idx: int = choose|idx: int|
+                0 <= idx < self.ready_admission_times@.len()
+                && forall|j: int| 0 <= j < self.ready_admission_times@.len()
+                    ==> (#[trigger] self.ready_admission_times@[idx])
+                        <= (#[trigger] self.ready_admission_times@[j]);
+            // witness_idx == selected_idx because they use the same choose.
+            assert(witness_idx == selected_idx);
+            assert(0 <= selected_idx < self.ready_admission_times@.len());
             assert(0 <= selected_idx < self.ready_thread_ids@.len());
         }
 
@@ -349,9 +358,6 @@ impl RunnableProcess {
             assert(left.len() == idx as nat);
             assert(right.len() == (s.len() - idx as nat - 1) as nat);
             assert(left.add(right).len() == (s.len() - 1) as nat);
-
-            // Prove that selected_idx == spec_earliest_ready_index.
-            // Both are `choose` with the same predicate, so they must be equal.
         }
 
         RunningProcess {
