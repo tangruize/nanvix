@@ -41,15 +41,42 @@
 //!
 //! ## Trust Boundary
 //!
-//! - `find_thread()` / `find_thread_mut()` are **spec-level models** — they
-//!   compute `spec_find_thread()` directly and do not model the executable
-//!   search implementation. The original code performs a linear search through
-//!   `iter().find(...)` on the zombie thread list. The spec captures this
-//!   search semantics. The executable iterator-based search is NOT verified.
-//!   Tagged for trust-boundary inventory.
-//! - `state()` / `state_mut()` return references to ProcessState. Modeled
-//!   as external_body with frame conditions. `state_mut()` permits arbitrary
-//!   mutation; callers must preserve PID immutability.
+//! - **`state_mut()` PID immutability (TRUST ASSUMPTION):** `state_mut()` is
+//!   `external_body` and its postcondition asserts PID preservation. The
+//!   original returns `&mut ProcessState`, giving callers unrestricted write
+//!   access to all `ProcessState` fields. PID immutability is enforced
+//!   architecturally: `ProcessState` does NOT expose a public setter for its
+//!   `pid` field — only the constructor sets it. This is a trust assumption
+//!   on the `ProcessState` module's API surface. If `ProcessState` ever
+//!   exposes a PID setter, this postcondition becomes unsound and must be
+//!   revised. Integration proofs must verify this assumption against the
+//!   `ProcessState` API when that module is independently verified.
+//! - **`state()` abstraction boundary:** `state()` returns `&ProcessState`
+//!   which contains ~9 fields (pid, capabilities, vmem, events, mailbox,
+//!   mmio, pmio, mutexes, conditions). Modeling it as a single `int` (PID)
+//!   is a deliberate abstraction — this module only reasons about process
+//!   identity. If future verification needs to reason about capabilities,
+//!   vmem, or other `ProcessState` fields through `ZombieProcess`, the model
+//!   must be extended.
+//! - **`find_thread()` / `find_thread_mut()` (UNVERIFIED SEARCH):** These
+//!   are **spec-level models** that compute `spec_find_thread()` directly in
+//!   ghost mode. They do NOT model the executable `iter().find(...)` search.
+//!   The original performs a linear search through `NonEmptyVecDeque::iter()`
+//!   on the zombie thread list. The spec captures the search semantics but
+//!   the executable iterator-based logic is NOT verified. Any bug in the real
+//!   search (wrong predicate, wrong iteration order) would not be caught.
+//!   `lemma_ghost_search_correctness` proves the ghost-level search logic is
+//!   sound; `spec_find_thread_integration_obligation` defines the formal
+//!   contract integration proofs must discharge. Tagged for trust-boundary
+//!   inventory.
+//! - **`bury()` ownership transfer:** The original `bury()` returns actual
+//!   ownership of `(NonEmptyVecDeque<ZombieThread>, Box<ProcessState>,
+//!   ExitStatus)` — transferring resources for the parent to collect. The
+//!   ghost model returns `(Ghost<Seq<int>>, Ghost<int>, Ghost<int>)` and
+//!   does NOT verify resource transfer or ownership semantics. This is the
+//!   key semantic purpose of `bury()` in the original and is outside the
+//!   ghost model scope. Executable verification would require modeling
+//!   ownership transfer through Verus's tracked types.
 //!
 //! ## Fields
 //!
@@ -93,13 +120,17 @@ impl ZombieProcess {
     /// Creates a new ZombieProcess.
     ///
     /// Models the original `ZombieProcess::new(process, zombie_threads, status)`.
+    /// The original constructor takes `NonEmptyVecDeque<ZombieThread>` which
+    /// implicitly knows its own length. In the ghost model, `zombie_count` is
+    /// a separate exec-level parameter and callers at integration boundaries
+    /// must establish `zombie_count as nat == zombie_ids@.len()`.
     ///
     /// # Parameters
     ///
     /// - `pid`: Process identifier.
     /// - `zombie_ids`: Ghost zombie thread IDs (must be non-empty).
     /// - `status`: Exit status.
-    /// - `zombie_count`: Exec-level count of zombie threads.
+    /// - `zombie_count`: Exec-level count of zombie threads (must match ghost length).
     ///
     /// # Returns
     ///
@@ -131,7 +162,12 @@ impl ZombieProcess {
 
     /// Returns the process state (modeled as PID).
     ///
-    /// Models the original `ZombieProcess::state()`.
+    /// Models the original `ZombieProcess::state()` which returns `&ProcessState`.
+    /// The original `ProcessState` contains ~9 fields (pid, capabilities, vmem,
+    /// events, mailbox, mmio, pmio, mutexes, conditions). This ghost model only
+    /// extracts PID — a deliberate abstraction for identity-focused verification.
+    /// If future verification needs to reason about other `ProcessState` fields,
+    /// this model must be extended.
     ///
     /// # Returns
     ///
@@ -146,8 +182,17 @@ impl ZombieProcess {
 
     /// Returns a mutable reference to the process state.
     ///
-    /// Models the original `ZombieProcess::state_mut()`.
-    /// Callers must ensure PID immutability after mutation.
+    /// Models the original `ZombieProcess::state_mut()` which returns
+    /// `&mut ProcessState`.
+    ///
+    /// ## Trust Assumption: PID Immutability
+    ///
+    /// This `external_body` function's postcondition asserts PID preservation
+    /// (`self.spec_pid() == old(self).spec_pid()`). The original gives callers
+    /// unrestricted `&mut ProcessState` access. PID immutability is enforced
+    /// architecturally: `ProcessState` does NOT expose a public setter for
+    /// `pid` — only the constructor sets it. If `ProcessState` ever exposes
+    /// a PID setter, this postcondition becomes unsound.
     ///
     /// # Returns
     ///
@@ -166,8 +211,12 @@ impl ZombieProcess {
 
     /// Decomposes the ZombieProcess, returning its components.
     ///
-    /// Models the original `ZombieProcess::bury()`.
-    /// Returns the zombie thread IDs, PID, and exit status.
+    /// Models the original `ZombieProcess::bury()` which returns
+    /// `(NonEmptyVecDeque<ZombieThread>, Box<ProcessState>, ExitStatus)`.
+    /// The original transfers actual ownership of thread objects and process
+    /// state to the caller (parent process) for resource cleanup. The ghost
+    /// model captures identity preservation (PID, thread IDs, status) but
+    /// does NOT verify resource transfer or ownership semantics.
     ///
     /// # Returns
     ///
@@ -176,9 +225,9 @@ impl ZombieProcess {
         requires
             self.wf(),
         ensures
-            result.0@ == self.zombie_thread_ids@,
-            result.1@ == self.spec_pid(),
-            result.2@ == self.spec_status(),
+            result.0@ == self@.zombie_thread_ids,
+            result.1@ == self@.pid,
+            result.2@ == self@.status,
             result.0@.len() >= 1,
             result.0@.len() == self.spec_zombie_count(),
     {
@@ -191,9 +240,15 @@ impl ZombieProcess {
 
     /// Finds a thread by its identifier and returns which list it belongs to.
     ///
-    /// **Spec-level model** of the original `ZombieProcess::find_thread(tid)`.
-    /// This function computes `spec_find_thread()` directly in ghost mode.
-    /// It does NOT model the executable `iter().find(...)` search.
+    /// **Spec-level model (UNVERIFIED SEARCH)** of the original
+    /// `ZombieProcess::find_thread(tid)`. This function computes
+    /// `spec_find_thread()` directly in ghost mode. It does NOT model the
+    /// executable `iter().find(|t| t.id() == tid)` search. Any bug in the
+    /// real search predicate or iteration logic would not be caught by this
+    /// verification. `spec_find_thread_integration_obligation` defines the
+    /// **unproven** contract that integration proofs must discharge.
+    /// `lemma_ghost_search_correctness` proves the ghost-level search logic
+    /// is sound for the abstract model.
     ///
     /// Returns the abstract list variant:
     /// - `Some(0)`: zombie thread found.
@@ -215,8 +270,12 @@ impl ZombieProcess {
 
     /// Finds a thread by its identifier (mutable variant).
     ///
-    /// **Spec-level model** of the original `ZombieProcess::find_thread_mut(tid)`.
-    /// Same semantics as `find_thread()`. Frame condition: self is unchanged.
+    /// **Spec-level model (UNVERIFIED SEARCH)** of the original
+    /// `ZombieProcess::find_thread_mut(tid)`. Same trust scope as
+    /// `find_thread()` — see its documentation. Frame condition: self is
+    /// unchanged. The mutable reference in the original allows in-place
+    /// mutation of the found thread. Callers must preserve the thread's
+    /// identity and list membership after such mutation.
     ///
     /// # Parameters
     ///

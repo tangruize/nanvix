@@ -8,8 +8,11 @@
 // - PID is immutable across all operations.
 // - Exit status is immutable across all operations.
 // - `bury()` returns components matching the original fields — PID, zombie
-//   thread IDs, and exit status are preserved.
+//   thread IDs, and exit status are preserved. View type is used in postconditions.
 // - `find_thread()` spec model verifies exhaustive search semantics.
+//   `lemma_ghost_search_correctness` proves the ghost-level search logic over
+//   `Seq<int>` is sound. `lemma_find_thread_completeness` restates spec-level
+//   properties for downstream consumption.
 // - Well-formedness (including thread ID uniqueness) is preserved by all operations.
 // - View equality: identical fields produce equal views.
 // - Integration obligation lemmas: find_thread consistency and uniqueness
@@ -88,11 +91,14 @@ impl ZombieProcess {
     // bury() Lemmas
     //==============================================================================================
 
-    /// Lemma: bury() returns the correct zombie thread IDs.
-    pub proof fn lemma_bury_preserves_zombie_ids(&self)
+    /// Lemma: bury() returns components matching the abstract View.
+    pub proof fn lemma_bury_matches_view(&self)
         requires
             self.wf(),
         ensures
+            self.zombie_thread_ids@ == self@.zombie_thread_ids,
+            self.spec_pid() == self@.pid,
+            self.spec_status() == self@.status,
             self.zombie_thread_ids@.len() >= 1,
             self.zombie_thread_ids@.len() == self.spec_zombie_count(),
     {
@@ -141,15 +147,60 @@ impl ZombieProcess {
     {
     }
 
-    /// Refinement assumption: the original `find_thread()` implementation
-    /// (which uses `iter().find(|t| t.id() == tid)` on the zombie thread list)
-    /// produces a result that matches `spec_find_thread()`.
+    /// Lemma: Ghost-level search correctness.
     ///
-    /// This cannot be verified within this module because Verus cannot express
-    /// the reference-typed return value (`ThreadRef`). When Verus supports
-    /// reference-typed returns, this should be replaced with a verified
-    /// implementation.
-    pub proof fn lemma_find_thread_refinement_assumption(&self, tid: int)
+    /// Verifies the search logic over the ghost `Seq<int>` by proving that
+    /// `spec_has_zombie_thread` (used by `spec_find_thread`) correctly captures
+    /// membership: if a thread ID is at any valid index in the zombie list,
+    /// then `spec_has_zombie_thread` returns true, and `spec_find_thread`
+    /// returns `Some(0)`. Conversely, if no index matches, both return false/None.
+    ///
+    /// This proves the ghost-level search is sound even though the executable
+    /// `iter().find(...)` is not modeled. The gap between this proof and the
+    /// real implementation is: (1) the iterator visits elements in order and
+    /// uses `t.id() == tid` as the predicate, and (2) `ThreadIdentifier`
+    /// equality matches integer equality in the ghost model.
+    pub proof fn lemma_ghost_search_correctness(&self, tid: int)
+        requires
+            self.wf(),
+        ensures
+            // Forward: if tid is at any index, spec finds it.
+            (forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
+                && self.zombie_thread_ids@[k] == tid
+                ==> self.spec_find_thread(tid) == Some(0int)),
+            // Backward: if spec finds it, there exists a valid index.
+            (self.spec_find_thread(tid) == Some(0int) ==>
+                exists|k: int| 0 <= k < self.zombie_thread_ids@.len()
+                    && self.zombie_thread_ids@[k] == tid),
+            // Completeness: if no index matches, spec returns None.
+            ((forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
+                ==> self.zombie_thread_ids@[k] != tid)
+                ==> self.spec_find_thread(tid) == None::<int>),
+    {
+        // Forward direction: any matching index triggers spec_seq_contains.
+        assert forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
+            && self.zombie_thread_ids@[k] == tid
+            implies self.spec_find_thread(tid) == Some(0int)
+        by {
+            // Witness k satisfies spec_seq_contains.
+            assert(Self::spec_seq_contains(self.zombie_thread_ids@, tid));
+        }
+
+        // Backward direction: spec_has_zombie_thread implies existential.
+        // This follows directly from the definition of spec_seq_contains.
+
+        // Completeness: no matching index means not contained.
+        if forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
+            ==> self.zombie_thread_ids@[k] != tid {
+            // Negate the existential in spec_seq_contains.
+            assert(!Self::spec_seq_contains(self.zombie_thread_ids@, tid));
+        }
+    }
+
+    /// Lemma: spec_find_thread completeness — restates spec-level search
+    /// properties for downstream consumption. This is a spec-level property
+    /// (not a refinement proof linking to executable code).
+    pub proof fn lemma_find_thread_completeness(&self, tid: int)
         requires
             self.wf(),
         ensures

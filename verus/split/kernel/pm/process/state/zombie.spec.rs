@@ -37,10 +37,15 @@
 // - `find_thread()` and `find_thread_mut()` are modeled spec-only because
 //   they return reference types (`ThreadRef`, `ThreadRefMut`) that Verus
 //   cannot express. The spec model `spec_find_thread()` captures the search
-//   semantics over the zombie list.
+//   semantics over the zombie list. The executable iterator-based search is
+//   NOT verified — `spec_find_thread_integration_obligation` is the formal
+//   contract that remains **unproven** until integration proofs discharge it.
+//   `lemma_ghost_search_correctness` proves the ghost-level search logic.
 // - `state()` / `state_mut()` return references to ProcessState in the original.
 //   `state_mut()` permits arbitrary mutation; callers must preserve PID
-//   immutability. Modeled as external_body with frame conditions.
+//   immutability. PID immutability is enforced architecturally (ProcessState
+//   has no public PID setter). This is a TRUST ASSUMPTION on the ProcessState
+//   module's API surface. Modeled as external_body with frame conditions.
 
 use vstd::prelude::*;
 
@@ -81,10 +86,15 @@ impl ZombieProcess {
         self.zombie_thread_ids@.len()
     }
 
+    /// Spec helper: checks if a sequence contains a given value.
+    pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
+        exists|i: int| 0 <= i < s.len() && s[i] == tid
+    }
+
     /// Spec function: checks if a thread ID is in the zombie list.
+    /// Defined in terms of `spec_seq_contains` for consistency.
     pub open spec fn spec_has_zombie_thread(&self, tid: int) -> bool {
-        exists|i: int| 0 <= i < self.zombie_thread_ids@.len()
-            && self.zombie_thread_ids@[i] == tid
+        Self::spec_seq_contains(self.zombie_thread_ids@, tid)
     }
 
     /// Spec function: models `find_thread()` — returns whether a thread is found.
@@ -101,11 +111,6 @@ impl ZombieProcess {
         }
     }
 
-    /// Spec helper: checks if a sequence contains a given value.
-    pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
-        exists|i: int| 0 <= i < s.len() && s[i] == tid
-    }
-
     /// Spec helper: checks whether a sequence has no duplicate elements.
     pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
@@ -118,6 +123,12 @@ impl ZombieProcess {
     /// - The zombie thread count matches the ghost sequence length.
     /// - There is at least one zombie thread (NonEmptyVecDeque invariant).
     /// - No duplicate thread IDs within the zombie list.
+    ///
+    /// Note: Thread ID validity (e.g., non-negative, within valid range) is
+    /// NOT enforced here. The original `ThreadIdentifier` is a structured type
+    /// with constraints, but thread IDs are modeled as unbounded `int` in this
+    /// ghost model. Thread ID validity is outside this module's verification
+    /// scope and must be established by the thread module's verification.
     pub open spec fn wf(&self) -> bool {
         &&& self.zombie_count as nat == self.zombie_thread_ids@.len()
         &&& self.zombie_thread_ids@.len() >= 1
