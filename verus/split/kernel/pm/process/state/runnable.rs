@@ -382,7 +382,7 @@ impl RunnableProcess {
         let ghost new_interrupted_ids: Seq<int> =
             self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
 
-        if self.interrupted_thread_ids@.len() > 0nat || self.sleeping_thread_ids@.len() > 0nat {
+        if self.interrupted_thread_ids@.len() as int > 0 || self.sleeping_thread_ids@.len() as int > 0 {
             proof {
                 assert(new_interrupted_ids.len() ==
                     self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
