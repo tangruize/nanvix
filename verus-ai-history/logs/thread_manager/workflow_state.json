@@ -1,6 +1,6 @@
 {
   "module_name": "thread_manager",
-  "outer_iteration": 1,
+  "outer_iteration": 2,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "736cbe87-fe76-4004-a423-fe8c63b1a8ee",
