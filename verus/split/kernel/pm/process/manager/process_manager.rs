@@ -591,6 +591,14 @@ impl ProcessManagerInner {
     /// Internal thread state changes (marking the running thread for termination) are
     /// abstracted away as part of trust boundary T3.
     ///
+    /// # Note on Verification Power
+    ///
+    /// This function takes `&self` (immutable reference), so the proof that `wf()`
+    /// is preserved is trivially correct. The actual verification value lies in the
+    /// *preconditions*: the function documents that only non-kernel PIDs in the ready
+    /// queue reach this code path. The internal mutations (thread termination, process
+    /// state transitions) are entirely within trust boundary T3.
+    ///
     /// # Parameters
     ///
     /// - `pid`: PID of the ready process to terminate (must not be kernel PID 0).

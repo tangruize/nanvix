@@ -15,6 +15,7 @@
 // - wakeup_to_ready preserves wf: suspended→ready.
 // - resume_all_interrupted preserves wf: all interrupted→ready.
 // - terminate_ready preserves wf: non-kernel ready→zombie.
+// - terminate_ready_stays_ready: non-kernel ready process stays ready (T3 boundary).
 // - terminate_suspended preserves wf: suspended→interrupted.
 // - harvest_zombie preserves wf: zombie removed.
 // - Kernel liveness: the kernel PID is always alive.
