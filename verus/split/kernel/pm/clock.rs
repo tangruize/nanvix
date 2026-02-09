@@ -204,8 +204,11 @@ impl TimerTicks {
                     old(self).spec_major(), u32::MAX as nat, Self::MINOR_MODULUS(),
                 );
                 assert(!old(self).spec_is_max());
-                assert(self.spec_ticks() == old(self).spec_ticks() + 1);
-                assert(self.spec_ticks() == old(self).spec_next_ticks());
+                // self.major unchanged, self.minor = old(self).minor + 1.
+                assert(self.spec_major() == old(self).spec_major());
+                assert(self.spec_minor() == old(self).spec_minor() + 1);
+                // spec_ticks = major * M + minor = old.major * M + (old.minor + 1).
+                assert(self.spec_ticks() == old(self).spec_major() * Self::MINOR_MODULUS() + old(self).spec_minor() + 1);
                 self.lemma_always_wf();
             }
         } else {
@@ -221,9 +224,13 @@ impl TimerTicks {
                     );
                     assert(old(self).spec_ticks() < u64::MAX as nat);
                     assert(!old(self).spec_is_max());
-                    assert(self.spec_ticks() == (old(self).spec_major() + 1) * Self::MINOR_MODULUS());
-                    assert(self.spec_ticks() == old(self).spec_ticks() + 1);
-                    assert(self.spec_ticks() == old(self).spec_next_ticks());
+                    // self.major = old.major + 1, self.minor = 0.
+                    // new_ticks = (old.major + 1) * M + 0.
+                    // old_ticks = old.major * M + u32::MAX = old.major * M + (M - 1).
+                    // new_ticks = old.major * M + M = old_ticks + 1.
+                    assert((old(self).spec_major() + 1) * Self::MINOR_MODULUS()
+                        == old(self).spec_major() * Self::MINOR_MODULUS() + Self::MINOR_MODULUS())
+                        by(nonlinear_arith);
                     self.lemma_always_wf();
                 }
             } else {
