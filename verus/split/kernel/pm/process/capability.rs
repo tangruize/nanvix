@@ -53,7 +53,10 @@ verus! {
 /// Each bit in the underlying `u8` corresponds to a `Capability` variant.
 /// Bit `i` is set if and only if the capability with discriminant `i` is granted.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Capabilities(u8);
+pub struct Capabilities {
+    /// The raw bitfield value.
+    pub bits: u8,
+}
 
 //==================================================================================================
 // Implementations
@@ -62,7 +65,7 @@ pub struct Capabilities(u8);
 impl Capabilities {
     /// Spec function: returns the default (empty) Capabilities value.
     pub open spec fn spec_default() -> Capabilities {
-        Capabilities(0u8)
+        Capabilities { bits: 0u8 }
     }
 
     /// Creates a new, empty Capabilities value.
@@ -75,7 +78,7 @@ impl Capabilities {
             result.spec_bits() == 0u8,
             result == Capabilities::spec_default(),
     {
-        Capabilities(0u8)
+        Capabilities { bits: 0u8 }
     }
 
     /// Sets a capability bit.
@@ -102,16 +105,16 @@ impl Capabilities {
         assert(d <= 4u32);
         assert(d < 8);
 
-        let old_bits: Ghost<u8> = Ghost(self.0);
+        let old_bits: Ghost<u8> = Ghost(self.bits);
 
-        self.0 = self.0 | (1u8 << d);
+        self.bits = self.bits | (1u8 << d);
 
-        assert(self.0 == (old_bits@ | (1u8 << d)) as u8);
+        assert(self.bits == (old_bits@ | (1u8 << d)) as u8);
 
         // Prove the target bit is set.
-        assert((self.0 & (1u8 << d)) != 0u8) by (bit_vector)
+        assert((self.bits & (1u8 << d)) != 0u8) by (bit_vector)
             requires
-                self.0 == (old_bits@ | (1u8 << d)) as u8,
+                self.bits == (old_bits@ | (1u8 << d)) as u8,
                 0 <= d <= 4,
         ;
     }
@@ -140,16 +143,16 @@ impl Capabilities {
         assert(d <= 4u32);
         assert(d < 8);
 
-        let old_bits: Ghost<u8> = Ghost(self.0);
+        let old_bits: Ghost<u8> = Ghost(self.bits);
 
-        self.0 = self.0 & !(1u8 << d);
+        self.bits = self.bits & !(1u8 << d);
 
-        assert(self.0 == (old_bits@ & !(1u8 << d)) as u8);
+        assert(self.bits == (old_bits@ & !(1u8 << d)) as u8);
 
         // Prove the target bit is cleared.
-        assert((self.0 & (1u8 << d)) == 0u8) by (bit_vector)
+        assert((self.bits & (1u8 << d)) == 0u8) by (bit_vector)
             requires
-                self.0 == (old_bits@ & !(1u8 << d)) as u8,
+                self.bits == (old_bits@ & !(1u8 << d)) as u8,
                 0 <= d <= 4,
         ;
     }
@@ -175,7 +178,7 @@ impl Capabilities {
 
         assert(d <= 4u32);
         assert(d < 8);
-        (self.0 & (1u8 << d)) != 0u8
+        (self.bits & (1u8 << d)) != 0u8
     }
 }
 
@@ -190,7 +193,7 @@ impl Default for Capabilities {
             result.spec_bits() == 0u8,
             result == Capabilities::spec_default(),
     {
-        Capabilities(0u8)
+        Capabilities { bits: 0u8 }
     }
 }
 

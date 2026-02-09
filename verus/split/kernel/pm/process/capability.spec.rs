@@ -24,22 +24,22 @@ pub struct CapabilitiesView {
 impl Capabilities {
     /// Spec function: returns the raw bitfield value.
     pub open spec fn spec_bits(&self) -> u8 {
-        self.0
+        self.bits
     }
 
     /// Spec function: checks whether a specific capability bit is set.
     pub open spec fn spec_has(&self, cap: Capability) -> bool {
-        (self.0 & (1u8 << cap.spec_discriminant())) != 0u8
+        (self.bits & (1u8 << cap.spec_discriminant())) != 0u8
     }
 
     /// Spec function: returns the bitfield after setting a capability bit.
     pub open spec fn spec_set(&self, cap: Capability) -> u8 {
-        (self.0 | (1u8 << cap.spec_discriminant())) as u8
+        (self.bits | (1u8 << cap.spec_discriminant())) as u8
     }
 
     /// Spec function: returns the bitfield after clearing a capability bit.
     pub open spec fn spec_clear(&self, cap: Capability) -> u8 {
-        (self.0 & !(1u8 << cap.spec_discriminant())) as u8
+        (self.bits & !(1u8 << cap.spec_discriminant())) as u8
     }
 
     /// Spec function: well-formedness predicate.
@@ -60,7 +60,7 @@ impl Capabilities {
     /// Valid bits are 0..=4, corresponding to the 5 Capability variants.
     /// The upper 3 bits (5, 6, 7) should not be set.
     pub open spec fn spec_only_valid_bits(&self) -> bool {
-        self.0 & 0b1110_0000u8 == 0u8
+        self.bits & 0b1110_0000u8 == 0u8
     }
 }
 
@@ -72,7 +72,7 @@ impl View for Capabilities {
     type V = CapabilitiesView;
 
     open spec fn view(&self) -> CapabilitiesView {
-        CapabilitiesView { bits: self.0 }
+        CapabilitiesView { bits: self.bits }
     }
 }
 
