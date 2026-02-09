@@ -1,0 +1,35 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:46:33 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/runnable.proof.rs:443:13
+    |
+439 |       pub proof fn lemma_earliest_ready_index_bounds(&self)
+    |       ----------------------------------------------------- at the end of the function body
+...
+443 | /             ({
+444 | |                 let idx: int = self.spec_earliest_ready_index();
+445 | |                 0 <= idx < self.ready_admission_times@.len()
+446 | |                 && 0 <= idx < self.ready_thread_ids@.len()
+...   |
+449 | |                         <= #[trigger] self.ready_admission_times@[j]
+450 | |             }),
+    | |______________^ failed this postcondition
+
+verification results:: 39 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 39
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:39, errors:1)
