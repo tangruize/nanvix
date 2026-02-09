@@ -166,6 +166,7 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
                     sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
                     zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                    interrupt_reason: Ghost(0int),
                 };
                 running.spec_pid() == self.spec_pid()
             }),
@@ -694,6 +695,7 @@ impl RunningProcess {
                     interrupted_thread_ids: Ghost(Seq::empty()),
                     sleeping_thread_ids: Ghost(Seq::empty()),
                     zombie_thread_ids: Ghost(Seq::empty()),
+                    interrupt_reason: Ghost(0int),
                 };
                 r.spec_pid() == pid
             }),

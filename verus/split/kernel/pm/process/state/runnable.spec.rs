@@ -55,10 +55,19 @@
 // - `state()` / `state_mut()`: Return `&ProcessState` / `&mut ProcessState`.
 //   Verus cannot express these reference return types. The relevant property
 //   (PID access) is modeled via `pid_i32()` and `spec_pid()`.
+//   Note: `state_mut()` allows arbitrary mutation of the inner `ProcessState`,
+//   which could affect invariants (e.g., vmem mapping). Cross-module verification
+//   of `ProcessState` mutations should be addressed when verifying callers.
 // - `find_thread()` / `find_thread_mut()`: Return `Option<ThreadRef>` containing
 //   references into internal collections. Modeled spec-only via `spec_find_thread`.
-// - `earliest_admission_time()`: Returns a ghost `int` — purely spec-level,
-//   modeled via `spec_earliest_admission_time()` with proven bounds.
+//   Callers of these functions should independently verify the correctness of
+//   the returned reference's properties against the `spec_find_thread` model.
+// - `earliest_admission_time()`: Returns `SystemTime` which maps to ghost `int`.
+//   Modeled via `spec_earliest_admission_time()` with proven bounds.
+//   The original has a fallback `unwrap_or(clock::now())` for the case when the
+//   iterator returns no minimum. This fallback is dead code given the
+//   `NonEmptyVecDeque` invariant (the ready list always has at least one element).
+//   The spec model correctly omits this unreachable fallback.
 //
 // ## Oracle Parameter Justification
 //
@@ -118,6 +127,8 @@ pub struct RunningProcessView {
     pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs (may be empty).
     pub zombie_thread_ids: Seq<int>,
+    /// Interrupt reason (unconstrained at this abstraction level).
+    pub interrupt_reason: int,
 }
 
 /// Abstract view of an InterruptedProcess (boundary type).
@@ -150,8 +161,9 @@ pub struct ZombieProcessView {
 /// Models `ErrorCode::Interrupted.into()` from the original code.
 /// Value 4 corresponds to EINTR: see `src/libs/sysapi/src/errno.rs:21`
 /// and `ErrorCode::Interrupted` at `src/libs/sysapi/src/error.rs`.
-/// CROSS-MODULE-CHECK: Confirm this matches `sys::error::ErrorCode::Interrupted as i32`
-/// if the error module changes.
+/// TODO (cross-module/CI): Add a CI check or cross-module assertion that
+/// validates this constant against the actual `ErrorCode::Interrupted` value.
+/// If the error code numbering changes, this must be updated accordingly.
 pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 4 }
 
 //==================================================================================================
@@ -327,6 +339,8 @@ impl RunnableProcess {
     /// can only be in one collection. This is a trust assumption inherited from
     /// the type system. The content-level postconditions on run(), terminate(),
     /// wakeup(), and add_thread() verify that operations move IDs correctly.
+    /// See `spec_ids_disjoint()` for an optional disjointness predicate available
+    /// to downstream cross-module proofs.
     pub open spec fn wf(&self) -> bool {
         // At least one ready thread (NonEmptyVecDeque invariant).
         &&& self.ready_thread_ids@.len() >= 1
@@ -338,6 +352,33 @@ impl RunnableProcess {
         // Exec counters match ghost sequence lengths.
         &&& self.interrupted_count as nat == self.interrupted_thread_ids@.len()
         &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
+    }
+
+    /// Spec helper: checks whether two sequences share no common elements.
+    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+        forall|i: int, j: int|
+            0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
+    }
+
+    /// Spec function: pairwise thread ID disjointness across all four lists.
+    ///
+    /// NOT part of `wf()` — this is a trust assumption inherited from Rust's
+    /// ownership model. Provided as an optional predicate for downstream
+    /// cross-module proofs that need to assert thread ID exclusivity.
+    pub open spec fn spec_ids_disjoint(&self) -> bool {
+        // ready vs interrupted.
+        Self::spec_seqs_disjoint(self.ready_thread_ids@, self.interrupted_thread_ids@)
+        // ready vs sleeping.
+        && Self::spec_seqs_disjoint(self.ready_thread_ids@, self.sleeping_thread_ids@)
+        // ready vs zombie.
+        && Self::spec_seqs_disjoint(self.ready_thread_ids@, self.zombie_thread_ids@)
+        // interrupted vs sleeping.
+        && Self::spec_seqs_disjoint(self.interrupted_thread_ids@, self.sleeping_thread_ids@)
+        // interrupted vs zombie.
+        && Self::spec_seqs_disjoint(self.interrupted_thread_ids@, self.zombie_thread_ids@)
+        // sleeping vs zombie.
+        && Self::spec_seqs_disjoint(self.sleeping_thread_ids@, self.zombie_thread_ids@)
     }
 }
 
@@ -439,6 +480,7 @@ impl View for RunningProcess {
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
+            interrupt_reason: self.interrupt_reason@,
         }
     }
 }

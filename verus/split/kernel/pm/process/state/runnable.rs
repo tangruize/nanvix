@@ -144,6 +144,10 @@ pub struct RunnableProcess {
 ///
 /// Models the original `RunningProcess` from the sibling module.
 /// All fields are ghost since this is a purely abstract boundary model.
+/// The `interrupt_reason` field tracks the `Option<InterruptReason>` from
+/// the original `run()` return, signaling to downstream verifiers that
+/// this data flows through the transition (even though its value is
+/// unconstrained at this abstraction level).
 pub struct RunningProcess {
     /// Process identifier (from the inner ProcessState).
     pub pid: Ghost<int>,
@@ -157,6 +161,10 @@ pub struct RunningProcess {
     pub sleeping_thread_ids: Ghost<Seq<int>>,
     /// Zombie thread IDs.
     pub zombie_thread_ids: Ghost<Seq<int>>,
+    /// Interrupt reason from the previous run (unconstrained ghost).
+    /// Models `Option<InterruptReason>` from the original return type.
+    /// Downstream modules can constrain this value in their own specs.
+    pub interrupt_reason: Ghost<int>,
 }
 
 /// A process that was interrupted (boundary model).
@@ -240,6 +248,9 @@ impl RunnableProcess {
     /// Creates a runnable process from existing state and thread lists.
     ///
     /// Models the original `RunnableProcess::from_state(...)`.
+    /// Note: The original is `pub(super)` (used by sibling state modules);
+    /// here it is `pub` for Verus proof ergonomics (lemma construction).
+    /// This visibility difference has no functional impact.
     ///
     /// # Parameters
     ///
@@ -362,6 +373,7 @@ impl RunnableProcess {
             interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
             sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
             zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+            interrupt_reason: Ghost(0int),  // Unconstrained; downstream may refine.
         }
     }
 
@@ -474,6 +486,17 @@ impl RunnableProcess {
     ///   Required because `Seq::contains()` is spec-only and cannot be evaluated
     ///   at exec level. The precondition constrains this to match ghost state.
     ///
+    /// ## Trust Boundary (wakeup oracle)
+    ///
+    /// The `found` boolean is the only remaining oracle parameter. The verification
+    /// proves that _given_ a correct search result, the state transition is correct.
+    /// The search itself (iterating sleeping threads to find `tid`) is delegated
+    /// to the caller via the precondition. The `sleeping_count == 0` case is
+    /// verified without the oracle: when the exec counter is zero, `wf()` guarantees
+    /// the ghost sleeping list is empty, so `found` must be false. Callers of
+    /// `find_thread`/`find_thread_mut` should independently verify the correctness
+    /// of their returned references against this spec model.
+    ///
     /// # Returns
     ///
     /// Ok with updated state if found, Err with unchanged state if not found.
@@ -525,6 +548,22 @@ impl RunnableProcess {
                 },
             },
     {
+        // Verified early return: when sleeping_count == 0, the sleeping list is
+        // empty (by wf()), so spec_seq_contains is false and found must be false.
+        // This case is fully verified without the oracle.
+        if self.sleeping_count == 0 {
+            return Err(RunnableProcess {
+                pid: self.pid,
+                ready_thread_ids: Ghost(self.ready_thread_ids@),
+                ready_admission_times: Ghost(self.ready_admission_times@),
+                interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
+                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
+                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                interrupted_count: self.interrupted_count,
+                sleeping_count: self.sleeping_count,
+            });
+        }
+
         if found {
             // Derive the index via proof using `choose`.
             let ghost found_idx: int = choose|i: int|
