@@ -272,6 +272,8 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
+            // Same thread implies same process.
+            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             self.wf(),
             self.inner == new_inner,
@@ -305,6 +307,8 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid >= 0i32,
             // Cannot sleep the kernel.
             old(self).current_pid != KERNEL_PID_RAW,
+            // Same thread implies same process.
+            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             self.wf(),
             self.inner == new_inner,
@@ -339,6 +343,8 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid >= 0i32,
             // Cannot exit the kernel.
             old(self).current_pid != KERNEL_PID_RAW,
+            // Same thread implies same process.
+            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             self.wf(),
             self.inner == new_inner,
@@ -372,6 +378,8 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid >= 0i32,
             // Cannot exit the kernel thread.
             old(self).current_tid != KERNEL_TID_RAW,
+            // Same thread implies same process.
+            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             self.wf(),
             self.inner == new_inner,
