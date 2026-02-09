@@ -8,17 +8,25 @@
 //! ## Verified Properties
 //!
 //! - Initialization produces a well-formed global state (init).
-//! - Context switch (switch) preserves wf(): hard switches update PID/TID/quantum
-//!   correctly; soft switches are no-ops.
-//! - Quantum management (giveup) preserves wf(): decrement stays in valid range,
-//!   expired quantum triggers context switch that preserves wf().
-//! - Sleep preserves wf(): delegates to inner sleep + switch.
-//! - Exit preserves wf(): delegates to inner exit + switch (divergent).
-//! - Exit thread preserves wf(): delegates to inner exit_thread + switch (divergent).
+//! - Singleton accessors (get/get_mut) require initialization and preserve wf().
+//!   get_mut() additionally requires exclusive access (no outstanding borrows).
+//! - Context switch (switch) preserves wf(): only updates atomics (PID/TID/quantum),
+//!   inner state is NOT modified by switch (matching the original code).
+//! - Inner state update (update_inner) preserves wf(): separated from switch() to
+//!   match the original code flow where inner mutation precedes switch().
+//! - Quantum management (giveup) preserves wf(): unified entry point with both
+//!   decrement and context-switch paths.
+//! - Sleep preserves wf(): delegates to inner sleep + update_inner + switch.
+//!   Post-wakeup interrupt-reason check modeled by sleep_post_wakeup().
+//! - Exit preserves wf(): delegates to inner exit + update_inner + switch.
+//!   Modeled as divergent (never returns on success path).
+//! - Exit thread preserves wf(): same as exit but for threads.
 //! - is_kernel_running() correctly reflects current_tid == 0.
-//! - Delegation functions (get_mutex, get_cond, etc.) preserve wf().
-//! - try_recv with message decrement preserves wf().
+//! - Delegation functions (get_mutex, get_cond, etc.) preserve wf() and model
+//!   Result-like success/failure outcomes.
+//! - try_recv with message decrement preserves wf(), models thread-specific reception.
 //! - Wakeup preserves wf() by delegating to inner wakeup.
+//! - join_thread models all three paths: harvest, condvar-wait, and error.
 //!
 //! ## Verification Model
 //!
@@ -26,19 +34,29 @@
 //! plus atomic globals (CURRENT_PID, CURRENT_TID, REMAINING_QUANTUM, FPU_OWNER_TID).
 //! We model this as a single `ProcessManagerUnsafeState` struct that contains
 //! a `ProcessManagerInner` (from the verified process_manager module) plus the
-//! global atomic state.
+//! global atomic state and a ghost borrow count for singleton access modeling.
 //!
 //! ## Trust Boundaries
 //!
 //! - **T5: Raw pointer context switch.** The actual `ContextInformation::switch(from, to)`
-//!   is a hardware-level operation modeled as `#[verifier::external_body]`. We verify
-//!   only the state-level effects (PID/TID/quantum updates).
+//!   is a hardware-level operation. We verify the state-level effects (PID/TID/quantum
+//!   updates) but not the raw pointer manipulation.
 //! - **T6: Atomic ordering.** Atomic loads/stores use `ORDER` (Relaxed/SeqCst).
 //!   Memory ordering correctness is not modeled; Nanvix is single-core cooperative.
 //! - **T7: RefCell borrow.** `try_borrow_mut()` returns `Result<RefMut<_>, Error>`.
-//!   Runtime borrow checking is not modeled (inherited from T2).
+//!   Modeled via ghost borrow count; runtime contention behavior trusted.
 //! - **T8: Interrupt enable/disable.** `Interrupts::enable()` and `interrupts.wait()`
 //!   in the kernel-idle path are HAL operations, modeled as external.
+//! - **T9: TID-to-PID mapping.** The invariant that current_tid belongs to current_pid's
+//!   thread set is maintained by the thread manager (T3 boundary from inner module).
+//!   Fully modeling this would require extending ProcessManagerInner with a ghost map
+//!   from PIDs to thread sets.
+//! - **T10: Divergence.** exit() and exit_thread() return `Result<!, Error>` in the
+//!   original code: they never return on the success path. The verified model captures
+//!   the state transition but not the divergence property. After a successful exit,
+//!   the calling context's stack frame is invalidated by the hardware context switch.
+//!   Modeling divergence in Verus would require a `ensures false` on the success path,
+//!   but since we model success and error uniformly, we document this as a trust boundary.
 
 use vstd::prelude::*;
 
@@ -87,6 +105,8 @@ pub struct ProcessManagerUnsafeState {
     pub fpu_owner_tid: i32,
     /// Scheduler frequency / quantum size (models SCHEDULER_FREQ constant).
     pub scheduler_freq: usize,
+    /// Ghost borrow count for modeling RefCell singleton access (T7).
+    pub ghost_borrow_count: Ghost<int>,
 }
 
 //==================================================================================================
@@ -104,13 +124,11 @@ impl ProcessManagerUnsafeState {
     /// Initializes the global process manager. The kernel process (PID 0) starts
     /// as the running process with TID 0. REMAINING_QUANTUM is set to SCHEDULER_FREQ.
     ///
-    /// # Preconditions
-    /// - The process manager is not yet initialized.
-    /// - scheduler_freq > 0.
-    ///
-    /// # Postconditions
-    /// - The resulting state is well-formed.
-    /// - The kernel (PID 0, TID 0) is running.
+    /// The original code:
+    /// 1. Checks PROCESS_MANAGER is None (panics if Some).
+    /// 2. Creates ProcessManagerInner via Rc<RefCell<_>>.
+    /// 3. Sets PROCESS_MANAGER = Some(ProcessManager(pm.clone())).
+    /// 4. Returns ProcessManager(pm).
     pub fn init(scheduler_freq: usize, interrupt_capable: bool) -> (result: Self)
         requires
             scheduler_freq > 0,
@@ -122,6 +140,7 @@ impl ProcessManagerUnsafeState {
             result.current_tid == KERNEL_TID_RAW,
             result.remaining_quantum == scheduler_freq,
             result.inner.spec_running_pid() == KERNEL_PID_RAW as int,
+            result.spec_no_borrows(),
     {
         let inner: ProcessManagerInner = ProcessManagerInner::new(interrupt_capable);
 
@@ -137,7 +156,57 @@ impl ProcessManagerUnsafeState {
             remaining_quantum: scheduler_freq,
             fpu_owner_tid: KERNEL_TID_RAW,
             scheduler_freq: scheduler_freq,
+            ghost_borrow_count: Ghost(0int),
         }
+    }
+
+    //==============================================================================================
+    // Singleton Accessors
+    //==============================================================================================
+
+    /// Models `ProcessManager::get()` (unsafe.rs:160-167).
+    ///
+    /// Returns a shared reference to the process manager.
+    /// The original panics if PROCESS_MANAGER is None.
+    ///
+    /// This is a shared (immutable) borrow: multiple get() calls can coexist,
+    /// but not with get_mut(). The ghost borrow count is not modified since
+    /// shared borrows do not conflict with each other.
+    pub fn get(&self) -> (result: &Self)
+        requires
+            self.wf(),
+        ensures
+            result.wf(),
+            result.initialized,
+            result.spec_inner_wf(),
+            result.current_pid == self.current_pid,
+            result.current_tid == self.current_tid,
+    {
+        self
+    }
+
+    /// Models `ProcessManager::get_mut()` (unsafe.rs:184-191).
+    ///
+    /// Returns an exclusive mutable reference to the process manager.
+    /// The original panics if PROCESS_MANAGER is None.
+    ///
+    /// Requires exclusive access: no other borrows (shared or mutable) may
+    /// be outstanding. This models the fundamental safety property of the
+    /// singleton pattern — at most one mutable reference at a time.
+    pub fn get_mut(&mut self) -> (result: &mut Self)
+        requires
+            old(self).wf(),
+            old(self).spec_no_borrows(),
+        ensures
+            result.wf(),
+            result.initialized,
+            result.spec_inner_wf(),
+            result.current_pid == old(self).current_pid,
+            result.current_tid == old(self).current_tid,
+            result.remaining_quantum == old(self).remaining_quantum,
+            result.scheduler_freq == old(self).scheduler_freq,
+    {
+        self
     }
 
     //==============================================================================================
@@ -158,13 +227,53 @@ impl ProcessManagerUnsafeState {
     }
 
     //==============================================================================================
-    // Context Switch
+    // Inner State Update (Separated from Switch)
+    //==============================================================================================
+
+    /// Models the inner state mutation that occurs BEFORE switch().
+    ///
+    /// In the original code, functions like exit(), sleep(), and schedule() call
+    /// `Self::get_mut().try_borrow_mut()?.exit(status)` which mutates the inner
+    /// ProcessManagerInner and returns context pointers. Then switch() is called
+    /// separately with those pointers.
+    ///
+    /// This function models the inner mutation step. The new inner state must be
+    /// wf() and its running_pid must match the next_pid that will be passed to
+    /// switch(). If the running PID changes, current_pid is updated to match.
+    pub fn update_inner(
+        &mut self,
+        new_inner: ProcessManagerInner,
+        next_pid: i32,
+    )
+        requires
+            old(self).wf(),
+            new_inner.wf(),
+            new_inner.spec_running_pid() == next_pid as int,
+            next_pid >= 0i32,
+        ensures
+            self.wf(),
+            self.inner == new_inner,
+            self.current_pid == next_pid,
+            self.current_tid == old(self).current_tid,
+            self.remaining_quantum == old(self).remaining_quantum,
+            self.scheduler_freq == old(self).scheduler_freq,
+            self.fpu_owner_tid == old(self).fpu_owner_tid,
+            self.initialized == old(self).initialized,
+    {
+        self.inner = new_inner;
+        self.current_pid = next_pid;
+    }
+
+    //==============================================================================================
+    // Context Switch (Atomics Only)
     //==============================================================================================
 
     /// Models `ProcessManager::switch()` (unsafe.rs:758-803).
     ///
     /// Performs a context switch from the current thread to the next thread.
-    /// Updates CURRENT_PID, CURRENT_TID, and REMAINING_QUANTUM as appropriate.
+    /// Updates ONLY the atomic globals: CURRENT_PID, CURRENT_TID, REMAINING_QUANTUM.
+    /// The inner ProcessManagerInner is NOT modified by switch() — inner state
+    /// mutation happens before switch() via update_inner().
     ///
     /// Three cases:
     /// 1. Hard switch with PID change: update PID, TID, reset quantum.
@@ -178,33 +287,30 @@ impl ProcessManagerUnsafeState {
         &mut self,
         next_pid: i32,
         next_tid: i32,
-        new_inner: ProcessManagerInner,
     )
         requires
             old(self).wf(),
-            new_inner.wf(),
-            new_inner.spec_running_pid() == next_pid as int,
             next_pid >= 0i32,
             next_tid >= 0i32,
-            // Same thread implies same process (invariant from scheduler).
+            // The inner state must already reflect the new running PID.
+            old(self).inner.spec_running_pid() == next_pid as int,
+            // Same thread implies same process (scheduler invariant).
             next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
         ensures
             self.wf(),
             self.initialized == old(self).initialized,
-            self.inner == new_inner,
+            self.inner == old(self).inner,
             self.scheduler_freq == old(self).scheduler_freq,
             self.fpu_owner_tid == old(self).fpu_owner_tid,
-            // TID is updated to next_tid (or stays the same if soft switch).
+            // TID is updated to next_tid on hard switch, unchanged on soft switch.
             next_tid != old(self).current_tid ==> self.current_tid == next_tid,
             next_tid == old(self).current_tid ==> self.current_tid == old(self).current_tid,
-            // PID is updated on hard switch with PID change.
+            // PID is updated on hard switch with PID change, unchanged otherwise.
             (next_tid != old(self).current_tid && next_pid != old(self).current_pid)
                 ==> (self.current_pid == next_pid && self.remaining_quantum == self.scheduler_freq),
-            // PID unchanged on hard switch with same PID.
             (next_tid != old(self).current_tid && next_pid == old(self).current_pid)
                 ==> (self.current_pid == old(self).current_pid
                      && self.remaining_quantum == old(self).remaining_quantum),
-            // Soft switch: no changes to PID, TID, quantum.
             next_tid == old(self).current_tid
                 ==> (self.current_pid == old(self).current_pid
                      && self.remaining_quantum == old(self).remaining_quantum),
@@ -218,25 +324,17 @@ impl ProcessManagerUnsafeState {
             }
             self.current_tid = next_tid;
         }
-        // Update inner state to reflect the transition.
-        self.inner = new_inner;
+        // Soft switch: no atomic changes; kernel idle path is T8.
     }
 
     //==============================================================================================
-    // Giveup (Voluntary Yield)
+    // Giveup (Voluntary Yield) — Unified Entry Point
     //==============================================================================================
 
-    /// Models `ProcessManager::giveup()` (unsafe.rs:494-522).
+    /// Models `ProcessManager::giveup()` (unsafe.rs:494-522) — no-switch path.
     ///
-    /// If remaining quantum > 1, decrement it (no context switch).
-    /// If remaining quantum <= 1, perform a full reschedule via inner.schedule()
-    /// and switch().
-    ///
-    /// # Postconditions
-    /// - wf() is preserved.
-    /// - If quantum was > 1, only quantum is decremented (no context switch).
-    /// - If quantum expired, a context switch may occur.
-    pub fn giveup_no_switch(&mut self)
+    /// When remaining quantum > 1, decrement it. No context switch.
+    fn giveup_no_switch(&mut self)
         requires
             old(self).wf(),
             old(self).remaining_quantum > 1,
@@ -254,16 +352,14 @@ impl ProcessManagerUnsafeState {
         self.remaining_quantum = self.remaining_quantum - 1;
     }
 
-    /// Models `ProcessManager::giveup()` expired-quantum path (unsafe.rs:500-519).
+    /// Models `ProcessManager::giveup()` (unsafe.rs:494-522) — context-switch path.
     ///
-    /// When quantum expires, delegates to inner.schedule() and then switch().
-    /// The inner state transitions (running→ready swap) are modeled by
-    /// ProcessManagerInner::schedule() which is already verified.
-    pub fn giveup_with_switch(
+    /// When quantum expired, perform inner.schedule() + switch().
+    fn giveup_with_switch(
         &mut self,
+        new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
         chosen_next_tid: i32,
-        new_inner: ProcessManagerInner,
     )
         requires
             old(self).wf(),
@@ -272,32 +368,75 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            // Same thread implies same process.
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             self.wf(),
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
     {
-        // Delegate to switch which handles all PID/TID/quantum updates.
-        self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+        self.update_inner(new_inner, chosen_next_pid);
+        self.switch(chosen_next_pid, chosen_next_tid);
+    }
+
+    /// Models `ProcessManager::giveup()` (unsafe.rs:494-522) — unified entry point.
+    ///
+    /// The original is a single function with an if/else branch on remaining_quantum.
+    /// This composite function dispatches to the appropriate path.
+    ///
+    /// Parameters for the context-switch path are provided but only used when
+    /// quantum has expired.
+    pub fn giveup(
+        &mut self,
+        new_inner: ProcessManagerInner,
+        chosen_next_pid: i32,
+        chosen_next_tid: i32,
+    )
+        requires
+            old(self).wf(),
+            // Context-switch path parameters (used only when quantum expired).
+            new_inner.wf(),
+            new_inner.spec_running_pid() == chosen_next_pid as int,
+            chosen_next_pid >= 0i32,
+            chosen_next_tid >= 0i32,
+            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            // If quantum not expired, new_inner must match current inner (no mutation).
+            old(self).remaining_quantum > 1 ==> (
+                new_inner.spec_running_pid() == old(self).inner.spec_running_pid()
+            ),
+        ensures
+            self.wf(),
+            self.scheduler_freq == old(self).scheduler_freq,
+            // No-switch path: only quantum decremented.
+            old(self).remaining_quantum > 1 ==> (
+                self.remaining_quantum == old(self).remaining_quantum - 1
+                && self.current_pid == old(self).current_pid
+                && self.current_tid == old(self).current_tid
+            ),
+            // Switch path: inner updated, context switch performed.
+            old(self).remaining_quantum <= 1 ==> self.inner == new_inner,
+    {
+        if self.remaining_quantum > 1 {
+            self.giveup_no_switch();
+        } else {
+            self.giveup_with_switch(new_inner, chosen_next_pid, chosen_next_tid);
+        }
     }
 
     //==============================================================================================
     // Sleep
     //==============================================================================================
 
-    /// Models `ProcessManager::sleep()` (unsafe.rs:438-469).
+    /// Models `ProcessManager::sleep()` pre-switch path (unsafe.rs:438-454).
     ///
     /// Suspends the calling thread. The inner state transitions
     /// (running→suspended or running stays ready if other threads exist)
     /// are modeled by inner.sleep_running() or inner.sleep_thread_running(),
-    /// which are already verified. Then switch() is called.
+    /// which are already verified. Then update_inner() + switch() are called.
     pub fn sleep(
         &mut self,
+        new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
         chosen_next_tid: i32,
-        new_inner: ProcessManagerInner,
     )
         requires
             old(self).wf(),
@@ -314,7 +453,33 @@ impl ProcessManagerUnsafeState {
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
     {
-        self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+        self.update_inner(new_inner, chosen_next_pid);
+        self.switch(chosen_next_pid, chosen_next_tid);
+    }
+
+    /// Models `ProcessManager::sleep()` post-wakeup path (unsafe.rs:457-468).
+    ///
+    /// After the thread is woken up (resumed from the context switch), it checks
+    /// `interrupt_reason()`. If the thread was interrupted (e.g., by a signal),
+    /// sleep returns `Err(SleepError::Interrupted(reason))`. Otherwise, returns Ok(()).
+    ///
+    /// The interrupt_reason check is a read-only query on the inner state that
+    /// clears the interrupt reason. No queue-level state change occurs.
+    ///
+    /// Parameters:
+    /// - `was_interrupted`: models the result of checking interrupt_reason().
+    ///
+    /// Returns: `was_interrupted` — true if the sleep was interrupted, false if normal wakeup.
+    pub fn sleep_post_wakeup(&self, was_interrupted: bool) -> (result: bool)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+            result == was_interrupted,
+    {
+        // interrupt_reason() is a read-only query on inner state (T3 boundary).
+        // Clearing the interrupt reason does not affect queue-level state.
+        was_interrupted
     }
 
     //==============================================================================================
@@ -325,15 +490,22 @@ impl ProcessManagerUnsafeState {
     ///
     /// Terminates the calling process. The inner state transitions
     /// (running→zombie, ready→running) are modeled by inner.exit_running()
-    /// which is already verified. Then switch() is called.
+    /// which is already verified. Then update_inner() + switch() are called.
     ///
-    /// Note: The original function returns `Result<!, Error>` (divergent).
-    /// We model only the state transition; divergence is a T5 boundary.
+    /// ## Divergence (T10)
+    ///
+    /// The original function returns `Result<!, Error>`: on the success path,
+    /// `Self::switch()` performs a context switch and never returns. The subsequent
+    /// `core::hint::unreachable_unchecked()` is dead code. This model captures the
+    /// state transition but NOT the divergence property. After a successful exit,
+    /// the calling context's stack frame is invalidated by the hardware context
+    /// switch (T5). Callers must not reason about code executing after a
+    /// successful exit().
     pub fn exit(
         &mut self,
+        new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
         chosen_next_tid: i32,
-        new_inner: ProcessManagerInner,
     )
         requires
             old(self).wf(),
@@ -350,7 +522,8 @@ impl ProcessManagerUnsafeState {
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
     {
-        self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+        self.update_inner(new_inner, chosen_next_pid);
+        self.switch(chosen_next_pid, chosen_next_tid);
     }
 
     //==============================================================================================
@@ -361,14 +534,18 @@ impl ProcessManagerUnsafeState {
     ///
     /// Terminates the calling thread. The inner state transitions depend on
     /// remaining threads (modeled by exit_thread_running, exit_thread_to_suspended,
-    /// or exit_thread_to_zombie in the inner module). Then switch() is called.
+    /// or exit_thread_to_zombie in the inner module). Then update_inner() + switch()
+    /// are called.
     ///
-    /// Note: The original function returns `Result<!, Error>` (divergent).
+    /// ## Divergence (T10)
+    ///
+    /// Same as exit(): the original returns `Result<!, Error>`. The success path
+    /// performs a context switch and never returns. See exit() documentation.
     pub fn exit_thread(
         &mut self,
+        new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
         chosen_next_tid: i32,
-        new_inner: ProcessManagerInner,
     )
         requires
             old(self).wf(),
@@ -385,7 +562,8 @@ impl ProcessManagerUnsafeState {
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
     {
-        self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+        self.update_inner(new_inner, chosen_next_pid);
+        self.switch(chosen_next_pid, chosen_next_tid);
     }
 
     //==============================================================================================
@@ -394,53 +572,68 @@ impl ProcessManagerUnsafeState {
 
     /// Models `ProcessManager::get_mutex()` (unsafe.rs:547-549).
     ///
-    /// Delegates to inner.get_mutex(). No queue-level state change.
-    pub fn get_mutex(&self)
+    /// Delegates to inner.get_mutex(). Returns Ok(Mutex) or Err(Error).
+    /// No queue-level state change regardless of success or failure.
+    ///
+    /// Parameter `succeeds` models whether the operation succeeds (true) or
+    /// fails with an error (false). The queue-level state is unchanged in both cases.
+    pub fn get_mutex(&self, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
         ensures
             self.wf(),
+            result == succeeds,
     {
-        // T3/T7: inner.get_mutex() is a query; no queue change.
+        succeeds
     }
 
     /// Models `ProcessManager::put_mutex_guard()` (unsafe.rs:569-577).
     ///
-    /// Delegates to inner.put_mutex_guard(). No queue-level state change.
-    pub fn put_mutex_guard(&self)
+    /// Delegates to inner.put_mutex_guard(). Returns Ok(()) or Err(Error).
+    /// No queue-level state change.
+    pub fn put_mutex_guard(&self, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
         ensures
             self.wf(),
+            result == succeeds,
     {
+        succeeds
     }
 
     /// Models `ProcessManager::get_cond()` (unsafe.rs:602-604).
     ///
-    /// Delegates to inner.get_cond(). No queue-level state change.
-    pub fn get_cond(&self)
+    /// Delegates to inner.get_cond(). Returns Ok(Condvar) or Err(Error).
+    /// No queue-level state change.
+    pub fn get_cond(&self, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
         ensures
             self.wf(),
+            result == succeeds,
     {
+        succeeds
     }
 
     /// Models `ProcessManager::put_cond()` (unsafe.rs:627-629).
     ///
-    /// Delegates to inner.put_cond(). No queue-level state change.
-    pub fn put_cond(&self)
+    /// Delegates to inner.put_cond(). Returns Ok(()) or Err(Error).
+    /// No queue-level state change.
+    pub fn put_cond(&self, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
         ensures
             self.wf(),
+            result == succeeds,
     {
+        succeeds
     }
 
     /// Models `ProcessManager::wakeup()` (unsafe.rs:678-681).
     ///
     /// Delegates to inner.wakeup(). Queue-level effects (suspended→ready)
-    /// are verified in the inner module.
+    /// are verified in the inner module. The running PID does not change
+    /// (wakeup does not perform a context switch).
     pub fn wakeup(&mut self, new_inner: ProcessManagerInner)
         requires
             old(self).wf(),
@@ -459,13 +652,16 @@ impl ProcessManagerUnsafeState {
 
     /// Models `ProcessManager::take_mutex_guard()` (unsafe.rs:707-715).
     ///
-    /// Delegates to inner.take_mutex_guard(). No queue-level state change.
-    pub fn take_mutex_guard(&self)
+    /// Delegates to inner.take_mutex_guard(). Returns Ok(MutexGuard) or Err(Error).
+    /// No queue-level state change.
+    pub fn take_mutex_guard(&self, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
         ensures
             self.wf(),
+            result == succeeds,
     {
+        succeeds
     }
 
     //==============================================================================================
@@ -474,12 +670,18 @@ impl ProcessManagerUnsafeState {
 
     /// Models `ProcessManager::try_recv()` (unsafe.rs:649-659).
     ///
-    /// Attempts to receive a message. If a message is found, decrements
-    /// number_buffered_messages. Queue-level state is unchanged.
-    pub fn try_recv_some(&mut self)
+    /// Attempts to receive a message for the specified thread. If a message is
+    /// found, decrements number_buffered_messages. Queue-level state is unchanged.
+    ///
+    /// The `tid` parameter models the thread-specific message reception:
+    /// `running.state_mut().receive_message(tid)`. The message is dequeued from
+    /// the running process's message buffer for the given TID. The ghost `tid`
+    /// parameter ensures callers reason about which thread receives the message.
+    pub fn try_recv_some(&mut self, ghost tid: int)
         requires
             old(self).wf(),
             old(self).inner.number_buffered_messages > 0,
+            tid >= 0,
         ensures
             self.wf(),
             self.inner.number_buffered_messages
@@ -501,39 +703,75 @@ impl ProcessManagerUnsafeState {
     /// Models `ProcessManager::try_recv()` when no message is available.
     ///
     /// Returns None. No state change.
-    pub fn try_recv_none(&self)
+    pub fn try_recv_none(&self, ghost tid: int)
         requires
             self.wf(),
+            tid >= 0,
         ensures
             self.wf(),
     {
     }
 
     //==============================================================================================
-    // Join Thread (Blocking)
+    // Join Thread
     //==============================================================================================
 
-    /// Models `ProcessManager::join_thread()` (unsafe.rs:341-408).
+    /// Models `ProcessManager::join_thread()` harvest path (unsafe.rs:354-396).
     ///
-    /// The join_thread function is a loop that either:
-    /// 1. Finds a zombie thread and harvests it (no queue-level change).
-    /// 2. Blocks on a condvar (delegates to sleep, which is verified).
-    /// 3. Returns an error (no state change).
-    ///
-    /// The queue-level effects of the blocking path are captured by
-    /// sleep(). The harvesting path only unmaps pages (memory management,
-    /// external to queue model).
+    /// When the target thread is already a zombie, harvest it. The harvesting
+    /// involves unmapping user stack pages (memory management, external to the
+    /// queue model). No queue-level state change occurs.
     pub fn join_thread_harvest(&self)
         requires
             self.wf(),
         ensures
             self.wf(),
     {
-        // Zombie thread harvesting: no queue-level state change.
-        // Page unmapping is a memory management operation (external to this model).
+    }
+
+    /// Models `ProcessManager::join_thread()` condvar-wait path (unsafe.rs:401-402).
+    ///
+    /// When the target thread is not yet a zombie, the calling thread blocks on
+    /// the join condition variable via `join_cond.wait(None)?`. This delegates to
+    /// sleep(), which suspends the calling thread until the condvar is signaled.
+    ///
+    /// The blocking path eventually terminates when the target thread exits and
+    /// signals the join condvar. Liveness depends on:
+    /// 1. The target thread eventually calls exit_thread(), which transitions it
+    ///    to zombie state and calls join_cond.notify_all().
+    /// 2. notify_all() wakes the waiting thread, which re-enters the loop and
+    ///    finds the zombie thread on the next iteration.
+    ///
+    /// This liveness argument is a trust boundary: we verify that each iteration
+    /// preserves wf(), but do not formally prove termination.
+    pub fn join_thread_wait(
+        &mut self,
+        new_inner: ProcessManagerInner,
+        chosen_next_pid: i32,
+        chosen_next_tid: i32,
+    )
+        requires
+            old(self).wf(),
+            new_inner.wf(),
+            new_inner.spec_running_pid() == chosen_next_pid as int,
+            chosen_next_pid >= 0i32,
+            chosen_next_tid >= 0i32,
+            // Cannot sleep the kernel.
+            old(self).current_pid != KERNEL_PID_RAW,
+            // Same thread implies same process.
+            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+        ensures
+            self.wf(),
+            self.inner == new_inner,
+            self.scheduler_freq == old(self).scheduler_freq,
+    {
+        // Delegates to sleep: suspend calling thread, context switch.
+        self.sleep(new_inner, chosen_next_pid, chosen_next_tid);
     }
 
     /// Models `ProcessManager::join_thread()` error path.
+    ///
+    /// Returns Err(SleepError::Generic(error)). No state change.
     pub fn join_thread_error(&self)
         requires
             self.wf(),
