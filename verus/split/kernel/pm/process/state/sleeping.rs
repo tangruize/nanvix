@@ -54,7 +54,9 @@
 //! - `wakeup_alarm(has_expired, interrupted_ids, remaining_ids)`: partition
 //!   oracle tied to content and length conservation constraints. All partition
 //!   elements must come from the original sleeping list, with no duplicates
-//!   within or across partitions.
+//!   within or across partitions. Both partitions must be subsequences of the
+//!   original sleeping list, capturing the stable partition ordering of the
+//!   original implementation.
 //!
 //! ## Fields
 //!
@@ -395,6 +397,9 @@ impl SleepingProcess {
             Self::spec_no_duplicates(interrupted_ids@),
             Self::spec_no_duplicates(remaining_ids@),
             Self::spec_seqs_disjoint(interrupted_ids@, remaining_ids@),
+            // Stable partition: both partitions preserve relative order from the original.
+            Self::spec_is_subsequence(interrupted_ids@, self.sleeping_thread_ids@),
+            Self::spec_is_subsequence(remaining_ids@, self.sleeping_thread_ids@),
             // If not expired, sleeping list is preserved.
             !has_expired ==> remaining_ids@ =~= self.sleeping_thread_ids@,
         ensures
@@ -410,6 +415,9 @@ impl SleepingProcess {
                     // Conservation: partition sizes sum to original.
                     && ip.interrupted_thread_ids@.len() + ip.sleeping_thread_ids@.len()
                         == self.spec_sleeping_count()
+                    // Stable ordering: partitions are subsequences of the original.
+                    && Self::spec_is_subsequence(ip.interrupted_thread_ids@, self.sleeping_thread_ids@)
+                    && Self::spec_is_subsequence(ip.sleeping_thread_ids@, self.sleeping_thread_ids@)
                 },
                 Err(sp) => {
                     !has_expired

@@ -179,6 +179,22 @@ impl SleepingProcess {
             ==> a[i] != b[j]
     }
 
+    /// Spec helper: checks whether `sub` is a subsequence of `full`.
+    ///
+    /// A sequence `sub` is a subsequence of `full` if every element of `sub`
+    /// appears in `full` in the same relative order. This models the stable
+    /// partition semantics of the original `wakeup_alarm()` implementation,
+    /// which processes threads front-to-back and preserves their order.
+    pub open spec fn spec_is_subsequence(sub: Seq<int>, full: Seq<int>) -> bool {
+        exists|indices: Seq<int>|
+            indices.len() == sub.len()
+            && (forall|k: int| #![auto] 0 <= k < indices.len() ==>
+                0 <= indices[k] < full.len() as int
+                && full[indices[k]] == sub[k])
+            && (forall|k: int, l: int| #![auto] 0 <= k < l < indices.len() ==>
+                indices[k] < indices[l])
+    }
+
     /// Spec function: well-formedness predicate.
     ///
     /// A SleepingProcess is well-formed when:
