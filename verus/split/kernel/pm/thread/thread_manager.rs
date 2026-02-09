@@ -55,10 +55,13 @@
 //! - Heap allocation via `Box::new` is assumed to succeed. The original code
 //!   panics on OOM (no-std default allocator behavior); the verification model
 //!   elides allocation by using `ThreadState` directly instead of `Box<ThreadState>`.
-//! - Overflow: create_thread requires next_id.value < i32::MAX. The
-//!   original code does not check for overflow; this precondition
-//!   formalizes the assumption that the system does not create more than
-//!   i32::MAX - 1 threads.
+//! - Overflow: create_thread requires next_id.value < i32::MAX. This is a
+//!   **strengthening** over the original code, which does not check for
+//!   overflow. The original `<i32>::from(self.next_id) + 1` wraps silently
+//!   in release mode, producing a negative thread ID — a latent bug.
+//!   The precondition makes the implicit no-overflow assumption explicit
+//!   and machine-checked. This divergence is intentional: the spec is
+//!   stronger than the original, not semantically equivalent.
 
 use crate::kernel::pm::thread::state::ThreadState;
 use crate::kernel::pm::thread::state::ThreadStateView;
@@ -125,6 +128,11 @@ pub struct ThreadManager {
 /// with ensures `result.spec_id() == self.spec_id()` and
 /// `result@ == self.state@`. This model verifies the dispatch layer
 /// on top of those per-variant guarantees.
+///
+/// **Aliasing/exclusivity:** The original `ThreadRef` is an immutable
+/// borrow that prevents modification while the borrow is live. This
+/// aliasing property is enforced by Rust's borrow checker and is
+/// outside the Verus verification model.
 pub enum ThreadRefModel {
     /// Ready variant (models `ThreadRef::Ready(&ReadyThread)`).
     Ready(ThreadState),
@@ -173,6 +181,20 @@ impl ThreadRefModel {
 /// in its own module due to the `&mut T` return type limitation.
 /// This model verifies the dispatch semantics; mutation safety relies
 /// on the per-module trust boundary documentation.
+///
+/// **Aliasing/exclusivity:** The original `ThreadRefMut` holds an
+/// exclusive (`&mut`) borrow, guaranteeing no aliased access while the
+/// borrow is live. This property is enforced by Rust's borrow checker
+/// and is outside the Verus verification model. The value-based model
+/// cannot express exclusive access.
+///
+/// **Caller proof obligations for mutation:** Any caller that mutates
+/// thread state through the real `thread_state_mut()` MUST ensure:
+/// 1. `self.wf()` is preserved after mutation.
+/// 2. `self.spec_id()` is unchanged after mutation.
+/// Failure to maintain these invariants invalidates all proven
+/// properties. See trust boundary documentation on each thread type's
+/// `thread_state_mut()` function (e.g., ready.rs:528, running.rs:492).
 pub enum ThreadRefMutModel {
     /// Ready variant (models `ThreadRefMut::Ready(&mut ReadyThread)`).
     Ready(ThreadState),
@@ -236,8 +258,10 @@ impl ReadyThread {
     ///
     /// # Cross-Module Verification Obligations
     ///
-    /// CROSS-MODULE-CHECK: When `ready.rs` is verified, confirm the real
-    /// `ReadyThread::new` implies all of:
+    /// CROSS-MODULE-CHECK: The real `ReadyThread::new` in `ready.rs`
+    /// (verus/split/kernel/pm/thread/ready.rs:259–280) has been verified
+    /// with postconditions that imply all of the below. Confirm these
+    /// remain consistent if ready.rs changes:
     /// - `result.spec_id() == id.spec_value()`
     /// - `result.spec_kernel_stack() == kernel_stack`
     /// - `result.spec_user_stack() == user_stack`
@@ -323,6 +347,13 @@ impl ThreadManager {
     /// # Returns
     ///
     /// A new ReadyThread with the assigned thread identifier.
+    ///
+    /// # Divergence from Original
+    ///
+    /// The `requires next_id.value < i32::MAX` precondition is a
+    /// **strengthening** over the original, which has no overflow check.
+    /// The original wraps silently in release mode, producing a negative
+    /// TID. This precondition catches a latent overflow bug.
     pub fn create_thread(
         &mut self,
         kernel_stack: Option<int>,
@@ -359,6 +390,20 @@ impl ThreadManager {
 /// # Returns
 ///
 /// A tuple containing the kernel thread (ID 0) and a new ThreadManager.
+///
+/// # Single-Initialization Assumption
+///
+/// The original code has a `TODO: check for double initialization`
+/// comment indicating the intent to prevent multiple calls. This
+/// verification model does not enforce single-call semantics: each
+/// call produces a fresh manager with a new kernel thread (ID 0).
+/// If `init()` were called more than once, the system would have
+/// duplicate kernel threads with ID 0, violating global ID uniqueness.
+///
+/// **System-level assumption:** `init()` is called exactly once during
+/// boot. Enforcing this requires a global ghost flag or module-level
+/// state, which is outside the scope of this module's verification.
+/// Callers are responsible for ensuring single-initialization.
 pub fn init() -> (result: (ReadyThread, ThreadManager))
     ensures
         result.0.spec_id() == 0,
