@@ -1,0 +1,49 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 18:20:56 CST 2026
+Module: kernel::pm::process::capability
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::capability
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> kernel/pm/process/capability.proof.rs:15:5
+   |
+15 |     pub proof fn lemma_default_is_empty()
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+  --> kernel/pm/process/capability.proof.rs:18:13
+   |
+15 |     pub proof fn lemma_default_is_empty()
+   |     ------------------------------------- at the end of the function body
+...
+18 |             !Capabilities::spec_default().spec_has(Capability::ExceptionControl),
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+  --> kernel/pm/process/capability.proof.rs:19:13
+   |
+15 |     pub proof fn lemma_default_is_empty()
+   |     ------------------------------------- at the end of the function body
+...
+19 |             !Capabilities::spec_default().spec_has(Capability::InterruptControl),
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: IntRange error: expected finite-width integer for bit-vector, got Int(Int)
+  --> kernel/pm/process/capability.proof.rs:41:33
+   |
+41 |                 mask == (1u8 << d),
+   |                                 ^
+
+error: aborting due to 3 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::capability (verified:0, errors:0)
