@@ -218,11 +218,11 @@ impl ProcessManagerInner {
             assert(!self.ghost_zombies@.contains(pid as int));
             // After incrementing next_pid, all existing PIDs (including the new one)
             // are still < next_pid + 1.
-            assert(pid as int < pid as int + 1);
+            assert((pid as int) < (pid as int + 1));
             // Existing PIDs in ready are < next_pid = pid, so < pid + 1.
             assert(forall |p: int| self.ghost_ready@.contains(p) ==> p < pid as int);
             // The new pid is also < pid + 1.
-            assert(pid as int < (pid + 1) as int);
+            assert((pid as int) < ((pid + 1) as int));
             // All PIDs in the new ready set are < pid + 1.
             assert(forall |p: int| self.ghost_ready@.insert(pid as int).contains(p)
                 ==> 0 <= p && p < (pid + 1) as int);
