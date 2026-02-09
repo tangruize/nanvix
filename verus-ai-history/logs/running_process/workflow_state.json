@@ -5,5 +5,7 @@
   "current_reviewer_idx": 0,
   "prover_session_id": "7e22cdae-5bbb-4704-b1aa-28cac3670875",
   "completed": false,
-  "final_grades": {}
+  "final_grades": {
+    "claude": "A"
+  }
 }
