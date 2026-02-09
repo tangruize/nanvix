@@ -1,0 +1,230 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 07:43:52 CST 2026
+Module: kernel::pm::process::manager::process_manager_unsafe
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager_unsafe
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: expected `:`
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:680:43
+    |
+680 |     pub fn try_recv_some(&mut self, ghost tid: int)
+    |                                           ^^^
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+  --> kernel/pm/process/manager/process_manager_unsafe.spec.rs:92:6
+   |
+69 | pub struct ProcessManagerUnsafeStateView {
+   | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+...
+92 | impl ProcessManagerUnsafeState {
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.spec.rs:191:15
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+...
+191 | impl View for ProcessManagerUnsafeState {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+  --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:29:6
+   |
+29 | impl ProcessManagerUnsafeState {
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+   |
+  ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+   |
+69 | pub struct ProcessManagerUnsafeStateView {
+   | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+  --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:56:28
+   |
+56 |                 let state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+   |
+  ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+   |
+69 | pub struct ProcessManagerUnsafeStateView {
+   | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+  --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:56:56
+   |
+56 |                 let state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+   |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+   |
+  ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+   |
+69 | pub struct ProcessManagerUnsafeStateView {
+   | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:146:32
+    |
+146 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:146:60
+    |
+146 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:177:32
+    |
+177 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:177:60
+    |
+177 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:209:32
+    |
+209 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:209:60
+    |
+209 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:232:32
+    |
+232 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:232:60
+    |
+232 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:249:32
+    |
+249 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:249:60
+    |
+249 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:293:32
+    |
+293 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:293:60
+    |
+293 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0412]: cannot find type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:335:32
+    |
+335 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerUnsafeState` in this scope
+   --> kernel/pm/process/manager/process_manager_unsafe.proof.rs:335:60
+    |
+335 |                 let new_state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerUnsafeStateView`
+    |
+   ::: kernel/pm/process/manager/process_manager_unsafe.spec.rs:69:1
+    |
+ 69 | pub struct ProcessManagerUnsafeStateView {
+    | ---------------------------------------- similarly named struct `ProcessManagerUnsafeStateView` defined here
+
+error: aborting due to 20 previous errors
+
+Some errors have detailed explanations: E0412, E0422.
+For more information about an error, try `rustc --explain E0412`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager_unsafe (verified:0, errors:0)
