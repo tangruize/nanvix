@@ -1,0 +1,56 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 07:34:09 CST 2026
+Module: kernel::pm::process::manager::process_manager_unsafe
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager_unsafe
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::manager::process_manager_unsafe
+
+error: precondition not satisfied
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:281:9
+    |
+190 |             next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
+    |             ----------------------------------------------------------------------- failed precondition
+...
+281 |         self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: precondition not satisfied
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:313:9
+    |
+190 |             next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
+    |             ----------------------------------------------------------------------- failed precondition
+...
+313 |         self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: precondition not satisfied
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:347:9
+    |
+190 |             next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
+    |             ----------------------------------------------------------------------- failed precondition
+...
+347 |         self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: precondition not satisfied
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:380:9
+    |
+190 |             next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
+    |             ----------------------------------------------------------------------- failed precondition
+...
+380 |         self.switch(chosen_next_pid, chosen_next_tid, new_inner);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 26 verified, 4 errors (partial verification with `--verify-*`)
+error: aborting due to 4 previous errors
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 26
+Errors: 4
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager_unsafe (verified:26, errors:4)
