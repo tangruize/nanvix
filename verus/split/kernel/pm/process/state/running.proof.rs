@@ -385,38 +385,38 @@ impl RunningProcess {
     // try_join_thread() Lemmas
     //==============================================================================================
 
-    /// Lemma: try_join_thread on the running thread returns error (tag=1).
+    /// Lemma: try_join_thread on the running thread returns JOIN_TAG_RUNNING.
     pub proof fn lemma_try_join_running_thread_errors(&self, tid: int)
         requires
             self.running_thread_id@ == tid,
         ensures
-            self.spec_try_join_thread(tid) == 1int,
+            self.spec_try_join_thread(tid) == JOIN_TAG_RUNNING as int,
     {
     }
 
-    /// Lemma: try_join_thread on a zombie thread returns success (tag=0).
+    /// Lemma: try_join_thread on a zombie thread returns JOIN_TAG_ZOMBIE.
     pub proof fn lemma_try_join_zombie_thread_succeeds(&self, tid: int)
         requires
             self.running_thread_id@ != tid,
             self.spec_has_zombie_thread(tid),
         ensures
-            self.spec_try_join_thread(tid) == 0int,
+            self.spec_try_join_thread(tid) == JOIN_TAG_ZOMBIE as int,
     {
     }
 
-    /// Lemma: try_join_thread on a not-found thread returns error (tag=3).
+    /// Lemma: try_join_thread on a not-found thread returns JOIN_TAG_NOT_FOUND.
     pub proof fn lemma_try_join_not_found_errors(&self, tid: int)
         requires
             !self.spec_has_thread(tid),
         ensures
-            self.spec_try_join_thread(tid) == 3int,
+            self.spec_try_join_thread(tid) == JOIN_TAG_NOT_FOUND as int,
     {
     }
 
     /// Lemma: After a successful zombie join, the zombie list shrinks by exactly 1.
     pub proof fn lemma_try_join_zombie_post_shrinks(&self, tid: int)
         requires
-            self.spec_try_join_thread(tid) == 0int,
+            self.spec_try_join_thread(tid) == JOIN_TAG_ZOMBIE as int,
             self.spec_has_zombie_thread(tid),
         ensures
             ({

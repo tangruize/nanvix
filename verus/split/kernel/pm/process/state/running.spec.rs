@@ -153,6 +153,26 @@ pub struct ZombieProcessView {
 }
 
 //==================================================================================================
+// Constants: try_join_thread Result Tags
+//==================================================================================================
+
+/// Result tag for a successful zombie join.
+/// Corresponds to `Ok(zombie_thread)` in the original.
+pub const JOIN_TAG_ZOMBIE: u8 = 0u8;
+
+/// Result tag for joining the running thread (operation not permitted).
+/// Corresponds to `Err(Err(ErrorCode::OperationNotPermitted))` in the original.
+pub const JOIN_TAG_RUNNING: u8 = 1u8;
+
+/// Result tag for joining a live thread (ready/sleeping/interrupted).
+/// Corresponds to `Err(Ok(condvar))` in the original — caller should wait.
+pub const JOIN_TAG_LIVE: u8 = 2u8;
+
+/// Result tag for joining a non-existent thread.
+/// Corresponds to `Err(Err(ErrorCode::NoSuchProcess))` in the original.
+pub const JOIN_TAG_NOT_FOUND: u8 = 3u8;
+
+//==================================================================================================
 // Spec Functions: RunningProcess
 //==================================================================================================
 
@@ -256,32 +276,26 @@ impl RunningProcess {
 
     /// Spec function: models `try_join_thread()` return semantics.
     ///
-    /// Returns an abstract result tag:
-    /// - `Ok(0)` if the thread is a zombie (will be removed from zombie list).
-    /// - `Err(Ok(1))` if the thread is the running thread (operation not permitted).
-    /// - `Err(Ok(2))` if the thread is ready, sleeping, or interrupted (returns condvar).
-    /// - `Err(Err(3))` if the thread is not found (no such process).
-    ///
-    /// Key properties:
-    /// - Joining a running thread is an error (`ErrorCode::OperationNotPermitted`).
-    /// - Joining a zombie thread removes it from the zombie list (side effect).
-    /// - Joining a live thread (ready/sleeping/interrupted) returns a condvar for waiting.
-    /// - Joining a non-existent thread is an error (`ErrorCode::NoSuchProcess`).
+    /// Returns an abstract result tag matching the `JOIN_TAG_*` constants:
+    /// - `JOIN_TAG_ZOMBIE (0)`: thread is zombie → Ok, will be removed.
+    ///   Original: `Ok(zombie_thread)`.
+    /// - `JOIN_TAG_RUNNING (1)`: thread is running → error.
+    ///   Original: `Err(Err(Error::new(ErrorCode::OperationNotPermitted, ...)))`.
+    /// - `JOIN_TAG_LIVE (2)`: thread is ready/sleeping/interrupted → returns condvar.
+    ///   Original: `Err(Ok(condvar))`.
+    /// - `JOIN_TAG_NOT_FOUND (3)`: thread not found → error.
+    ///   Original: `Err(Err(Error::new(ErrorCode::NoSuchProcess, ...)))`.
     pub open spec fn spec_try_join_thread(&self, tid: int) -> int {
         if self.running_thread_id@ == tid {
-            // Running thread: OperationNotPermitted error.
-            1int
+            JOIN_TAG_RUNNING as int
         } else if self.spec_has_zombie_thread(tid) {
-            // Zombie thread: Ok, will be removed.
-            0int
+            JOIN_TAG_ZOMBIE as int
         } else if self.spec_has_ready_thread(tid)
             || self.spec_has_sleeping_thread(tid)
             || self.spec_has_interrupted_thread(tid) {
-            // Live thread: returns condvar.
-            2int
+            JOIN_TAG_LIVE as int
         } else {
-            // Not found: NoSuchProcess error.
-            3int
+            JOIN_TAG_NOT_FOUND as int
         }
     }
 

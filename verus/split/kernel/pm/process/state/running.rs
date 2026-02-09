@@ -472,17 +472,17 @@ impl RunningProcess {
             self.interrupted_count == old(self).interrupted_count,
             self.sleeping_count == old(self).sleeping_count,
             // Zombie list: removed on success, unchanged otherwise.
-            (tag == 0u8) ==> (
+            (tag == JOIN_TAG_ZOMBIE) ==> (
                 self.zombie_thread_ids@ == old(self).spec_try_join_zombie_post(tid@)
                 && self.zombie_count as nat == old(self).spec_zombie_count() - 1
             ),
-            (tag != 0u8) ==> (
+            (tag != JOIN_TAG_ZOMBIE) ==> (
                 self.zombie_thread_ids@ == old(self).zombie_thread_ids@
                 && self.zombie_count == old(self).zombie_count
             ),
             self.wf(),
     {
-        if tag == 0u8 {
+        if tag == JOIN_TAG_ZOMBIE {
             // Zombie found — remove it from the zombie list.
             // Construct the new zombie list to exactly match spec_try_join_zombie_post.
             proof {
@@ -509,7 +509,7 @@ impl RunningProcess {
             self.zombie_thread_ids = Ghost(new_zombie_ids);
             self.zombie_count = self.zombie_count - 1;
 
-            0u8
+            JOIN_TAG_ZOMBIE
         } else {
             tag
         }
