@@ -134,4 +134,60 @@ impl View for ReadyThread {
     }
 }
 
+//==================================================================================================
+// Spec Functions: ThreadRefModel
+//==================================================================================================
+
+impl ThreadRefModel {
+    /// Spec function: returns the thread identifier value for any variant.
+    pub open spec fn spec_id(&self) -> int {
+        match *self {
+            ThreadRefModel::Ready(ref s) => s.spec_id(),
+            ThreadRefModel::Running(ref s) => s.spec_id(),
+            ThreadRefModel::Sleeping(ref s) => s.spec_id(),
+            ThreadRefModel::Interrupted(ref s) => s.spec_id(),
+            ThreadRefModel::Zombie(ref s) => s.spec_id(),
+        }
+    }
+
+    /// Spec function: returns the thread state for any variant.
+    pub open spec fn spec_state(&self) -> ThreadState {
+        match *self {
+            ThreadRefModel::Ready(ref s) => *s,
+            ThreadRefModel::Running(ref s) => *s,
+            ThreadRefModel::Sleeping(ref s) => *s,
+            ThreadRefModel::Interrupted(ref s) => *s,
+            ThreadRefModel::Zombie(ref s) => *s,
+        }
+    }
+}
+
+//==================================================================================================
+// Spec Functions: ThreadRefMutModel
+//==================================================================================================
+
+impl ThreadRefMutModel {
+    /// Spec function: returns the thread identifier value for any variant.
+    pub open spec fn spec_id(&self) -> int {
+        match *self {
+            ThreadRefMutModel::Ready(ref s) => s.spec_id(),
+            ThreadRefMutModel::Running(ref s) => s.spec_id(),
+            ThreadRefMutModel::Sleeping(ref s) => s.spec_id(),
+            ThreadRefMutModel::Interrupted(ref s) => s.spec_id(),
+            ThreadRefMutModel::Zombie(ref s) => s.spec_id(),
+        }
+    }
+
+    /// Spec function: returns the thread state for any variant.
+    pub open spec fn spec_state(&self) -> ThreadState {
+        match *self {
+            ThreadRefMutModel::Ready(ref s) => *s,
+            ThreadRefMutModel::Running(ref s) => *s,
+            ThreadRefMutModel::Sleeping(ref s) => *s,
+            ThreadRefMutModel::Interrupted(ref s) => *s,
+            ThreadRefMutModel::Zombie(ref s) => *s,
+        }
+    }
+}
+
 } // verus!

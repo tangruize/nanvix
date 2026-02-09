@@ -21,6 +21,10 @@
 //! - Newly created threads are well-formed, drop-safe, not interrupted,
 //!   and hold no locked mutexes.
 //! - init() is equivalent to new().
+//! - ThreadRef dispatch: `thread_state()` returns the correct state with
+//!   identity preservation regardless of which thread variant is active.
+//! - ThreadRefMut dispatch: read aspect of `thread_state_mut()` preserves
+//!   identity; mutation is a documented trust boundary.
 //!
 //! ## Verification Model
 //!
@@ -31,12 +35,15 @@
 //! - `ReadyThread` -> boundary model wrapping ThreadState.
 //!
 //! The `ThreadRef` and `ThreadRefMut` enums from the original module are
-//! omitted from the verification model. They are dispatch patterns that
-//! delegate to the underlying thread type's `thread_state()` /
-//! `thread_state_mut()` methods without adding invariants or core logic.
-//! These enums are verified implicitly through the individual thread type
-//! modules (ready, running, sleeping, interrupted, zombie), each of which
-//! verifies its own `thread_state()` / `thread_state_mut()` methods.
+//! modeled as `ThreadRefModel` and `ThreadRefMutModel` respectively.
+//! The original enums use lifetime-parameterized reference fields
+//! (`&'a ReadyThread`, `&'a mut RunningThread`, etc.) which Verus cannot
+//! express. The models use value-based `ThreadState` fields instead and
+//! verify the dispatch semantics: `thread_state()` correctly returns the
+//! active variant's underlying state with identity preservation.
+//! Mutation through `thread_state_mut()` is a trust boundary (Verus cannot
+//! express `&mut T` return types); callers must preserve `wf()` and
+//! `spec_id()` as documented on each thread type's `thread_state_mut()`.
 //!
 //! ## Trust Boundary
 //!
@@ -97,6 +104,111 @@ pub struct ReadyThread {
 pub struct ThreadManager {
     /// Next thread identifier to be assigned.
     pub next_id: ThreadIdentifier,
+}
+
+//==================================================================================================
+// ThreadRef / ThreadRefMut Dispatch Models
+//==================================================================================================
+
+/// Verification model of the original `ThreadRef<'a>` enum.
+///
+/// The original enum holds `&'a ReadyThread`, `&'a RunningThread`, etc.
+/// Verus cannot express lifetime-parameterized enums or reference fields
+/// in enum variants. Instead, we model the dispatch by storing a
+/// `ThreadState` value — the object that `thread_state()` returns
+/// across all variants. This models the key semantic property: regardless
+/// of which thread variant is active, `thread_state()` returns its
+/// underlying state with identity and well-formedness preserved.
+///
+/// Each variant's `thread_state()` is individually verified in its own
+/// module (ready.rs, running.rs, sleeping.rs, interrupted.rs, zombie.rs)
+/// with ensures `result.spec_id() == self.spec_id()` and
+/// `result@ == self.state@`. This model verifies the dispatch layer
+/// on top of those per-variant guarantees.
+pub enum ThreadRefModel {
+    /// Ready variant (models `ThreadRef::Ready(&ReadyThread)`).
+    Ready(ThreadState),
+    /// Running variant (models `ThreadRef::Running(&RunningThread)`).
+    Running(ThreadState),
+    /// Sleeping variant (models `ThreadRef::Sleeping(&SleepingThread)`).
+    Sleeping(ThreadState),
+    /// Interrupted variant (models `ThreadRef::Interrupted(&InterruptedThread)`).
+    Interrupted(ThreadState),
+    /// Zombie variant (models `ThreadRef::Zombie(&ZombieThread)`).
+    Zombie(ThreadState),
+}
+
+impl ThreadRefModel {
+    /// Returns the thread state from whichever variant is active.
+    ///
+    /// Models `ThreadRef::thread_state(&self) -> &ThreadState`.
+    /// Verifies that the dispatch correctly returns the state regardless
+    /// of which variant is active, preserving the thread identity.
+    pub fn thread_state(&self) -> (result: &ThreadState)
+        ensures
+            result.spec_id() == self.spec_id(),
+            result@ == self.spec_state()@,
+    {
+        match self {
+            ThreadRefModel::Ready(state) => state,
+            ThreadRefModel::Running(state) => state,
+            ThreadRefModel::Sleeping(state) => state,
+            ThreadRefModel::Interrupted(state) => state,
+            ThreadRefModel::Zombie(state) => state,
+        }
+    }
+}
+
+/// Verification model of the original `ThreadRefMut<'a>` enum.
+///
+/// The original enum holds `&'a mut ReadyThread`, etc. Verus cannot
+/// express `&mut T` return types or lifetime-parameterized enums.
+/// We model `thread_state_mut()` as a read-only dispatch returning
+/// `&ThreadState`, verifying identity preservation. The mutability
+/// aspect is a trust boundary: callers that mutate through the
+/// real `thread_state_mut()` must preserve `wf()` and `spec_id()`,
+/// as documented on each thread type's `thread_state_mut()` function.
+///
+/// Each variant's `thread_state_mut()` is marked `#[verifier::external]`
+/// in its own module due to the `&mut T` return type limitation.
+/// This model verifies the dispatch semantics; mutation safety relies
+/// on the per-module trust boundary documentation.
+pub enum ThreadRefMutModel {
+    /// Ready variant (models `ThreadRefMut::Ready(&mut ReadyThread)`).
+    Ready(ThreadState),
+    /// Running variant (models `ThreadRefMut::Running(&mut RunningThread)`).
+    Running(ThreadState),
+    /// Sleeping variant (models `ThreadRefMut::Sleeping(&mut SleepingThread)`).
+    Sleeping(ThreadState),
+    /// Interrupted variant (models `ThreadRefMut::Interrupted(&mut InterruptedThread)`).
+    Interrupted(ThreadState),
+    /// Zombie variant (models `ThreadRefMut::Zombie(&mut ZombieThread)`).
+    Zombie(ThreadState),
+}
+
+impl ThreadRefMutModel {
+    /// Returns the thread state from whichever variant is active.
+    ///
+    /// Models the read aspect of `ThreadRefMut::thread_state_mut()`.
+    /// The original returns `&mut ThreadState`; Verus cannot express
+    /// mutable return references. This models the dispatch identity
+    /// preservation: the returned state belongs to the active variant.
+    ///
+    /// **Trust boundary:** Mutation through the real `thread_state_mut()`
+    /// is unverified. Callers MUST preserve `wf()` and `spec_id()`.
+    pub fn thread_state(&self) -> (result: &ThreadState)
+        ensures
+            result.spec_id() == self.spec_id(),
+            result@ == self.spec_state()@,
+    {
+        match self {
+            ThreadRefMutModel::Ready(state) => state,
+            ThreadRefMutModel::Running(state) => state,
+            ThreadRefMutModel::Sleeping(state) => state,
+            ThreadRefMutModel::Interrupted(state) => state,
+            ThreadRefMutModel::Zombie(state) => state,
+        }
+    }
 }
 
 //==================================================================================================

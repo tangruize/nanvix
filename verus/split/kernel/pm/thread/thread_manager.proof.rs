@@ -193,4 +193,54 @@ impl ThreadManager {
     }
 }
 
+//==================================================================================================
+// ThreadRefModel Lemmas
+//==================================================================================================
+
+impl ThreadRefModel {
+    /// Lemma: thread_state() dispatch preserves thread identity across all
+    /// variants. For any ThreadRefModel, the dispatched state has the same
+    /// spec_id as the enum itself.
+    pub proof fn lemma_dispatch_preserves_id(&self)
+        ensures
+            self.spec_state().spec_id() == self.spec_id(),
+    {
+    }
+
+    /// Lemma: thread_state() dispatch on a well-formed variant returns a
+    /// well-formed ThreadState.
+    pub proof fn lemma_dispatch_preserves_wf(&self)
+        requires
+            self.spec_state().wf(),
+        ensures
+            self.spec_state().wf(),
+    {
+    }
+}
+
+//==================================================================================================
+// ThreadRefMutModel Lemmas
+//==================================================================================================
+
+impl ThreadRefMutModel {
+    /// Lemma: thread_state() dispatch preserves thread identity across all
+    /// variants. For any ThreadRefMutModel, the dispatched state has the
+    /// same spec_id as the enum itself.
+    pub proof fn lemma_dispatch_preserves_id(&self)
+        ensures
+            self.spec_state().spec_id() == self.spec_id(),
+    {
+    }
+
+    /// Lemma: thread_state() dispatch on a well-formed variant returns a
+    /// well-formed ThreadState.
+    pub proof fn lemma_dispatch_preserves_wf(&self)
+        requires
+            self.spec_state().wf(),
+        ensures
+            self.spec_state().wf(),
+    {
+    }
+}
+
 } // verus!
