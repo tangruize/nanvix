@@ -37,8 +37,20 @@
 // - Thread state transitions (InterruptedThread::resume()) are modeled
 //   as ID-preserving operations.
 // - `RunnableProcess` is a boundary model from the sibling module.
+//   Note: The `InterruptedProcess` boundary model in `runnable.spec.rs`
+//   omits `sleeping_thread_ids`. This boundary inconsistency is documented:
+//   the runnable module's boundary only models the `new()` path (no sleeping
+//   threads). Cross-module linking involving sleeping threads in an
+//   InterruptedProcess must use this module's primary model.
 // - `find_thread()` / `find_thread_mut()` return reference types that
-//   Verus cannot express; modeled spec-only.
+//   Verus cannot express; modeled spec-only via `spec_find_thread()`.
+//   The original code performs linear searches through `iter().find(...)`
+//   across three collections with priority order (interrupted → sleeping →
+//   zombie). The spec model captures the search order but does not verify
+//   any executable search implementation. Any bug in the actual iterator-based
+//   search logic (e.g., wrong predicate, wrong collection order) would not
+//   be caught. If Verus adds support for executable iteration over ghost
+//   sequences or reference-typed returns, this should be revisited.
 // - `state()` / `state_mut()` return references to ProcessState; modeled
 //   as external_body with frame conditions.
 // - The standalone `interrupt()` function is modeled as ID-preserving.
@@ -71,6 +83,8 @@ pub struct RunnableProcessView {
     pub pid: int,
     /// Ready thread IDs (non-empty).
     pub ready_thread_ids: Seq<int>,
+    /// Ready thread admission times, parallel to ready_thread_ids.
+    pub ready_admission_times: Seq<int>,
     /// Interrupted thread IDs (may be empty).
     pub interrupted_thread_ids: Seq<int>,
     /// Sleeping thread IDs (may be empty).
@@ -210,8 +224,41 @@ impl RunnableProcess {
     }
 
     /// Spec function: well-formedness predicate.
+    ///
+    /// A boundary RunnableProcess is well-formed when:
+    /// - There is at least one ready thread (NonEmptyVecDeque invariant).
+    /// - Ready thread IDs and admission times have matching lengths.
+    /// - All admission times are non-negative.
+    /// - No duplicate thread IDs within any list.
+    /// - All thread lists are pairwise disjoint.
     pub open spec fn wf(&self) -> bool {
-        self.ready_thread_ids@.len() >= 1
+        &&& self.ready_thread_ids@.len() >= 1
+        &&& self.ready_thread_ids@.len() == self.ready_admission_times@.len()
+        &&& forall|i: int| 0 <= i < self.ready_admission_times@.len()
+                ==> #[trigger] self.ready_admission_times@[i] >= 0
+        &&& Self::spec_no_duplicates(self.ready_thread_ids@)
+        &&& Self::spec_no_duplicates(self.interrupted_thread_ids@)
+        &&& Self::spec_no_duplicates(self.sleeping_thread_ids@)
+        &&& Self::spec_no_duplicates(self.zombie_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids@, self.interrupted_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids@, self.sleeping_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids@, self.zombie_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.interrupted_thread_ids@, self.sleeping_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.interrupted_thread_ids@, self.zombie_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.sleeping_thread_ids@, self.zombie_thread_ids@)
+    }
+
+    /// Spec helper: checks whether a sequence has no duplicate elements.
+    pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
+        forall|i: int, j: int| 0 <= i < j < s.len()
+            ==> s[i] != s[j]
+    }
+
+    /// Spec helper: checks whether two sequences share no common elements.
+    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+        forall|i: int, j: int|
+            0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
     }
 }
 
@@ -239,6 +286,7 @@ impl View for RunnableProcess {
         RunnableProcessView {
             pid: self.pid@,
             ready_thread_ids: self.ready_thread_ids@,
+            ready_admission_times: self.ready_admission_times@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,

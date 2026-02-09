@@ -27,6 +27,9 @@ impl InterruptedProcess {
     //==============================================================================================
 
     /// Lemma: A newly constructed InterruptedProcess (via `new`) is well-formed.
+    /// Note: This lemma restates what the constructor's `ensures result.wf()` already
+    /// guarantees. It is retained as a regression guard for downstream proofs that
+    /// may construct InterruptedProcess values directly (without calling `new()`).
     pub proof fn lemma_new_is_wf(
         pid: int,
         interrupted_ids: Seq<int>,
@@ -51,6 +54,7 @@ impl InterruptedProcess {
     }
 
     /// Lemma: A newly constructed InterruptedProcess (via `from_sleeping`) is well-formed.
+    /// Note: Retained as a regression guard (see `lemma_new_is_wf` note).
     pub proof fn lemma_from_sleeping_is_wf(
         pid: int,
         sleeping_ids: Seq<int>,
@@ -231,17 +235,32 @@ impl RunnableProcess {
     pub proof fn lemma_new_wf(
         pid: int,
         ready_ids: Seq<int>,
+        ready_times: Seq<int>,
         interrupted_ids: Seq<int>,
         sleeping_ids: Seq<int>,
         zombie_ids: Seq<int>,
     )
         requires
             ready_ids.len() >= 1,
+            ready_ids.len() == ready_times.len(),
+            forall|i: int| 0 <= i < ready_times.len()
+                ==> #[trigger] ready_times[i] >= 0,
+            RunnableProcess::spec_no_duplicates(ready_ids),
+            RunnableProcess::spec_no_duplicates(interrupted_ids),
+            RunnableProcess::spec_no_duplicates(sleeping_ids),
+            RunnableProcess::spec_no_duplicates(zombie_ids),
+            RunnableProcess::spec_seqs_disjoint(ready_ids, interrupted_ids),
+            RunnableProcess::spec_seqs_disjoint(ready_ids, sleeping_ids),
+            RunnableProcess::spec_seqs_disjoint(ready_ids, zombie_ids),
+            RunnableProcess::spec_seqs_disjoint(interrupted_ids, sleeping_ids),
+            RunnableProcess::spec_seqs_disjoint(interrupted_ids, zombie_ids),
+            RunnableProcess::spec_seqs_disjoint(sleeping_ids, zombie_ids),
         ensures
             ({
                 let rp: RunnableProcess = RunnableProcess {
                     pid: Ghost(pid),
                     ready_thread_ids: Ghost(ready_ids),
+                    ready_admission_times: Ghost(ready_times),
                     interrupted_thread_ids: Ghost(interrupted_ids),
                     sleeping_thread_ids: Ghost(sleeping_ids),
                     zombie_thread_ids: Ghost(zombie_ids),

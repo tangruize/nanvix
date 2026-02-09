@@ -31,10 +31,20 @@
 //!
 //! ## Trust Boundary
 //!
-//! - `RunnableProcess` is a boundary model of the sibling module.
+//! - `RunnableProcess` is a boundary model of the sibling module. Its `wf()`
+//!   includes no-duplicates and pairwise-disjoint conditions matching the
+//!   structural integrity of the real type. `ready_admission_times` models
+//!   the parallel admission time array; `resume()` initializes it to `[0]`.
+//!   Note: The `InterruptedProcess` boundary model in `runnable.spec.rs`
+//!   omits `sleeping_thread_ids`; cross-module linking involving sleeping
+//!   threads must use this module's primary model.
 //! - Thread state transitions (resume()) are ID-preserving.
 //! - `find_thread()` / `find_thread_mut()` return reference types that Verus
-//!   cannot express; modeled spec-only.
+//!   cannot express; modeled spec-only via `spec_find_thread()`. The original
+//!   performs linear searches through `iter().find(...)` across three
+//!   collections with priority order (interrupted → sleeping → zombie). The
+//!   spec captures the search order but does not verify the executable search
+//!   implementation. If Verus adds reference-typed return support, revisit.
 //! - `state()` / `state_mut()` return references to ProcessState; modeled as
 //!   external_body with frame conditions.
 //!
@@ -79,6 +89,8 @@ pub struct RunnableProcess {
     pub pid: Ghost<int>,
     /// Ready thread IDs (non-empty).
     pub ready_thread_ids: Ghost<Seq<int>>,
+    /// Ready thread admission times, parallel to ready_thread_ids.
+    pub ready_admission_times: Ghost<Seq<int>>,
     /// Interrupted thread IDs (may be empty).
     pub interrupted_thread_ids: Ghost<Seq<int>>,
     /// Sleeping thread IDs (may be empty).
@@ -199,12 +211,15 @@ impl InterruptedProcess {
     /// The process identifier (as a ghost value).
     #[verifier::external_body]
     pub fn state_mut(&mut self) -> (result: Ghost<int>)
+        requires
+            old(self).wf(),
         ensures
             result@ == self.spec_pid(),
             self.spec_pid() == old(self).spec_pid(),
             self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            self.wf(),
     {
         unimplemented!()
     }
@@ -229,6 +244,9 @@ impl InterruptedProcess {
             // Exactly one ready thread: the front interrupted thread.
             result.ready_thread_ids@.len() == 1,
             result.ready_thread_ids@[0] == self.interrupted_thread_ids@[0],
+            // Admission time is constrained (non-negative, matching length).
+            result.ready_admission_times@.len() == 1,
+            result.ready_admission_times@[0] >= 0,
             // Remaining interrupted threads (tail of original list).
             result.interrupted_thread_ids@ ==
                 self.interrupted_thread_ids@.subrange(1, self.interrupted_thread_ids@.len() as int),
@@ -250,11 +268,79 @@ impl InterruptedProcess {
 
             // The remaining interrupted list has length - 1.
             assert(remaining.len() == (self.interrupted_thread_ids@.len() - 1) as nat);
+
+            // Prove no-duplicates on the tail of the interrupted list.
+            Self::lemma_subrange_preserves_no_duplicates(self.interrupted_thread_ids@);
+
+            // Prove the front element is not in the tail.
+            Self::lemma_front_not_in_tail(self.interrupted_thread_ids@);
+
+            // Prove tail of interrupted is disjoint from sleeping and zombie.
+            Self::lemma_tail_disjoint_sleeping(
+                self.interrupted_thread_ids@, self.sleeping_thread_ids@);
+            Self::lemma_tail_disjoint_zombie(
+                self.interrupted_thread_ids@, self.zombie_thread_ids@);
+
+            // Prove ready (singleton) is no-duplicates trivially.
+            assert(InterruptedProcess::spec_no_duplicates(ready)) by {
+                assert forall|i: int, j: int| 0 <= i < j < ready.len()
+                    implies ready[i] != ready[j]
+                by {
+                    // ready.len() == 1, so no i < j pair exists.
+                }
+            }
+
+            // Prove ready is disjoint from remaining interrupted.
+            assert(InterruptedProcess::spec_seqs_disjoint(ready, remaining)) by {
+                assert forall|i: int, j: int|
+                    0 <= i < ready.len() && 0 <= j < remaining.len()
+                    implies ready[i] != remaining[j]
+                by {
+                    // ready[0] == front_tid, remaining = tail without front.
+                    assert(ready[i] == front_tid);
+                    assert(remaining[j] == self.interrupted_thread_ids@[j + 1]);
+                    // front_tid != any tail element (from lemma_front_not_in_tail).
+                }
+            }
+
+            // Prove ready is disjoint from sleeping.
+            assert(InterruptedProcess::spec_seqs_disjoint(ready, self.sleeping_thread_ids@)) by {
+                assert forall|i: int, j: int|
+                    0 <= i < ready.len() && 0 <= j < self.sleeping_thread_ids@.len()
+                    implies ready[i] != self.sleeping_thread_ids@[j]
+                by {
+                    // front_tid is in interrupted list; interrupted and sleeping are disjoint.
+                    assert(ready[i] == front_tid);
+                    assert(0 <= 0int < self.interrupted_thread_ids@.len());
+                    assert(self.interrupted_thread_ids@[0] == front_tid);
+                }
+            }
+
+            // Prove ready is disjoint from zombie.
+            assert(InterruptedProcess::spec_seqs_disjoint(ready, self.zombie_thread_ids@)) by {
+                assert forall|i: int, j: int|
+                    0 <= i < ready.len() && 0 <= j < self.zombie_thread_ids@.len()
+                    implies ready[i] != self.zombie_thread_ids@[j]
+                by {
+                    assert(ready[i] == front_tid);
+                    assert(0 <= 0int < self.interrupted_thread_ids@.len());
+                    assert(self.interrupted_thread_ids@[0] == front_tid);
+                }
+            }
+
+            // Admission times: singleton with value 0 >= 0.
+            let admit: Seq<int> = Seq::<int>::empty().push(0int);
+            assert(admit.len() == 1);
+            assert(admit[0] >= 0);
+
+            // RunnableProcess no-duplicates/disjointness is now discharged.
+            // The wf() of the boundary type can be checked.
         }
 
         RunnableProcess {
             pid: Ghost(self.pid@),
             ready_thread_ids: Ghost(Seq::<int>::empty().push(front_tid)),
+            ready_admission_times: Ghost(Seq::<int>::empty().push(0int)),
             interrupted_thread_ids: Ghost(remaining),
             sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
             zombie_thread_ids: Ghost(self.zombie_thread_ids@),
