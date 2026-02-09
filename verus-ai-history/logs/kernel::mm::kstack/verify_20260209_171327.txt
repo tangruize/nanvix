@@ -1,0 +1,6 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 17:13:27 CST 2026
+Module: kernel::mm::kstack
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::kstack
+Working dir: /home/ubuntu/nanvix/verus/split
+
