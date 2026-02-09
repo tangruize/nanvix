@@ -18,6 +18,8 @@
 // - Projection lemma for cross-module boundary model linking (extracts
 //   runnable-compatible tuple with invariants).
 // - Admission time oracle satisfies resume() precondition.
+// - Integration obligation lemmas: find_thread result consistency and
+//   uniqueness under wf() (thread can only be in one list).
 
 use vstd::prelude::*;
 
@@ -276,6 +278,97 @@ impl InterruptedProcess {
         ensures
             admission_time >= 0,
     {
+    }
+
+    //==============================================================================================
+    // Integration Obligation Lemmas
+    //==============================================================================================
+
+    /// Lemma: If the find_thread integration obligation is satisfied (i.e., the
+    /// real implementation returns a result matching `spec_find_thread`), then
+    /// the result is consistent with `spec_has_thread`.
+    ///
+    /// This gives integration proofs a concrete property: once the obligation is
+    /// discharged, the well-formedness disjointness guarantees ensure the result
+    /// is unambiguous (a thread can only appear in one list).
+    pub proof fn lemma_find_thread_obligation_implies_consistency(
+        &self, tid: int, real_result: Option<int>,
+    )
+        requires
+            self.wf(),
+            self.spec_find_thread_integration_obligation(tid, real_result),
+        ensures
+            real_result.is_some() <==> self.spec_has_thread(tid),
+            real_result == Some(0int) ==> self.spec_has_interrupted_thread(tid),
+            real_result == Some(1int) ==> self.spec_has_sleeping_thread(tid),
+            real_result == Some(2int) ==> self.spec_has_zombie_thread(tid),
+    {
+    }
+
+    /// Lemma: Under wf(), the find_thread integration obligation is uniquely
+    /// determined — only one list can contain a given thread ID.
+    pub proof fn lemma_find_thread_result_unique(&self, tid: int)
+        requires
+            self.wf(),
+            self.spec_has_thread(tid),
+        ensures
+            // At most one of the three lists contains this thread.
+            self.spec_has_interrupted_thread(tid) ==> (
+                !self.spec_has_sleeping_thread(tid)
+                && !self.spec_has_zombie_thread(tid)
+            ),
+            self.spec_has_sleeping_thread(tid) ==> (
+                !self.spec_has_interrupted_thread(tid)
+                && !self.spec_has_zombie_thread(tid)
+            ),
+            self.spec_has_zombie_thread(tid) ==> (
+                !self.spec_has_interrupted_thread(tid)
+                && !self.spec_has_sleeping_thread(tid)
+            ),
+    {
+        // Follows from pairwise disjointness in wf().
+        if self.spec_has_interrupted_thread(tid) {
+            let i: int = choose|i: int| 0 <= i < self.interrupted_thread_ids@.len()
+                && self.interrupted_thread_ids@[i] == tid;
+            assert forall|j: int| 0 <= j < self.sleeping_thread_ids@.len()
+                implies self.sleeping_thread_ids@[j] != tid
+            by {
+                assert(self.interrupted_thread_ids@[i] != self.sleeping_thread_ids@[j]);
+            }
+            assert forall|j: int| 0 <= j < self.zombie_thread_ids@.len()
+                implies self.zombie_thread_ids@[j] != tid
+            by {
+                assert(self.interrupted_thread_ids@[i] != self.zombie_thread_ids@[j]);
+            }
+        }
+        if self.spec_has_sleeping_thread(tid) {
+            let i: int = choose|i: int| 0 <= i < self.sleeping_thread_ids@.len()
+                && self.sleeping_thread_ids@[i] == tid;
+            assert forall|j: int| 0 <= j < self.interrupted_thread_ids@.len()
+                implies self.interrupted_thread_ids@[j] != tid
+            by {
+                assert(self.interrupted_thread_ids@[j] != self.sleeping_thread_ids@[i]);
+            }
+            assert forall|j: int| 0 <= j < self.zombie_thread_ids@.len()
+                implies self.zombie_thread_ids@[j] != tid
+            by {
+                assert(self.sleeping_thread_ids@[i] != self.zombie_thread_ids@[j]);
+            }
+        }
+        if self.spec_has_zombie_thread(tid) {
+            let i: int = choose|i: int| 0 <= i < self.zombie_thread_ids@.len()
+                && self.zombie_thread_ids@[i] == tid;
+            assert forall|j: int| 0 <= j < self.interrupted_thread_ids@.len()
+                implies self.interrupted_thread_ids@[j] != tid
+            by {
+                assert(self.interrupted_thread_ids@[j] != self.zombie_thread_ids@[i]);
+            }
+            assert forall|j: int| 0 <= j < self.sleeping_thread_ids@.len()
+                implies self.sleeping_thread_ids@[j] != tid
+            by {
+                assert(self.sleeping_thread_ids@[j] != self.zombie_thread_ids@[i]);
+            }
+        }
     }
 }
 

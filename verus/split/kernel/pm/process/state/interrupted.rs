@@ -47,10 +47,11 @@
 //!   `InterruptedThread::resume()`, `self.state.set_interrupt_reason(self.reason)`
 //!   stores the interrupt reason into the thread's `ThreadState` before
 //!   conversion to `ReadyThread`. This per-thread mutation is NOT modeled
-//!   because threads are abstracted to integer IDs in this module. If
-//!   downstream code relies on `interrupt_reason` being set in the ready
-//!   thread's state, that property must be verified in the thread module's
-//!   own verification (see `src/kernel/src/pm/thread/interrupted.rs`).
+//!   because threads are abstracted to integer IDs in this module.
+//!   `spec_resume_reason_integration_obligation` defines the formal contract
+//!   that the thread module's verification must establish. If downstream code
+//!   relies on `interrupt_reason` being set, the thread module's proof must
+//!   discharge this obligation (see `src/kernel/src/pm/thread/interrupted.rs`).
 //! - `resume()` takes `admission_time: Ghost<int>` as an oracle parameter.
 //!   In the original code, admission time is set by `clock::now()` inside
 //!   `ReadyThread::from_state()`. Since the clock is a HAL boundary outside
@@ -71,9 +72,13 @@
 //!   return values (`Option<ThreadRef<'_>>`) cannot be expressed in Verus, and
 //!   ghost sequences have no executable counterpart to iterate over. The
 //!   `lemma_find_thread_refinement_assumption` documents the semantic equivalence
-//!   assumption and its scope. If Verus adds support for reference-typed returns
-//!   or executable ghost iteration, this should be replaced with a verified
-//!   implementation. Tagged for trust-boundary inventory.
+//!   assumption and its scope. `spec_find_thread_integration_obligation` defines
+//!   the formal contract that integration proofs must discharge;
+//!   `lemma_find_thread_obligation_implies_consistency` and
+//!   `lemma_find_thread_result_unique` prove that once the obligation is met,
+//!   the result is unambiguous under `wf()`. If Verus adds support for
+//!   reference-typed returns or executable ghost iteration, this should be
+//!   replaced with a verified implementation. Tagged for trust-boundary inventory.
 //! - `state()` / `state_mut()` are implemented as pure ghost returns (no
 //!   external_body). The original returns `&ProcessState` / `&mut ProcessState`;
 //!   since ProcessState is abstracted to PID and all fields are ghost, the

@@ -262,9 +262,59 @@ impl InterruptedProcess {
     ///
     /// Callers of `resume()` should satisfy this predicate to establish
     /// semantic equivalence with the original `clock::now()` call.
+    /// This is an **integration obligation**: `resume()` intentionally does
+    /// NOT require this in its precondition because the clock is a HAL
+    /// boundary outside this module's scope. Integration proofs must
+    /// discharge this obligation at the call site.
     pub open spec fn spec_admission_time_valid(admission_time: int, clock_state: int) -> bool {
         admission_time == Self::spec_clock_now(clock_state)
         && admission_time >= 0
+    }
+
+    //==============================================================================================
+    // Integration Obligations
+    //==============================================================================================
+    // The following spec functions define formal contracts that integration
+    // proofs must discharge. They are NOT required by any precondition in
+    // this module — they exist as machine-readable trust boundary markers
+    // so that cross-module verification can reference and satisfy them.
+
+    /// Integration obligation for `find_thread()` / `find_thread_mut()`.
+    ///
+    /// The spec model (`spec_find_thread`) assumes that the real executable
+    /// `iter().find(|t| t.id() == tid)` search across three collections
+    /// (interrupted → sleeping → zombie) produces identical results. An
+    /// integration proof must verify:
+    /// 1. The search predicate `t.id() == tid` matches `spec_has_*_thread`.
+    /// 2. The collection ordering (interrupted first, then sleeping, then
+    ///    zombie) matches `spec_find_thread`.
+    /// 3. The first-match semantics of `Iterator::find` match the
+    ///    existential quantifier in `spec_has_*_thread` under the
+    ///    no-duplicates and disjointness invariants from `wf()`.
+    ///
+    /// This obligation cannot be discharged within this module because
+    /// Verus cannot express the reference-typed return value (`ThreadRef`)
+    /// or iterate ghost sequences.
+    pub open spec fn spec_find_thread_integration_obligation(
+        &self, tid: int, real_result: Option<int>,
+    ) -> bool {
+        real_result == self.spec_find_thread(tid)
+    }
+
+    /// Integration obligation for interrupt reason propagation in `resume()`.
+    ///
+    /// The original `InterruptedThread::resume()` calls
+    /// `self.state.set_interrupt_reason(self.reason)` before converting to
+    /// `ReadyThread`. This module abstracts threads to integer IDs and does
+    /// NOT model per-thread state. An integration proof must verify that the
+    /// thread module's `resume()` establishes:
+    ///   `ready_thread.state().interrupt_reason() == interrupted_thread.reason()`
+    /// The `reason_tag` parameter represents the `InterruptReason` value
+    /// (modeled as `INTERRUPT_REASON_KILLED` for the `Killed` variant).
+    pub open spec fn spec_resume_reason_integration_obligation(
+        thread_id: int, reason_tag: int, ready_thread_reason: int,
+    ) -> bool {
+        ready_thread_reason == reason_tag
     }
 }
 
