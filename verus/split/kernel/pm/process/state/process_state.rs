@@ -214,19 +214,21 @@ impl ProcessState {
     /// # Parameters
     ///
     /// - `mutex_addr`: Abstract address of the mutex.
+    /// - `already_present`: Runtime result of BTreeMap::contains_key, tied to ghost state.
     ///
     /// # Returns
     ///
-    /// On success, returns an abstract mutex token. If the map is full
-    /// and the address is not already present, returns an OutOfMemory error.
+    /// On success, returns Ok. If the map is full and the address is not already
+    /// present, returns an OutOfMemory error.
     ///
     /// # Errors
     ///
     /// Returns `ErrorCode::OutOfMemory` when the maximum number of mutexes
     /// has been reached and the address is not already present.
-    pub fn get_mutex(&mut self, mutex_addr: Ghost<int>) -> (result: Result<int, Error>)
+    pub fn get_mutex(&mut self, mutex_addr: Ghost<int>, already_present: bool) -> (result: Result<(), Error>)
         requires
             old(self).wf(),
+            already_present == old(self).spec_has_mutex(mutex_addr@),
         ensures
             result is Ok ==> {
                 &&& self.spec_has_mutex(mutex_addr@)
@@ -247,28 +249,19 @@ impl ProcessState {
                 &&& self.wf()
             },
     {
-        // Check if the address already exists.
         if self.mutex_count >= Self::MUTEX_MAX_EXEC() {
-            // At capacity - check if already present.
-            // Since we can't inspect the ghost map at exec level for containment,
-            // we model the capacity check conservatively: if at max, fail.
             let reason: &'static str = "maximum number of mutexes reached";
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
-        // Not at capacity: insert or return existing (modeled as insert).
-        // In the original, BTreeMap::entry().or_insert_with() either returns
-        // existing or inserts new. We model both cases.
-        if self.ghost_mutexes@.contains_key(mutex_addr@) {
+        if already_present {
             // Already present - no state change needed.
-            let val: int = self.ghost_mutexes@[mutex_addr@];
-            Ok(val)
+            Ok(())
         } else {
             // Insert new entry.
-            let new_val: int = 0int; // abstract placeholder value.
             self.mutex_count = self.mutex_count + 1;
-            self.ghost_mutexes = Ghost(self.ghost_mutexes@.insert(mutex_addr@, new_val));
-            Ok(new_val)
+            self.ghost_mutexes = Ghost(self.ghost_mutexes@.insert(mutex_addr@, 0int));
+            Ok(())
         }
     }
 
@@ -277,6 +270,7 @@ impl ProcessState {
     /// # Parameters
     ///
     /// - `mutex_addr`: Abstract address of the mutex.
+    /// - `contains`: Runtime result of BTreeMap::contains_key, tied to ghost state.
     ///
     /// # Returns
     ///
@@ -285,9 +279,10 @@ impl ProcessState {
     /// # Errors
     ///
     /// Returns `ErrorCode::NoSuchEntry` when the mutex is not found.
-    pub fn put_mutex(&mut self, mutex_addr: Ghost<int>) -> (result: Result<(), Error>)
+    pub fn put_mutex(&mut self, mutex_addr: Ghost<int>, contains: bool) -> (result: Result<(), Error>)
         requires
             old(self).wf(),
+            contains == old(self).spec_has_mutex(mutex_addr@),
         ensures
             result is Ok ==> {
                 &&& old(self).spec_has_mutex(mutex_addr@)
@@ -309,15 +304,12 @@ impl ProcessState {
                 &&& self.wf()
             },
     {
-        if !self.ghost_mutexes@.contains_key(mutex_addr@) {
+        if !contains {
             let reason: &'static str = "mutex not found";
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
-        // Remove the mutex (modeling extract_if for low-reference-count entries).
-        // The original conditionally removes based on reference count.
-        // We model the removal unconditionally since reference counting is an
-        // internal detail of the Mutex type.
+        // Remove the mutex.
         self.mutex_count = self.mutex_count - 1;
         self.ghost_mutexes = Ghost(self.ghost_mutexes@.remove(mutex_addr@));
         Ok(())
@@ -328,19 +320,21 @@ impl ProcessState {
     /// # Parameters
     ///
     /// - `cond_addr`: Abstract address of the condition variable.
+    /// - `already_present`: Runtime result of BTreeMap::contains_key, tied to ghost state.
     ///
     /// # Returns
     ///
-    /// On success, returns an abstract condvar token. If the map is full
-    /// and the address is not already present, returns an OutOfMemory error.
+    /// On success, returns Ok. If the map is full and the address is not already
+    /// present, returns an OutOfMemory error.
     ///
     /// # Errors
     ///
     /// Returns `ErrorCode::OutOfMemory` when the maximum number of condition
     /// variables has been reached and the address is not already present.
-    pub fn get_cond(&mut self, cond_addr: Ghost<int>) -> (result: Result<int, Error>)
+    pub fn get_cond(&mut self, cond_addr: Ghost<int>, already_present: bool) -> (result: Result<(), Error>)
         requires
             old(self).wf(),
+            already_present == old(self).spec_has_cond(cond_addr@),
         ensures
             result is Ok ==> {
                 &&& self.spec_has_cond(cond_addr@)
@@ -366,14 +360,12 @@ impl ProcessState {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
-        if self.ghost_conditions@.contains_key(cond_addr@) {
-            let val: int = self.ghost_conditions@[cond_addr@];
-            Ok(val)
+        if already_present {
+            Ok(())
         } else {
-            let new_val: int = 0int;
             self.cond_count = self.cond_count + 1;
-            self.ghost_conditions = Ghost(self.ghost_conditions@.insert(cond_addr@, new_val));
-            Ok(new_val)
+            self.ghost_conditions = Ghost(self.ghost_conditions@.insert(cond_addr@, 0int));
+            Ok(())
         }
     }
 
@@ -382,6 +374,7 @@ impl ProcessState {
     /// # Parameters
     ///
     /// - `cond_addr`: Abstract address of the condition variable.
+    /// - `contains`: Runtime result of BTreeMap::contains_key, tied to ghost state.
     ///
     /// # Returns
     ///
@@ -390,9 +383,10 @@ impl ProcessState {
     /// # Errors
     ///
     /// Returns `ErrorCode::NoSuchEntry` when the condition variable is not found.
-    pub fn put_cond(&mut self, cond_addr: Ghost<int>) -> (result: Result<(), Error>)
+    pub fn put_cond(&mut self, cond_addr: Ghost<int>, contains: bool) -> (result: Result<(), Error>)
         requires
             old(self).wf(),
+            contains == old(self).spec_has_cond(cond_addr@),
         ensures
             result is Ok ==> {
                 &&& old(self).spec_has_cond(cond_addr@)
@@ -414,7 +408,7 @@ impl ProcessState {
                 &&& self.wf()
             },
     {
-        if !self.ghost_conditions@.contains_key(cond_addr@) {
+        if !contains {
             let reason: &'static str = "condition variable not found";
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
@@ -450,21 +444,22 @@ impl ProcessState {
     /// # Parameters
     ///
     /// - `port_number`: Abstract port number to remove.
+    /// - `found`: Runtime result of the position search, tied to ghost state.
     ///
     /// # Returns
     ///
-    /// On success, returns the abstract port token. On failure, an error.
+    /// On success, returns Ok. On failure, an error.
     ///
     /// # Errors
     ///
     /// Returns `ErrorCode::NoSuchEntry` when the port is not found.
-    pub fn remove_pmio(&mut self, port_number: Ghost<int>) -> (result: Result<int, Error>)
+    pub fn remove_pmio(&mut self, port_number: Ghost<int>, found: bool) -> (result: Result<(), Error>)
         requires
             old(self).wf(),
+            found == old(self).spec_has_pmio(port_number@),
         ensures
             result is Ok ==> {
                 &&& old(self).spec_has_pmio(port_number@)
-                &&& result->Ok_0 == port_number@
                 &&& self.spec_pid() == old(self).spec_pid()
                 &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
@@ -484,24 +479,14 @@ impl ProcessState {
                 &&& self.wf()
             },
     {
-        // Search for the port in the ghost sequence.
-        let ghost found_idx: Option<int> = {
-            if exists|i: int| 0 <= i < self.ghost_pmio@.len() && self.ghost_pmio@[i] == port_number@ {
-                let i: int = choose|i: int| 0 <= i < self.ghost_pmio@.len() && self.ghost_pmio@[i] == port_number@;
-                Some(i)
-            } else {
-                None
-            }
-        };
-
-        if !self.spec_has_pmio(port_number@) {
+        if !found {
             let reason: &'static str = "io port not found";
             return Err(Error::new(ErrorCode::NoSuchEntry, reason));
         }
 
         // Remove the port by filtering.
         self.ghost_pmio = Ghost(self.ghost_pmio@.filter(|p: int| p != port_number@));
-        Ok(port_number@)
+        Ok(())
     }
 
     /// Returns the capacity constant for mutexes (exec-level).
