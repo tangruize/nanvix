@@ -169,7 +169,7 @@ impl TimerTicks {
                     // old(self).major < u32::MAX, so old(self) is not at max.
                     assert(old(self).spec_major() < u32::MAX as nat);
                     Self::lemma_nat_mul_le_mono(
-                        old(self).spec_major(), u32::MAX as nat - 1, Self::MINOR_MODULUS(),
+                        old(self).spec_major(), (u32::MAX - 1) as nat, Self::MINOR_MODULUS(),
                     );
                     // old.major * M <= (u32::MAX - 1) * M, so old.ticks < u64::MAX.
                     assert(old(self).spec_ticks() < u64::MAX as nat);
