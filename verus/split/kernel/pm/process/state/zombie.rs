@@ -273,9 +273,19 @@ impl ZombieProcess {
     /// **Spec-level model (UNVERIFIED SEARCH)** of the original
     /// `ZombieProcess::find_thread_mut(tid)`. Same trust scope as
     /// `find_thread()` — see its documentation. Frame condition: self is
-    /// unchanged. The mutable reference in the original allows in-place
-    /// mutation of the found thread. Callers must preserve the thread's
-    /// identity and list membership after such mutation.
+    /// unchanged (ghost model does not mutate).
+    ///
+    /// ## Caller Obligation (Mutable Access)
+    ///
+    /// The original returns `Option<ThreadRefMut<'_>>`, giving callers
+    /// mutable access to a `ZombieThread`. Callers MUST preserve:
+    /// 1. Thread identity (`thread.id()` unchanged) — formalized by
+    ///    `spec_find_thread_mut_caller_obligation`.
+    /// 2. List membership (thread remains in zombie list).
+    /// 3. Overall `ZombieProcess` well-formedness (`wf()`).
+    /// This obligation cannot be enforced at this module level (Verus
+    /// cannot model mutable borrow lifetimes) and must be discharged at
+    /// each call site.
     ///
     /// # Parameters
     ///

@@ -30,7 +30,13 @@
 //
 // Thread ID uniqueness within the zombie list IS enforced in `wf()`.
 // In the original code, Rust's ownership model ensures a thread struct
-// can only appear once. We model this explicitly via `spec_no_duplicates`.
+// can only appear once: `NonEmptyVecDeque<ZombieThread>` owns its elements,
+// and `ZombieThread` is a move-only type. Thread IDs are allocated by the
+// global thread subsystem (via `ThreadIdentifier`) which guarantees uniqueness.
+// We model this ownership invariant explicitly via `spec_no_duplicates`.
+// The original constructor does NOT check uniqueness at runtime — it is a
+// pre-existing invariant from the thread subsystem, not a constructor-enforced
+// constraint. See `wf()` documentation for full justification.
 //
 // ## Trust Assumptions
 //
@@ -38,14 +44,25 @@
 //   they return reference types (`ThreadRef`, `ThreadRefMut`) that Verus
 //   cannot express. The spec model `spec_find_thread()` captures the search
 //   semantics over the zombie list. The executable iterator-based search is
-//   NOT verified — `spec_find_thread_integration_obligation` is the formal
-//   contract that remains **unproven** until integration proofs discharge it.
-//   `lemma_ghost_search_correctness` proves the ghost-level search logic.
+//   NOT verified — three integration obligations decompose the proof:
+//   (1) `spec_find_thread_integration_obligation` (overall result match),
+//   (2) `spec_find_thread_search_predicate_obligation` (per-element predicate
+//   equivalence between `ZombieThread::id()` and ghost ID), and
+//   (3) `spec_find_thread_mut_caller_obligation` (caller discipline for
+//   mutable access). `lemma_ghost_search_correctness` proves the ghost-level
+//   search logic. All three obligations remain **unproven** until integration
+//   proofs discharge them.
 // - `state()` / `state_mut()` return references to ProcessState in the original.
 //   `state_mut()` permits arbitrary mutation; callers must preserve PID
-//   immutability. PID immutability is enforced architecturally (ProcessState
-//   has no public PID setter). This is a TRUST ASSUMPTION on the ProcessState
-//   module's API surface. Modeled as external_body with frame conditions.
+//   immutability. PID immutability is enforced architecturally: `ProcessState`
+//   has private `pid` field with no public setter (verified by inspection of
+//   `src/kernel/src/pm/process/state/mod.rs`). This is a TRUST ASSUMPTION on
+//   the ProcessState module's API surface. `spec_state_mut_pid_stability_obligation`
+//   formalizes this requirement. Modeled as external_body with frame conditions.
+// - `bury()` ownership transfer is not verified in the ghost model.
+//   `spec_bury_ownership_integration_obligation` formalizes the identity part
+//   of the transfer obligation. Full ownership transfer requires Verus tracked
+//   types which are outside the ghost model's scope.
 
 use vstd::prelude::*;
 
@@ -124,6 +141,24 @@ impl ZombieProcess {
     /// - There is at least one zombie thread (NonEmptyVecDeque invariant).
     /// - No duplicate thread IDs within the zombie list.
     ///
+    /// ## Uniqueness Justification
+    ///
+    /// The `spec_no_duplicates` constraint is NOT checked by the original
+    /// constructor — the original `new()` simply accepts a
+    /// `NonEmptyVecDeque<ZombieThread>`. However, uniqueness is guaranteed
+    /// by Rust's ownership model: each `ZombieThread` is a move-only struct
+    /// that can exist in exactly one location. The `NonEmptyVecDeque` owns
+    /// its elements, and thread IDs are assigned by the global thread
+    /// subsystem (via `ThreadIdentifier`) which guarantees uniqueness at
+    /// allocation time. The `no_duplicates` predicate models this ownership
+    /// invariant explicitly for ghost-level reasoning.
+    ///
+    /// If a higher-level proof requires this invariant, it should link to
+    /// the thread subsystem's uniqueness guarantee. Within this module,
+    /// `no_duplicates` is a precondition on `new()` that callers must
+    /// discharge by establishing the ownership invariant at the integration
+    /// boundary.
+    ///
     /// Note: Thread ID validity (e.g., non-negative, within valid range) is
     /// NOT enforced here. The original `ThreadIdentifier` is a structured type
     /// with constraints, but thread IDs are modeled as unbounded `int` in this
@@ -152,26 +187,123 @@ impl ZombieProcess {
     ///
     /// The spec model (`spec_find_thread`) assumes that the real executable
     /// `iter().find(|t| t.id() == tid)` search produces identical results.
-    /// An integration proof must verify:
-    /// 1. The search predicate `t.id() == tid` matches `spec_has_zombie_thread`.
-    /// 2. The first-match semantics of `Iterator::find` match the
-    ///    existential quantifier in `spec_has_zombie_thread` under the
-    ///    no-duplicates invariant from `wf()`.
+    /// This obligation is **unproven** at this module level and must be
+    /// discharged by integration proofs. Specifically, the integration proof
+    /// must establish `spec_find_thread_search_predicate_obligation` (predicate
+    /// equivalence) and that `Iterator::find`'s first-match semantics match
+    /// the existential quantifier in `spec_has_zombie_thread` under `wf()`.
     pub open spec fn spec_find_thread_integration_obligation(
         &self, tid: int, real_result: Option<int>,
     ) -> bool {
         real_result == self.spec_find_thread(tid)
     }
 
+    /// Integration obligation: search predicate equivalence.
+    ///
+    /// The real `find_thread()` uses `|thread| thread.id() == tid` as
+    /// the search predicate. This obligation requires that for every
+    /// zombie thread in the list, `thread.id()` produces the same integer
+    /// as the corresponding element in `zombie_thread_ids@`. An integration
+    /// proof must establish that:
+    /// 1. `ZombieThread::id()` returns a `ThreadIdentifier`.
+    /// 2. The `ThreadIdentifier` equality (`==`) matches integer equality
+    ///    in the ghost model.
+    /// 3. The ghost sequence `zombie_thread_ids@` is indexed in the same
+    ///    order as the real `NonEmptyVecDeque<ZombieThread>` iteration.
+    ///
+    /// `ghost_id` is the ghost model's integer ID for a thread at some index.
+    /// `real_id` is the value returned by `ZombieThread::id()` for the same
+    /// thread. The obligation requires these are equal.
+    pub open spec fn spec_find_thread_search_predicate_obligation(
+        ghost_id: int, real_id: int,
+    ) -> bool {
+        ghost_id == real_id
+    }
+
+    /// Integration obligation: `find_thread_mut()` caller discipline.
+    ///
+    /// The original `find_thread_mut()` returns `Option<ThreadRefMut<'_>>`,
+    /// giving callers mutable access to a `ZombieThread`. Callers that
+    /// mutate through this reference must preserve:
+    /// 1. The thread's identity (`thread.id()` is unchanged).
+    /// 2. The thread remains in the zombie list (list membership unchanged).
+    /// 3. The overall `ZombieProcess` well-formedness (`wf()`).
+    ///
+    /// This obligation cannot be enforced at this module level because Verus
+    /// cannot model mutable borrow lifetimes. It must be discharged at each
+    /// call site. `old_tid` is the thread's ID before mutation; `new_tid` is
+    /// after. The obligation requires identity preservation.
+    pub open spec fn spec_find_thread_mut_caller_obligation(
+        old_tid: int, new_tid: int,
+    ) -> bool {
+        old_tid == new_tid
+    }
+
+    /// Integration obligation: `state_mut()` PID stability.
+    ///
+    /// The `state_mut()` `external_body` postcondition asserts PID
+    /// preservation. This is justified by `ProcessState`'s API: `pid` is a
+    /// private field (verified in `src/kernel/src/pm/process/state/mod.rs`)
+    /// and no public setter exists — only `ProcessState::new()` sets `pid`,
+    /// and only `ProcessState::pid()` reads it. The available mutators
+    /// (`set_capability`, `clear_capability`, etc.) do not touch `pid`.
+    ///
+    /// This obligation formalizes the requirement: after any sequence of
+    /// public method calls on `&mut ProcessState`, the PID is unchanged.
+    /// Integration proofs must verify this against the ProcessState module's
+    /// public API surface.
+    pub open spec fn spec_state_mut_pid_stability_obligation(
+        pid_before: int, pid_after: int,
+    ) -> bool {
+        pid_before == pid_after
+    }
+
     /// Integration obligation for ProcessState PID linking.
     ///
     /// The ghost `pid` field in `ZombieProcess` is assumed to match the
     /// real `ProcessState::pid()` inside `Box<ProcessState>`. An integration
-    /// proof must establish: `ghost_pid == real_process_state.pid()`.
+    /// proof must establish at construction time:
+    ///   `ghost_pid == real_process_state.pid()`
+    /// This link is preserved by all operations (proven by PID-preservation
+    /// postconditions). The only construction site is `ZombieProcess::new()`
+    /// which receives `Box<ProcessState>` — the integration proof must show
+    /// that the ghost `pid` parameter equals the real `process.pid()`.
     pub open spec fn spec_process_state_pid_integration_obligation(
         ghost_pid: int, real_pid: int,
     ) -> bool {
         ghost_pid == real_pid
+    }
+
+    /// Integration obligation: `bury()` ownership transfer.
+    ///
+    /// The original `bury()` moves `self` and returns
+    /// `(NonEmptyVecDeque<ZombieThread>, Box<ProcessState>, ExitStatus)`,
+    /// transferring ownership of thread objects and process state to the
+    /// caller (parent process) for resource cleanup. The ghost model only
+    /// verifies identity preservation (PID, thread IDs, status match).
+    ///
+    /// An integration proof must establish that:
+    /// 1. The returned `NonEmptyVecDeque<ZombieThread>` contains the same
+    ///    thread objects (not just IDs) as the original `zombie_threads`.
+    /// 2. The returned `Box<ProcessState>` is the same object as the original
+    ///    `process` (pointer identity / ownership transfer).
+    /// 3. The returned `ExitStatus` equals the original `status`.
+    /// 4. The original `ZombieProcess` is fully consumed (no residual state).
+    ///
+    /// Properties 1-3 follow trivially from `bury()`'s implementation
+    /// (field destructuring), but executable verification requires Verus
+    /// tracked types which are outside this ghost model's scope.
+    ///
+    /// `ghost_ids` and `real_ids` are the ghost and real thread ID sequences.
+    /// The obligation requires they match.
+    pub open spec fn spec_bury_ownership_integration_obligation(
+        ghost_ids: Seq<int>, real_ids: Seq<int>,
+        ghost_pid: int, real_pid: int,
+        ghost_status: int, real_status: int,
+    ) -> bool {
+        &&& ghost_ids =~= real_ids
+        &&& ghost_pid == real_pid
+        &&& ghost_status == real_status
     }
 }
 
