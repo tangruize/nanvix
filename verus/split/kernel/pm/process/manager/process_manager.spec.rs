@@ -122,12 +122,13 @@ impl ProcessManagerInner {
 
     /// Spec function: counts are bounded to prevent arithmetic overflow.
     ///
-    /// The total number of processes (running + all queues) is at most i32::MAX,
-    /// ensuring any pairwise sum of counts fits in usize.
+    /// The total number of processes (running + all queues) is at most next_pid,
+    /// since each process has a unique PID in [0, next_pid). This ensures any
+    /// pairwise sum of counts fits in usize (since next_pid is i32).
     pub open spec fn spec_counts_bounded(&self) -> bool {
         (self.ready_count as int) + (self.suspended_count as int)
             + (self.interrupted_count as int) + (self.zombie_count as int) + 1
-            < i32::MAX as int
+            <= self.next_pid as int
         && (self.number_buffered_messages as int) < usize::MAX as int
     }
 

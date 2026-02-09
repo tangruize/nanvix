@@ -232,10 +232,10 @@ impl ProcessManagerInner {
                 ==> p < (pid + 1) as int);
             // Running PID is still < new next_pid.
             assert((self.running_pid as int) < (pid + 1) as int);
-            // Counts bounded: total + 1 still < i32::MAX since total was < i32::MAX - 1.
+            // Counts bounded: old total + 1 ≤ old next_pid + 1 = new next_pid.
             assert((self.ready_count + 1) as int + (self.suspended_count as int)
                 + (self.interrupted_count as int) + (self.zombie_count as int) + 1
-                < i32::MAX as int);
+                <= (pid + 1) as int);
         }
 
         self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
