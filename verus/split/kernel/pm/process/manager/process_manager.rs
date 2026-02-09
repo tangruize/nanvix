@@ -10,9 +10,11 @@
 //! - Construction produces a well-formed state with the kernel (PID 0) running.
 //! - PID allocation is monotonic: new PIDs are always fresh.
 //! - Schedule preserves wf: swaps running↔ready without losing processes.
+//! - Full schedule preserves wf: composes resume_all_interrupted + schedule to
+//!   match the original scheduler's semantics (alarm + resume + swap).
 //! - Sleep preserves wf: non-kernel running→suspended, ready→running.
 //! - Exit preserves wf: non-kernel running→zombie, ready→running.
-//! - Wakeup preserves wf: suspended→ready.
+//! - Wakeup preserves wf: suspended→ready, plus no-op variants for running/ready.
 //! - Resume preserves wf: all interrupted→ready (batch transition).
 //! - Terminate preserves wf: ready→zombie or suspended→interrupted.
 //! - Harvest preserves wf: removes from zombie queue.
@@ -20,6 +22,8 @@
 //!   The kernel process cannot be slept, exited, or terminated.
 //! - Process partitioning: every PID is in exactly one queue at any time.
 //! - Overflow safety: arithmetic on counts and PIDs is proven within bounds.
+//! - Query/sync/thread stubs: all remaining original functions are modeled as
+//!   verified no-ops that preserve wf() with appropriate preconditions.
 //!
 //! ## Verification Model
 //!
@@ -752,6 +756,275 @@ impl ProcessManagerInner {
         self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
         self.suspended_count = self.suspended_count - 1;
         self.interrupted_count = self.interrupted_count + 1;
+    }
+
+    //==============================================================================================
+    // Full Schedule (composition matching original schedule())
+    //==============================================================================================
+
+    /// Full scheduling cycle: resume all interrupted, then swap running↔ready.
+    ///
+    /// Models the complete `ProcessManagerInner::schedule()` (mod.rs:640-678).
+    /// The original schedule performs three steps in sequence:
+    /// 1. Move the running process to the ready queue.
+    /// 2. Call `check_alarm()` (moves expired-alarm suspended→interrupted).
+    /// 3. Resume all interrupted processes (interrupted→ready).
+    /// 4. Select the next process from ready (`take_earliest_ready`).
+    ///
+    /// Step 2 (`check_alarm`) is modeled by zero or more preceding calls to
+    /// `alarm_interrupt` (trust boundary T1: alarm expiry is a runtime decision).
+    /// This function composes steps 1, 3, and 4 into a single verified operation
+    /// that first merges all interrupted PIDs into ready, then performs the
+    /// running↔ready swap.
+    ///
+    /// # Parameters
+    ///
+    /// - `chosen_next`: PID selected by the scheduler from the extended ready set
+    ///   (after merging interrupted). Must be a valid PID in the combined set.
+    pub fn full_schedule(&mut self, chosen_next: i32)
+        requires
+            old(self).wf(),
+            // chosen_next must be in the ready+interrupted+running pool after merging.
+            old(self).ghost_ready@.union(old(self).ghost_interrupted@).insert(
+                old(self).running_pid as int
+            ).contains(chosen_next as int),
+            chosen_next >= 0i32,
+            chosen_next < old(self).next_pid,
+        ensures
+            self.wf(),
+            self.running_pid == chosen_next,
+            self.interrupted_count == 0,
+            self.ghost_interrupted@ =~= Set::<int>::empty(),
+            self.suspended_count == old(self).suspended_count,
+            self.zombie_count == old(self).zombie_count,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
+    {
+        // Step 1+3: Resume all interrupted into ready.
+        self.resume_all_interrupted();
+
+        // Step 4: Schedule running↔ready swap (step 1 is incorporated here).
+        self.schedule(chosen_next);
+    }
+
+    //==============================================================================================
+    // Wakeup Variants (covering all wakeup/try_wakeup outcomes)
+    //==============================================================================================
+
+    /// Wakeup no-op: target thread is in the running process.
+    ///
+    /// Models `ProcessManagerInner::wakeup()` (mod.rs:786-802) when the thread
+    /// belongs to the running process. The original calls `running_process.wakeup(tid)`
+    /// which transitions the thread internally but does not change the process queue.
+    /// This is a T3 boundary: thread-level state changes are not modeled.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: PID of the running process (must equal running_pid).
+    pub fn wakeup_running_noop(&self, pid: i32)
+        requires
+            self.wf(),
+            self.running_pid as int == pid as int,
+        ensures
+            self.wf(),
+    {
+        // Thread wakeup within the running process: no queue-level change (T3).
+    }
+
+    /// Wakeup no-op: target thread is in a ready process.
+    ///
+    /// Models `ProcessManagerInner::try_wakeup()` (mod.rs:848-872) when the thread
+    /// belongs to a process already in the ready queue. The original calls
+    /// `process.wakeup(tid)` and pushes back to ready. Net queue effect: no change.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: PID of the ready process containing the target thread.
+    pub fn wakeup_ready_noop(&self, pid: i32)
+        requires
+            self.wf(),
+            self.ghost_ready@.contains(pid as int),
+        ensures
+            self.wf(),
+    {
+        // Thread wakeup within a ready process: no queue-level change (T3).
+    }
+
+    //==============================================================================================
+    // Query Operations (no state change)
+    //==============================================================================================
+
+    /// Models `find_process`: looks up a process by PID across all queues.
+    ///
+    /// Verifies the precondition that the process must exist, and that the
+    /// operation does not mutate state.
+    pub fn find_process(&self, pid: i32)
+        requires
+            self.wf(),
+            self.spec_process_exists(pid as int),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `find_process_mut`: mutable lookup of a process by PID.
+    ///
+    /// Although the original returns a mutable reference, the lookup itself
+    /// does not change queue membership. Mutations through the returned
+    /// reference are thread-level or state-level (T3) and do not affect queues.
+    pub fn find_process_mut(&self, pid: i32)
+        requires
+            self.wf(),
+            self.spec_process_exists(pid as int),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `interrupt_reason`: returns and clears the interrupt reason.
+    ///
+    /// The original takes `&mut self` but only modifies the `interrupt_reason`
+    /// field, which is not part of the queue state machine. No queue change.
+    pub fn take_interrupt_reason(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // interrupt_reason is not part of the queue state machine model.
+    }
+
+    //==============================================================================================
+    // Thread-Level Operations (T3 boundary, no queue change)
+    //==============================================================================================
+
+    /// Models `create_thread`: creates a new thread in an existing process.
+    ///
+    /// The queue-level effect depends on the process state:
+    /// - If the process is sleeping, it moves to ready (modeled by `wakeup_to_ready`).
+    /// - If the process is ready, it stays in ready (no change modeled here).
+    /// The actual thread creation is trust boundary T3.
+    ///
+    /// This stub models the ready-process case (no queue change).
+    pub fn create_thread_in_ready(&self, pid: i32)
+        requires
+            self.wf(),
+            self.ghost_ready@.contains(pid as int),
+        ensures
+            self.wf(),
+    {
+        // Thread creation in a ready process: no queue-level change (T3).
+    }
+
+    /// Models `set_thread_data_area`: sets the TDA for a thread in a sleeping process.
+    ///
+    /// No queue-level state change. The original requires the process to be
+    /// sleeping and the thread to be sleeping within it.
+    pub fn set_thread_data_area(&self, pid: i32)
+        requires
+            self.wf(),
+            self.ghost_suspended@.contains(pid as int),
+        ensures
+            self.wf(),
+    {
+        // Thread metadata update: no queue-level change (T3).
+    }
+
+    /// Models `get_thread_data_area`: reads the TDA for a thread in a sleeping process.
+    ///
+    /// Pure query: no state change.
+    pub fn get_thread_data_area(&self, pid: i32)
+        requires
+            self.wf(),
+            self.ghost_suspended@.contains(pid as int),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `try_join_thread`: attempts to join a thread.
+    ///
+    /// The original returns either a zombie thread (success) or a condvar/error.
+    /// No queue-level state change occurs.
+    pub fn try_join_thread(&self, pid: i32)
+        requires
+            self.wf(),
+            self.spec_process_exists(pid as int),
+        ensures
+            self.wf(),
+    {
+        // Thread join: no queue-level change (T3).
+    }
+
+    //==============================================================================================
+    // Synchronization Primitives (T3 boundary, no queue change)
+    //==============================================================================================
+
+    /// Models `get_mutex`: retrieves or creates a mutex for the running process.
+    ///
+    /// Mutex state is per-process, not per-queue. No queue change.
+    pub fn get_mutex(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `get_cond`: retrieves or creates a condition variable.
+    ///
+    /// Condvar state is per-process, not per-queue. No queue change.
+    pub fn get_cond(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `put_cond`: releases a condition variable.
+    ///
+    /// Condvar state is per-process, not per-queue. No queue change.
+    pub fn put_cond(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `put_mutex_guard`: stores a mutex guard in the running thread.
+    ///
+    /// Mutex guard tracking is per-thread, not per-queue. No queue change.
+    pub fn put_mutex_guard(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `take_mutex_guard`: removes a mutex guard from a thread.
+    ///
+    /// Mutex guard tracking is per-thread, not per-queue. No queue change.
+    pub fn take_mutex_guard(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `handle_fpu_exception`: saves/restores FPU state.
+    ///
+    /// FPU state management is per-thread, not per-queue. No queue change.
+    pub fn handle_fpu_exception(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
     }
 }
 

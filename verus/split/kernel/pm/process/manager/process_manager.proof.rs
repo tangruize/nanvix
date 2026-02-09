@@ -10,9 +10,11 @@
 // - create_process preserves wf by allocating a fresh PID.
 // - schedule preserves wf: running→ready and ready→running swap maintains
 //   disjointness, kernel safety, and PID bounds.
+// - full_schedule preserves wf: composes resume_all_interrupted + schedule.
 // - sleep_running preserves wf: non-kernel running→suspended.
 // - exit_running preserves wf: non-kernel running→zombie.
 // - wakeup_to_ready preserves wf: suspended→ready.
+// - wakeup_running_noop / wakeup_ready_noop: no queue change (T3).
 // - resume_all_interrupted preserves wf: all interrupted→ready.
 // - terminate_ready preserves wf: non-kernel ready→zombie.
 // - terminate_ready_stays_ready: non-kernel ready process stays ready (T3 boundary).
@@ -20,6 +22,7 @@
 // - harvest_zombie preserves wf: zombie removed.
 // - Kernel liveness: the kernel PID is always alive.
 // - PID uniqueness: newly allocated PIDs are always fresh.
+// - Query/sync/thread stubs preserve wf (find_process, get_mutex, etc.).
 
 use vstd::prelude::*;
 

@@ -87,7 +87,21 @@
 // abstracts away ordering. This is acceptable for the current verification
 // goals (process partitioning, kernel liveness, PID uniqueness). If scheduling
 // fairness properties are needed in the future, consider using `Seq<int>` for
-// the ready queue.
+// the ready queue. The `chosen_next` parameter in `schedule` and `full_schedule`
+// corresponds to the result of `take_earliest_ready`; the choice is abstracted
+// as a precondition (trust boundary T1).
+//
+// ## Scheduler Composition
+//
+// The original `schedule()` (mod.rs:640-678) performs: push running→ready,
+// check_alarm (suspended→interrupted for expired alarms), resume all
+// interrupted→ready, take_earliest_ready→running. The verified model provides:
+// - `alarm_interrupt`: individual suspended→interrupted transition.
+// - `resume_all_interrupted`: batch interrupted→ready transition.
+// - `schedule`: running↔ready swap.
+// - `full_schedule`: composes resume_all_interrupted + schedule in one step.
+// Callers model the full original schedule as: zero or more `alarm_interrupt`
+// calls (for each expired alarm), then one `full_schedule` call.
 
 use vstd::prelude::*;
 
@@ -251,6 +265,15 @@ impl ProcessManagerInner {
     /// the running PID (models the state after the running process yields).
     pub open spec fn spec_ready_with_running(&self) -> Set<int> {
         self.ghost_ready@.insert(self.running_pid as int)
+    }
+
+    /// Spec function: the full pool of schedulable PIDs after merging interrupted
+    /// into ready and adding the running PID.
+    ///
+    /// Models the set of candidates for `take_earliest_ready` in the original
+    /// `schedule()`, which is called after `resume_all_interrupted()`.
+    pub open spec fn spec_full_schedule_pool(&self) -> Set<int> {
+        self.ghost_ready@.union(self.ghost_interrupted@).insert(self.running_pid as int)
     }
 }
 
