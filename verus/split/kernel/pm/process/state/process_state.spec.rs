@@ -9,10 +9,12 @@
 // ProcessState manages per-process state in the kernel. For verification we model:
 // - `pid` as a ProcessIdentifier (verified dependency).
 // - `capabilities` as a Capabilities (verified dependency).
-// - `mutexes` as a ghost `Map<int, int>` with runtime `mutex_count` counter,
+// - `mutexes` as a ghost `Map<int, nat>` with runtime `mutex_count` counter,
 //   modeling `BTreeMap<MutexAddress, Mutex>` with capacity bound `MUTEX_MAX`.
-// - `conditions` as a ghost `Map<int, int>` with runtime `cond_count` counter,
+//   The `nat` value represents the Arc strong reference count of the Mutex.
+// - `conditions` as a ghost `Map<int, nat>` with runtime `cond_count` counter,
 //   modeling `BTreeMap<ConditionAddress, Condvar>` with capacity bound `COND_MAX`.
+//   The `nat` value represents the Arc strong reference count of the Condvar.
 // - `pmio` as a ghost `Seq<int>` of port numbers, modeling `LinkedList<AnyIoPort>`.
 // - `events`, `mailbox`, `mmio`, `vmem` as abstract ghost tokens (opaque boundary types).
 
@@ -27,7 +29,7 @@ verus! {
 /// Abstract view of a ProcessState.
 ///
 /// Models the logical state of a process: its identity, capabilities,
-/// mutex/condvar maps, and I/O port list.
+/// mutex/condvar maps (with reference counts), and I/O port list.
 #[verifier::ext_equal]
 pub struct ProcessStateView {
     /// Process identifier value.
@@ -36,12 +38,12 @@ pub struct ProcessStateView {
     pub capabilities_bits: u8,
     /// Number of mutexes in the map.
     pub mutex_count: nat,
-    /// Ghost map of mutex addresses to abstract values.
-    pub mutex_map: Map<int, int>,
+    /// Ghost map of mutex addresses to reference counts.
+    pub mutex_map: Map<int, nat>,
     /// Number of condition variables in the map.
     pub cond_count: nat,
-    /// Ghost map of condvar addresses to abstract values.
-    pub cond_map: Map<int, int>,
+    /// Ghost map of condvar addresses to reference counts.
+    pub cond_map: Map<int, nat>,
     /// Ghost sequence of I/O port numbers.
     pub pmio_ports: Seq<int>,
 }
@@ -76,9 +78,23 @@ impl ProcessState {
         self.ghost_mutexes@.contains_key(addr)
     }
 
+    /// Spec function: returns the reference count for a mutex address.
+    pub open spec fn spec_mutex_ref_count(&self, addr: int) -> nat
+        recommends self.spec_has_mutex(addr)
+    {
+        self.ghost_mutexes@[addr]
+    }
+
     /// Spec function: checks whether a condvar address is present.
     pub open spec fn spec_has_cond(&self, addr: int) -> bool {
         self.ghost_conditions@.contains_key(addr)
+    }
+
+    /// Spec function: returns the reference count for a condvar address.
+    pub open spec fn spec_cond_ref_count(&self, addr: int) -> nat
+        recommends self.spec_has_cond(addr)
+    {
+        self.ghost_conditions@[addr]
     }
 
     /// Spec function: returns the ghost PMIO port sequence.
@@ -101,16 +117,23 @@ impl ProcessState {
     /// A ProcessState is well-formed when:
     /// - The ghost mutex map is finite and its domain size equals the runtime counter.
     /// - The ghost condvar map is finite and its domain size equals the runtime counter.
-    /// - The ghost PMIO sequence length is finite (always true for Seq).
     /// - The mutex count does not exceed MUTEX_MAX.
     /// - The condvar count does not exceed COND_MAX.
     /// - The capabilities are well-formed.
+    /// - All mutex reference counts are positive.
+    /// - All condvar reference counts are positive.
     pub open spec fn wf(&self) -> bool {
         &&& self.ghost_mutexes@.dom().finite()
         &&& self.ghost_mutexes@.dom().len() == self.mutex_count as nat
         &&& self.ghost_conditions@.dom().finite()
         &&& self.ghost_conditions@.dom().len() == self.cond_count as nat
+        &&& self.mutex_count as nat <= Self::MUTEX_MAX() as nat
+        &&& self.cond_count as nat <= Self::COND_MAX() as nat
         &&& self.capabilities.wf()
+        &&& forall|addr: int| self.ghost_mutexes@.contains_key(addr) ==>
+                self.ghost_mutexes@[addr] > 0
+        &&& forall|addr: int| self.ghost_conditions@.contains_key(addr) ==>
+                self.ghost_conditions@[addr] > 0
     }
 
     /// Spec function: checks if the mutex map is at capacity.
@@ -124,13 +147,32 @@ impl ProcessState {
     }
 
     /// Spec constant: maximum number of mutexes per process.
+    /// Matches `MUTEX_OPEN_MAX` from `build/kernel_config.toml`.
     pub open spec fn MUTEX_MAX() -> usize {
-        256usize
+        32usize
     }
 
     /// Spec constant: maximum number of condition variables per process.
+    /// Matches `COND_OPEN_MAX` from `build/kernel_config.toml`.
     pub open spec fn COND_MAX() -> usize {
-        256usize
+        32usize
+    }
+
+    /// Spec constant: mutex Arc strong count threshold for removal.
+    /// In the original, `extract_if` removes when `mutex.reference_count() <= 2`.
+    /// The BTreeMap entry holds one Arc clone, and the `get_mutex` return value holds
+    /// another. When `reference_count() <= 2`, only these two references exist
+    /// (no external holders), so the entry can be safely removed.
+    pub open spec fn MUTEX_REMOVE_THRESHOLD() -> nat {
+        2
+    }
+
+    /// Spec constant: condvar Arc strong count threshold for removal.
+    /// In the original, `extract_if` removes when `cond.reference_count() <= 1`.
+    /// The BTreeMap entry holds one Arc clone. When `reference_count() <= 1`,
+    /// only the map entry's reference exists, so the entry can be safely removed.
+    pub open spec fn COND_REMOVE_THRESHOLD() -> nat {
+        1
     }
 }
 
