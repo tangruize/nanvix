@@ -391,7 +391,18 @@ impl RunnableProcess {
                     ==> #[trigger] self.ready_admission_times@[idx]
                         <= #[trigger] self.ready_admission_times@[j],
     {
-        Self::lemma_seq_has_min(&self.ready_admission_times@, self.ready_admission_times@.len() as int);
+        let s: &Seq<int> = &self.ready_admission_times@;
+        let n: int = s.len() as int;
+        Self::lemma_seq_has_min(s, n);
+        let min_idx: int = choose|idx: int| 0 <= idx < n
+            && forall|j: int| 0 <= j < n ==> (#[trigger] s[idx]) <= (#[trigger] s[j]);
+        assert(self.ready_admission_times@[min_idx] == s[min_idx]);
+        assert forall|j: int| 0 <= j < self.ready_admission_times@.len()
+            implies #[trigger] self.ready_admission_times@[min_idx]
+                <= #[trigger] self.ready_admission_times@[j]
+        by {
+            assert(s[min_idx] <= s[j]);
+        }
     }
 
     /// Helper: A non-empty sequence of ints has a minimum element within the first n elements.
