@@ -411,12 +411,21 @@ impl RunningProcess {
     /// On successful zombie join (tag=0), `self` is mutated: the zombie
     /// list shrinks by one (the joined thread is removed).
     ///
+    /// ## Oracle Parameter
+    ///
+    /// The `tag` parameter is required because this function performs exec-level
+    /// mutation (zombie_count decrement, zombie_thread_ids update) that requires
+    /// an exec-level branch decision. All thread collections in the verification
+    /// model are ghost (`Ghost<Seq<int>>`), so `Seq::contains()` cannot be
+    /// evaluated at exec time. The precondition `tag == spec_try_join_thread(tid)`
+    /// is verified by Verus at every call site, ensuring callers cannot pass
+    /// inconsistent values. In the original code, the search is performed by
+    /// iterating over `NonEmptyVecDeque` collections.
+    ///
     /// # Parameters
     ///
     /// - `tid`: Ghost thread identifier to join.
-    /// - `tag`: Oracle parameter — the result of the join lookup. Callers must
-    ///   provide the value matching `spec_try_join_thread(tid)`. In the original,
-    ///   the search is performed by iterating over `NonEmptyVecDeque` collections.
+    /// - `tag`: Oracle — the join result. Must equal `spec_try_join_thread(tid)`.
     ///
     /// # Returns
     ///
@@ -487,7 +496,7 @@ impl RunningProcess {
     /// Models the original `RunningProcess::find_thread(tid)`.
     /// The original returns `Option<ThreadRef>` (a reference enum). Since
     /// Verus cannot express reference-returning functions, we return the
-    /// abstract list variant from `spec_find_thread()`:
+    /// abstract list variant from `spec_find_thread()` as a ghost value:
     /// - `Some(0)`: running thread.
     /// - `Some(1)`: ready thread.
     /// - `Some(2)`: interrupted thread.
@@ -495,63 +504,43 @@ impl RunningProcess {
     /// - `Some(4)`: zombie thread.
     /// - `None`: not found.
     ///
+    /// No oracle parameter needed: the result is computed directly from the
+    /// spec function via `Ghost(...)`, which is evaluated at verification time.
+    ///
     /// # Parameters
     ///
     /// - `tid`: Ghost thread identifier to search for.
-    /// - `found_in`: Oracle parameter — the list variant from searching. Callers
-    ///   must provide the value matching `spec_find_thread(tid)`. In the original,
-    ///   the search iterates over each thread collection in order.
     ///
     /// # Returns
     ///
-    /// The list variant as `Option<Ghost<int>>`.
-    pub fn find_thread(&self, tid: Ghost<int>, found_in: Option<u8>) -> (result: Option<Ghost<int>>)
-        requires
-            match found_in {
-                Some(v) => self.spec_find_thread(tid@) == Some(v as int),
-                None => self.spec_find_thread(tid@).is_none(),
-            },
+    /// The ghost list variant.
+    pub fn find_thread(&self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
         ensures
-            match result {
-                Some(v) => self.spec_find_thread(tid@) == Some(v@),
-                None => self.spec_find_thread(tid@).is_none(),
-            },
+            result@ == self.spec_find_thread(tid@),
     {
-        match found_in {
-            Some(v) => Some(Ghost(v as int)),
-            None => None,
-        }
+        Ghost(self.spec_find_thread(tid@))
     }
 
     /// Finds a thread by its identifier (mutable variant).
     ///
     /// Models the original `RunningProcess::find_thread_mut(tid)`.
-    /// Same semantics as `find_thread()` — returns the list variant.
+    /// Same semantics as `find_thread()` — returns the ghost list variant.
     /// The mutable reference in the original allows in-place mutation of
     /// the found thread, but this does not change the thread's identity
-    /// or list membership.
+    /// or list membership. Frame condition: self is unchanged.
     ///
     /// # Parameters
     ///
     /// - `tid`: Ghost thread identifier to search for.
-    /// - `found_in`: Oracle parameter — the list variant from searching. Callers
-    ///   must provide the value matching `spec_find_thread(tid)`.
     ///
     /// # Returns
     ///
-    /// The list variant as `Option<Ghost<int>>`.
-    pub fn find_thread_mut(&mut self, tid: Ghost<int>, found_in: Option<u8>) -> (result: Option<Ghost<int>>)
+    /// The ghost list variant.
+    pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
         requires
             old(self).wf(),
-            match found_in {
-                Some(v) => old(self).spec_find_thread(tid@) == Some(v as int),
-                None => old(self).spec_find_thread(tid@).is_none(),
-            },
         ensures
-            match result {
-                Some(v) => old(self).spec_find_thread(tid@) == Some(v@),
-                None => old(self).spec_find_thread(tid@).is_none(),
-            },
+            result@ == old(self).spec_find_thread(tid@),
             // Frame: find_thread_mut does not change any modeled fields.
             self.spec_pid() == old(self).spec_pid(),
             self.spec_running_thread_id() == old(self).spec_running_thread_id(),
@@ -561,10 +550,7 @@ impl RunningProcess {
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf() == old(self).wf(),
     {
-        match found_in {
-            Some(v) => Some(Ghost(v as int)),
-            None => None,
-        }
+        Ghost(old(self).spec_find_thread(tid@))
     }
 
     /// Transitions to a RunnableProcess by scheduling the running thread.
@@ -961,13 +947,22 @@ impl RunningProcess {
     /// Models the original `RunningProcess::wakeup(tid)`.
     /// Returns Ok(RunningProcess) on success, Err(RunningProcess) if not found.
     ///
+    /// ## Oracle Parameter
+    ///
+    /// The `found` parameter is required because this function performs exec-level
+    /// mutation (ready_count increment, sleeping_count decrement) that requires
+    /// an exec-level branch decision. All thread collections in the verification
+    /// model are ghost (`Ghost<Seq<int>>`), so `Seq::contains()` cannot be
+    /// evaluated at exec time. The precondition `found == spec_seq_contains(...)`
+    /// is verified by Verus at every call site, ensuring callers cannot pass
+    /// inconsistent values. In the original code, the search is performed by
+    /// `NonEmptyVecDeque::remove_if()`.
+    ///
     /// # Parameters
     ///
     /// - `tid`: Ghost thread ID to wake up.
-    /// - `found`: Oracle parameter — whether the thread was found in sleeping list.
-    ///   This is a trust assumption: callers must provide the correct value.
-    ///   The precondition `found == spec_seq_contains(...)` ties it to ghost state.
-    ///   In the original, the search is performed by `NonEmptyVecDeque::remove_if()`.
+    /// - `found`: Oracle — whether the thread is in the sleeping list.
+    ///   Must equal `spec_seq_contains(sleeping_thread_ids, tid)`.
     ///
     /// # Returns
     ///
