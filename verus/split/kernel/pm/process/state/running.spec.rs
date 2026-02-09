@@ -17,7 +17,6 @@
 // - `ContextInformation*` is elided (HAL boundary).
 // - `Condvar` is elided (sync primitive boundary).
 // - `ExitStatus` is modeled as `int`.
-// - `SystemTime` (alarm) is modeled as `Option<int>`.
 //
 // ## Key Invariants
 //
@@ -36,16 +35,41 @@
 //
 // Thread ID uniqueness across lists is NOT enforced in `wf()`. In the original
 // code, the Rust type system ensures ownership semantics — a thread struct can
-// only be in one `NonEmptyVecDeque` at a time.
+// only be in one `NonEmptyVecDeque` at a time. An optional `wf_strict()`
+// predicate is provided for downstream cross-module proofs that require
+// thread ID uniqueness.
 //
 // ## Trust Assumptions
 //
 // - `ContextInformation` pointers from schedule/sleep/exit are omitted (HAL boundary).
 // - `Condvar` from join_cond/exit_thread is omitted (sync boundary).
+// - `alarm: Option<SystemTime>` parameter in `sleep()` is elided. The alarm
+//   affects the `SleepingThread`'s wakeup behavior but not the process state
+//   machine logic verified here. If alarm-based temporal properties are ever
+//   verified, this elision must be revisited.
 // - Thread state transitions (RunningThread::schedule(), sleep(), exit()) are
 //   modeled as ID-preserving operations.
 // - `SleepingProcess`, `RunnableProcess`, `InterruptedProcess`, `ZombieProcess`
 //   are boundary models from sibling modules.
+// - `wakeup()` takes a `found: bool` oracle parameter because `Seq::contains()`
+//   is spec-only and cannot be evaluated at exec level. The precondition
+//   `found == spec_seq_contains(...)` ties the oracle to ghost state. Callers
+//   must be trusted to provide the correct value. The search in the original
+//   code is performed by `NonEmptyVecDeque::remove_if()`.
+// - `find_thread()` and `find_thread_mut()` are modeled spec-only because they
+//   return reference types (`ThreadRef`, `ThreadRefMut`) that Verus cannot
+//   express. The spec model `spec_find_thread()` captures the exhaustive search
+//   semantics and correct list-variant selection. Exec-level implementations
+//   should be independently verified against this spec when reference types
+//   become expressible in Verus.
+// - `running_mut()` returns `&mut RunningThread`, permitting arbitrary mutation
+//   of the running thread's internal state. This is a trust boundary: callers
+//   must preserve the running thread's ID (`spec_running_thread_id()` unchanged)
+//   and any structural invariants assumed by this module. This obligation is
+//   discharged when `RunningThread` is independently verified.
+// - `state()` / `state_mut()` return references to ProcessState. Modeled via PID
+//   only. `state_mut()` permits arbitrary mutation; callers must preserve PID
+//   immutability.
 
 use vstd::prelude::*;
 
@@ -99,12 +123,20 @@ pub struct RunnableProcessView {
 }
 
 /// Abstract view of an InterruptedProcess (boundary type).
+///
+/// Includes `sleeping_thread_ids` to match the original `InterruptedProcess`
+/// struct which has a `sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>`
+/// field. This is critical for `sleep()`'s interrupted branch, where sleeping
+/// threads are passed through `InterruptedProcess::from_sleeping()` and
+/// preserved through `resume()` into the resulting `RunnableProcess`.
 #[verifier::ext_equal]
 pub struct InterruptedProcessView {
     /// Process identifier value.
     pub pid: int,
     /// Interrupted thread IDs (non-empty).
     pub interrupted_thread_ids: Seq<int>,
+    /// Sleeping thread IDs (may be empty).
+    pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs (may be empty).
     pub zombie_thread_ids: Seq<int>,
 }
@@ -119,14 +151,6 @@ pub struct ZombieProcessView {
     /// Exit status.
     pub status: int,
 }
-
-//==================================================================================================
-// Spec Constants
-//==================================================================================================
-
-/// Abstract exit status for interrupted processes.
-/// Value 4 corresponds to EINTR.
-pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 4 }
 
 //==================================================================================================
 // Spec Functions: RunningProcess
@@ -230,6 +254,37 @@ impl RunningProcess {
         }
     }
 
+    /// Spec function: models `try_join_thread()` return semantics.
+    ///
+    /// Returns an abstract result tag:
+    /// - `Ok(0)` if the thread is a zombie (will be removed from zombie list).
+    /// - `Err(Ok(1))` if the thread is the running thread (operation not permitted).
+    /// - `Err(Ok(2))` if the thread is ready, sleeping, or interrupted (returns condvar).
+    /// - `Err(Err(3))` if the thread is not found (no such process).
+    ///
+    /// Key properties:
+    /// - Joining a running thread is an error (`ErrorCode::OperationNotPermitted`).
+    /// - Joining a zombie thread removes it from the zombie list (side effect).
+    /// - Joining a live thread (ready/sleeping/interrupted) returns a condvar for waiting.
+    /// - Joining a non-existent thread is an error (`ErrorCode::NoSuchProcess`).
+    pub open spec fn spec_try_join_thread(&self, tid: int) -> int {
+        if self.running_thread_id@ == tid {
+            // Running thread: OperationNotPermitted error.
+            1int
+        } else if self.spec_has_zombie_thread(tid) {
+            // Zombie thread: Ok, will be removed.
+            0int
+        } else if self.spec_has_ready_thread(tid)
+            || self.spec_has_sleeping_thread(tid)
+            || self.spec_has_interrupted_thread(tid) {
+            // Live thread: returns condvar.
+            2int
+        } else {
+            // Not found: NoSuchProcess error.
+            3int
+        }
+    }
+
     /// Spec helper: checks if a sequence contains a given value.
     pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
@@ -242,17 +297,47 @@ impl RunningProcess {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
+    /// Spec helper: checks whether two sequences share no common elements.
+    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+        forall|i: int, j: int|
+            0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
+    }
+
     /// Spec function: well-formedness predicate.
     ///
     /// A RunningProcess is well-formed when:
     /// - Exec-level counters match ghost sequence lengths.
     ///
     /// Note: Thread ID uniqueness is a trust assumption from Rust's ownership model.
+    /// See `wf_strict()` for an optional stronger predicate.
     pub open spec fn wf(&self) -> bool {
         &&& self.ready_count as nat == self.ready_thread_ids@.len()
         &&& self.interrupted_count as nat == self.interrupted_thread_ids@.len()
         &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
         &&& self.zombie_count as nat == self.zombie_thread_ids@.len()
+    }
+
+    /// Spec function: strict well-formedness with thread ID uniqueness.
+    ///
+    /// Extends `wf()` with pairwise disjointness of all thread lists plus
+    /// the running thread. NOT part of the default `wf()` — this is a trust
+    /// assumption inherited from Rust's ownership model. Provided for
+    /// downstream cross-module proofs that need thread ID exclusivity.
+    pub open spec fn wf_strict(&self) -> bool {
+        &&& self.wf()
+        // Running thread not in any list.
+        &&& !self.spec_has_ready_thread(self.running_thread_id@)
+        &&& !self.spec_has_interrupted_thread(self.running_thread_id@)
+        &&& !self.spec_has_sleeping_thread(self.running_thread_id@)
+        &&& !self.spec_has_zombie_thread(self.running_thread_id@)
+        // Pairwise disjointness of lists.
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids@, self.interrupted_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids@, self.sleeping_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids@, self.zombie_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.interrupted_thread_ids@, self.sleeping_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.interrupted_thread_ids@, self.zombie_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.sleeping_thread_ids@, self.zombie_thread_ids@)
     }
 }
 
@@ -293,14 +378,6 @@ impl InterruptedProcess {
     /// Spec function: well-formedness predicate.
     pub open spec fn wf(&self) -> bool {
         self.interrupted_thread_ids@.len() >= 1
-    }
-
-    /// Spec function: models `resume()` — transitions to RunnableProcess.
-    /// In the original, `InterruptedProcess::resume()` picks an interrupted
-    /// thread, makes it ready, and returns a RunnableProcess.
-    /// We model the result's PID preservation and ready list non-emptiness.
-    pub open spec fn spec_resume_pid(&self) -> int {
-        self.pid@
     }
 }
 
@@ -373,6 +450,7 @@ impl View for InterruptedProcess {
         InterruptedProcessView {
             pid: self.pid@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
+            sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
         }
     }

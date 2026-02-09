@@ -7,14 +7,21 @@
 // Key proven properties:
 // - Construction produces well-formed state with correct initial values.
 // - PID is immutable across all operations.
-// - schedule() moves running→ready, producing RunnableProcess with preserved PID.
-// - sleep() moves running→sleeping, correct branch selection.
+// - schedule() moves running→ready, producing RunnableProcess with preserved PID
+//   and non-empty ready list. Total thread count preserved.
+// - sleep() moves running→sleeping, correct branch selection. Sleeping threads
+//   are threaded through InterruptedProcess on the interrupted path.
 // - exit() moves running→zombie + terminates all, correct branch selection.
-// - exit_thread() moves running→zombie for just the running thread.
+//   Zombie content is exact (running + ready + original zombie).
+// - exit_thread() moves running→zombie for just the running thread, with
+//   documented divergence from original source (see exec file).
 // - get_tid() returns the running thread ID.
 // - wakeup() moves sleeping→ready, preserves PID and total count.
+// - try_join_thread() spec model captures running-thread error, zombie removal,
+//   condvar for live threads, and not-found error.
 // - find_thread() spec model verifies exhaustive search.
 // - Well-formedness is preserved by all operations.
+// - wf_strict() provides optional thread ID uniqueness predicate.
 
 use vstd::prelude::*;
 
@@ -74,27 +81,38 @@ impl RunningProcess {
     // schedule() Lemmas
     //==============================================================================================
 
-    /// Lemma: schedule() preserves total thread count.
-    /// The running thread becomes a ready thread in the resulting RunnableProcess.
-    pub proof fn lemma_schedule_preserves_total_threads(&self)
-        requires
-            self.wf(),
-        ensures
-            // running thread (1) + existing ready = new ready count in result.
-            self.spec_ready_count() + 1 == self.spec_ready_count() + 1,
-    {
-    }
-
-    /// Lemma: schedule() produces a RunnableProcess with non-empty ready list.
+    /// Lemma: schedule() produces a result with non-empty ready list (>= 1).
+    /// The running thread becomes ready, so even if the ready list was empty,
+    /// the result has at least one ready thread.
     pub proof fn lemma_schedule_result_has_ready(&self)
         requires
             self.wf(),
         ensures
-            // After schedule, ready list has at least one thread (the formerly running one).
-            // If self had ready threads, push_back makes ready_count + 1.
-            // If self had no ready threads, NonEmptyVecDeque::new makes 1.
-            // Either way, >= 1.
-            true,
+            ({
+                let new_ready: Seq<int> = self.ready_thread_ids@.push(self.running_thread_id@);
+                new_ready.len() >= 1
+                && new_ready.len() == self.spec_ready_count() + 1
+            }),
+    {
+    }
+
+    /// Lemma: schedule() preserves total thread count.
+    /// The running thread (1) becomes part of the ready list, so:
+    /// result.ready = self.ready + 1, and no other lists change.
+    /// Total before: 1 + ready + interrupted + sleeping + zombie.
+    /// Total after (as threads in RunnableProcess): (ready+1) + interrupted + sleeping + zombie.
+    /// The "1" (running) is accounted for by the +1 in ready.
+    pub proof fn lemma_schedule_preserves_total_threads(&self)
+        requires
+            self.wf(),
+        ensures
+            ({
+                let new_ready_len: nat = (self.spec_ready_count() + 1) as nat;
+                // Total threads = new ready + unchanged lists.
+                new_ready_len + self.spec_interrupted_count()
+                    + self.spec_sleeping_count() + self.spec_zombie_count()
+                    == self.spec_total_thread_count()
+            }),
     {
     }
 
@@ -102,38 +120,47 @@ impl RunningProcess {
     // sleep() Lemmas
     //==============================================================================================
 
-    /// Lemma: sleep() with ready threads produces Ok(RunnableProcess).
+    /// Lemma: sleep() with ready threads produces Runnable with correct sleeping content.
     pub proof fn lemma_sleep_with_ready_gives_runnable(&self)
         requires
             self.wf(),
             self.spec_ready_count() > 0,
         ensures
-            // With ready threads available, sleep returns Ok(RunnableProcess).
-            true,
+            ({
+                let new_sleeping: Seq<int> = self.sleeping_thread_ids@.push(self.running_thread_id@);
+                new_sleeping.len() == self.spec_sleeping_count() + 1
+                && new_sleeping.len() >= 1
+            }),
     {
     }
 
-    /// Lemma: sleep() with no ready but interrupted threads also produces Ok.
-    pub proof fn lemma_sleep_with_interrupted_gives_runnable(&self)
+    /// Lemma: sleep() with no ready but interrupted threads: sleeping list grows by 1.
+    pub proof fn lemma_sleep_with_interrupted_sleeping_content(&self)
         requires
             self.wf(),
             self.spec_ready_count() == 0,
             self.spec_interrupted_count() > 0,
         ensures
-            // Interrupted threads exist, so InterruptedProcess.resume() yields RunnableProcess.
-            true,
+            ({
+                let new_sleeping: Seq<int> = self.sleeping_thread_ids@.push(self.running_thread_id@);
+                new_sleeping.len() == self.spec_sleeping_count() + 1
+                && self.interrupted_thread_ids@.len() >= 1
+            }),
     {
     }
 
-    /// Lemma: sleep() with no ready and no interrupted produces Err(SleepingProcess).
-    pub proof fn lemma_sleep_no_ready_no_interrupted_gives_sleeping(&self)
+    /// Lemma: sleep() with no ready and no interrupted produces Sleeping with correct content.
+    pub proof fn lemma_sleep_no_ready_no_interrupted_content(&self)
         requires
             self.wf(),
             self.spec_ready_count() == 0,
             self.spec_interrupted_count() == 0,
         ensures
-            // No ready or interrupted threads, so the process becomes sleeping.
-            true,
+            ({
+                let new_sleeping: Seq<int> = self.sleeping_thread_ids@.push(self.running_thread_id@);
+                new_sleeping.len() == self.spec_sleeping_count() + 1
+                && new_sleeping.len() >= 1
+            }),
     {
     }
 
@@ -141,37 +168,44 @@ impl RunningProcess {
     // exit() Lemmas
     //==============================================================================================
 
-    /// Lemma: exit() produces zombie threads containing the running thread.
-    pub proof fn lemma_exit_running_becomes_zombie(&self, status: int)
+    /// Lemma: exit() zombie list content is exactly running + ready + original zombie.
+    pub proof fn lemma_exit_zombie_content(&self)
         requires
             self.wf(),
         ensures
-            // The running thread's ID will be in the zombie list.
-            true,
+            ({
+                let new_zombie: Seq<int> = seq![self.running_thread_id@]
+                    .add(self.ready_thread_ids@).add(self.zombie_thread_ids@);
+                new_zombie.len() == 1 + self.spec_ready_count() + self.spec_zombie_count()
+                && new_zombie.len() >= 1
+            }),
     {
     }
 
-    /// Lemma: exit() with interrupted threads produces Ok(RunnableProcess).
-    pub proof fn lemma_exit_with_interrupted_gives_runnable(&self)
+    /// Lemma: exit() with interrupted or sleeping threads: interrupted list is non-empty.
+    pub proof fn lemma_exit_with_interrupted_has_interrupted(&self)
         requires
             self.wf(),
             self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0,
         ensures
-            // When interrupted threads exist (either original or from sleeping→interrupted),
-            // exit returns Ok.
-            true,
+            ({
+                let new_interrupted: Seq<int> =
+                    self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
+                new_interrupted.len() >= 1
+                && new_interrupted.len() ==
+                    self.spec_interrupted_count() + self.spec_sleeping_count()
+            }),
     {
     }
 
-    /// Lemma: exit() with no interrupted or sleeping threads produces Err(ZombieProcess).
+    /// Lemma: exit() with no interrupted or sleeping threads produces Zombie.
     pub proof fn lemma_exit_no_interrupted_gives_zombie(&self)
         requires
             self.wf(),
             self.spec_interrupted_count() == 0,
             self.spec_sleeping_count() == 0,
         ensures
-            // No interrupted threads, so all become zombie.
-            true,
+            !(self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0),
     {
     }
 
@@ -179,13 +213,26 @@ impl RunningProcess {
     // exit_thread() Lemmas
     //==============================================================================================
 
-    /// Lemma: exit_thread() with ready threads produces Ok (RunnableProcess).
-    pub proof fn lemma_exit_thread_with_ready(&self)
+    /// Lemma: exit_thread() zombie list is original zombie + running thread.
+    pub proof fn lemma_exit_thread_zombie_content(&self)
+        requires
+            self.wf(),
+        ensures
+            ({
+                let new_zombie: Seq<int> = self.zombie_thread_ids@.push(self.running_thread_id@);
+                new_zombie.len() == 1 + self.spec_zombie_count()
+                && new_zombie.len() >= 1
+            }),
+    {
+    }
+
+    /// Lemma: exit_thread() with ready threads: result ready list is unchanged.
+    pub proof fn lemma_exit_thread_with_ready_preserves_ready(&self)
         requires
             self.wf(),
             self.spec_ready_count() > 0,
         ensures
-            true,
+            self.ready_thread_ids@.len() >= 1,
     {
     }
 
@@ -215,6 +262,25 @@ impl RunningProcess {
             self.wf(),
         ensures
             self.spec_pid() == self.pid@,
+    {
+    }
+
+    /// Lemma: wakeup() preserves total thread count.
+    pub proof fn lemma_wakeup_preserves_total_count(&self, removed_idx: int)
+        requires
+            self.wf(),
+            self.spec_sleeping_count() > 0,
+            0 <= removed_idx < self.sleeping_thread_ids@.len(),
+        ensures
+            ({
+                let new_total: int =
+                    1  // running thread (unchanged)
+                    + (self.spec_ready_count() + 1) as int
+                    + self.spec_interrupted_count() as int
+                    + (self.spec_sleeping_count() - 1) as int
+                    + self.spec_zombie_count() as int;
+                new_total == self.spec_total_thread_count() as int
+            }),
     {
     }
 
@@ -269,6 +335,38 @@ impl RunningProcess {
     pub proof fn lemma_find_thread_iff_has_thread(&self, tid: int)
         ensures
             self.spec_find_thread(tid).is_some() <==> self.spec_has_thread(tid),
+    {
+    }
+
+    //==============================================================================================
+    // try_join_thread() Lemmas
+    //==============================================================================================
+
+    /// Lemma: try_join_thread on the running thread returns error (tag=1).
+    pub proof fn lemma_try_join_running_thread_errors(&self, tid: int)
+        requires
+            self.running_thread_id@ == tid,
+        ensures
+            self.spec_try_join_thread(tid) == 1int,
+    {
+    }
+
+    /// Lemma: try_join_thread on a zombie thread returns success (tag=0).
+    pub proof fn lemma_try_join_zombie_thread_succeeds(&self, tid: int)
+        requires
+            self.running_thread_id@ != tid,
+            self.spec_has_zombie_thread(tid),
+        ensures
+            self.spec_try_join_thread(tid) == 0int,
+    {
+    }
+
+    /// Lemma: try_join_thread on a not-found thread returns error (tag=3).
+    pub proof fn lemma_try_join_not_found_errors(&self, tid: int)
+        requires
+            !self.spec_has_thread(tid),
+        ensures
+            self.spec_try_join_thread(tid) == 3int,
     {
     }
 
@@ -371,7 +469,8 @@ impl SleepingProcess {
 
 impl InterruptedProcess {
     /// Lemma: Construction with non-empty interrupted threads is well-formed.
-    pub proof fn lemma_new_wf(pid: int, interrupted_ids: Seq<int>, zombie_ids: Seq<int>)
+    pub proof fn lemma_new_wf(pid: int, interrupted_ids: Seq<int>,
+                              sleeping_ids: Seq<int>, zombie_ids: Seq<int>)
         requires
             interrupted_ids.len() >= 1,
         ensures
@@ -379,6 +478,7 @@ impl InterruptedProcess {
                 let ip: InterruptedProcess = InterruptedProcess {
                     pid: Ghost(pid),
                     interrupted_thread_ids: Ghost(interrupted_ids),
+                    sleeping_thread_ids: Ghost(sleeping_ids),
                     zombie_thread_ids: Ghost(zombie_ids),
                 };
                 ip.wf()

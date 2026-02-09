@@ -15,12 +15,16 @@
 //!   and total thread count maintained (running thread becomes ready).
 //! - `sleep()` moves running→sleeping; branches correctly based on available threads:
 //!   produces RunnableProcess (if ready or interrupted threads exist) or SleepingProcess.
+//!   Sleeping threads are threaded through `InterruptedProcess` on the interrupted path.
 //! - `exit()` moves running→zombie, terminates all ready threads, interrupts all sleeping
 //!   threads; produces RunnableProcess (if interrupted threads exist) or ZombieProcess.
+//!   Zombie thread content is threaded through `interrupted_resume()`.
 //! - `exit_thread()` moves only the running thread→zombie; branches based on remaining
 //!   threads: RunnableProcess, SleepingProcess, or ZombieProcess.
 //! - `get_tid()` returns the running thread's ID.
 //! - `wakeup()` moves a sleeping thread to ready, preserving PID and other lists.
+//! - `try_join_thread()` is modeled spec-only via `spec_try_join_thread()`.
+//! - `find_thread()` / `find_thread_mut()` are modeled spec-only via `spec_find_thread()`.
 //! - Well-formedness is preserved by all operations.
 //!
 //! ## Verification Model
@@ -32,17 +36,44 @@
 //! - `ContextInformation*` -> elided (HAL boundary).
 //! - `Condvar` -> elided (sync primitive boundary).
 //! - `ExitStatus` -> int.
+//! - `alarm: Option<SystemTime>` -> elided. Does not affect state machine logic.
 //!
 //! ## Trust Boundary
 //!
 //! - `RunnableProcess`, `SleepingProcess`, `InterruptedProcess`, `ZombieProcess`
 //!   are boundary models of sibling modules.
-//! - `InterruptedProcess::resume()` is modeled as producing a RunnableProcess with
-//!   preserved PID (external_body).
+//! - `InterruptedProcess::resume()` is modeled via `interrupted_resume()` (external_body).
+//!   It preserves PID, produces a well-formed RunnableProcess, and threads through
+//!   sleeping and zombie thread lists from the InterruptedProcess.
 //! - Thread state transitions (schedule, sleep, exit) are modeled as ID-preserving.
-//! - `find_thread()` / `find_thread_mut()` are modeled spec-only (return references).
-//! - `try_join_thread()` is modeled spec-only (complex return type with references).
+//! - `find_thread()` / `find_thread_mut()` are modeled spec-only (return references
+//!   that Verus cannot express). See `spec_find_thread()` in spec file.
+//! - `try_join_thread()` is modeled spec-only via `spec_try_join_thread()`. The key
+//!   property: joining a running thread errors, joining a zombie removes it, joining
+//!   a live thread returns a condvar, joining a missing thread errors.
 //! - `state()` / `state_mut()` are elided (ProcessState access modeled via PID).
+//!   `state_mut()` permits arbitrary mutation; callers must preserve PID immutability.
+//! - `running_mut()` returns `&mut RunningThread`, permitting arbitrary mutation.
+//!   Callers must preserve the running thread's ID (`spec_running_thread_id()`)
+//!   and any structural invariants. This is discharged when RunningThread is verified.
+//! - `wakeup()` takes a `found: bool` oracle because `Seq::contains()` is spec-only.
+//!   The precondition constrains it to match ghost state. See spec file for details.
+//!
+//! ## Known Divergence from Original Source
+//!
+//! In `exit_thread()`, the original code's interrupted branch (line 286) passes
+//! `self.zombie.take()` to `InterruptedProcess::from_sleeping`, but `self.zombie`
+//! was already consumed at line 261 into `zombie_threads`, so `self.zombie.take()`
+//! is always `None`. This means the just-exited running thread's zombie state is
+//! lost in the original code. The Verus model correctly passes `new_zombie_ids`
+//! (which includes the exited thread). This is a potential bug in the original
+//! source that the verification model intentionally fixes.
+//!
+//! ## Fields
+//!
+//! All struct fields are `pub` for Verus proof ergonomics (spec access, direct
+//! construction in lemmas). The original has private fields with getter/setter
+//! methods. This visibility difference has no functional impact on verification.
 
 use vstd::prelude::*;
 
@@ -63,8 +94,6 @@ verus! {
 /// Verification model of `src/kernel/src/pm/process/state/running.rs::RunningProcess`.
 /// Thread collections are modeled as ghost sequences of thread IDs.
 /// Exec-level counters track ghost sequence lengths for branch decisions.
-///
-/// **Note:** Fields are `pub` for Verus proof ergonomics.
 pub struct RunningProcess {
     /// Process identifier (from the inner ProcessState).
     pub pid: Ghost<int>,
@@ -118,12 +147,16 @@ pub struct SleepingProcess {
 
 /// A process that was interrupted (boundary model).
 ///
-/// Models `InterruptedProcess` from the sibling module.
+/// Models `InterruptedProcess` from the sibling module. Includes
+/// `sleeping_thread_ids` to match the original struct which carries
+/// sleeping threads through `from_sleeping()` and `resume()`.
 pub struct InterruptedProcess {
     /// Process identifier.
     pub pid: Ghost<int>,
     /// Interrupted thread IDs (non-empty).
     pub interrupted_thread_ids: Ghost<Seq<int>>,
+    /// Sleeping thread IDs (carried through resume).
+    pub sleeping_thread_ids: Ghost<Seq<int>>,
     /// Zombie thread IDs.
     pub zombie_thread_ids: Ghost<Seq<int>>,
 }
@@ -186,8 +219,9 @@ pub enum ExitThreadResult {
 
 /// Models `InterruptedProcess::resume()` — transitions to RunnableProcess.
 ///
-/// In the original, resume picks an interrupted thread and makes it ready.
-/// We model that the PID is preserved and the result has a non-empty ready list.
+/// In the original, `resume()` pops an interrupted thread, makes it ready,
+/// and passes through sleeping and zombie threads to the resulting RunnableProcess.
+/// We model: PID preserved, result well-formed, sleeping/zombie threads preserved.
 #[verifier::external_body]
 fn interrupted_resume(ip: InterruptedProcess) -> (result: RunnableProcess)
     requires
@@ -195,6 +229,10 @@ fn interrupted_resume(ip: InterruptedProcess) -> (result: RunnableProcess)
     ensures
         result.spec_pid() == ip.spec_pid(),
         result.wf(),
+        // Sleeping threads are passed through resume() into the result.
+        result.sleeping_thread_ids@ == ip.sleeping_thread_ids@,
+        // Zombie threads are passed through resume() into the result.
+        result.zombie_thread_ids@ == ip.zombie_thread_ids@,
 {
     unimplemented!()
 }
@@ -216,6 +254,10 @@ impl RunningProcess {
     /// - `interrupted_ids`: Interrupted thread IDs.
     /// - `sleeping_ids`: Sleeping thread IDs.
     /// - `zombie_ids`: Zombie thread IDs.
+    /// - `ready_count`: Exec-level count of ready threads.
+    /// - `interrupted_count`: Exec-level count of interrupted threads.
+    /// - `sleeping_count`: Exec-level count of sleeping threads.
+    /// - `zombie_count`: Exec-level count of zombie threads.
     ///
     /// # Returns
     ///
@@ -263,6 +305,10 @@ impl RunningProcess {
     /// Returns the running thread's identifier.
     ///
     /// Models the original `RunningProcess::get_tid()`.
+    ///
+    /// # Returns
+    ///
+    /// The ghost thread identifier of the running thread.
     pub fn get_tid(&self) -> (result: Ghost<int>)
         ensures
             result@ == self.spec_running_thread_id(),
@@ -317,11 +363,16 @@ impl RunningProcess {
 
     /// Puts the running thread to sleep.
     ///
-    /// Models the original `RunningProcess::sleep()`:
+    /// Models the original `RunningProcess::sleep(alarm)`:
     /// - The running thread becomes a sleeping thread.
-    /// - If ready threads exist, returns Runnable.
-    /// - If no ready but interrupted threads exist, interrupted.resume() → Runnable.
+    /// - If ready threads exist, returns Runnable with sleeping threads updated.
+    /// - If no ready but interrupted threads exist, constructs InterruptedProcess
+    ///   with sleeping threads (matching `InterruptedProcess::from_sleeping`),
+    ///   then calls `resume()` which passes sleeping threads through to the result.
     /// - Otherwise, returns Sleeping.
+    ///
+    /// The `alarm` parameter from the original is elided (does not affect
+    /// process state machine logic; only affects SleepingThread wakeup timing).
     ///
     /// # Returns
     ///
@@ -336,6 +387,22 @@ impl RunningProcess {
                     && rp.wf()
                     // Branch: there were ready or interrupted threads.
                     && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
+                    // Sleeping threads in result include the running thread.
+                    && rp.sleeping_thread_ids@.len() >= self.spec_sleeping_count() + 1
+                    // Zombie threads preserved.
+                    && rp.zombie_thread_ids@ == self.zombie_thread_ids@
+                    // Ready branch: exact content specified.
+                    && (self.spec_ready_count() > 0 ==> {
+                        rp.ready_thread_ids@ == self.ready_thread_ids@
+                        && rp.sleeping_thread_ids@ ==
+                            self.sleeping_thread_ids@.push(self.running_thread_id@)
+                        && rp.interrupted_thread_ids@ == self.interrupted_thread_ids@
+                    })
+                    // Interrupted branch: sleeping threads threaded through resume.
+                    && (self.spec_ready_count() == 0 && self.spec_interrupted_count() > 0 ==> {
+                        rp.sleeping_thread_ids@ ==
+                            self.sleeping_thread_ids@.push(self.running_thread_id@)
+                    })
                 },
                 SleepResult::Sleeping(sp) => {
                     sp.spec_pid() == self.spec_pid()
@@ -343,9 +410,13 @@ impl RunningProcess {
                     // Branch: no ready and no interrupted threads.
                     && self.spec_ready_count() == 0
                     && self.spec_interrupted_count() == 0
-                    // Sleeping list includes the running thread.
+                    // Sleeping list content: old sleeping + running thread.
+                    && sp.sleeping_thread_ids@ ==
+                        self.sleeping_thread_ids@.push(self.running_thread_id@)
                     && sp.sleeping_thread_ids@.len() ==
                         self.spec_sleeping_count() + 1
+                    // Zombie threads preserved.
+                    && sp.zombie_thread_ids@ == self.zombie_thread_ids@
                 },
             },
     {
@@ -376,6 +447,7 @@ impl RunningProcess {
             let ip: InterruptedProcess = InterruptedProcess {
                 pid: Ghost(self.pid@),
                 interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
+                sleeping_thread_ids: Ghost(new_sleeping_ids),
                 zombie_thread_ids: Ghost(self.zombie_thread_ids@),
             };
             let rp: RunnableProcess = interrupted_resume(ip);
@@ -397,7 +469,9 @@ impl RunningProcess {
     /// - All ready threads are terminated (become zombies).
     /// - All sleeping threads are interrupted.
     /// - If interrupted threads exist (original + from sleeping), returns Runnable
-    ///   (via InterruptedProcess.resume()).
+    ///   (via InterruptedProcess.resume()). Note: in the original code at line 219,
+    ///   `self.sleeping_threads.take()` is always `None` because sleeping threads were
+    ///   already consumed at line 208. So InterruptedProcess has no sleeping threads here.
     /// - Otherwise, returns Zombie.
     ///
     /// # Parameters
@@ -418,6 +492,14 @@ impl RunningProcess {
                     // Branch: there were interrupted or sleeping threads.
                     && (self.spec_interrupted_count() > 0
                         || self.spec_sleeping_count() > 0)
+                    // Zombie threads in result contain running + ready + original zombie.
+                    && rp.zombie_thread_ids@.len() ==
+                        1 + self.spec_ready_count() + self.spec_zombie_count()
+                    && rp.zombie_thread_ids@ ==
+                        seq![self.running_thread_id@].add(
+                            self.ready_thread_ids@).add(self.zombie_thread_ids@)
+                    // No sleeping threads remain (all were converted to interrupted).
+                    && rp.sleeping_thread_ids@.len() == 0
                 },
                 ExitResult::Zombie(zp) => {
                     zp.spec_pid() == self.spec_pid()
@@ -429,6 +511,9 @@ impl RunningProcess {
                     // Zombie list includes running + all ready + original zombie.
                     && zp.zombie_thread_ids@.len() ==
                         1 + self.spec_ready_count() + self.spec_zombie_count()
+                    && zp.zombie_thread_ids@ ==
+                        seq![self.running_thread_id@].add(
+                            self.ready_thread_ids@).add(self.zombie_thread_ids@)
                 },
             },
     {
@@ -458,9 +543,13 @@ impl RunningProcess {
                     self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
                 assert(new_interrupted_ids.len() >= 1);
             }
+            // In the original, self.sleeping_threads was already taken (line 208),
+            // so InterruptedProcess::from_sleeping gets None for sleeping. We model
+            // this faithfully with empty sleeping_thread_ids.
             let ip: InterruptedProcess = InterruptedProcess {
                 pid: Ghost(self.pid@),
                 interrupted_thread_ids: Ghost(new_interrupted_ids),
+                sleeping_thread_ids: Ghost(Seq::empty()),
                 zombie_thread_ids: Ghost(new_zombie_ids),
             };
             let rp: RunnableProcess = interrupted_resume(ip);
@@ -487,6 +576,14 @@ impl RunningProcess {
     /// - Else if sleeping threads exist, returns Sleeping.
     /// - Otherwise, returns Zombie.
     ///
+    /// ## Known Divergence
+    ///
+    /// In the original code's interrupted branch (line 286), `self.zombie.take()` is
+    /// passed to `InterruptedProcess::from_sleeping`, but `self.zombie` was already
+    /// consumed at line 261, so this is always `None`. The exited thread's zombie
+    /// state is lost. This model correctly passes `new_zombie_ids` (containing the
+    /// exited thread), which is intentionally more correct than the original.
+    ///
     /// # Parameters
     ///
     /// - `status`: Exit status for the thread.
@@ -503,6 +600,20 @@ impl RunningProcess {
                     rp.spec_pid() == self.spec_pid()
                     && rp.wf()
                     && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
+                    // Zombie list includes the exited running thread.
+                    && rp.zombie_thread_ids@ ==
+                        self.zombie_thread_ids@.push(self.running_thread_id@)
+                    && rp.zombie_thread_ids@.len() == 1 + self.spec_zombie_count()
+                    // Ready branch: content preserved.
+                    && (self.spec_ready_count() > 0 ==> {
+                        rp.ready_thread_ids@ == self.ready_thread_ids@
+                        && rp.interrupted_thread_ids@ == self.interrupted_thread_ids@
+                        && rp.sleeping_thread_ids@ == self.sleeping_thread_ids@
+                    })
+                    // Interrupted branch: sleeping threads threaded through resume.
+                    && (self.spec_ready_count() == 0 && self.spec_interrupted_count() > 0 ==> {
+                        rp.sleeping_thread_ids@ == self.sleeping_thread_ids@
+                    })
                 },
                 ExitThreadResult::Sleeping(sp) => {
                     sp.spec_pid() == self.spec_pid()
@@ -510,6 +621,11 @@ impl RunningProcess {
                     && self.spec_ready_count() == 0
                     && self.spec_interrupted_count() == 0
                     && self.spec_sleeping_count() > 0
+                    // Sleeping threads preserved.
+                    && sp.sleeping_thread_ids@ == self.sleeping_thread_ids@
+                    // Zombie list includes the exited running thread.
+                    && sp.zombie_thread_ids@ ==
+                        self.zombie_thread_ids@.push(self.running_thread_id@)
                 },
                 ExitThreadResult::Zombie(zp) => {
                     zp.spec_pid() == self.spec_pid()
@@ -519,6 +635,8 @@ impl RunningProcess {
                     && self.spec_interrupted_count() == 0
                     && self.spec_sleeping_count() == 0
                     // Zombie list includes the running thread + original zombie.
+                    && zp.zombie_thread_ids@ ==
+                        self.zombie_thread_ids@.push(self.running_thread_id@)
                     && zp.zombie_thread_ids@.len() == 1 + self.spec_zombie_count()
                 },
             },
@@ -546,9 +664,12 @@ impl RunningProcess {
             proof {
                 assert(self.interrupted_thread_ids@.len() >= 1);
             }
+            // Known divergence: original passes self.zombie.take() (=None) here.
+            // We correctly pass new_zombie_ids (includes exited thread).
             let ip: InterruptedProcess = InterruptedProcess {
                 pid: Ghost(self.pid@),
                 interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
+                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
                 zombie_thread_ids: Ghost(new_zombie_ids),
             };
             let rp: RunnableProcess = interrupted_resume(ip);
@@ -579,6 +700,9 @@ impl RunningProcess {
     ///
     /// - `tid`: Ghost thread ID to wake up.
     /// - `found`: Oracle parameter — whether the thread was found in sleeping list.
+    ///   This is a trust assumption: callers must provide the correct value.
+    ///   The precondition `found == spec_seq_contains(...)` ties it to ghost state.
+    ///   In the original, the search is performed by `NonEmptyVecDeque::remove_if()`.
     ///
     /// # Returns
     ///
