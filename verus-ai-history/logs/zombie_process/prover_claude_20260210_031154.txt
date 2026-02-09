@@ -1,0 +1,175 @@
+=== Copilot Session ===
+Timestamp: 2026-02-10T03:14:41.576033
+Model: claude-opus-4.6
+Session: 4a9d9e03-c056-4b29-ac5a-3ec45db5ad12
+Duration: 167.2s
+Exit code: 0
+
+=== Prompt ===
+Verify src/kernel/src/pm/process/state/zombie.rs using Verus.
+
+Target directory: verus/split/kernel/pm/process/state
+
+This is an OS kernel component. Identify and prove the core specifications,
+invariants, and safety/liveness properties that matter for correctness.
+
+== THREE-FILE SPLIT ORGANIZATION ==
+
+You MUST produce three separate files for each module:
+
+1. **verus/split/kernel/pm/process/state/zombie.rs** - Implementation (exec) code
+   - Copy the original source here as the starting point
+   - Add `use vstd::prelude::*;` and `include!` for spec/proof files
+   - Keep struct definitions, impl blocks, and exec functions inside a `verus! { }` block
+   - Add requires/ensures contracts for ALL functions (public and private)
+   - Reference lemmas from proof file; do NOT inline proofs in exec code
+
+2. **verus/split/kernel/pm/process/state/zombie.spec.rs** - Specification functions
+   - Define View types (e.g., `pub struct ZombieView`) with `#[verifier::ext_equal]`
+   - Define `impl View for Zombie` trait
+   - Define `pub open spec fn` for abstract properties (wf, invariants, etc.)
+   - Wrap everything in a `verus! { }` block
+
+3. **verus/split/kernel/pm/process/state/zombie.proof.rs** - Proof functions and lemmas
+   - Define `proof fn` lemmas with requires/ensures
+   - Place inside `verus! { }` block
+   - Use `impl Zombie` blocks to add proof methods
+
+Example file structure:
+```rust
+// zombie.rs (exec)
+use vstd::prelude::*;
+include!("zombie.spec.rs");
+include!("zombie.proof.rs");
+
+verus! {
+    pub struct MyType { ... }
+    impl MyType {
+        pub fn new(...) -> (result: ...) requires ... ensures ... { ... }
+    }
+}
+```
+
+```rust
+// zombie.spec.rs (spec)
+use vstd::prelude::*;
+verus! {
+    #[verifier::ext_equal]
+    pub struct MyTypeView { ... }
+    impl View for MyType {
+        type V = MyTypeView;
+        ...
+    }
+}
+```
+
+```rust
+// zombie.proof.rs (proof)
+use vstd::prelude::*;
+verus! {
+    impl MyType {
+        pub proof fn lemma_something(&self) requires ... ensures ... { ... }
+    }
+}
+```
+
+== REQUIREMENTS ==
+1. Define View types for abstract state representation
+2. Define invariants that all operations must maintain
+3. Add requires/ensures contracts for all functions (public and private impl fn)
+4. NO `assume` or `external_body` for core module functions
+   (OK for low-level dependencies like raw memory operations or HAL)
+
+== NOTE ON DEPENDENCIES ==
+Dependencies already verified: bitmap, bitmap_lib, capability, clock, condvar, crate-trait-conflicts, error, fence, frame, frame_address, interrupted, kheap, kpage, kpool, kredzone, kstack, manager, mutex, pid, process_manager, process_state, raw_array, ready, runnable, running, semaphore, slab, sleeping, spinlock, state, syntax_attr, syntax_attr2, thread_manager, tid, upool, ustack, vmem, zombie
+If the module depends on types from other modules, you may use `#[verifier::external_body]`
+ONLY for dependency boundary types that are not part of THIS module's core logic.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh zombie_process
+  (This script runs verus, logs results, and commits changes automatically)
+
+Iterate until verification passes. Document your work in the module comments.
+
+=== Output ===
+
+
+
+
+● List directory verus/split/kernel/pm/process/state
+  └ 22 files found
+
+● Read src/kernel/src/pm/process/state/zombie.rs
+  └ 111 lines read
+
+● View verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh
+  └ 173 lines...
+
+● Read verus/split/kernel/pm/process/state/running.rs
+  └ 1 line read
+
+● Read verus/split/kernel/pm/process/state/running.proof.rs
+  └ 577 lines read
+
+● Read verus/split/kernel/pm/process/state/running.spec.rs
+  └ 535 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.rs
+  └ 569 lines read
+
+Let me examine more examples and the module registration infrastructure.
+
+● Read verus/split/kernel/pm/process/state/mod.rs
+  └ 13 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.spec.rs
+  └ 304 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.proof.rs
+  └ 263 lines read
+
+● Check if zombie is already in mod.rs
+  $ grep -n 'zombie' /home/ubuntu/nanvix/verus/split/kernel/pm/process/state/mod.rs
+  └ 1 line...
+
+● Read verus/split/kernel/pm/process/state/interrupted.spec.rs
+  └ 429 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.rs
+  └ 571 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs
+  └ 555 lines read
+
+Now I have a thorough understanding of the patterns. Let me create the three files for the zombie module.
+
+● Create verus/split/kernel/pm/process/state/zombie.spec.rs (+184)
+
+● Create verus/split/kernel/pm/process/state/zombie.rs (+244)
+
+● Create verus/split/kernel/pm/process/state/zombie.proof.rs (+198)
+
+Now let me add the zombie module to mod.rs:
+
+● Edit verus/split/kernel/pm/process/state/mod.rs (+1)
+
+Now let's run the verification:
+
+● Run Verus verification for zombie_process
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh zombie_process 2>&1
+  └ 28 lines...
+
+Verification passed on the first attempt: **16 verified, 0 errors**.
+
+✓ Task complete
+
+
+Total usage est:        3 Premium requests
+API time spent:         2m 23.052s
+Total session time:     2m 45.909s
+Total code changes:     +627 -0
+Breakdown by AI model:
+ claude-opus-4.6         608.2k in, 8.8k out, 528.6k cached (Est. 3 Premium requests)
+
+=== End ===
