@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 19:22:36 CST 2026
+Module: kernel::pm::process::state::process_state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::process_state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::process_state
+
+error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+   --> kernel/pm/process/state/process_state.proof.rs:270:17
+    |
+270 | /                 exists|j: int| 0 <= j < self.ghost_pmio@.filter(|p: int| p != port_number).len()
+271 | |                     && self.ghost_pmio@.filter(|p: int| p != port_number)[j] == other,
+    | |_____________________________________________________________________________________^
+
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::process_state (verified:0, errors:0)
