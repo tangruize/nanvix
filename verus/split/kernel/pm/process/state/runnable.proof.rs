@@ -267,12 +267,12 @@ impl RunnableProcess {
         ensures
             ({
                 // One thread moves from sleeping to ready; total unchanged.
-                let new_total: nat =
-                    (self.spec_ready_count() + 1)
-                    + self.spec_interrupted_count()
-                    + (self.spec_sleeping_count() - 1)
-                    + self.spec_zombie_count();
-                new_total == self.spec_total_thread_count()
+                let new_total: int =
+                    (self.spec_ready_count() + 1) as int
+                    + self.spec_interrupted_count() as int
+                    + (self.spec_sleeping_count() - 1) as int
+                    + self.spec_zombie_count() as int;
+                new_total == self.spec_total_thread_count() as int
             }),
     {
     }

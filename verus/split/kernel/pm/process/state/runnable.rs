@@ -259,12 +259,12 @@ impl RunnableProcess {
         }
     }
 
-    /// Returns the process identifier value.
-    pub fn pid(&self) -> (result: int)
+    /// Returns the process identifier as i32.
+    pub fn pid_i32(&self) -> (result: i32)
         ensures
-            result == self.spec_pid(),
+            result as int == self.spec_pid(),
     {
-        self.pid.value()
+        self.pid.into_i32()
     }
 
     /// Transitions the runnable process to running by selecting the thread
@@ -300,6 +300,7 @@ impl RunnableProcess {
             result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
     {
+        let ghost selected_tid: int = self.ready_thread_ids@[selected_idx@ as int];
         let ghost remaining_ready: Seq<int> =
             self.ready_thread_ids@.subrange(0, selected_idx@)
                 .add(self.ready_thread_ids@.subrange(
@@ -320,7 +321,7 @@ impl RunnableProcess {
 
         RunningProcess {
             pid: self.pid.spec_value(),
-            running_thread_id: self.ready_thread_ids@[selected_idx@],
+            running_thread_id: selected_tid,
             ready_thread_ids: Ghost(remaining_ready),
             interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
             sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
@@ -381,7 +382,7 @@ impl RunnableProcess {
         let ghost new_interrupted_ids: Seq<int> =
             self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
 
-        if self.interrupted_thread_ids@.len() > 0 || self.sleeping_thread_ids@.len() > 0 {
+        if self.interrupted_thread_ids@.len() > 0nat || self.sleeping_thread_ids@.len() > 0nat {
             proof {
                 assert(new_interrupted_ids.len() ==
                     self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
@@ -590,7 +591,8 @@ impl RunnableProcess {
             forall|j: int| 0 <= j < self.ready_admission_times@.len()
                 ==> result <= self.ready_admission_times@[j],
     {
-        self.ready_admission_times@[min_idx@]
+        let ghost result_val: int = self.ready_admission_times@[min_idx@ as int];
+        result_val
     }
 }
 
