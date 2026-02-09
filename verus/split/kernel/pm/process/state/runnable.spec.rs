@@ -230,7 +230,7 @@ impl RunnableProcess {
 
     /// Spec helper: checks if a sequence contains a given value.
     /// Used for searching thread lists without oracle parameters.
-    pub open spec fn spec_find_thread(s: Seq<int>, tid: int) -> bool {
+    pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 

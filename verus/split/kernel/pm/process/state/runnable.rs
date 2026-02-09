@@ -466,7 +466,7 @@ impl RunnableProcess {
     pub fn wakeup(self, tid: Ghost<int>, found: bool) -> (result: Result<RunnableProcess, RunnableProcess>)
         requires
             self.wf(),
-            found == Self::spec_find_thread(self.sleeping_thread_ids@, tid@),
+            found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid@),
         ensures
             match result {
                 Ok(r) => {
