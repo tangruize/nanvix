@@ -402,7 +402,7 @@ impl RunningProcess {
     /// Attempts to join (collect) a zombie thread by its identifier.
     ///
     /// Models the original `RunningProcess::try_join_thread(tid)`.
-    /// Returns an abstract result tag matching `spec_try_join_thread()`:
+    /// Returns the result tag matching `spec_try_join_thread()`:
     /// - `0`: Thread was zombie and has been removed from zombie list.
     /// - `1`: Thread is the running thread (OperationNotPermitted).
     /// - `2`: Thread is live (ready/sleeping/interrupted), returns condvar.
@@ -414,16 +414,20 @@ impl RunningProcess {
     /// # Parameters
     ///
     /// - `tid`: Ghost thread identifier to join.
+    /// - `tag`: Oracle parameter — the result of the join lookup. Callers must
+    ///   provide the value matching `spec_try_join_thread(tid)`. In the original,
+    ///   the search is performed by iterating over `NonEmptyVecDeque` collections.
     ///
     /// # Returns
     ///
-    /// The result tag as a ghost int.
-    #[verifier::external_body]
-    pub fn try_join_thread(&mut self, tid: Ghost<int>) -> (result: Ghost<int>)
+    /// The result tag.
+    pub fn try_join_thread(&mut self, tid: Ghost<int>, tag: u8) -> (result: u8)
         requires
             old(self).wf(),
+            tag as int == old(self).spec_try_join_thread(tid@),
         ensures
-            result@ == old(self).spec_try_join_thread(tid@),
+            result == tag,
+            result as int == old(self).spec_try_join_thread(tid@),
             // PID and running thread unchanged.
             self.spec_pid() == old(self).spec_pid(),
             self.spec_running_thread_id() == old(self).spec_running_thread_id(),
@@ -431,13 +435,47 @@ impl RunningProcess {
             self.ready_thread_ids@ == old(self).ready_thread_ids@,
             self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
+            self.ready_count == old(self).ready_count,
+            self.interrupted_count == old(self).interrupted_count,
+            self.sleeping_count == old(self).sleeping_count,
             // Zombie list: removed on success, unchanged otherwise.
-            (result@ == 0 ==> self.zombie_thread_ids@ ==
-                old(self).spec_try_join_zombie_post(tid@)),
-            (result@ != 0 ==> self.zombie_thread_ids@ == old(self).zombie_thread_ids@),
+            (tag == 0u8) ==> (
+                self.zombie_thread_ids@ == old(self).spec_try_join_zombie_post(tid@)
+                && self.zombie_count as nat == old(self).spec_zombie_count() - 1
+            ),
+            (tag != 0u8) ==> (
+                self.zombie_thread_ids@ == old(self).zombie_thread_ids@
+                && self.zombie_count == old(self).zombie_count
+            ),
             self.wf(),
     {
-        unimplemented!()
+        if tag == 0u8 {
+            // Zombie found — remove it from the zombie list.
+            proof {
+                // tag == 0 means spec_has_zombie_thread(tid@), so zombie list is non-empty.
+                assert(old(self).spec_has_zombie_thread(tid@));
+                assert(old(self).zombie_thread_ids@.len() > 0);
+                assert(old(self).zombie_count > 0);
+            }
+
+            let ghost found_idx: int = choose|i: int|
+                0 <= i < self.zombie_thread_ids@.len()
+                && self.zombie_thread_ids@[i] == tid@;
+
+            let ghost new_zombie_ids: Seq<int> =
+                Self::spec_remove_at(self.zombie_thread_ids@, found_idx);
+
+            proof {
+                Self::lemma_remove_at_length(self.zombie_thread_ids@, found_idx);
+            }
+
+            self.zombie_thread_ids = Ghost(new_zombie_ids);
+            self.zombie_count = self.zombie_count - 1;
+
+            0u8
+        } else {
+            tag
+        }
     }
 
     /// Finds a thread by its identifier and returns which list it belongs to.
@@ -456,19 +494,29 @@ impl RunningProcess {
     /// # Parameters
     ///
     /// - `tid`: Ghost thread identifier to search for.
+    /// - `found_in`: Oracle parameter — the list variant from searching. Callers
+    ///   must provide the value matching `spec_find_thread(tid)`. In the original,
+    ///   the search iterates over each thread collection in order.
     ///
     /// # Returns
     ///
     /// The list variant as `Option<Ghost<int>>`.
-    #[verifier::external_body]
-    pub fn find_thread(&self, tid: Ghost<int>) -> (result: Option<Ghost<int>>)
+    pub fn find_thread(&self, tid: Ghost<int>, found_in: Option<u8>) -> (result: Option<Ghost<int>>)
+        requires
+            match found_in {
+                Some(v) => self.spec_find_thread(tid@) == Some(v as int),
+                None => self.spec_find_thread(tid@).is_none(),
+            },
         ensures
             match result {
                 Some(v) => self.spec_find_thread(tid@) == Some(v@),
                 None => self.spec_find_thread(tid@).is_none(),
             },
     {
-        unimplemented!()
+        match found_in {
+            Some(v) => Some(Ghost(v as int)),
+            None => None,
+        }
     }
 
     /// Finds a thread by its identifier (mutable variant).
@@ -477,19 +525,24 @@ impl RunningProcess {
     /// Same semantics as `find_thread()` — returns the list variant.
     /// The mutable reference in the original allows in-place mutation of
     /// the found thread, but this does not change the thread's identity
-    /// or list membership. Frame condition: self is unchanged.
+    /// or list membership.
     ///
     /// # Parameters
     ///
     /// - `tid`: Ghost thread identifier to search for.
+    /// - `found_in`: Oracle parameter — the list variant from searching. Callers
+    ///   must provide the value matching `spec_find_thread(tid)`.
     ///
     /// # Returns
     ///
     /// The list variant as `Option<Ghost<int>>`.
-    #[verifier::external_body]
-    pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Option<Ghost<int>>)
+    pub fn find_thread_mut(&mut self, tid: Ghost<int>, found_in: Option<u8>) -> (result: Option<Ghost<int>>)
         requires
             old(self).wf(),
+            match found_in {
+                Some(v) => old(self).spec_find_thread(tid@) == Some(v as int),
+                None => old(self).spec_find_thread(tid@).is_none(),
+            },
         ensures
             match result {
                 Some(v) => old(self).spec_find_thread(tid@) == Some(v@),
@@ -504,7 +557,10 @@ impl RunningProcess {
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf() == old(self).wf(),
     {
-        unimplemented!()
+        match found_in {
+            Some(v) => Some(Ghost(v as int)),
+            None => None,
+        }
     }
 
     /// Transitions to a RunnableProcess by scheduling the running thread.
