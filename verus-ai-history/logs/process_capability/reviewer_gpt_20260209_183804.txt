@@ -1,0 +1,118 @@
+=== Copilot Session ===
+Timestamp: 2026-02-09T18:41:20.303425
+Model: gpt-5.2-codex
+Session: 2ed049fd-259e-4df9-9b18-a753c21b4abd
+Duration: 196.1s
+Exit code: 0
+
+=== Prompt ===
+Review the Verus verification of process_capability.
+
+Original source: src/kernel/src/pm/process/capability.rs
+Verified code directory: verus/split/kernel/pm/process/
+  - capability.rs (exec)
+  - capability.spec.rs (spec)
+  - capability.proof.rs (proof)
+
+This is an OS kernel component. Evaluate if the verification captures the
+essential correctness properties.
+
+Review criteria:
+1. COVERAGE: All functions in original source (public and private) have verified versions
+2. SPECIFICATIONS: Specs capture intended behavior (not too weak, not too strong)
+3. SOUNDNESS: No unjustified assume/external_body in core module
+4. EQUIVALENCE: Verified code is semantically equivalent to original
+5. INVARIANTS: State invariants are sufficient to prove correctness
+6. PROPERTIES: Are the key safety and liveness properties identified and proven?
+7. SPLIT QUALITY: Are spec/proof properly separated from exec code?
+
+Verification command: ./verus-ai/scripts/verify.sh process_capability
+
+For each issue found, provide:
+- Priority: Critical / High / Medium / Low
+- Location: Function or spec name (and which file: exec/spec/proof)
+- Description: What is wrong or missing
+- Suggested Fix: How to address it
+
+Output format (write to /home/ubuntu/nanvix/verus-ai-history/reviews/process_capability/gpt_r1_a1.md):
+```markdown
+# Review: process_capability (gpt-5.2-codex)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+
+### Critical
+- ...
+
+### High
+- ...
+
+### Medium
+- ...
+
+### Low
+- ...
+
+## Positive Observations
+- ...
+
+## Summary
+[Overall assessment and recommendations]
+```
+
+=== Output ===
+● Create review plan file
+  $ cat <<'EOF' > /home/ubuntu/.copilot/session-state/2ed049fd-259e-4df9-9b18-a753c21b4abd/plan.md
+  # Plan
+  - Read original process capability source and Verus exec/spec/proof files.
+  - Compare function coverage, specs, invariants, and equivalence; note assumes/external bodies.
+  - Run verification command for process_capability....
+  └ 3 lines...
+
+● Read verus/split/kernel/pm/process/capability.spec.rs
+  └ 112 lines read
+
+● Read src/kernel/src/pm/process/capability.rs
+  └ 38 lines read
+
+● Read verus/split/kernel/pm/process/capability.rs
+  └ 234 lines read
+
+● Read verus/split/kernel/pm/process/capability.proof.rs
+  └ 438 lines read
+
+● Grep "external_body|assume" in **/capability*.rs (/home/ubuntu/nanvix/verus/split/kernel/pm)
+  └ 2 lines found
+
+● Read verus/split/kernel/pm/sys/capability.rs
+  └ 172 lines read
+
+● Run Verus verification for process_capability
+  $ ./verus-ai/scripts/verify.sh process_capability
+  └ 23 lines...
+
+● Read src/libs/sys/src/sys/pm/capability.rs
+  └ 58 lines read
+
+● Write verification review markdown
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/process_capability && cat <<'EOF' >
+  /home/ubuntu/nanvix/verus-ai-history/reviews/process_capability/gpt_r1_a1.md
+  # Review: process_capability (gpt-5.2-codex)
+
+  ## Grade: B+...
+  └ 61 lines...
+
+✓ Task complete
+
+Review report written to verus-ai-history/reviews/process_capability/gpt_r1_a1.md and verification run with ./verus-ai/scripts/verify.sh process_capability.
+
+
+Total usage est:        1 Premium request
+API time spent:         2m 58.255s
+Total session time:     3m 14.789s
+Total code changes:     +0 -0
+Breakdown by AI model:
+ gpt-5.2-codex           295.4k in, 11.6k out, 279.2k cached (Est. 1 Premium request)
+
+=== End ===
