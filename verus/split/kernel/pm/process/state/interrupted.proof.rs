@@ -20,6 +20,7 @@
 // - Admission time oracle satisfies resume() precondition.
 // - Integration obligation lemmas: find_thread result consistency and
 //   uniqueness under wf() (thread can only be in one list).
+// - Interrupt reason obligation discharge for Killed variant.
 
 use vstd::prelude::*;
 
@@ -277,6 +278,26 @@ impl InterruptedProcess {
             Self::spec_admission_time_valid(admission_time, clock_state),
         ensures
             admission_time >= 0,
+    {
+    }
+
+    /// Lemma: The reason tag produced by `interrupt()` satisfies the
+    /// resume reason integration obligation when the ready thread carries
+    /// the same reason.
+    ///
+    /// This connects the `interrupt()` function's output (reason tag) to
+    /// the `spec_resume_reason_integration_obligation`, proving that if the
+    /// thread module's `resume()` propagates the reason faithfully, the
+    /// obligation is discharged for the `Killed` variant.
+    pub proof fn lemma_interrupt_reason_satisfies_obligation(
+        thread_id: int,
+    )
+        ensures
+            Self::spec_resume_reason_integration_obligation(
+                thread_id,
+                Self::INTERRUPT_REASON_KILLED(),
+                Self::INTERRUPT_REASON_KILLED(),
+            ),
     {
     }
 

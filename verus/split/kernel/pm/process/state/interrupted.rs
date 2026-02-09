@@ -57,10 +57,12 @@
 //!   `ReadyThread::from_state()`. Since the clock is a HAL boundary outside
 //!   this module's scope, the oracle pattern with caller-side obligations is
 //!   used (consistent with `sleeping.rs`'s `wakeup_alarm` oracle approach).
-//!   The `spec_admission_time_valid()` predicate defines the caller contract;
-//!   `lemma_valid_admission_time_satisfies_resume_precondition` proves that
-//!   a valid oracle satisfies the `resume()` precondition. The link to real
-//!   `clock::now()` must be established at the integration proof level.
+//!   **Enforcement:** `resume_with_valid_clock()` is a verified wrapper that
+//!   requires `spec_admission_time_valid()` in its precondition, enforcing the
+//!   clock link at call sites that have access to the clock state. The base
+//!   `resume()` retains the weaker `>= 0` precondition for callers that cannot
+//!   yet provide a verified clock. The postcondition of `resume_with_valid_clock`
+//!   guarantees `spec_admission_time_valid(admission_times[0], clock_state)`.
 //! - `find_thread()` / `find_thread_mut()` are **spec-level models** — they
 //!   compute `spec_find_thread()` directly and do not model the executable
 //!   search implementation. The original code performs linear searches through
@@ -401,13 +403,63 @@ impl InterruptedProcess {
         }
     }
 
+    /// Verified wrapper: resumes with a clock-validated admission time.
+    ///
+    /// This is a stronger entry point for callers that have access to the
+    /// clock state. It requires `spec_admission_time_valid()` — enforcing
+    /// the link to `clock::now()` — and delegates to `resume()`.
+    ///
+    /// Use this instead of `resume()` when the caller can provide a
+    /// verified clock state. The postconditions are identical to `resume()`
+    /// plus the admission time validity guarantee.
+    ///
+    /// # Parameters
+    ///
+    /// - `admission_time`: Ghost admission time (must be clock-validated).
+    /// - `clock_state`: Ghost abstract clock state at the call site.
+    ///
+    /// # Returns
+    ///
+    /// A RunnableProcess with clock-validated admission time.
+    pub fn resume_with_valid_clock(
+        self, admission_time: Ghost<int>, clock_state: Ghost<int>,
+    ) -> (result: RunnableProcess)
+        requires
+            self.wf(),
+            Self::spec_admission_time_valid(admission_time@, clock_state@),
+        ensures
+            result.spec_pid() == self.spec_pid(),
+            result.wf(),
+            result.ready_thread_ids@.len() == 1,
+            result.ready_thread_ids@[0] == self.interrupted_thread_ids@[0],
+            result.ready_admission_times@.len() == 1,
+            result.ready_admission_times@[0] == admission_time@,
+            Self::spec_admission_time_valid(
+                result.ready_admission_times@[0], clock_state@),
+            result.interrupted_thread_ids@ ==
+                self.interrupted_thread_ids@.subrange(
+                    1, self.interrupted_thread_ids@.len() as int),
+            result.interrupted_thread_ids@.len() == self.spec_interrupted_count() - 1,
+            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
+            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+    {
+        self.resume(admission_time)
+    }
+
     /// Finds a thread by its identifier and returns which list it belongs to.
     ///
     /// **Spec-level model** of the original `InterruptedProcess::find_thread(tid)`.
     /// This function computes `spec_find_thread()` directly in ghost mode.
     /// It does NOT model the executable `iter().find(...)` search — see
     /// `lemma_find_thread_refinement_assumption` for the trust assumption
-    /// connecting this spec to the real implementation.
+    /// and `spec_find_thread_integration_obligation` for the formal contract
+    /// that integration proofs must discharge.
+    ///
+    /// Under `wf()`, `lemma_find_thread_result_unique` proves that each
+    /// thread ID appears in at most one list, so the spec result is
+    /// deterministic. This is the strongest guarantee achievable without
+    /// executable verification of the iterator logic (Verus limitation:
+    /// cannot express reference-typed returns or iterate ghost sequences).
     ///
     /// Returns the abstract list variant:
     /// - `Some(0)`: interrupted thread.
