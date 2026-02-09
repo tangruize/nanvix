@@ -388,9 +388,9 @@ impl SleepingProcess {
             interrupted_ids@.len() + remaining_ids@.len()
                 == self.sleeping_thread_ids@.len(),
             // Content conservation: all partition elements come from original sleeping list.
-            forall|i: int| 0 <= i < interrupted_ids@.len() ==>
+            forall|i: int| #![auto] 0 <= i < interrupted_ids@.len() ==>
                 Self::spec_seq_contains(self.sleeping_thread_ids@, interrupted_ids@[i]),
-            forall|i: int| 0 <= i < remaining_ids@.len() ==>
+            forall|i: int| #![auto] 0 <= i < remaining_ids@.len() ==>
                 Self::spec_seq_contains(self.sleeping_thread_ids@, remaining_ids@[i]),
             // Partition integrity: no duplicates within or across partitions.
             Self::spec_no_duplicates(interrupted_ids@),
