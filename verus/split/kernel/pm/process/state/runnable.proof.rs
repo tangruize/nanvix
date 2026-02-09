@@ -433,6 +433,25 @@ impl RunnableProcess {
         }
     }
 
+    /// Lemma: spec_earliest_ready_index is in bounds and selects the minimum.
+    /// This bridges `lemma_earliest_admission_time_exists` to the `choose`
+    /// used in `spec_earliest_ready_index`.
+    pub proof fn lemma_earliest_ready_index_bounds(&self)
+        requires
+            self.wf(),
+        ensures
+            ({
+                let idx: int = self.spec_earliest_ready_index();
+                0 <= idx < self.ready_admission_times@.len()
+                && 0 <= idx < self.ready_thread_ids@.len()
+                && forall|j: int| 0 <= j < self.ready_admission_times@.len()
+                    ==> #[trigger] self.ready_admission_times@[idx]
+                        <= #[trigger] self.ready_admission_times@[j]
+            }),
+    {
+        self.lemma_earliest_admission_time_exists();
+    }
+
     /// Helper: A non-empty sequence of ints has a minimum element within the first n elements.
     proof fn lemma_seq_has_min(s: &Seq<int>, n: int)
         requires
