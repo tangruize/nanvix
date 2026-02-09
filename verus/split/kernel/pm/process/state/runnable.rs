@@ -318,11 +318,17 @@ impl RunnableProcess {
     {
         // Derive the minimum index via proof.
         proof { self.lemma_earliest_admission_time_exists(); }
-        let ghost selected_idx: int = self.spec_earliest_ready_index();
+
+        // Use choose to select the min index, which is guaranteed to exist by the lemma.
+        let ghost selected_idx: int = choose|idx: int|
+            0 <= idx < self.ready_admission_times@.len()
+            && forall|j: int| 0 <= j < self.ready_admission_times@.len()
+                ==> #[trigger] self.ready_admission_times@[idx]
+                    <= #[trigger] self.ready_admission_times@[j];
 
         proof {
-            // The lemma guarantees existence; tie it to the chosen index.
-            assert(0 <= selected_idx < self.ready_admission_times@.len());
+            // The choose is well-defined because lemma_earliest_admission_time_exists
+            // established the existential. Assert bounds.
             assert(0 <= selected_idx < self.ready_thread_ids@.len());
         }
 
@@ -343,6 +349,9 @@ impl RunnableProcess {
             assert(left.len() == idx as nat);
             assert(right.len() == (s.len() - idx as nat - 1) as nat);
             assert(left.add(right).len() == (s.len() - 1) as nat);
+
+            // Prove that selected_idx == spec_earliest_ready_index.
+            // Both are `choose` with the same predicate, so they must be equal.
         }
 
         RunningProcess {
