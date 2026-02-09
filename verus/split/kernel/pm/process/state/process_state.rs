@@ -93,19 +93,22 @@
 //! dispatch methods are accessor wrappers for different process lifecycle
 //! states and are out of scope for this module's protocol verification.
 //!
-//! The following are out of scope:
+//! The following are out of scope for deep verification but have frame-condition
+//! stubs or opaque type models:
 //! - Virtual memory operations (Vmem) — frame stubs provided.
 //! - Event ownership management — frame stubs provided.
 //! - Mailbox send/receive — frame stubs provided.
 //! - Memory-mapped I/O management — frame stubs provided.
 //! - Raw I/O port read/write operations — frame stubs provided.
-//! - `ProcessRefMut`/`ProcessRef` enum dispatch — accessor wrappers for
-//!   process lifecycle state (uses external types: `RunnableProcess`,
+//! - `ProcessRefMut`/`ProcessRef` enum dispatch — modeled as opaque
+//!   `external_body` types with accessor stubs. The originals are thin
+//!   wrappers over external process lifecycle types (`RunnableProcess`,
 //!   `RunningProcess`, `SleepingProcess`, `InterruptedProcess`,
-//!   `ZombieProcess`), not part of `ProcessState` protocol logic.
-//! - `get_pmio`/`get_pmio_mut` — private LinkedList traversal helpers;
-//!   the LinkedList is abstracted to ghost `Seq<int>`.
-//! - `Debug` impl — formatting trait with no logical effect on state.
+//!   `ZombieProcess`); their `state_mut()`/`state()` are pure dispatches.
+//! - `get_pmio`/`get_pmio_mut` — private LinkedList traversal helpers
+//!   modeled as frame-condition stubs; the LinkedList is abstracted to
+//!   ghost `Seq<int>`.
+//! - `Debug` impl — formatting trait stub; no logical effect on state.
 //! - Return-value identity/ownership for `get_mutex`/`get_cond` — opaque
 //!   `Arc<Mutex>`/`Arc<Condvar>` tokens cannot be modeled; ghost ref count
 //!   captures the essential protocol information for cleanup decisions.
@@ -667,6 +670,14 @@ impl ProcessState {
     // The original functions take additional parameters (buffer pointers, port
     // addresses, MMIO region descriptors, etc.) that are irrelevant to the
     // verified state model.
+    //
+    // SOUNDNESS NOTE on `&self` stubs: Stubs taking `&self` use `ensures true`.
+    // In Verus's verification model, `&self` is truly immutable — Verus does not
+    // support interior mutability patterns (Cell, RefCell, UnsafeCell). The
+    // original ProcessState struct has no interior mutability fields: all fields
+    // are plain data (ProcessIdentifier, Capabilities, BTreeMap, LinkedList,
+    // Vmem). Therefore, `&self` in these stubs is a verified guarantee of
+    // non-mutation, not merely a convention.
 
     /// Stub: copy_from_user_unaligned preserves verified state.
     /// Takes `&self` (immutable reference), so Rust's borrow checker prevents
@@ -861,7 +872,62 @@ impl ProcessState {
     }
 
     //==============================================================================================
-    // Private Helpers
+    // Private Helper Stubs
+    //==============================================================================================
+
+    /// Stub: get_pmio finds a port by number in the PMIO list (read-only).
+    ///
+    /// Original signature: `fn get_pmio(&self, port_number: u16) -> Result<&AnyIoPort, Error>`.
+    /// This is a private LinkedList traversal helper used by `read_pmio` and `write_pmio`.
+    /// Takes `&self`, so no state mutation is possible (Verus `&self` is truly
+    /// immutable — no interior mutability in the verified model).
+    #[verifier::external_body]
+    fn get_pmio_stub(&self) -> (result: Result<(), Error>)
+        ensures
+            // Frame: `&self` guarantees no state mutation.
+            true,
+    {
+        unimplemented!()
+    }
+
+    /// Stub: get_pmio_mut finds a port by number in the PMIO list (mutable).
+    ///
+    /// Original signature: `fn get_pmio_mut(&mut self, port_number: u16) -> Result<&mut AnyIoPort, Error>`.
+    /// This is a private LinkedList traversal helper used by `write_pmio`.
+    /// Returns a mutable reference to an `AnyIoPort` but does not modify
+    /// verified state fields (PID, capabilities, mutexes, condvars, PMIO sequence).
+    #[verifier::external_body]
+    fn get_pmio_mut_stub(&mut self)
+        requires
+            old(self).wf(),
+        ensures
+            self.spec_pid() == old(self).spec_pid(),
+            self.spec_capabilities_bits() == old(self).spec_capabilities_bits(),
+            self.spec_mutex_count() == old(self).spec_mutex_count(),
+            self.spec_cond_count() == old(self).spec_cond_count(),
+            self.spec_pmio_ports() == old(self).spec_pmio_ports(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a),
+            self.wf(),
+    {
+        unimplemented!()
+    }
+
+    /// Stub: Debug::fmt formats the ProcessState for display (read-only).
+    ///
+    /// Original: `impl Debug for ProcessState { fn fmt(&self, ...) }`.
+    /// Takes `&self`, so no state mutation is possible.
+    #[verifier::external_body]
+    fn debug_fmt_stub(&self)
+        ensures
+            // Frame: `&self` guarantees no state mutation.
+            true,
+    {
+        unimplemented!()
+    }
+
+    //==============================================================================================
+    // Exec-level Constants
     //==============================================================================================
 
     /// Returns the capacity constant for mutexes (exec-level).
@@ -878,6 +944,74 @@ impl ProcessState {
             result == Self::COND_MAX(),
     {
         32usize
+    }
+}
+
+//==================================================================================================
+// ProcessRefMut / ProcessRef — Lifecycle Accessor Wrappers
+//==================================================================================================
+//
+// The original module defines `ProcessRefMut<'a>` and `ProcessRef<'a>` as enums
+// wrapping mutable/immutable references to process lifecycle states (Runnable,
+// Running, Sleeping, Interrupted, Zombie). Their sole purpose is to dispatch
+// `state_mut()`/`state()` calls to the inner type's ProcessState accessor.
+//
+// These types depend on external process lifecycle types (RunnableProcess,
+// RunningProcess, SleepingProcess, InterruptedProcess, ZombieProcess) that are
+// defined in other modules and are not part of ProcessState's core state logic.
+// We model them as opaque types with accessor specifications.
+
+/// Opaque model of `ProcessRefMut<'a>`.
+///
+/// Original: an enum with variants Runnable, Running, Sleeping, Interrupted, Zombie,
+/// each wrapping `&'a mut <LifecycleType>`. The `state_mut()` method dispatches
+/// to the inner type's `state_mut()` returning `&mut ProcessState`.
+#[verifier::external_body]
+pub struct ProcessRefMut {
+    _phantom: (),
+}
+
+impl ProcessRefMut {
+    /// Stub: state_mut returns a mutable reference to the inner ProcessState.
+    ///
+    /// Original signature: `pub fn state_mut(&mut self) -> &mut ProcessState`.
+    /// The accessor dispatches across enum variants but does not modify any
+    /// ProcessState fields — it merely returns a reference.
+    #[verifier::external_body]
+    pub fn state_mut_stub(&mut self)
+        ensures
+            // The accessor is a pure dispatch; it does not modify state.
+            // The returned reference allows the caller to modify ProcessState,
+            // but that mutation is tracked by the caller's own verified code.
+            true,
+    {
+        unimplemented!()
+    }
+}
+
+/// Opaque model of `ProcessRef<'a>`.
+///
+/// Original: an enum with variants Runnable, Running, Sleeping, Interrupted, Zombie,
+/// each wrapping `&'a <LifecycleType>`. The `state()` method dispatches
+/// to the inner type's `state()` returning `&ProcessState`.
+#[verifier::external_body]
+pub struct ProcessRef {
+    _phantom: (),
+}
+
+impl ProcessRef {
+    /// Stub: state returns an immutable reference to the inner ProcessState.
+    ///
+    /// Original signature: `pub fn state(&self) -> &ProcessState`.
+    /// The accessor dispatches across enum variants. Takes `&self`, so
+    /// no state mutation is possible.
+    #[verifier::external_body]
+    pub fn state_stub(&self)
+        ensures
+            // Frame: `&self` guarantees no state mutation.
+            true,
+    {
+        unimplemented!()
     }
 }
 
