@@ -18,7 +18,6 @@
 // - `remaining_quantum: usize` — models the REMAINING_QUANTUM atomic.
 // - `fpu_owner_tid: i32` — models the FPU_OWNER_TID atomic.
 // - `scheduler_freq: usize` — models the SCHEDULER_FREQ build constant.
-// - `borrow_count: int` (ghost) — models RefCell borrow state for singleton access.
 //
 // The wf() predicate ties the global atomics to the inner state, ensuring:
 // - current_pid matches inner.running_pid.
@@ -26,26 +25,39 @@
 // - remaining_quantum is in [1, scheduler_freq].
 // - scheduler_freq > 0.
 // - inner.wf() holds.
-// - borrow_count >= 0 (no outstanding mutable borrows at rest).
 //
 // ## Context Switch Model (switch function)
 //
-// The original `switch()` takes raw pointers to ContextInformation and performs
-// a hardware context switch. It does NOT modify ProcessManagerInner — the inner
-// state mutation happens before switch() is called (in exit(), sleep(), schedule()).
-// We model only the *atomic-level effects* of switch():
-// - If next_tid != current_tid: hard switch. Update current_tid, and if
-//   next_pid != current_pid, also update current_pid and reset quantum.
-// - If next_tid == current_tid: soft switch (no-op or kernel idle).
+// The original `switch()` (unsafe.rs:758-803) performs:
+// 1. `let previous_pid = CURRENT_PID.load()` — reads the OLD PID from the atomic.
+// 2. `let previous_tid = CURRENT_TID.load()` — reads the OLD TID from the atomic.
+// 3. If next_tid != previous_tid (hard switch):
+//    a. If next_pid != previous_pid: reset REMAINING_QUANTUM, store CURRENT_PID.
+//    b. Store CURRENT_TID.
+//    c. ContextInformation::switch(from, to) — hardware context switch.
+// 4. If next_tid == previous_tid (soft switch): no-op or kernel idle.
+//
+// Crucially, the inner ProcessManagerInner mutation (e.g., exit(), sleep(), schedule())
+// happens BEFORE switch() is called, but switch() reads the OLD PID/TID from the
+// atomics. This means after inner mutation, inner.running_pid may differ from
+// CURRENT_PID — the atomics are stale. switch() detects this staleness via the
+// `next_pid != previous_pid` comparison and updates the atomics.
+//
+// Our model captures this by having switch() accept `new_inner` (the post-mutation
+// inner state) and compare `next_pid` against `old(self).current_pid` (the stale
+// atomic). The function updates inner, current_pid, current_tid, and quantum
+// atomically, restoring wf() consistency.
 //
 // ## Singleton Access Model (get/get_mut)
 //
 // The original `get()` and `get_mut()` return references from `static mut
 // PROCESS_MANAGER`. For verification, we model the singleton access pattern:
-// - `get()` requires `initialized` and returns a shared reference (no mutation).
-// - `get_mut()` requires `initialized` and exclusive access (borrow_count == 0).
-// - `try_borrow_mut()` is the RefCell layer (T7 boundary), modeled by
-//   incrementing/decrementing the ghost borrow_count.
+// - `get()` requires `initialized` and ensures wf() (shared reference, no mutation).
+// - `get_mut()` requires `initialized` and exclusive access. The exclusive access
+//   guarantee comes from the `unsafe` contract: callers must ensure no other
+//   references exist. This is a T7 trust boundary — Nanvix is single-core with
+//   cooperative scheduling, so re-entrant calls (e.g., from interrupt handlers)
+//   are the only source of aliasing, which is prevented by disabling interrupts.
 //
 // ## Trust Boundary: TID-to-PID Mapping (T3)
 //
@@ -81,8 +93,6 @@ pub struct ProcessManagerUnsafeStateView {
     pub fpu_owner_tid: int,
     /// Scheduler frequency (quantum size).
     pub scheduler_freq: nat,
-    /// Ghost borrow count for singleton access modeling.
-    pub borrow_count: int,
 }
 
 //==================================================================================================
@@ -128,11 +138,6 @@ impl ProcessManagerUnsafeState {
         self.fpu_owner_tid >= 0i32
     }
 
-    /// Spec: the ghost borrow count is non-negative (no outstanding mutable borrows at rest).
-    pub open spec fn spec_borrow_valid(&self) -> bool {
-        self.ghost_borrow_count@ >= 0int
-    }
-
     /// Well-formedness invariant for the global unsafe state.
     ///
     /// Encodes all structural invariants that must hold at all times
@@ -145,7 +150,6 @@ impl ProcessManagerUnsafeState {
         && self.spec_quantum_valid()
         && self.spec_freq_positive()
         && self.spec_fpu_owner_valid()
-        && self.spec_borrow_valid()
     }
 
     /// Spec: the system is not yet initialized.
@@ -158,16 +162,6 @@ impl ProcessManagerUnsafeState {
         self.current_tid == 0i32
     }
 
-    /// Spec: a hard context switch is needed (different thread).
-    pub open spec fn spec_needs_hard_switch(&self, next_tid: int) -> bool {
-        next_tid != self.current_tid as int
-    }
-
-    /// Spec: a PID change occurs during switch (different process).
-    pub open spec fn spec_needs_pid_change(&self, next_pid: int) -> bool {
-        next_pid != self.current_pid as int
-    }
-
     /// Spec: the quantum has expired (remaining <= 1).
     pub open spec fn spec_quantum_expired(&self) -> bool {
         self.remaining_quantum <= 1
@@ -176,11 +170,6 @@ impl ProcessManagerUnsafeState {
     /// Spec: a process with the given PID exists in some queue.
     pub open spec fn spec_process_exists(&self, pid: int) -> bool {
         self.inner.spec_process_exists(pid)
-    }
-
-    /// Spec: no outstanding mutable borrows (safe to acquire exclusive access).
-    pub open spec fn spec_no_borrows(&self) -> bool {
-        self.ghost_borrow_count@ == 0int
     }
 }
 
@@ -200,7 +189,6 @@ impl View for ProcessManagerUnsafeState {
             remaining_quantum: self.remaining_quantum as nat,
             fpu_owner_tid: self.fpu_owner_tid as int,
             scheduler_freq: self.scheduler_freq as nat,
-            borrow_count: self.ghost_borrow_count@,
         }
     }
 }
