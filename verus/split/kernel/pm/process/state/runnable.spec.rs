@@ -62,15 +62,21 @@
 //
 // ## Oracle Parameter Justification
 //
-// `terminate()` requires a `has_interrupted: bool` oracle parameter because:
-// - The branch decision depends on `self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0`.
-// - Thread counts are `nat` (ghost-only type), so this comparison cannot be
-//   evaluated at exec level.
-// - The precondition `has_interrupted == (... > 0 || ... > 0)` ties the oracle
-//   to the ghost state, so the branch is fully constrained.
-// - `run()` and `wakeup()` have been de-oracled: `run()` derives its min-index
-//   via `lemma_earliest_ready_index_bounds`; `wakeup()` derives its search
-//   index via proof-level `choose` from `lemma_spec_find_thread_index`.
+// `terminate()` no longer requires an oracle parameter. The branch decision
+// is computed from exec-level counters (`interrupted_count`, `sleeping_count`)
+// that are tied to ghost sequence lengths by the `wf()` invariant.
+//
+// `wakeup()` retains a `found: bool` oracle parameter because:
+// - The branch decision depends on whether a specific thread ID exists in
+//   the ghost sleeping list (`Seq::contains()` is spec-only).
+// - There is no exec-level data structure to search — the sleeping list is
+//   entirely ghost. The precondition `found == spec_seq_contains(...)` ties
+//   the oracle to ghost state, so the branch is fully constrained.
+// - The search *index* is derived internally via proof-level `choose`,
+//   so only the boolean remains as oracle.
+//
+// `run()` has no oracle parameters. The min-index is derived internally
+// via `lemma_earliest_ready_index_bounds`.
 
 use vstd::prelude::*;
 
@@ -314,6 +320,7 @@ impl RunnableProcess {
     /// - There is at least one ready thread (modeling NonEmptyVecDeque).
     /// - Ready thread IDs and admission times sequences have equal length.
     /// - All admission times are non-negative.
+    /// - Exec-level counters match ghost sequence lengths.
     ///
     /// Note: Thread ID uniqueness/disjointness across lists is NOT enforced here.
     /// In the original code, Rust's ownership type system ensures a thread struct
@@ -328,6 +335,9 @@ impl RunnableProcess {
         // Admission times are non-negative.
         &&& forall|i: int| 0 <= i < self.ready_admission_times@.len()
                 ==> #[trigger] self.ready_admission_times@[i] >= 0
+        // Exec counters match ghost sequence lengths.
+        &&& self.interrupted_count as nat == self.interrupted_thread_ids@.len()
+        &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
     }
 }
 
@@ -348,10 +358,11 @@ impl RunningProcess {
 
     /// Spec function: well-formedness predicate.
     ///
-    /// This boundary model intentionally has a weak wf() because
-    /// RunningProcess is verified independently in its own module with a
-    /// stronger invariant. Here we only need enough to verify that
-    /// RunnableProcess transitions produce valid output.
+    /// This boundary model has minimal invariants. PID consistency is
+    /// asserted in the run() postcondition (`result.spec_pid() == self.spec_pid()`).
+    /// Thread list structural invariants (running thread not in remaining ready
+    /// list) would require thread ID uniqueness, which is a trust assumption
+    /// from Rust's ownership model (see Ownership Semantics in spec file).
     ///
     /// TODO (cross-module): When RunningProcess verification is complete,
     /// add a cross-module linking assertion confirming this boundary model's

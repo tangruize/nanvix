@@ -11,7 +11,7 @@
 //   selects earliest admission time thread, preserves PID and total count.
 //   Postcondition specifies exact remaining thread list contents.
 // - terminate() converts ready→zombie, sleeping→interrupted, preserves PID.
-//   Uses oracle `has_interrupted` (justified: nat is ghost-only).
+//   Branch decision computed from exec-level counters (no oracle).
 //   Postcondition specifies exact resulting list contents and correct branching.
 // - wakeup() derives search index via proof-level `choose` (no index oracle),
 //   moves sleeping→ready, preserves PID and total count.
@@ -47,6 +47,8 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(Seq::empty()),
                     sleeping_thread_ids: Ghost(Seq::empty()),
                     zombie_thread_ids: Ghost(Seq::empty()),
+                    interrupted_count: 0u64,
+                    sleeping_count: 0u64,
                 };
                 r.wf()
             }),
@@ -64,6 +66,8 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(Seq::empty()),
                     sleeping_thread_ids: Ghost(Seq::empty()),
                     zombie_thread_ids: Ghost(Seq::empty()),
+                    interrupted_count: 0u64,
+                    sleeping_count: 0u64,
                 };
                 r.spec_ready_count() == 1
                 && r.spec_interrupted_count() == 0
@@ -84,6 +88,8 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(Seq::empty()),
                     sleeping_thread_ids: Ghost(Seq::empty()),
                     zombie_thread_ids: Ghost(Seq::empty()),
+                    interrupted_count: 0u64,
+                    sleeping_count: 0u64,
                 };
                 r.spec_total_thread_count() == 1
             }),
@@ -112,6 +118,8 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(new_interrupted_ids),
                     sleeping_thread_ids: Ghost(new_sleeping_ids),
                     zombie_thread_ids: Ghost(new_zombie_ids),
+                    interrupted_count: 0u64,
+                    sleeping_count: 0u64,
                 };
                 post.spec_pid() == self.spec_pid()
             }),
@@ -339,6 +347,8 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
                     sleeping_thread_ids: Ghost(new_sleeping_ids),
                     zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                    interrupted_count: self.interrupted_count,
+                    sleeping_count: (self.sleeping_count - 1) as u64,
                 };
                 result.wf()
                 && result.spec_pid() == self.spec_pid()
@@ -379,6 +389,8 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
                     sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
                     zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                    interrupted_count: self.interrupted_count,
+                    sleeping_count: self.sleeping_count,
                 };
                 result.wf()
                 && result.spec_pid() == self.spec_pid()
@@ -400,6 +412,8 @@ impl RunnableProcess {
                     interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
                     sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
                     zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                    interrupted_count: self.interrupted_count,
+                    sleeping_count: self.sleeping_count,
                 };
                 result.spec_interrupted_count() == self.spec_interrupted_count()
                 && result.spec_sleeping_count() == self.spec_sleeping_count()
@@ -551,6 +565,28 @@ impl RunnableProcess {
                     ==> self.ready_admission_times@[i] >= 0
             }),
     {
+    }
+
+    /// Refinement lemma: `spec_earliest_admission_time` is the minimum admission time,
+    /// is non-negative, and its index is in bounds. This bridges the spec-only
+    /// `earliest_admission_time()` to the proven properties.
+    pub proof fn lemma_earliest_admission_time_refinement(&self)
+        requires
+            self.wf(),
+        ensures
+            ({
+                let t: int = self.spec_earliest_admission_time();
+                let idx: int = self.spec_earliest_ready_index();
+                // The value is from the admission times array.
+                t == self.ready_admission_times@[idx]
+                // It is non-negative.
+                && t >= 0
+                // It is the minimum over all admission times.
+                && forall|j: int| 0 <= j < self.ready_admission_times@.len()
+                    ==> t <= #[trigger] self.ready_admission_times@[j]
+            }),
+    {
+        self.lemma_earliest_ready_index_bounds();
     }
 
     //==============================================================================================

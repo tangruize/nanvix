@@ -54,12 +54,14 @@
 //!   simple accessors to `Box<ProcessState>` — their correctness is trivial.
 //! - Thread state transitions (ReadyThread::terminate(), SleepingThread::interrupt(),
 //!   SleepingThread::wakeup()) are modeled as ID-preserving operations.
-//! - **Oracle parameters:** `terminate()` takes `has_interrupted` as an oracle
-//!   parameter because the branch decision depends on ghost-level `nat` comparisons.
-//!   The precondition constrains the oracle to match ghost state.
+//! - **Oracle parameters:** `terminate()` no longer requires an oracle;
+//!   the branch decision is computed from exec-level counters (`interrupted_count`,
+//!   `sleeping_count`) whose `wf()` invariant ties them to ghost sequence lengths.
 //!   `run()` derives its min-index internally via `lemma_earliest_ready_index_bounds`.
 //!   `wakeup()` derives its search index internally via proof-level `choose`;
-//!   only the `found` boolean remains as oracle (exec-level branching required).
+//!   only the `found` boolean remains as oracle (exec-level branching required,
+//!   since `Seq::contains()` is spec-only and there is no exec-level data
+//!   structure to search).
 //! - **`find_thread()` and `find_thread_mut()`** are omitted from the exec-level
 //!   model because they return reference types (`ThreadRef`, `ThreadRefMut`) that
 //!   Verus cannot express. A spec-only model (`spec_find_thread`) is provided
@@ -113,6 +115,9 @@ fn exit_status_interrupted_value() -> (result: int)
 ///
 /// Verification model of `src/kernel/src/pm/process/state/runnable.rs::RunnableProcess`.
 /// Thread collections are modeled as ghost sequences of thread IDs.
+/// Exec-level counters (`interrupted_count`, `sleeping_count`) track the lengths
+/// of the corresponding ghost sequences, enabling internal branch decisions
+/// without oracle parameters.
 ///
 /// **Note:** Fields are `pub` for Verus proof ergonomics (spec access,
 /// direct construction in lemmas). The original has private fields.
@@ -129,6 +134,10 @@ pub struct RunnableProcess {
     pub sleeping_thread_ids: Ghost<Seq<int>>,
     /// Ghost sequence of zombie thread IDs.
     pub zombie_thread_ids: Ghost<Seq<int>>,
+    /// Exec-level count of interrupted threads (mirrors interrupted_thread_ids@.len()).
+    pub interrupted_count: u64,
+    /// Exec-level count of sleeping threads (mirrors sleeping_thread_ids@.len()).
+    pub sleeping_count: u64,
 }
 
 /// A process that is running (boundary model).
@@ -223,6 +232,8 @@ impl RunnableProcess {
             interrupted_thread_ids: Ghost(Seq::empty()),
             sleeping_thread_ids: Ghost(Seq::empty()),
             zombie_thread_ids: Ghost(Seq::empty()),
+            interrupted_count: 0,
+            sleeping_count: 0,
         }
     }
 
@@ -249,12 +260,16 @@ impl RunnableProcess {
         interrupted_ids: Ghost<Seq<int>>,
         sleeping_ids: Ghost<Seq<int>>,
         zombie_ids: Ghost<Seq<int>>,
+        interrupted_count: u64,
+        sleeping_count: u64,
     ) -> (result: RunnableProcess)
         requires
             ready_ids@.len() >= 1,
             ready_ids@.len() == ready_times@.len(),
             forall|i: int| 0 <= i < ready_times@.len()
                 ==> #[trigger] ready_times@[i] >= 0,
+            interrupted_count as nat == interrupted_ids@.len(),
+            sleeping_count as nat == sleeping_ids@.len(),
         ensures
             result.spec_pid() == pid.spec_value(),
             result.spec_ready_count() == ready_ids@.len(),
@@ -270,6 +285,8 @@ impl RunnableProcess {
             interrupted_thread_ids: interrupted_ids,
             sleeping_thread_ids: sleeping_ids,
             zombie_thread_ids: zombie_ids,
+            interrupted_count: interrupted_count,
+            sleeping_count: sleeping_count,
         }
     }
 
@@ -356,22 +373,18 @@ impl RunnableProcess {
     /// - If interrupted threads exist (original or from sleeping), returns
     ///   Ok(InterruptedProcess). Otherwise, returns Err(ZombieProcess).
     ///
-    /// # Parameters
-    ///
-    /// - `has_interrupted`: Oracle parameter — whether any interrupted threads
-    ///   will exist after termination (from original interrupted or
-    ///   sleeping→interrupted conversion). Required because thread counts are
-    ///   `nat` (ghost-only), so `count > 0` cannot be evaluated at exec level.
-    ///   The precondition constrains this to exactly match ghost state.
+    /// The branch decision is computed internally from exec-level counters
+    /// (`interrupted_count`, `sleeping_count`), eliminating the need for an
+    /// oracle parameter. The `wf()` invariant guarantees these counters match
+    /// the ghost sequence lengths.
     ///
     /// # Returns
     ///
     /// TerminateResult::Interrupted if any interrupted threads remain,
     /// TerminateResult::Zombie if only zombie threads remain.
-    pub fn terminate(self, has_interrupted: bool) -> (result: TerminateResult)
+    pub fn terminate(self) -> (result: TerminateResult)
         requires
             self.wf(),
-            has_interrupted == (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0),
         ensures
             match result {
                 TerminateResult::Interrupted(ip) => {
@@ -389,7 +402,7 @@ impl RunnableProcess {
                         self.ready_thread_ids@.add(self.zombie_thread_ids@)
                     && ip.wf()
                     // Branch taken iff there were interrupted or sleeping threads.
-                    && has_interrupted
+                    && (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0)
                 },
                 TerminateResult::Zombie(zp) => {
                     // PID preserved.
@@ -405,7 +418,8 @@ impl RunnableProcess {
                     && zp.spec_status() == EXIT_STATUS_INTERRUPTED()
                     && zp.wf()
                     // Branch taken iff there were no interrupted or sleeping threads.
-                    && !has_interrupted
+                    && self.spec_interrupted_count() == 0
+                    && self.spec_sleeping_count() == 0
                 },
             },
     {
@@ -421,7 +435,7 @@ impl RunnableProcess {
         let ghost new_interrupted_ids: Seq<int> =
             self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
 
-        if has_interrupted {
+        if self.interrupted_count > 0 || self.sleeping_count > 0 {
             proof {
                 assert(new_interrupted_ids.len() ==
                     self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
@@ -565,6 +579,8 @@ impl RunnableProcess {
                 interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
                 sleeping_thread_ids: Ghost(new_sleeping_ids),
                 zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                interrupted_count: self.interrupted_count,
+                sleeping_count: self.sleeping_count - 1,
             })
         } else {
             Err(RunnableProcess {
@@ -574,6 +590,8 @@ impl RunnableProcess {
                 interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
                 sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
                 zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                interrupted_count: self.interrupted_count,
+                sleeping_count: self.sleeping_count,
             })
         }
     }
@@ -635,6 +653,8 @@ impl RunnableProcess {
             interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
             sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
             zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+            interrupted_count: self.interrupted_count,
+            sleeping_count: self.sleeping_count,
         }
     }
 
