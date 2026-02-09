@@ -247,11 +247,11 @@ impl RunnableProcess {
         recommends 1 <= n <= s.len()
         decreases n
     {
-        if n == 1 {
+        if n <= 1 {
             0int
         } else {
             let prev: int = Self::spec_min_index_rec(s, n - 1);
-            if s[n - 1] < s[prev] {
+            if 0 <= prev < s.len() && s[n - 1] < s[prev] {
                 n - 1
             } else {
                 prev

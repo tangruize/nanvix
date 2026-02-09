@@ -451,6 +451,9 @@ impl RunnableProcess {
         } else {
             Self::lemma_min_index_rec_bounds(s, n - 1);
             let prev: int = RunnableProcess::spec_min_index_rec(*s, n - 1);
+            // prev is in bounds by induction hypothesis.
+            assert(0 <= prev < n - 1);
+            assert(0 <= prev < s.len());
             if s[n - 1] < s[prev] {
                 // New element is smaller.
                 assert forall|j: int| 0 <= j < n
