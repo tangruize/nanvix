@@ -449,7 +449,19 @@ impl RunnableProcess {
                         <= #[trigger] self.ready_admission_times@[j]
             }),
     {
-        self.lemma_earliest_admission_time_exists();
+        // First, prove the existential so the choose is well-defined.
+        let s: &Seq<int> = &self.ready_admission_times@;
+        let n: int = s.len() as int;
+        Self::lemma_seq_has_min(s, n);
+        // Now there exists an idx satisfying the predicate.
+        // `spec_earliest_ready_index` uses `choose` with this exact predicate,
+        // so the chosen value must satisfy it.
+        let idx: int = self.spec_earliest_ready_index();
+        // The choose returns an idx satisfying the predicate. Assert it:
+        assert(0 <= idx < self.ready_admission_times@.len()
+            && forall|j: int| 0 <= j < self.ready_admission_times@.len()
+                ==> (#[trigger] self.ready_admission_times@[idx])
+                    <= (#[trigger] self.ready_admission_times@[j]));
     }
 
     /// Helper: A non-empty sequence of ints has a minimum element within the first n elements.
