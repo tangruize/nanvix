@@ -23,6 +23,8 @@ pub enum ErrorCode {
     ResourceBusy = 16,
     /// Bad address.
     BadAddress = 14,
+    /// No such entry.
+    NoSuchEntry = 2,
 }
 
 /// An error type that combines an error code with a reason string.
