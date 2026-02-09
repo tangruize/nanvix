@@ -1,0 +1,34 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 16:57:58 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::clock
+
+error: postcondition not satisfied
+   --> kernel/pm/clock.proof.rs:224:13
+    |
+220 |       pub proof fn lemma_n_increments_from_zero(n: nat)
+    |       ------------------------------------------------- at the end of the function body
+...
+224 | /             ({
+225 | |                 // After n increments: minor = n % 2^32, major = n / 2^32.
+226 | |                 let minor: nat = n % TimerTicks::MINOR_MODULUS();
+227 | |                 let major: nat = n / TimerTicks::MINOR_MODULUS();
+228 | |                 major * TimerTicks::MINOR_MODULUS() + minor == n
+229 | |             }),
+    | |______________^ failed this postcondition
+
+verification results:: 22 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 22
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::clock (verified:22, errors:1)
