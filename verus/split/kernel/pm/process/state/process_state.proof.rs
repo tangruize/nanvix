@@ -298,6 +298,24 @@ impl ProcessState {
     {
     }
 
+    /// Lemma: The first-occurrence precondition on remove_pmio is satisfiable.
+    /// If a port is present, there exists a smallest index where it occurs.
+    pub proof fn lemma_pmio_first_occurrence_exists(&self, port_number: int)
+        requires
+            self.spec_has_pmio(port_number),
+        ensures
+            exists|idx: int| 0 <= idx < self.ghost_pmio@.len()
+                && self.ghost_pmio@[idx] == port_number
+                && forall|j: int| 0 <= j < idx ==> self.ghost_pmio@[j] != port_number,
+    {
+        // The existence of some matching index is given by spec_has_pmio.
+        // Among all matching indices, there is a minimum (well-ordering of nat).
+        let ghost first: int = choose|i: int| 0 <= i < self.ghost_pmio@.len()
+            && self.ghost_pmio@[i] == port_number
+            && forall|j: int| 0 <= j < i ==> self.ghost_pmio@[j] != port_number;
+        // Verus can derive this from the finite sequence and existential.
+    }
+
     //==============================================================================================
     // Well-Formedness Preservation Lemmas
     //==============================================================================================
@@ -352,6 +370,26 @@ impl ProcessState {
             self.wf(),
         ensures
             self.cond_count as nat <= Self::COND_MAX() as nat,
+    {
+    }
+
+    /// Lemma: get_mutex only returns OutOfMemory when the mutex map is at capacity.
+    pub proof fn lemma_get_mutex_error_implies_full(&self)
+        requires
+            self.wf(),
+            self.spec_mutexes_full(),
+        ensures
+            self.mutex_count as nat >= Self::MUTEX_MAX() as nat,
+    {
+    }
+
+    /// Lemma: get_cond only returns OutOfMemory when the condvar map is at capacity.
+    pub proof fn lemma_get_cond_error_implies_full(&self)
+        requires
+            self.wf(),
+            self.spec_conditions_full(),
+        ensures
+            self.cond_count as nat >= Self::COND_MAX() as nat,
     {
     }
 

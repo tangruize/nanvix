@@ -12,19 +12,22 @@
 //! - Process identifier (`pid`) is immutable: all operations preserve it.
 //! - `set_capability` / `clear_capability` / `has_capability` delegate correctly
 //!   to the verified Capabilities type with well-formedness preservation.
-//! - `get_mutex` enforces capacity bound (MUTEX_MAX = 32): returns error when full
-//!   and address not present, inserts new entry with ref_count=2 when absent
-//!   (BTreeMap entry + returned clone), increments ref_count when present
-//!   (modeling `clone()`).
+//! - `get_mutex` enforces capacity bound (MUTEX_MAX = 32): returns `OutOfMemory`
+//!   error **only** when the map is at capacity (spec_mutexes_full), inserts new
+//!   entry with ref_count=2 when absent (BTreeMap entry + returned clone),
+//!   increments ref_count when present (modeling `clone()`).
 //! - `put_mutex` checks existence: returns error when not found. Conditionally
 //!   removes entry only when `ref_count <= MUTEX_REMOVE_THRESHOLD` (2), matching
 //!   the original `extract_if` with `reference_count() <= 2`.
-//! - `get_cond` enforces capacity bound (COND_MAX = 32): same pattern as `get_mutex`.
+//! - `get_cond` enforces capacity bound (COND_MAX = 32): same pattern as `get_mutex`,
+//!   with `OutOfMemory` error only when `spec_conditions_full()`.
 //! - `put_cond` conditionally removes when `ref_count <= COND_REMOVE_THRESHOLD` (1),
 //!   matching the original `extract_if` with `reference_count() <= 1`.
 //! - `add_pmio` / `remove_pmio` maintain I/O port sequence consistency.
-//!   `remove_pmio` removes only the first matching entry (matching `LinkedList::remove`
-//!   after `position()`), and decrements count by exactly 1.
+//!   `remove_pmio` removes only the **first** matching entry (matching
+//!   `LinkedList::remove` after `iter().position()`), enforced by a precondition
+//!   requiring the ghost index to be the first occurrence, and decrements count
+//!   by exactly 1.
 //! - Well-formedness (`wf()`) is preserved by all operations, including capacity
 //!   bounds (`mutex_count <= MUTEX_MAX`, `cond_count <= COND_MAX`).
 //! - Frame-condition stubs for omitted HAL/IPC functions prove they do not
@@ -64,10 +67,22 @@
 //!   1 (modeling `clone()`), and dropping the caller's clone decrements it.
 //!   The original thresholds (2 for mutexes, 1 for condvars)
 //!   correctly identify entries with no external references.
+//!   Note: The model does not include explicit decrement operations because
+//!   clone drops occur outside ProcessState (in calling code). The threshold
+//!   check in `put_mutex`/`put_cond` observes the current count at the decision
+//!   point, which is faithful to the original `extract_if` predicate.
 //! - **T4: Frame conditions for omitted functions.** Functions marked
 //!   `external_body` that interact with opaque types (Vmem, EventOwnership,
 //!   Mailbox, IoMemoryRegion, AnyIoPort) do not modify the verified fields
 //!   (PID, capabilities, mutexes, condvars, PMIO).
+//! - **T5: Oracle parameters.** Functions like `get_mutex`, `put_mutex`, etc.
+//!   take runtime boolean parameters (`already_present`, `contains`,
+//!   `ref_count_at_threshold`, `found`) tied to ghost state via preconditions.
+//!   This is Verus's standard "oracle parameter" pattern for bridging the
+//!   ghost/exec boundary: ghost map operations return spec-level bools that
+//!   cannot be used in exec-level `if` conditions. The preconditions constrain
+//!   these parameters to exactly match the ghost state, so any caller that
+//!   satisfies the precondition must have computed the correct value.
 //!
 //! ## Verification Scope
 //!
@@ -85,7 +100,15 @@
 //! - Memory-mapped I/O management — frame stubs provided.
 //! - Raw I/O port read/write operations — frame stubs provided.
 //! - `ProcessRefMut`/`ProcessRef` enum dispatch — accessor wrappers for
-//!   process lifecycle state, not part of `ProcessState` protocol logic.
+//!   process lifecycle state (uses external types: `RunnableProcess`,
+//!   `RunningProcess`, `SleepingProcess`, `InterruptedProcess`,
+//!   `ZombieProcess`), not part of `ProcessState` protocol logic.
+//! - `get_pmio`/`get_pmio_mut` — private LinkedList traversal helpers;
+//!   the LinkedList is abstracted to ghost `Seq<int>`.
+//! - `Debug` impl — formatting trait with no logical effect on state.
+//! - Return-value identity/ownership for `get_mutex`/`get_cond` — opaque
+//!   `Arc<Mutex>`/`Arc<Condvar>` tokens cannot be modeled; ghost ref count
+//!   captures the essential protocol information for cleanup decisions.
 
 use crate::kernel::pm::sys::pid::ProcessIdentifier;
 use crate::kernel::pm::process::capability::Capabilities;
@@ -287,6 +310,7 @@ impl ProcessState {
             },
             result is Err ==> {
                 &&& result->Err_0.code == ErrorCode::OutOfMemory
+                &&& old(self).spec_mutexes_full()
                 &&& self.spec_pid() == old(self).spec_pid()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
                 &&& self.spec_cond_count() == old(self).spec_cond_count()
@@ -436,6 +460,7 @@ impl ProcessState {
             },
             result is Err ==> {
                 &&& result->Err_0.code == ErrorCode::OutOfMemory
+                &&& old(self).spec_conditions_full()
                 &&& self.spec_pid() == old(self).spec_pid()
                 &&& self.spec_mutex_count() == old(self).spec_mutex_count()
                 &&& self.spec_cond_count() == old(self).spec_cond_count()
@@ -566,6 +591,7 @@ impl ProcessState {
     /// - `port_number`: Abstract port number to remove.
     /// - `found`: Runtime result of the position search, tied to ghost state.
     /// - `found_idx`: Ghost index of the first matching entry in the PMIO sequence.
+    ///   Must be the first occurrence (no earlier index has the same port number).
     ///
     /// # Returns
     ///
@@ -583,9 +609,12 @@ impl ProcessState {
         requires
             old(self).wf(),
             found == old(self).spec_has_pmio(port_number@),
-            // If found, the ghost index must be valid and point to the matching port.
+            // If found, the ghost index must be valid, point to the matching port,
+            // and be the FIRST occurrence (matching `iter().position()` semantics).
             found ==> 0 <= found_idx@ < old(self).ghost_pmio@.len()
-                && old(self).ghost_pmio@[found_idx@] == port_number@,
+                && old(self).ghost_pmio@[found_idx@] == port_number@
+                && forall|j: int| 0 <= j < found_idx@ ==>
+                    old(self).ghost_pmio@[j] != port_number@,
         ensures
             result is Ok ==> {
                 &&& old(self).spec_has_pmio(port_number@)
@@ -640,19 +669,24 @@ impl ProcessState {
     // verified state model.
 
     /// Stub: copy_from_user_unaligned preserves verified state.
+    /// Takes `&self` (immutable reference), so Rust's borrow checker prevents
+    /// any mutation. No frame conditions needed beyond `true`.
     #[verifier::external_body]
     pub fn copy_from_user_unaligned_stub(&self) -> (result: Result<(), Error>)
         ensures
-            // Frame: read-only operation on self, no state mutation.
+            // Frame: `&self` guarantees no state mutation (Rust ownership).
             true,
     {
         unimplemented!()
     }
 
     /// Stub: copy_to_user_unaligned preserves verified state.
+    /// Takes `&self` (immutable reference), so Rust's borrow checker prevents
+    /// any mutation. No frame conditions needed beyond `true`.
     #[verifier::external_body]
     pub fn copy_to_user_unaligned_stub(&self) -> (result: Result<(), Error>)
         ensures
+            // Frame: `&self` guarantees no state mutation (Rust ownership).
             true,
     {
         unimplemented!()
@@ -767,10 +801,12 @@ impl ProcessState {
     }
 
     /// Stub: read_pmio preserves verified state.
+    /// Takes `&self` (immutable reference), so Rust's borrow checker prevents
+    /// any mutation. No frame conditions needed beyond `true`.
     #[verifier::external_body]
     pub fn read_pmio_stub(&self) -> (result: Result<u32, Error>)
         ensures
-            // Frame: read-only operation on self, no state mutation.
+            // Frame: `&self` guarantees no state mutation (Rust ownership).
             true,
     {
         unimplemented!()
@@ -795,9 +831,12 @@ impl ProcessState {
     }
 
     /// Stub: vmem returns a reference, no state mutation.
+    /// Takes `&self` (immutable reference), so Rust's borrow checker prevents
+    /// any mutation. No frame conditions needed beyond `true`.
     #[verifier::external_body]
     pub fn vmem_stub(&self)
         ensures
+            // Frame: `&self` guarantees no state mutation (Rust ownership).
             true,
     {
         unimplemented!()
