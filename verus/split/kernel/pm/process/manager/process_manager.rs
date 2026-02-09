@@ -1252,81 +1252,257 @@ impl ProcessManagerInner {
     {
     }
 
-    /// Models `sleep` wrapper: the complete sleep operation.
+    /// Models `sleep` dispatch: the complete sleep operation (mod.rs:725-784).
     ///
-    /// The original `sleep` (mod.rs:725-784) calls `take_running`, transitions
-    /// the process to sleeping, and selects the next ready process. The queue
-    /// transition is modeled by `sleep_running` (process→suspended) or
-    /// `sleep_thread_running` (thread sleeps, process stays ready).
-    /// This stub documents the wrapper; actual transitions use the verified fns.
-    pub fn sleep_wrapper(&self)
+    /// The original `sleep` has two outcomes depending on thread state (T3):
+    /// - `to_suspended == true`: all threads sleeping → process to suspended.
+    ///   Delegates to `sleep_running(chosen_next)`.
+    /// - `to_suspended == false`: other runnable threads remain → process stays ready.
+    ///   Delegates to `sleep_thread_running(chosen_next)`.
+    ///
+    /// # Parameters
+    ///
+    /// - `to_suspended`: whether the process moves to suspended (T3 branch decision).
+    /// - `chosen_next`: PID of the next process to run from the ready queue.
+    pub fn sleep_dispatch(&mut self, to_suspended: bool, chosen_next: i32)
         requires
-            self.wf(),
+            old(self).wf(),
+            old(self).running_pid as int != 0int,
+            chosen_next >= 0i32,
+            chosen_next < old(self).next_pid,
+            to_suspended ==> old(self).ghost_ready@.contains(chosen_next as int),
+            !to_suspended ==> old(self).spec_ready_with_running().contains(chosen_next as int),
         ensures
             self.wf(),
+            self.running_pid == chosen_next,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
+            self.zombie_count == old(self).zombie_count,
+            self.interrupted_count == old(self).interrupted_count,
+            // If to_suspended: running→suspended, chosen removed from ready.
+            to_suspended ==> (
+                self.ghost_suspended@ =~= old(self).ghost_suspended@.insert(
+                    old(self).running_pid as int)
+                && self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int)
+                && self.ready_count == old(self).ready_count - 1
+                && self.suspended_count == old(self).suspended_count + 1
+            ),
+            // If not: running→ready swap (net zero change to ready count).
+            !to_suspended ==> (
+                self.ghost_ready@ =~= old(self).ghost_ready@.insert(
+                    old(self).running_pid as int).remove(chosen_next as int)
+                && self.ready_count == old(self).ready_count
+                && self.suspended_count == old(self).suspended_count
+            ),
     {
-        // Wrapper documentation: actual transitions via sleep_running /
-        // sleep_thread_running.
+        if to_suspended {
+            self.sleep_running(chosen_next);
+        } else {
+            self.sleep_thread_running(chosen_next);
+        }
     }
 
-    /// Models `exit` wrapper: the complete exit operation.
+    /// Models `exit` dispatch: the complete exit operation (mod.rs:895-972).
     ///
-    /// The original `exit` (mod.rs:895-972) calls `take_running`, transitions
-    /// the process based on remaining threads. Modeled by `exit_running` (last
-    /// process→zombie), `exit_thread_running` (thread exits, process stays ready),
-    /// `exit_thread_to_suspended`, or `exit_thread_to_zombie`.
-    pub fn exit_wrapper(&self)
+    /// The original `exit` has two outcomes depending on thread state (T3):
+    /// - `to_zombie == true`: no runnable threads remain → process to zombie.
+    ///   Delegates to `exit_running(chosen_next)`.
+    /// - `to_zombie == false`: runnable threads remain → process stays ready.
+    ///   Delegates to `exit_thread_running(chosen_next)`.
+    ///
+    /// # Parameters
+    ///
+    /// - `to_zombie`: whether the process moves to zombie (T3 branch decision).
+    /// - `chosen_next`: PID of the next process to run from the ready queue.
+    pub fn exit_dispatch(&mut self, to_zombie: bool, chosen_next: i32)
         requires
-            self.wf(),
+            old(self).wf(),
+            old(self).running_pid as int != 0int,
+            chosen_next >= 0i32,
+            chosen_next < old(self).next_pid,
+            to_zombie ==> old(self).ghost_ready@.contains(chosen_next as int),
+            !to_zombie ==> old(self).spec_ready_with_running().contains(chosen_next as int),
         ensures
             self.wf(),
+            self.running_pid == chosen_next,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
+            self.suspended_count == old(self).suspended_count,
+            self.interrupted_count == old(self).interrupted_count,
+            // If to_zombie: running→zombie, chosen removed from ready.
+            to_zombie ==> (
+                self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(
+                    old(self).running_pid as int)
+                && self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int)
+                && self.ready_count == old(self).ready_count - 1
+                && self.zombie_count == old(self).zombie_count + 1
+            ),
+            // If not: running→ready swap (net zero change).
+            !to_zombie ==> (
+                self.ghost_ready@ =~= old(self).ghost_ready@.insert(
+                    old(self).running_pid as int).remove(chosen_next as int)
+                && self.ready_count == old(self).ready_count
+                && self.zombie_count == old(self).zombie_count
+            ),
     {
-        // Wrapper documentation: actual transitions via exit_running /
-        // exit_thread_running / exit_thread_to_suspended / exit_thread_to_zombie.
+        if to_zombie {
+            self.exit_running(chosen_next);
+        } else {
+            self.exit_thread_running(chosen_next);
+        }
     }
 
-    /// Models `exit_thread` wrapper: exit a non-running thread.
+    /// Models `exit_thread` dispatch: exit a non-running thread (mod.rs:974-1034).
     ///
-    /// The original `exit_thread` (mod.rs:974-1034) finds the process containing
-    /// the thread and exits the thread. If the process was sleeping and the thread
-    /// was the running thread of that process, the process may transition. At the
-    /// queue level, this is captured by the existing verified transition functions.
-    pub fn exit_thread_wrapper(&self)
+    /// The original `exit_thread` has three outcomes depending on remaining threads (T3):
+    /// - `branch == 0`: runnable threads remain → process stays ready.
+    ///   Delegates to `exit_thread_running(chosen_next)`.
+    /// - `branch == 1`: only sleeping threads remain → process to suspended.
+    ///   Delegates to `exit_thread_to_suspended(chosen_next)`.
+    /// - `branch == 2`: all threads are zombie → process to zombie.
+    ///   Delegates to `exit_thread_to_zombie(chosen_next)`.
+    ///
+    /// # Parameters
+    ///
+    /// - `branch`: T3 branch selector (0=ready, 1=suspended, 2=zombie).
+    /// - `chosen_next`: PID of the next process to run from the ready queue.
+    pub fn exit_thread_dispatch(&mut self, branch: u8, chosen_next: i32)
         requires
-            self.wf(),
+            old(self).wf(),
+            old(self).running_pid as int != 0int,
+            branch <= 2u8,
+            chosen_next >= 0i32,
+            chosen_next < old(self).next_pid,
+            branch == 0u8 ==> old(self).spec_ready_with_running().contains(chosen_next as int),
+            branch == 1u8 ==> old(self).ghost_ready@.contains(chosen_next as int),
+            branch == 2u8 ==> old(self).ghost_ready@.contains(chosen_next as int),
         ensures
             self.wf(),
+            self.running_pid == chosen_next,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
-        // Wrapper documentation: thread-level logic is T3.
+        if branch == 0u8 {
+            self.exit_thread_running(chosen_next);
+        } else if branch == 1u8 {
+            self.exit_thread_to_suspended(chosen_next);
+        } else {
+            self.exit_thread_to_zombie(chosen_next);
+        }
     }
 
-    /// Models `check_alarm` wrapper: iterates suspended processes for expired alarms.
+    /// Models `check_alarm` iteration (mod.rs:682-704).
     ///
-    /// The original `check_alarm` (mod.rs:682-704) iterates the suspended list and
-    /// moves expired-alarm processes to interrupted. Each individual transition is
-    /// modeled by `alarm_interrupt`. The iteration count is a runtime decision
-    /// (trust boundary T1: alarm expiry timing).
+    /// The original iterates all suspended processes, moving those with expired
+    /// alarms to interrupted. Each individual transition is verified by
+    /// `alarm_interrupt`. This wrapper cannot express the iteration directly
+    /// (the number of expired alarms is a runtime decision), but documents that
+    /// `wf()` is preserved across any number of `alarm_interrupt` calls because
+    /// each individual call preserves `wf()` (inductive argument).
     pub fn check_alarm_wrapper(&self)
         requires
             self.wf(),
         ensures
             self.wf(),
     {
-        // Each alarm transition uses alarm_interrupt. Iteration is T1.
+        // Iterative: each alarm_interrupt preserves wf(); by induction,
+        // any sequence of alarm_interrupt calls preserves wf().
     }
 
-    /// Models `harvest_zombies` (plural): iterates zombie queue, cleaning up.
+    /// Models `harvest_zombies` iteration (mod.rs:1191-1209).
     ///
-    /// The original (mod.rs:1191-1209) pops zombie processes, performs memory
-    /// cleanup, and returns the list. Each individual removal is modeled by
-    /// `harvest_zombie`. Memory cleanup is out of scope.
+    /// The original pops zombie processes one at a time, performs memory cleanup,
+    /// and returns the list. Each individual removal is verified by `harvest_zombie`.
+    /// Like `check_alarm_wrapper`, the iteration count is runtime-determined.
+    /// `wf()` is preserved inductively across any number of `harvest_zombie` calls.
     pub fn harvest_zombies_wrapper(&self)
         requires
             self.wf(),
         ensures
             self.wf(),
     {
-        // Each zombie removal uses harvest_zombie. Memory cleanup is out of scope.
+        // Iterative: each harvest_zombie preserves wf(); by induction,
+        // any sequence of harvest_zombie calls preserves wf().
+    }
+
+    /// Models `wakeup` dispatch (mod.rs:786-811).
+    ///
+    /// The original `wakeup` searches all queues for a thread by TID and wakes it.
+    /// The outcome depends on which queue the process is found in:
+    /// - Running process → thread-level wakeup, no queue change (`wakeup_running_noop`).
+    /// - Ready process → thread-level wakeup, no queue change (`wakeup_ready_noop`).
+    /// - Suspended process, wakeup succeeds → suspended→ready (`wakeup_to_ready`).
+    /// - Suspended process, wakeup fails → no change (`wakeup_suspended_failed_noop`).
+    /// - Not found → error, no change (`wakeup_not_found`).
+    ///
+    /// This dispatch models the successful suspended→ready case (the only queue-
+    /// changing outcome). Other cases are verified no-ops.
+    pub fn wakeup_dispatch(&mut self, pid: i32)
+        requires
+            old(self).wf(),
+            old(self).ghost_suspended@.contains(pid as int),
+        ensures
+            self.wf(),
+            self.running_pid == old(self).running_pid,
+            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
+            self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int),
+            self.ready_count == old(self).ready_count + 1,
+            self.suspended_count == old(self).suspended_count - 1,
+            self.interrupted_count == old(self).interrupted_count,
+            self.zombie_count == old(self).zombie_count,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
+    {
+        self.wakeup_to_ready(pid);
+    }
+
+    /// Models `create_thread` dispatch (mod.rs:269-393).
+    ///
+    /// The original `create_thread` / `try_add_thread` has two queue-level outcomes:
+    /// - `from_suspended == true`: process is sleeping → wakes to ready.
+    ///   Delegates to `create_thread_from_suspended(pid)`.
+    /// - `from_suspended == false`: process is ready → stays ready (no queue change).
+    ///   Modeled by `create_thread_in_ready(pid)`.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: PID of the target process.
+    /// - `from_suspended`: whether the process is currently suspended (T3 branch).
+    pub fn create_thread_dispatch(&mut self, pid: i32, from_suspended: bool)
+        requires
+            old(self).wf(),
+            from_suspended ==> old(self).ghost_suspended@.contains(pid as int),
+            !from_suspended ==> old(self).ghost_ready@.contains(pid as int),
+        ensures
+            self.wf(),
+            self.running_pid == old(self).running_pid,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
+            self.interrupted_count == old(self).interrupted_count,
+            self.zombie_count == old(self).zombie_count,
+            from_suspended ==> (
+                self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int)
+                && self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int)
+                && self.ready_count == old(self).ready_count + 1
+                && self.suspended_count == old(self).suspended_count - 1
+            ),
+            !from_suspended ==> (
+                self.ghost_ready@ =~= old(self).ghost_ready@
+                && self.ghost_suspended@ =~= old(self).ghost_suspended@
+                && self.ready_count == old(self).ready_count
+                && self.suspended_count == old(self).suspended_count
+            ),
+    {
+        if from_suspended {
+            self.create_thread_from_suspended(pid);
+        } else {
+            self.create_thread_in_ready(pid);
+        }
     }
 
     //==============================================================================================
