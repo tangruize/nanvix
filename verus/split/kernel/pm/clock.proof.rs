@@ -284,10 +284,10 @@ impl TimerTicks {
             // r < b and q > 0 imply r * q < b * q.
             assert(r * q < b * q) by(nonlinear_arith)
                 requires(r < b && q > 0);
-            // b * (c / b) + c % b == c, and c % b >= 0, so b * (c / b) <= c.
-            assert(b * q + c % b == c) by(nonlinear_arith)
-                requires(b > 0);
-            assert(b * q <= c);
+            // By definition of integer division: q * b + c % b == c, so q * b <= c.
+            let remainder: nat = c % b;
+            assert(q * b + remainder == c) by(nonlinear_arith)
+                requires(b > 0 && q == c / b && remainder == c % b);
         }
     }
 
