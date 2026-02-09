@@ -1,0 +1,25 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 18:24:12 CST 2026
+Module: kernel::pm::process::capability
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::capability
+
+error: unsupported for bit-vector: expression conversion UnaryOpr(Field(FieldOpr { datatype: Path(Path(Some("lib"), ["kernel" :: "pm" :: "process" :: "capability" :: "Capabilities"])), variant: "Capabilities", field: "bits", get_variant: false, check: None }), SpannedTyped { span: Span { raw_span: "ANY", id: 42508, data: [14199368873967663043, 9979412349154364], as_string: "kernel/pm/process/capability.proof.rs:55:28: 55:31 (#0)" }, typ: Datatype(Path(Path(Some("lib"), ["kernel" :: "pm" :: "process" :: "capability" :: "Capabilities"])), [], []), x: UnaryOpr(Unbox(Datatype(Path(Path(Some("lib"), ["kernel" :: "pm" :: "process" :: "capability" :: "Capabilities"])), [], [])), SpannedTyped { span: Span { raw_span: "ANY", id: 42508, data: [14199368873967663043, 9979412349154364], as_string: "kernel/pm/process/capability.proof.rs:55:28: 55:31 (#0)" }, typ: Boxed(Datatype(Path(Path(Some("lib"), ["kernel" :: "pm" :: "process" :: "capability" :: "Capabilities"])), [], [])), x: UnaryOpr(Box(Datatype(Path(Path(Some("lib"), ["kernel" :: "pm" :: "process" :: "capability" :: "Capabilities"])), [], [])), SpannedTyped { span: Span { raw_span: "ANY", id: 42508, data: [14199368873967663043, 9979412349154364], as_string: "kernel/pm/process/capability.proof.rs:55:28: 55:31 (#0)" }, typ: Datatype(Path(Path(Some("lib"), ["kernel" :: "pm" :: "process" :: "capability" :: "Capabilities"])), [], []), x: Var(VarIdent("pre", VirParam)) }) }) })
+  --> kernel/pm/process/capability.spec.rs:27:9
+   |
+27 |         self.bits
+   |         ^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::capability (verified:0, errors:0)
