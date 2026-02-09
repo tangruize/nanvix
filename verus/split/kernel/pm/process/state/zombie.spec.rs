@@ -40,25 +40,25 @@
 //
 // ## Trust Assumptions
 //
-// - `find_thread()` and `find_thread_mut()` are modeled spec-only because
+// - `find_thread()` and `find_thread_mut()` are `external_body` because
 //   they return reference types (`ThreadRef`, `ThreadRefMut`) that Verus
-//   cannot express. The spec model `spec_find_thread()` captures the search
-//   semantics over the zombie list. The executable iterator-based search is
-//   NOT verified — three integration obligations decompose the proof:
+//   cannot express. The postconditions assert the spec contract. The
+//   executable iterator-based search is NOT verified within this module.
+//   Three integration obligations decompose the proof:
 //   (1) `spec_find_thread_integration_obligation` (overall result match),
 //   (2) `spec_find_thread_search_predicate_obligation` (per-element predicate
 //   equivalence between `ZombieThread::id()` and ghost ID), and
 //   (3) `spec_find_thread_mut_caller_obligation` (caller discipline for
 //   mutable access). `lemma_ghost_search_correctness` proves the ghost-level
-//   search logic. All three obligations remain **unproven** until integration
-//   proofs discharge them.
+//   search logic. All three obligations remain **unproven** at this module
+//   level and must be discharged by integration proofs.
 // - `state()` / `state_mut()` return references to ProcessState in the original.
-//   `state_mut()` permits arbitrary mutation; callers must preserve PID
-//   immutability. PID immutability is enforced architecturally: `ProcessState`
-//   has private `pid` field with no public setter (verified by inspection of
-//   `src/kernel/src/pm/process/state/mod.rs`). This is a TRUST ASSUMPTION on
-//   the ProcessState module's API surface. `spec_state_mut_pid_stability_obligation`
-//   formalizes this requirement. Modeled as external_body with frame conditions.
+//   `state_mut()` permits mutation of ProcessState fields. PID immutability
+//   is **verified** in the `process_state` dependency module: every public
+//   mutator has a verified `self.spec_pid() == old(self).spec_pid()` postcondition,
+//   and proof lemmas confirm this property. The `pid` field is private with no
+//   public setter. `spec_state_mut_pid_stability_obligation` documents this
+//   cross-module contract (discharged by the dependency).
 // - `bury()` ownership transfer is not verified in the ghost model.
 //   `spec_bury_ownership_integration_obligation` formalizes the identity part
 //   of the transfer obligation. Full ownership transfer requires Verus tracked
@@ -242,16 +242,19 @@ impl ZombieProcess {
     /// Integration obligation: `state_mut()` PID stability.
     ///
     /// The `state_mut()` `external_body` postcondition asserts PID
-    /// preservation. This is justified by `ProcessState`'s API: `pid` is a
-    /// private field (verified in `src/kernel/src/pm/process/state/mod.rs`)
-    /// and no public setter exists — only `ProcessState::new()` sets `pid`,
-    /// and only `ProcessState::pid()` reads it. The available mutators
-    /// (`set_capability`, `clear_capability`, etc.) do not touch `pid`.
+    /// preservation. This is **verified** in the `process_state` module:
+    /// every public mutator (`set_capability`, `clear_capability`,
+    /// `insert_mutex`, `remove_mutexes`, `insert_cond`, `remove_conditions`,
+    /// `add_pmio`, `remove_pmio`, `add_event_stub`, `remove_event_stub`,
+    /// `add_mmio_stub`, `remove_mmio_stub`, `push_mailbox`, `pop_mailbox`,
+    /// `insert_vmem_region`) has a verified postcondition
+    /// `self.spec_pid() == old(self).spec_pid()`. Proof lemmas in
+    /// `process_state.proof.rs` additionally prove this property.
+    /// The `pid` field is private with no public setter.
     ///
-    /// This obligation formalizes the requirement: after any sequence of
-    /// public method calls on `&mut ProcessState`, the PID is unchanged.
-    /// Integration proofs must verify this against the ProcessState module's
-    /// public API surface.
+    /// This obligation is thus **discharged** by the verified `process_state`
+    /// module (a listed dependency). Retained here as documentation of the
+    /// cross-module contract.
     pub open spec fn spec_state_mut_pid_stability_obligation(
         pid_before: int, pid_after: int,
     ) -> bool {

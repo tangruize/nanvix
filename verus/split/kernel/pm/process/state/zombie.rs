@@ -41,16 +41,21 @@
 //!
 //! ## Trust Boundary
 //!
-//! - **`state_mut()` PID immutability (TRUST ASSUMPTION):** `state_mut()` is
-//!   `external_body` and its postcondition asserts PID preservation. The
-//!   original returns `&mut ProcessState`, giving callers unrestricted write
-//!   access to all `ProcessState` fields. PID immutability is enforced
-//!   architecturally: `ProcessState` does NOT expose a public setter for its
-//!   `pid` field — only the constructor sets it. This is a trust assumption
-//!   on the `ProcessState` module's API surface. If `ProcessState` ever
-//!   exposes a PID setter, this postcondition becomes unsound and must be
-//!   revised. Integration proofs must verify this assumption against the
-//!   `ProcessState` API when that module is independently verified.
+//! - **`state_mut()` PID immutability (VERIFIED CROSS-MODULE):** `state_mut()`
+//!   is `external_body` and its postcondition asserts PID preservation. The
+//!   original returns `&mut ProcessState`, giving callers write access to
+//!   `ProcessState` fields. PID immutability is **verified** in the
+//!   `process_state` module (`verus/split/kernel/pm/process/state/process_state.rs`):
+//!   every public mutator (`set_capability`, `clear_capability`, `insert_mutex`,
+//!   `remove_mutexes`, `insert_cond`, `remove_conditions`, `add_pmio`,
+//!   `remove_pmio`, `add_event_stub`, `remove_event_stub`, `add_mmio_stub`,
+//!   `remove_mmio_stub`, `push_mailbox`, `pop_mailbox`, `insert_vmem_region`)
+//!   has a verified postcondition `self.spec_pid() == old(self).spec_pid()`.
+//!   Proof lemmas (`lemma_set_capability_preserves_pid`,
+//!   `lemma_mutex_change_preserves_pid`, `lemma_cond_change_preserves_pid`,
+//!   `lemma_pmio_change_preserves_pid`) additionally prove this property.
+//!   The `pid` field is private with no public setter. This external_body
+//!   annotation is thus backed by verified evidence from a dependency module.
 //! - **`state()` abstraction boundary:** `state()` returns `&ProcessState`
 //!   which contains ~9 fields (pid, capabilities, vmem, events, mailbox,
 //!   mmio, pmio, mutexes, conditions). Modeling it as a single `int` (PID)
@@ -58,25 +63,28 @@
 //!   identity. If future verification needs to reason about capabilities,
 //!   vmem, or other `ProcessState` fields through `ZombieProcess`, the model
 //!   must be extended.
-//! - **`find_thread()` / `find_thread_mut()` (UNVERIFIED SEARCH):** These
-//!   are **spec-level models** that compute `spec_find_thread()` directly in
-//!   ghost mode. They do NOT model the executable `iter().find(...)` search.
+//! - **`find_thread()` / `find_thread_mut()` (EXTERNAL BODY):** These are
+//!   `external_body` functions whose postconditions assert the spec contract.
 //!   The original performs a linear search through `NonEmptyVecDeque::iter()`
-//!   on the zombie thread list. The spec captures the search semantics but
-//!   the executable iterator-based logic is NOT verified. Any bug in the real
-//!   search (wrong predicate, wrong iteration order) would not be caught.
-//!   `lemma_ghost_search_correctness` proves the ghost-level search logic is
-//!   sound; `spec_find_thread_integration_obligation` defines the formal
-//!   contract integration proofs must discharge. Tagged for trust-boundary
-//!   inventory.
+//!   on the zombie thread list. The executable iterator-based search is NOT
+//!   verified within this module. `spec_find_thread_integration_obligation`
+//!   defines the formal refinement contract. `lemma_ghost_search_correctness`
+//!   proves the ghost-level search logic is sound.
+//!   `spec_find_thread_search_predicate_obligation` decomposes the refinement
+//!   into per-element predicate equivalence. Integration proofs must discharge
+//!   these obligations.
+//! - **`find_thread_mut()` caller discipline:** The original returns
+//!   `Option<ThreadRefMut<'_>>`, permitting mutation of the found thread.
+//!   `spec_find_thread_mut_caller_obligation` formalizes the requirement that
+//!   callers preserve thread identity. Verus cannot model mutable borrow
+//!   lifetimes, so this obligation must be discharged at each call site.
 //! - **`bury()` ownership transfer:** The original `bury()` returns actual
 //!   ownership of `(NonEmptyVecDeque<ZombieThread>, Box<ProcessState>,
 //!   ExitStatus)` — transferring resources for the parent to collect. The
 //!   ghost model returns `(Ghost<Seq<int>>, Ghost<int>, Ghost<int>)` and
-//!   does NOT verify resource transfer or ownership semantics. This is the
-//!   key semantic purpose of `bury()` in the original and is outside the
-//!   ghost model scope. Executable verification would require modeling
-//!   ownership transfer through Verus's tracked types.
+//!   does NOT verify resource transfer or ownership semantics.
+//!   `spec_bury_ownership_integration_obligation` formalizes the identity
+//!   part. Full ownership transfer requires Verus tracked types.
 //!
 //! ## Fields
 //!
@@ -185,14 +193,14 @@ impl ZombieProcess {
     /// Models the original `ZombieProcess::state_mut()` which returns
     /// `&mut ProcessState`.
     ///
-    /// ## Trust Assumption: PID Immutability
+    /// ## PID Immutability (Verified Cross-Module)
     ///
-    /// This `external_body` function's postcondition asserts PID preservation
-    /// (`self.spec_pid() == old(self).spec_pid()`). The original gives callers
-    /// unrestricted `&mut ProcessState` access. PID immutability is enforced
-    /// architecturally: `ProcessState` does NOT expose a public setter for
-    /// `pid` — only the constructor sets it. If `ProcessState` ever exposes
-    /// a PID setter, this postcondition becomes unsound.
+    /// This `external_body` function's postcondition asserts PID preservation.
+    /// This is **verified** in the `process_state` module: every public
+    /// mutator has a verified postcondition `self.spec_pid() == old(self).spec_pid()`.
+    /// The `pid` field is private with no public setter. See
+    /// `verus/split/kernel/pm/process/state/process_state.rs` for the verified
+    /// proofs and `process_state.proof.rs` for the PID preservation lemmas.
     ///
     /// # Returns
     ///
@@ -240,15 +248,12 @@ impl ZombieProcess {
 
     /// Finds a thread by its identifier and returns which list it belongs to.
     ///
-    /// **Spec-level model (UNVERIFIED SEARCH)** of the original
-    /// `ZombieProcess::find_thread(tid)`. This function computes
-    /// `spec_find_thread()` directly in ghost mode. It does NOT model the
-    /// executable `iter().find(|t| t.id() == tid)` search. Any bug in the
-    /// real search predicate or iteration logic would not be caught by this
-    /// verification. `spec_find_thread_integration_obligation` defines the
-    /// **unproven** contract that integration proofs must discharge.
-    /// `lemma_ghost_search_correctness` proves the ghost-level search logic
-    /// is sound for the abstract model.
+    /// **External body** modeling the original `ZombieProcess::find_thread(tid)`.
+    /// The original performs `self.zombie_threads.iter().find(|t| t.id() == tid)`
+    /// and returns `Option<ThreadRef<'_>>`. Verus cannot model reference-typed
+    /// returns, so this is marked `external_body` with the spec contract as
+    /// postcondition. `spec_find_thread_integration_obligation` defines the
+    /// **unproven** refinement contract.
     ///
     /// Returns the abstract list variant:
     /// - `Some(0)`: zombie thread found.
@@ -261,19 +266,20 @@ impl ZombieProcess {
     /// # Returns
     ///
     /// The ghost list variant.
+    #[verifier::external_body]
     pub fn find_thread(&self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
         ensures
             result@ == self.spec_find_thread(tid@),
     {
-        Ghost(self.spec_find_thread(tid@))
+        unimplemented!()
     }
 
     /// Finds a thread by its identifier (mutable variant).
     ///
-    /// **Spec-level model (UNVERIFIED SEARCH)** of the original
+    /// **External body** modeling the original
     /// `ZombieProcess::find_thread_mut(tid)`. Same trust scope as
-    /// `find_thread()` — see its documentation. Frame condition: self is
-    /// unchanged (ghost model does not mutate).
+    /// `find_thread()` — see its documentation. The original returns
+    /// `Option<ThreadRefMut<'_>>`.
     ///
     /// ## Caller Obligation (Mutable Access)
     ///
@@ -294,6 +300,7 @@ impl ZombieProcess {
     /// # Returns
     ///
     /// The ghost list variant.
+    #[verifier::external_body]
     pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
         requires
             old(self).wf(),
@@ -305,7 +312,7 @@ impl ZombieProcess {
             self.zombie_count == old(self).zombie_count,
             self.wf(),
     {
-        Ghost(old(self).spec_find_thread(tid@))
+        unimplemented!()
     }
 }
 

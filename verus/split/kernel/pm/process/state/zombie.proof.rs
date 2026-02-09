@@ -18,12 +18,16 @@
 // - Integration obligation lemmas:
 //   - `lemma_find_thread_obligation_implies_consistency`: find_thread result
 //     consistency under wf().
-//   - `lemma_predicate_obligation_implies_search_equivalence`: search predicate
-//     obligation implies ghost/real search equivalence.
+//   - `lemma_predicate_obligation_implies_search_equivalence`: given explicit
+//     `real_ids` sequence matching ghost IDs element-wise (search predicate
+//     obligation), ghost search correctness implies real search correctness.
+//     Takes `real_ids: Seq<int>` parameter to avoid the tautology of comparing
+//     ghost IDs against themselves.
 //   - `lemma_find_thread_mut_obligation_preserves_wf`: caller obligation for
 //     mutable thread access preserves identity.
 //   - `lemma_state_mut_stability_consistent`: PID stability obligation is
-//     self-consistent.
+//     self-consistent. Substantive PID preservation is **verified** in the
+//     `process_state` dependency module.
 //   - `lemma_bury_satisfies_identity_obligation`: ghost model satisfies the
 //     identity part of the ownership transfer obligation.
 //   - PID obligation at construction.
@@ -239,34 +243,58 @@ impl ZombieProcess {
     {
     }
 
-    /// Lemma: If the search predicate obligation holds for all elements,
-    /// then iterator-based search equivalence follows from ghost search
-    /// correctness. Under wf() (no-duplicates), if every element's ghost
-    /// ID matches its real ID, the existential in `spec_has_zombie_thread`
-    /// is equivalent to iterator `find()` succeeding.
+    /// Lemma: If ghost IDs match real IDs at every index (search predicate
+    /// obligation), then ghost search correctness implies real search
+    /// correctness. Takes an explicit `real_ids` sequence representing the
+    /// concrete `NonEmptyVecDeque<ZombieThread>` iteration order.
+    ///
+    /// Under wf() (no-duplicates), if `real_ids` has the same length and
+    /// element-wise equality with the ghost sequence, then:
+    /// - A tid appearing in the real list implies the spec finds it.
+    /// - The spec finding a tid implies it appears in the real list.
     pub proof fn lemma_predicate_obligation_implies_search_equivalence(
-        &self, tid: int,
+        &self, tid: int, real_ids: Seq<int>,
     )
         requires
             self.wf(),
-            // If all ghost IDs match real IDs (predicate obligation holds for all elements).
+            // Real IDs have the same length as ghost IDs.
+            real_ids.len() == self.zombie_thread_ids@.len(),
+            // Per-element predicate obligation: every ghost ID matches its real ID.
             forall|k: int| 0 <= k < self.zombie_thread_ids@.len() ==>
                 Self::spec_find_thread_search_predicate_obligation(
                     #[trigger] self.zombie_thread_ids@[k],
-                    self.zombie_thread_ids@[k],
+                    real_ids[k],
                 ),
         ensures
-            // Then ghost search correctness implies real search correctness.
-            // Forward: if tid is at any index, spec finds it.
-            (forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
-                && self.zombie_thread_ids@[k] == tid
+            // Forward: if tid is at any index in real_ids, spec finds it.
+            (forall|k: int| 0 <= k < real_ids.len()
+                && real_ids[k] == tid
                 ==> self.spec_find_thread(tid) == Some(0int)),
-            // Backward: if spec finds it, there exists a valid index.
+            // Backward: if spec finds it, tid exists at some index in real_ids.
             (self.spec_find_thread(tid) == Some(0int) ==>
-                exists|k: int| 0 <= k < self.zombie_thread_ids@.len()
-                    && self.zombie_thread_ids@[k] == tid),
+                exists|k: int| 0 <= k < real_ids.len()
+                    && real_ids[k] == tid),
     {
         self.lemma_ghost_search_correctness(tid);
+
+        // Forward: real_ids[k] == tid implies ghost_ids[k] == tid (by predicate obligation).
+        assert forall|k: int| 0 <= k < real_ids.len()
+            && real_ids[k] == tid
+            implies self.spec_find_thread(tid) == Some(0int)
+        by {
+            // predicate obligation: ghost_ids[k] == real_ids[k] == tid.
+            assert(self.zombie_thread_ids@[k] == real_ids[k]);
+            assert(Self::spec_seq_contains(self.zombie_thread_ids@, tid));
+        }
+
+        // Backward: spec finds tid means exists ghost index k with ghost_ids[k] == tid.
+        // By predicate obligation, real_ids[k] == ghost_ids[k] == tid.
+        if self.spec_find_thread(tid) == Some(0int) {
+            let k: int = choose|k: int| 0 <= k < self.zombie_thread_ids@.len()
+                && self.zombie_thread_ids@[k] == tid;
+            assert(real_ids[k] == self.zombie_thread_ids@[k]);
+            assert(real_ids[k] == tid);
+        }
     }
 
     /// Lemma: `find_thread_mut()` caller obligation preservation.
@@ -286,9 +314,14 @@ impl ZombieProcess {
     {
     }
 
-    /// Lemma: `state_mut()` PID stability obligation is consistent with
-    /// the external_body postcondition. If the obligation holds (pid_before
-    /// == pid_after), then `spec_pid()` is preserved.
+    /// Lemma: `state_mut()` PID stability obligation is self-consistent.
+    ///
+    /// This confirms the obligation is trivially satisfied when no mutation
+    /// occurs. The substantive proof that mutation preserves PID is in the
+    /// **verified** `process_state` dependency module, where every public
+    /// mutator has a verified postcondition
+    /// `self.spec_pid() == old(self).spec_pid()`. This lemma documents that
+    /// the obligation formulation is well-formed.
     pub proof fn lemma_state_mut_stability_consistent(&self)
         requires
             self.wf(),
