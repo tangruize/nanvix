@@ -85,10 +85,9 @@ impl ProcessState {
     //==============================================================================================
 
     /// Lemma: set_capability preserves PID.
-    pub proof fn lemma_set_capability_preserves_pid(&self)
+    pub proof fn lemma_set_capability_preserves_pid(&self, cap_bits: u8)
         ensures
-            // Capabilities field change does not affect pid.
-            forall|cap_bits: u8| ({
+            ({
                 let post: ProcessState = ProcessState {
                     capabilities: Capabilities { bits: cap_bits },
                     ..*self
