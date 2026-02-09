@@ -98,15 +98,6 @@ fn clock_now() -> (result: int)
     unimplemented!()
 }
 
-/// Exec-level accessor for the EXIT_STATUS_INTERRUPTED spec constant.
-#[verifier::external_body]
-fn exit_status_interrupted_value() -> (result: int)
-    ensures
-        result == EXIT_STATUS_INTERRUPTED(),
-{
-    unimplemented!()
-}
-
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -464,7 +455,7 @@ impl RunnableProcess {
                 assert(self.sleeping_thread_ids@.len() == 0);
                 assert(new_zombie_ids.len() >= 1);
             }
-            let status: int = exit_status_interrupted_value();
+            let ghost status: int = EXIT_STATUS_INTERRUPTED();
             TerminateResult::Zombie(ZombieProcess {
                 pid: Ghost(self.pid.spec_value()),
                 zombie_thread_ids: Ghost(new_zombie_ids),
