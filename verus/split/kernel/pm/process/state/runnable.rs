@@ -50,8 +50,12 @@
 //!   implementations.
 //! - `clock_now()` is `external_body`: returns a non-negative timestamp.
 //! - `ProcessState` operations (`state()`, `state_mut()`) are elided since we
-//!   only track the PID for identity verification. The original functions are
-//!   simple accessors to `Box<ProcessState>` — their correctness is trivial.
+//!   only track the PID for identity verification. `state_mut()` allows arbitrary
+//!   mutation of the inner `ProcessState`, which could affect invariants such as
+//!   PID immutability or vmem mapping. **Cross-module verification obligation:**
+//!   When `ProcessState` is independently verified, callers of `state_mut()` must
+//!   prove that mutations preserve at minimum PID immutability (`spec_pid()` is
+//!   unchanged after mutation) and any structural invariants assumed by this module.
 //! - Thread state transitions (ReadyThread::terminate(), SleepingThread::interrupt(),
 //!   SleepingThread::wakeup()) are modeled as ID-preserving operations.
 //! - **Oracle parameters:** `terminate()` no longer requires an oracle;
@@ -364,7 +368,7 @@ impl RunnableProcess {
             interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
             sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
             zombie_thread_ids: Ghost(self.zombie_thread_ids@),
-            interrupt_reason: Ghost(0int),  // Unconstrained; downstream may refine.
+            interrupt_reason: Ghost(0int),  // Arbitrary witness value; postcondition does not constrain interrupt_reason.
         }
     }
 
@@ -420,9 +424,6 @@ impl RunnableProcess {
                         self.ready_thread_ids@.add(self.zombie_thread_ids@)
                     && zp.spec_status() == EXIT_STATUS_INTERRUPTED()
                     && zp.wf()
-                    // Branch taken iff there were no interrupted or sleeping threads.
-                    && self.spec_interrupted_count() == 0
-                    && self.spec_sleeping_count() == 0
                 },
             },
     {

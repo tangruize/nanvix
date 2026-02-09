@@ -55,9 +55,11 @@
 // - `state()` / `state_mut()`: Return `&ProcessState` / `&mut ProcessState`.
 //   Verus cannot express these reference return types. The relevant property
 //   (PID access) is modeled via `pid_i32()` and `spec_pid()`.
-//   Note: `state_mut()` allows arbitrary mutation of the inner `ProcessState`,
-//   which could affect invariants (e.g., vmem mapping). Cross-module verification
-//   of `ProcessState` mutations should be addressed when verifying callers.
+//   **Cross-module verification obligation:** `state_mut()` allows arbitrary
+//   mutation of the inner `ProcessState`. Callers must prove that mutations
+//   preserve PID immutability (`spec_pid()` unchanged) and any structural
+//   invariants assumed by this module. This obligation is discharged when
+//   `ProcessState` and its callers are independently verified.
 // - `find_thread()` / `find_thread_mut()`: Return `Option<ThreadRef>` containing
 //   references into internal collections. Modeled spec-only via `spec_find_thread`.
 //   Callers of these functions should independently verify the correctness of
