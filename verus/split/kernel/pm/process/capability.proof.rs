@@ -94,7 +94,9 @@ impl Capabilities {
             && (mo == 1u8 || mo == 2u8 || mo == 4u8 || mo == 8u8 || mo == 16u8)
         implies
             #[trigger] (((b | ms) as u8) & mo != 0u8) == (b & mo != 0u8)
-        by (bit_vector);
+        by {
+            assert(((b | ms) as u8) & mo != 0u8 == (b & mo != 0u8)) by (bit_vector);
+        };
     }
 
     /// Lemma: Clearing a capability preserves other bits.
@@ -119,7 +121,9 @@ impl Capabilities {
             && (mo == 1u8 || mo == 2u8 || mo == 4u8 || mo == 8u8 || mo == 16u8)
         implies
             #[trigger] (((b & !mc) as u8) & mo != 0u8) == (b & mo != 0u8)
-        by (bit_vector);
+        by {
+            assert(((b & !mc) as u8) & mo != 0u8 == (b & mo != 0u8)) by (bit_vector);
+        };
     }
 
     /// Lemma: Setting an already-set bit is idempotent.
