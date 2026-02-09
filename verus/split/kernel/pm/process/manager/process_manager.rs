@@ -58,6 +58,9 @@
 //!   sets. Thread-level state transitions (create_thread, exit_thread, etc.) affect
 //!   whether a process goes to ready vs. suspended vs. zombie. We model the outcome
 //!   as parameters (e.g., `to_zombie: bool`), trusting the thread-level logic.
+//! - **T4: Cross-module operations.** The `recv_message` decrement originates from
+//!   the `unsafe` submodule, not from `ProcessManagerInner` directly. The verified
+//!   model captures the queue-level effect; call-site correctness is trusted.
 
 use vstd::prelude::*;
 
@@ -1157,13 +1160,14 @@ impl ProcessManagerInner {
 
     /// Models `forge_user_context`: creates a user-mode context for a process.
     ///
-    /// The original (mod.rs:203-267) sets up memory mappings and context info
-    /// for a newly created process. No queue-level state change; the process
-    /// is already in the ready queue from `create_process`.
-    pub fn forge_user_context(&self, pid: i32)
+    /// The original (mod.rs:203-267) is a static helper called during
+    /// `create_process` and `create_thread` to set up memory mappings and
+    /// context info. It is called as part of process/thread initialization,
+    /// potentially before the process is placed in any queue. The function
+    /// does not mutate the process manager's queue state.
+    pub fn forge_user_context(&self)
         requires
             self.wf(),
-            self.ghost_ready@.contains(pid as int),
         ensures
             self.wf(),
     {

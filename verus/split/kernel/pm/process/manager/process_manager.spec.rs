@@ -97,6 +97,22 @@
 // contention. Since Nanvix is single-threaded with cooperative scheduling,
 // borrow failures can only occur during re-entrant calls (e.g., interrupt
 // handlers). This is a runtime safety mechanism, not a formal invariant.
+// Fully verifying T2 would require modeling RefCell borrow state as a ghost
+// lock count; this is orthogonal to queue-level safety and deferred.
+//
+// ## Trust Boundary T4: Cross-Module Operations
+//
+// Some state changes to `ProcessManagerInner` originate from outside this
+// module:
+//
+// - `recv_message` (decrement of `number_buffered_messages`): The actual
+//    decrement occurs in the `unsafe` submodule (`unsafe.rs:650-658`), which
+//    calls `running.state_mut().receive_message(tid)` and then decrements
+//    `pm.number_buffered_messages`. The verified `recv_message` models this
+//    cross-module mutation. The correctness of the call site (that the
+//    decrement occurs only when a message is actually consumed) is trusted
+//    at this boundary. Verification of the unsafe submodule would close
+//    this gap.
 //
 // ## Error Path Verification Model
 //
