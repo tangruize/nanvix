@@ -518,6 +518,17 @@ impl RunnableProcess {
     {
     }
 
+    /// Lemma: If spec_find_thread is true, there exists a valid index.
+    /// Used internally by wakeup() to derive `found_idx` from `found`.
+    pub proof fn lemma_spec_find_thread_index(&self, tid: Ghost<int>)
+        requires
+            Self::spec_find_thread(self.sleeping_thread_ids@, tid@),
+        ensures
+            exists|i: int| 0 <= i < self.sleeping_thread_ids@.len()
+                && self.sleeping_thread_ids@[i] == tid@,
+    {
+    }
+
     //==============================================================================================
     // Content Preservation Lemmas
     //==============================================================================================

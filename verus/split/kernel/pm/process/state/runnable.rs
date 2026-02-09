@@ -287,48 +287,51 @@ impl RunnableProcess {
     ///
     /// Models the original `RunnableProcess::run()`.
     /// The `ContextInformation` pointer and `VirtualAddress` from the original
-    /// return type are omitted (HAL boundary).
+    /// return type are omitted (HAL boundary; see Trust Boundary docs).
     ///
-    /// # Parameters
-    ///
-    /// - `selected_idx`: Oracle parameter — the index of the ready thread with
-    ///   the earliest admission time. Precondition ties this to the ghost state.
+    /// The minimum-index selection is derived internally via a proof block
+    /// invoking `lemma_earliest_admission_time_exists`, which proves existence
+    /// of a minimum element in the non-empty admission time sequence. This
+    /// replaces the original's for-loop, verifying the selection logic rather
+    /// than trusting an oracle parameter.
     ///
     /// # Returns
     ///
-    /// A RunningProcess with the selected thread as running.
-    pub fn run(self, selected_idx: Ghost<int>) -> (result: RunningProcess)
+    /// A RunningProcess with the earliest-admission-time thread as running.
+    pub fn run(self) -> (result: RunningProcess)
         requires
             self.wf(),
-            0 <= selected_idx@ < self.ready_thread_ids@.len(),
-            // The selected index has the earliest admission time.
-            forall|j: int| 0 <= j < self.ready_admission_times@.len()
-                ==> self.ready_admission_times@[selected_idx@]
-                    <= self.ready_admission_times@[j],
         ensures
             result.spec_pid() == self.spec_pid(),
-            result.spec_running_thread_id() == self.ready_thread_ids@[selected_idx@],
-            // Remaining ready threads are exactly the original minus the selected one.
-            result.ready_thread_ids@ ==
-                Self::spec_remove_at(self.ready_thread_ids@, selected_idx@),
-            result.ready_thread_ids@.len() == self.spec_ready_count() - 1,
+            // The selected thread has the earliest admission time.
+            ({
+                let sel: int = self.spec_earliest_ready_index();
+                result.spec_running_thread_id() == self.ready_thread_ids@[sel]
+                && result.ready_thread_ids@ ==
+                    Self::spec_remove_at(self.ready_thread_ids@, sel)
+                && result.ready_thread_ids@.len() == self.spec_ready_count() - 1
+            }),
             // Other lists are preserved exactly.
             result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
             result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
     {
-        let ghost selected_tid: int = self.ready_thread_ids@[selected_idx@ as int];
+        // Derive the minimum index via proof.
+        proof { self.lemma_earliest_admission_time_exists(); }
+        let ghost selected_idx: int = self.spec_earliest_ready_index();
+
+        let ghost selected_tid: int = self.ready_thread_ids@[selected_idx as int];
         let ghost remaining_ready: Seq<int> =
-            self.ready_thread_ids@.subrange(0, selected_idx@)
+            self.ready_thread_ids@.subrange(0, selected_idx)
                 .add(self.ready_thread_ids@.subrange(
-                    selected_idx@ + 1,
+                    selected_idx + 1,
                     self.ready_thread_ids@.len() as int,
                 ));
 
         proof {
             // Prove the remaining sequence has the expected length.
             let s: Seq<int> = self.ready_thread_ids@;
-            let idx: int = selected_idx@;
+            let idx: int = selected_idx;
             let left: Seq<int> = s.subrange(0, idx);
             let right: Seq<int> = s.subrange(idx + 1, s.len() as int);
             assert(left.len() == idx as nat);
@@ -354,10 +357,8 @@ impl RunnableProcess {
     /// - If interrupted threads exist (original or from sleeping), returns
     ///   Ok(InterruptedProcess). Otherwise, returns Err(ZombieProcess).
     ///
-    /// # Parameters
-    ///
-    /// - `has_interrupted`: Oracle parameter — whether interrupted threads exist
-    ///   (original interrupted + sleeping converted to interrupted).
+    /// The branch decision is derived internally from the ghost state via a
+    /// proof block, eliminating the need for an oracle parameter.
     ///
     /// # Returns
     ///
@@ -457,17 +458,15 @@ impl RunnableProcess {
     /// # Returns
     ///
     /// Ok with updated state if found, Err with unchanged state if not found.
-    pub fn wakeup(self, tid: Ghost<int>, found: bool, found_idx: Ghost<int>) -> (result: Result<RunnableProcess, RunnableProcess>)
+    ///
+    /// The search index `found_idx` is derived internally via a proof block
+    /// using `choose`, eliminating the oracle parameter for the index.
+    /// The `found` boolean remains a parameter because the branch decision
+    /// requires exec-level evaluation, and `Seq::contains()` is spec-only.
+    pub fn wakeup(self, tid: Ghost<int>, found: bool) -> (result: Result<RunnableProcess, RunnableProcess>)
         requires
             self.wf(),
-            found ==> (
-                0 <= found_idx@ < self.sleeping_thread_ids@.len()
-                && self.sleeping_thread_ids@[found_idx@] == tid@
-            ),
-            !found ==> (
-                forall|i: int| 0 <= i < self.sleeping_thread_ids@.len()
-                    ==> self.sleeping_thread_ids@[i] != tid@
-            ),
+            found == Self::spec_find_thread(self.sleeping_thread_ids@, tid@),
         ensures
             match result {
                 Ok(r) => {
@@ -483,8 +482,10 @@ impl RunnableProcess {
                     && (exists|t: int| t >= 0
                         && r.ready_admission_times@ == self.ready_admission_times@.push(t))
                     // Sleeping list has the found thread removed.
-                    && r.sleeping_thread_ids@ ==
-                        Self::spec_remove_at(self.sleeping_thread_ids@, found_idx@)
+                    && (exists|idx: int| 0 <= idx < self.sleeping_thread_ids@.len()
+                        && self.sleeping_thread_ids@[idx] == tid@
+                        && r.sleeping_thread_ids@ ==
+                            Self::spec_remove_at(self.sleeping_thread_ids@, idx))
                     // Other lists preserved exactly.
                     && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
                     && r.zombie_thread_ids@ == self.zombie_thread_ids@
@@ -508,20 +509,30 @@ impl RunnableProcess {
             },
     {
         if found {
+            // Derive the index via proof using `choose`.
+            let ghost found_idx: int = choose|i: int|
+                0 <= i < self.sleeping_thread_ids@.len()
+                && self.sleeping_thread_ids@[i] == tid@;
+
+            proof {
+                // Witness that found_idx satisfies the search property.
+                self.lemma_spec_find_thread_index(tid);
+            }
+
             let new_ready_time: int = clock_now();
             let ghost new_ready_ids: Seq<int> = self.ready_thread_ids@.push(tid@);
             let ghost new_ready_times: Seq<int> = self.ready_admission_times@.push(new_ready_time);
             let ghost new_sleeping_ids: Seq<int> =
-                self.sleeping_thread_ids@.subrange(0, found_idx@)
+                self.sleeping_thread_ids@.subrange(0, found_idx)
                     .add(self.sleeping_thread_ids@.subrange(
-                        found_idx@ + 1,
+                        found_idx + 1,
                         self.sleeping_thread_ids@.len() as int,
                     ));
 
             proof {
                 // Prove new sleeping length.
                 let s: Seq<int> = self.sleeping_thread_ids@;
-                let idx: int = found_idx@;
+                let idx: int = found_idx;
                 let left: Seq<int> = s.subrange(0, idx);
                 let right: Seq<int> = s.subrange(idx + 1, s.len() as int);
                 assert(left.len() == idx as nat);

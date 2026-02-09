@@ -228,6 +228,12 @@ impl RunnableProcess {
         }
     }
 
+    /// Spec helper: checks if a sequence contains a given value.
+    /// Used for searching thread lists without oracle parameters.
+    pub open spec fn spec_find_thread(s: Seq<int>, tid: int) -> bool {
+        exists|i: int| 0 <= i < s.len() && s[i] == tid
+    }
+
     /// Spec helper: computes the sequence resulting from removing index `idx`
     /// from sequence `s`.
     pub open spec fn spec_remove_at(s: Seq<int>, idx: int) -> Seq<int>
