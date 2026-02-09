@@ -260,20 +260,6 @@ impl ProcessState {
     {
     }
 
-    /// Lemma: Removing a PMIO port by filtering preserves all other ports.
-    pub proof fn lemma_remove_pmio_preserves_others(&self, port_number: int, other: int)
-        requires
-            other != port_number,
-        ensures
-            // If other was in the original sequence, it remains after filtering out port_number.
-            forall|i: int| 0 <= i < self.ghost_pmio@.len() && self.ghost_pmio@[i] == other ==>
-                exists|j: int| 0 <= j < self.ghost_pmio@.filter(|p: int| p != port_number).len()
-                    && self.ghost_pmio@.filter(|p: int| p != port_number)[j] == other,
-    {
-        let filtered: Seq<int> = self.ghost_pmio@.filter(|p: int| p != port_number);
-        // Verus can verify this from Seq::filter axioms.
-    }
-
     //==============================================================================================
     // Well-Formedness Preservation Lemmas
     //==============================================================================================
