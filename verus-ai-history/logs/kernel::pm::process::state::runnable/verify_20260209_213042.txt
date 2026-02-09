@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:30:42 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0282]: type annotations needed
+   --> kernel/pm/process/state/runnable.proof.rs:510:43
+    |
+510 |             self.spec_find_thread(tid) == None,
+    |                                           ^^^^ cannot infer type of the type parameter `T` declared on the enum `Option`
+    |
+help: consider specifying the generic argument
+    |
+510 |             self.spec_find_thread(tid) == None::<T>,
+    |                                               +++++
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0282`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:0, errors:0)
