@@ -218,7 +218,7 @@ impl ProcessState {
         ensures
             ({
                 let new_map: Map<int, nat> = self.ghost_mutexes@.insert(addr, self.ghost_mutexes@[addr] + 1);
-                forall|a: int| new_map.contains_key(a) ==> new_map[a] > 0
+                forall|a: int| #![auto] new_map.contains_key(a) ==> new_map[a] > 0
             }),
     {
     }
@@ -266,7 +266,7 @@ impl ProcessState {
         ensures
             ({
                 let new_map: Map<int, nat> = self.ghost_conditions@.insert(addr, self.ghost_conditions@[addr] + 1);
-                forall|a: int| new_map.contains_key(a) ==> new_map[a] > 0
+                forall|a: int| #![auto] new_map.contains_key(a) ==> new_map[a] > 0
             }),
     {
     }

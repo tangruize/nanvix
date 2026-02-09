@@ -130,9 +130,9 @@ impl ProcessState {
         &&& self.mutex_count as nat <= Self::MUTEX_MAX() as nat
         &&& self.cond_count as nat <= Self::COND_MAX() as nat
         &&& self.capabilities.wf()
-        &&& forall|addr: int| self.ghost_mutexes@.contains_key(addr) ==>
+        &&& forall|addr: int| #![auto] self.ghost_mutexes@.contains_key(addr) ==>
                 self.ghost_mutexes@[addr] > 0
-        &&& forall|addr: int| self.ghost_conditions@.contains_key(addr) ==>
+        &&& forall|addr: int| #![auto] self.ghost_conditions@.contains_key(addr) ==>
                 self.ghost_conditions@[addr] > 0
     }
 
