@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 12:53:59 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::manager::process_manager
+
+error: assertion failed
+   --> kernel/pm/process/manager/process_manager.rs:236:20
+    |
+236 |               assert((self.ready_count + 1) as int + (self.suspended_count as int)
+    |  ____________________^
+237 | |                 + (self.interrupted_count as int) + (self.zombie_count as int) + 1
+238 | |                 <= i32::MAX as int);
+    | |__________________________________^ assertion failed
+
+verification results:: 31 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 31
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager (verified:31, errors:1)
