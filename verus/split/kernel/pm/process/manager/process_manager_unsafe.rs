@@ -186,6 +186,8 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == next_pid as int,
             next_pid >= 0i32,
             next_tid >= 0i32,
+            // Same thread implies same process (invariant from scheduler).
+            next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
         ensures
             self.wf(),
             self.initialized == old(self).initialized,
@@ -211,30 +213,13 @@ impl ProcessManagerUnsafeState {
             // Hard context switch.
             if next_pid != self.current_pid {
                 // PID change: reset quantum and update PID.
-                proof {
-                    self.lemma_hard_switch_diff_pid_preserves_wf(
-                        next_pid, next_tid, new_inner,
-                    );
-                }
                 self.remaining_quantum = self.scheduler_freq;
                 self.current_pid = next_pid;
-            } else {
-                // Same PID, different TID.
-                proof {
-                    self.lemma_hard_switch_same_pid_preserves_wf(next_pid, next_tid);
-                }
             }
             self.current_tid = next_tid;
-            self.inner = new_inner;
-        } else {
-            // Soft context switch: same thread continues.
-            // Update inner state (it may have changed even if same thread selected).
-            proof {
-                self.lemma_soft_switch_preserves_wf(next_pid, next_tid);
-            }
-            self.inner = new_inner;
-            // Kernel idle case: Interrupts::enable() + wait() are external (T8).
         }
+        // Update inner state to reflect the transition.
+        self.inner = new_inner;
     }
 
     //==============================================================================================
