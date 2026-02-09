@@ -22,7 +22,8 @@
 //! - `add_thread()` adds a ready thread and transitions to RunnableProcess.
 //! - `find_thread()` / `find_thread_mut()` are modeled spec-only via
 //!   `spec_find_thread()`.
-//! - Well-formedness is preserved by all operations.
+//! - Well-formedness (including thread ID uniqueness and list disjointness)
+//!   is preserved by all operations.
 //!
 //! ## Verification Model
 //!
@@ -51,7 +52,9 @@
 //!
 //! - `wakeup(tid, found)`: `found` oracle tied to `spec_seq_contains()`.
 //! - `wakeup_alarm(has_expired, interrupted_ids, remaining_ids)`: partition
-//!   oracle tied to conservation constraint.
+//!   oracle tied to content and length conservation constraints. All partition
+//!   elements must come from the original sleeping list, with no duplicates
+//!   within or across partitions.
 //!
 //! ## Fields
 //!
@@ -144,6 +147,9 @@ impl SleepingProcess {
         requires
             sleeping_count as nat == sleeping_ids@.len(),
             sleeping_ids@.len() >= 1,
+            Self::spec_no_duplicates(sleeping_ids@),
+            Self::spec_no_duplicates(zombie_ids@),
+            Self::spec_seqs_disjoint(sleeping_ids@, zombie_ids@),
         ensures
             result.spec_pid() == pid@,
             result.sleeping_thread_ids@ == sleeping_ids@,
@@ -271,6 +277,7 @@ impl SleepingProcess {
                     // No interrupted threads.
                     && rp.interrupted_thread_ids@.len() == 0
                     // Sleeping list has the found thread removed.
+                    // Under wf() no_duplicates, this existential is uniquely determined.
                     && (exists|idx: int| 0 <= idx < self.sleeping_thread_ids@.len()
                         && self.sleeping_thread_ids@[idx] == tid@
                         && rp.sleeping_thread_ids@ ==
@@ -377,8 +384,18 @@ impl SleepingProcess {
             self.wf(),
             // Oracle: partition must be a valid decomposition.
             has_expired == (interrupted_ids@.len() > 0),
+            // Length conservation.
             interrupted_ids@.len() + remaining_ids@.len()
                 == self.sleeping_thread_ids@.len(),
+            // Content conservation: all partition elements come from original sleeping list.
+            forall|i: int| 0 <= i < interrupted_ids@.len() ==>
+                Self::spec_seq_contains(self.sleeping_thread_ids@, interrupted_ids@[i]),
+            forall|i: int| 0 <= i < remaining_ids@.len() ==>
+                Self::spec_seq_contains(self.sleeping_thread_ids@, remaining_ids@[i]),
+            // Partition integrity: no duplicates within or across partitions.
+            Self::spec_no_duplicates(interrupted_ids@),
+            Self::spec_no_duplicates(remaining_ids@),
+            Self::spec_seqs_disjoint(interrupted_ids@, remaining_ids@),
             // If not expired, sleeping list is preserved.
             !has_expired ==> remaining_ids@ =~= self.sleeping_thread_ids@,
         ensures
@@ -478,6 +495,11 @@ impl SleepingProcess {
     /// - `Some(1)`: zombie thread.
     /// - `None`: not found.
     ///
+    /// The original returns `Option<ThreadRef>` with actual references. Since
+    /// Verus cannot express reference-returning functions, callers must
+    /// independently verify correct use of the returned reference against
+    /// this spec model when reference types become expressible in Verus.
+    ///
     /// # Parameters
     ///
     /// - `tid`: Ghost thread identifier to search for.
@@ -496,6 +518,9 @@ impl SleepingProcess {
     ///
     /// Models the original `SleepingProcess::find_thread_mut(tid)`.
     /// Same semantics as `find_thread()`. Frame condition: self is unchanged.
+    /// The mutable reference in the original allows in-place mutation of
+    /// the found thread. Callers must preserve the thread's identity and
+    /// list membership after such mutation.
     ///
     /// # Parameters
     ///

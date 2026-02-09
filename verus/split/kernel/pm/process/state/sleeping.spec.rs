@@ -27,11 +27,13 @@
 //   SleepingProcess otherwise.
 // - `add_thread()` adds a ready thread and transitions to RunnableProcess.
 //
-// ## Ownership Semantics (Trust Assumption)
+// ## Ownership Semantics
 //
-// Thread ID uniqueness across lists is NOT enforced in `wf()`. In the original
-// code, the Rust type system ensures ownership semantics — a thread struct can
-// only be in one `NonEmptyVecDeque` at a time.
+// Thread ID uniqueness within and across lists IS enforced in `wf()`. In the
+// original code, the Rust type system ensures ownership semantics — a thread
+// struct can only be in one `NonEmptyVecDeque` at a time. We model this
+// explicitly via `spec_no_duplicates` and `spec_seqs_disjoint` predicates
+// in `wf()`, enabling precise reasoning about wakeup/partition operations.
 //
 // ## Trust Assumptions
 //
@@ -164,14 +166,32 @@ impl SleepingProcess {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
+    /// Spec helper: checks whether a sequence has no duplicate elements.
+    pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
+        forall|i: int, j: int| 0 <= i < j < s.len()
+            ==> s[i] != s[j]
+    }
+
+    /// Spec helper: checks whether two sequences share no common elements.
+    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+        forall|i: int, j: int|
+            0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
+    }
+
     /// Spec function: well-formedness predicate.
     ///
     /// A SleepingProcess is well-formed when:
     /// - The sleeping thread count matches the ghost sequence length.
     /// - There is at least one sleeping thread (NonEmptyVecDeque invariant).
+    /// - No duplicate thread IDs within either list.
+    /// - Sleeping and zombie thread IDs are disjoint.
     pub open spec fn wf(&self) -> bool {
         &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
         &&& self.sleeping_thread_ids@.len() >= 1
+        &&& Self::spec_no_duplicates(self.sleeping_thread_ids@)
+        &&& Self::spec_no_duplicates(self.zombie_thread_ids@)
+        &&& Self::spec_seqs_disjoint(self.sleeping_thread_ids@, self.zombie_thread_ids@)
     }
 
     /// Spec function: frame condition for mutable accessor (`state_mut()`).

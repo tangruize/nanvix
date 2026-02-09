@@ -5,14 +5,14 @@
 //
 // Key proven properties:
 // - Construction produces well-formed state with correct initial values.
-// - PID is immutable across all operations.
 // - terminate() converts all sleeping→interrupted, produces InterruptedProcess
 //   with PID preserved and interrupted list = original sleeping list.
 // - wakeup() moves sleeping→ready, preserves PID and thread conservation.
+//   Under wf() uniqueness, the existential in the postcondition is unique.
 // - wakeup_alarm() partitions sleeping threads, preserves PID and conservation.
 // - add_thread() transitions to RunnableProcess with correct thread lists.
 // - find_thread() spec model verifies exhaustive search.
-// - Well-formedness is preserved by all operations.
+// - Well-formedness (including thread ID uniqueness) is preserved by all operations.
 
 use vstd::prelude::*;
 
@@ -33,6 +33,9 @@ impl SleepingProcess {
         requires
             sleeping_ids.len() >= 1,
             sleeping_ids.len() <= u64::MAX as nat,
+            Self::spec_no_duplicates(sleeping_ids),
+            Self::spec_no_duplicates(zombie_ids),
+            Self::spec_seqs_disjoint(sleeping_ids, zombie_ids),
         ensures
             ({
                 let sp: SleepingProcess = SleepingProcess {
@@ -60,28 +63,8 @@ impl SleepingProcess {
     }
 
     //==============================================================================================
-    // PID Immutability Lemmas
-    //==============================================================================================
-
-    /// Lemma: PID equals the ghost pid field.
-    pub proof fn lemma_pid_preserved(&self)
-        ensures
-            self.spec_pid() == self.pid@,
-    {
-    }
-
-    //==============================================================================================
     // terminate() Lemmas
     //==============================================================================================
-
-    /// Lemma: terminate() produces InterruptedProcess with non-empty interrupted list.
-    pub proof fn lemma_terminate_result_has_interrupted(&self)
-        requires
-            self.wf(),
-        ensures
-            self.sleeping_thread_ids@.len() >= 1,
-    {
-    }
 
     /// Lemma: terminate() preserves total thread count.
     /// Sleeping threads become interrupted; zombie threads are preserved.
@@ -160,19 +143,6 @@ impl SleepingProcess {
             interrupted_ids.len() + remaining_ids.len() == sleeping_ids.len(),
         ensures
             interrupted_ids.len() >= 1,
-    {
-    }
-
-    /// Lemma: wakeup_alarm() conservation: partition sizes sum to original.
-    pub proof fn lemma_wakeup_alarm_conservation(
-        interrupted_ids: Seq<int>,
-        remaining_ids: Seq<int>,
-        sleeping_ids: Seq<int>,
-    )
-        requires
-            interrupted_ids.len() + remaining_ids.len() == sleeping_ids.len(),
-        ensures
-            interrupted_ids.len() + remaining_ids.len() == sleeping_ids.len(),
     {
     }
 
