@@ -30,6 +30,10 @@
 //!   x86-realistic torn-read error (reader behind by `MINOR_MODULUS` ticks), and
 //!   `lemma_torn_read_consequence` covers the weak-memory theoretical case
 //!   (reader ahead by `MINOR_MODULUS` ticks). Both are Trust Boundary T1.
+//! - **Full `now()` control-flow coverage**: `lemma_now_fallback_valid` and
+//!   `lemma_now_pit_valid` prove that both the PIT and fallback `timer_freq`
+//!   paths produce valid results. `lemma_now_always_valid` is the top-level
+//!   correctness lemma covering any `timer_freq > 0`.
 //!
 //! ## Verification Model
 //!

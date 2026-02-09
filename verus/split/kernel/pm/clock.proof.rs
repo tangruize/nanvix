@@ -746,4 +746,98 @@ impl TimerTicks {
     }
 }
 
+//==================================================================================================
+// Proof Lemmas — Full now() Control Flow
+//==================================================================================================
+
+impl TimerTicks {
+    /// Lemma: The fallback `now()` path (timer_freq = 1) always produces a
+    /// valid (seconds, nanoseconds) pair.
+    ///
+    /// # Description
+    ///
+    /// Models the `#[cfg(not(feature = "pit"))]` branch of the original `now()`:
+    /// ```ignore
+    /// let timer_freq: u32 = 1;
+    /// ```
+    /// Uses `axiom_fallback_timer_freq_valid()` to establish `timer_freq > 0`,
+    /// then proves the result satisfies `SystemTime::new()`'s precondition.
+    pub proof fn lemma_now_fallback_valid(&self)
+        ensures
+            ({
+                let timer_freq: u32 = 1u32;
+                let (secs, nsecs) = self.spec_now(timer_freq);
+                &&& Self::spec_nanoseconds_valid(nsecs)
+                &&& Self::spec_system_time_new_succeeds(nsecs)
+                &&& secs == self.spec_ticks() / timer_freq as nat
+            }),
+    {
+        Self::axiom_fallback_timer_freq_valid();
+        Self::lemma_nanoseconds_in_range(self.minor, 1u32);
+    }
+
+    /// Lemma: The PIT `now()` path always produces a valid (seconds, nanoseconds)
+    /// pair for the PIT-returned frequency.
+    ///
+    /// # Description
+    ///
+    /// Models the `#[cfg(feature = "pit")]` branch of the original `now()`:
+    /// ```ignore
+    /// let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
+    /// ```
+    /// Uses `axiom_pit_timer_freq_valid()` to obtain a ghost frequency `freq > 0`,
+    /// then proves the result satisfies `SystemTime::new()`'s precondition.
+    /// The returned `pit_freq` can be used by callers to instantiate further proofs.
+    pub proof fn lemma_now_pit_valid(&self) -> (pit_freq: u32)
+        ensures
+            pit_freq > 0,
+            ({
+                let (secs, nsecs) = self.spec_now(pit_freq);
+                &&& Self::spec_nanoseconds_valid(nsecs)
+                &&& Self::spec_system_time_new_succeeds(nsecs)
+                &&& secs == self.spec_ticks() / pit_freq as nat
+            }),
+    {
+        let freq: u32 = Self::axiom_pit_timer_freq_valid();
+        Self::lemma_nanoseconds_in_range(self.minor, freq);
+        freq
+    }
+
+    /// Lemma: For any platform configuration, `now()` produces a valid result
+    /// and `SystemTime::new()` succeeds (the `unreachable!()` is dead code).
+    ///
+    /// # Description
+    ///
+    /// This is the top-level correctness lemma for the original `now()`.
+    /// It covers both platform paths:
+    /// - PIT: uses `axiom_pit_timer_freq_valid()` → `freq > 0`.
+    /// - Fallback: uses `timer_freq = 1` → trivially `> 0`.
+    ///
+    /// For any `timer_freq > 0`, the proof establishes:
+    /// 1. `nanoseconds < NANOSECONDS_PER_SECOND` (SystemTime precondition).
+    /// 2. `seconds == ticks / timer_freq` (consistency).
+    /// 3. `spec_system_time_new_succeeds(nanoseconds)` holds.
+    ///
+    /// This eliminates the `unreachable!()` panic in the original:
+    /// ```ignore
+    /// match SystemTime::new(seconds, nanoseconds) {
+    ///     Some(time) => time,
+    ///     None => unreachable!(...),  // proved dead
+    /// }
+    /// ```
+    pub proof fn lemma_now_always_valid(&self, timer_freq: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            ({
+                let (secs, nsecs) = self.spec_now(timer_freq);
+                &&& Self::spec_nanoseconds_valid(nsecs)
+                &&& Self::spec_system_time_new_succeeds(nsecs)
+                &&& secs == self.spec_ticks() / timer_freq as nat
+            }),
+    {
+        Self::lemma_nanoseconds_in_range(self.minor, timer_freq);
+    }
+}
+
 } // verus!
