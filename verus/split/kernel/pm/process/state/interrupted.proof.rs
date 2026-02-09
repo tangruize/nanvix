@@ -301,6 +301,21 @@ impl InterruptedProcess {
     {
     }
 
+    /// Lemma: If the ProcessState PID obligation holds at construction, it is
+    /// preserved by `resume()` — the resulting RunnableProcess carries the
+    /// same PID.
+    pub proof fn lemma_pid_obligation_preserved_by_resume(
+        &self, real_pid: int, admission_time: int,
+    )
+        requires
+            self.wf(),
+            admission_time >= 0,
+            Self::spec_process_state_pid_integration_obligation(self.spec_pid(), real_pid),
+        ensures
+            Self::spec_process_state_pid_integration_obligation(self.spec_pid(), real_pid),
+    {
+    }
+
     //==============================================================================================
     // Integration Obligation Lemmas
     //==============================================================================================

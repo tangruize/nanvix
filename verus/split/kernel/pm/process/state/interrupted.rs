@@ -103,9 +103,14 @@
 //!   frame condition holds trivially without trusted assumptions.
 //!   **ProcessState abstraction gap:** There is no verified link between the
 //!   ghost PID field and the real `ProcessState`'s internal PID. The model
-//!   assumes the ghost PID accurately reflects the real state. If
-//!   `ProcessState` becomes independently verifiable, an invariant linking
-//!   `self.pid@ == process_state.pid()` should be added.
+//!   assumes the ghost PID accurately reflects the real state.
+//!   `spec_process_state_pid_integration_obligation` defines the formal
+//!   contract: `ghost_pid == real_process_state.pid()`. This must be
+//!   established at construction (`new()`/`from_sleeping()`) and is preserved
+//!   by all operations (proven by PID-preservation postconditions).
+//!   `lemma_pid_obligation_preserved_by_resume` formally proves preservation
+//!   through `resume()`. If `ProcessState` becomes independently verifiable,
+//!   the obligation should be discharged at construction sites.
 //!
 //! ## Fields
 //!

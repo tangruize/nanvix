@@ -322,6 +322,22 @@ impl InterruptedProcess {
     ) -> bool {
         ready_thread_reason == reason_tag
     }
+
+    /// Integration obligation for ProcessState PID linking.
+    ///
+    /// The ghost `pid` field in `InterruptedProcess` is assumed to match the
+    /// real `ProcessState::pid()` inside `Box<ProcessState>`. An integration
+    /// proof (or the ProcessState module's verification) must establish:
+    ///   `ghost_pid == real_process_state.pid()`
+    /// at construction time and show that no operation in this module
+    /// invalidates this link. Since this module never mutates the PID
+    /// (proven by PID-preservation postconditions on all functions), the
+    /// obligation reduces to verifying the link at `new()` / `from_sleeping()`.
+    pub open spec fn spec_process_state_pid_integration_obligation(
+        ghost_pid: int, real_pid: int,
+    ) -> bool {
+        ghost_pid == real_pid
+    }
 }
 
 //==================================================================================================
