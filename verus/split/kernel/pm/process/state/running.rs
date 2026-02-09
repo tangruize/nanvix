@@ -59,15 +59,14 @@
 //! - `wakeup()` takes a `found: bool` oracle because `Seq::contains()` is spec-only.
 //!   The precondition constrains it to match ghost state. See spec file for details.
 //!
-//! ## Known Divergence from Original Source
+//! ## Bug Fix in Original Source
 //!
-//! In `exit_thread()`, the original code's interrupted branch (line 286) passes
-//! `self.zombie.take()` to `InterruptedProcess::from_sleeping`, but `self.zombie`
-//! was already consumed at line 261 into `zombie_threads`, so `self.zombie.take()`
-//! is always `None`. This means the just-exited running thread's zombie state is
-//! lost in the original code. The Verus model correctly passes `new_zombie_ids`
-//! (which includes the exited thread). This is a potential bug in the original
-//! source that the verification model intentionally fixes.
+//! Verification discovered a bug in `exit_thread()` (original line 286):
+//! `self.zombie.take()` was passed to `InterruptedProcess::from_sleeping`, but
+//! `self.zombie` was already consumed at line 261 into `zombie_threads`, so
+//! `self.zombie.take()` was always `None`. This caused the just-exited running
+//! thread's zombie state to be lost. The original source has been fixed to pass
+//! `Some(zombie_threads)` instead, matching the verified model.
 //!
 //! ## Fields
 //!
@@ -782,13 +781,12 @@ impl RunningProcess {
     /// - Else if sleeping threads exist, returns Sleeping.
     /// - Otherwise, returns Zombie.
     ///
-    /// ## Known Divergence
+    /// ## Bug Fix
     ///
-    /// In the original code's interrupted branch (line 286), `self.zombie.take()` is
-    /// passed to `InterruptedProcess::from_sleeping`, but `self.zombie` was already
-    /// consumed at line 261, so this is always `None`. The exited thread's zombie
-    /// state is lost. This model correctly passes `new_zombie_ids` (containing the
-    /// exited thread), which is intentionally more correct than the original.
+    /// Verification discovered that the original code's interrupted branch
+    /// (line 286) passed `self.zombie.take()` to `InterruptedProcess::from_sleeping`,
+    /// but `self.zombie` was already consumed at line 261, so this was always `None`.
+    /// The original source has been patched to pass `Some(zombie_threads)` instead.
     ///
     /// # Parameters
     ///
