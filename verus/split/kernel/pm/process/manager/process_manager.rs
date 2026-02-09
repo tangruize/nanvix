@@ -70,10 +70,6 @@ verus! {
 //==================================================================================================
 
 /// Verification model of the kernel process manager.
-///
-/// This is the abstract state machine that tracks which processes are in which
-/// lifecycle state. Complex kernel types (process objects, thread manager, linked
-/// lists) are abstracted to PID sets and counts.
 pub struct ProcessManagerInner {
     /// PID of the currently running process.
     pub running_pid: i32,
@@ -112,14 +108,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Creates a new process manager with the kernel process (PID 0) running.
-    ///
-    /// # Parameters
-    ///
-    /// - `interrupt_capable`: Whether the platform supports interrupts.
-    ///
-    /// # Returns
-    ///
-    /// A well-formed process manager with PID 0 running and all queues empty.
     pub fn new(interrupt_capable: bool) -> (result: Self)
         ensures
             result.wf(),
@@ -154,8 +142,7 @@ impl ProcessManagerInner {
 
     /// Returns the PID of the running process.
     pub fn get_running_pid(&self) -> (result: i32)
-        requires
-            self.wf(),
+        requires self.wf(),
         ensures
             result as int == self.spec_running_pid(),
             result >= 0i32,
@@ -165,40 +152,32 @@ impl ProcessManagerInner {
 
     /// Returns whether the ready queue is non-empty.
     pub fn has_ready(&self) -> (result: bool)
-        requires
-            self.wf(),
-        ensures
-            result == self.spec_has_ready(),
+        requires self.wf(),
+        ensures result == self.spec_has_ready(),
     {
         self.ready_count > 0
     }
 
     /// Returns whether the zombie queue is non-empty.
     pub fn has_zombies(&self) -> (result: bool)
-        requires
-            self.wf(),
-        ensures
-            result == self.spec_has_zombies(),
+        requires self.wf(),
+        ensures result == self.spec_has_zombies(),
     {
         self.zombie_count > 0
     }
 
     /// Returns whether interrupts are supported.
     pub fn is_interrupt_capable(&self) -> (result: bool)
-        requires
-            self.wf(),
-        ensures
-            result == self.interrupt_capable,
+        requires self.wf(),
+        ensures result == self.interrupt_capable,
     {
         self.interrupt_capable
     }
 
     /// Returns the number of buffered messages.
     pub fn get_buffered_message_count(&self) -> (result: usize)
-        requires
-            self.wf(),
-        ensures
-            result as nat == self.number_buffered_messages as nat,
+        requires self.wf(),
+        ensures result as nat == self.number_buffered_messages as nat,
     {
         self.number_buffered_messages
     }
@@ -208,13 +187,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Creates a new process and adds it to the ready queue.
-    ///
-    /// Models `ProcessManagerInner::create_process()`. Allocates the next PID,
-    /// adds it to the ready set, and increments next_pid.
-    ///
-    /// # Returns
-    ///
-    /// The PID of the newly created process.
     pub fn create_process(&mut self) -> (result: i32)
         requires
             old(self).wf(),
@@ -235,13 +207,10 @@ impl ProcessManagerInner {
         let pid: i32 = self.next_pid;
 
         proof {
-            // The new PID is fresh (not in any existing set).
             self.lemma_next_pid_is_fresh();
-            // Cardinality: inserting a fresh element adds 1.
-            // Broadcast axiom handles insert len.
-            self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
         }
 
+        self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
         self.ready_count = self.ready_count + 1;
         self.next_pid = pid + 1;
 
@@ -253,15 +222,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Reschedules: moves the running process to ready and runs chosen_next.
-    ///
-    /// Models `ProcessManagerInner::schedule()`. The running process is added
-    /// to the ready queue, and `chosen_next` (selected by the scheduler) is
-    /// removed from the ready queue and set as running.
-    ///
-    /// # Parameters
-    ///
-    /// - `chosen_next`: PID selected by the scheduler. Must be in the ready set
-    ///   after the running process has been added to it.
     pub fn schedule(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -282,21 +242,17 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         let old_running: i32 = self.running_pid;
-        self.running_pid = chosen_next;
 
         proof {
             let old_ready: Set<int> = old(self).ghost_ready@;
-            let with_old: Set<int> = old_ready.insert(old_running as int);
-            let new_ready: Set<int> = with_old.remove(chosen_next as int);
-
-            // Cardinality: insert adds 1 (old_running not in old_ready), remove subtracts 1.
             Self::lemma_schedule_ready_len(old_ready, old_running as int, chosen_next as int);
-
-            // Kernel safety: kernel is running or in new ready.
             self.lemma_kernel_alive_after_schedule(chosen_next as int);
-
-            self.ghost_ready = Ghost(new_ready);
         }
+
+        self.ghost_ready = Ghost(
+            self.ghost_ready@.insert(old_running as int).remove(chosen_next as int)
+        );
+        self.running_pid = chosen_next;
     }
 
     //==============================================================================================
@@ -304,13 +260,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Suspends the running process and runs chosen_next from ready.
-    ///
-    /// Models the case where the running process goes to sleep (all threads sleeping).
-    /// The kernel process (PID 0) cannot sleep.
-    ///
-    /// # Parameters
-    ///
-    /// - `chosen_next`: PID from the ready queue to run next.
     pub fn sleep_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -333,36 +282,15 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         let old_running: i32 = self.running_pid;
+
+        self.ghost_suspended = Ghost(self.ghost_suspended@.insert(old_running as int));
+        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
         self.running_pid = chosen_next;
-
-        proof {
-            // Old running is not in suspended (by running_exclusive).
-            // So insert adds 1.
-            // Broadcast axiom handles insert len.
-            // Chosen is in ready. Remove subtracts 1.
-            // Broadcast axiom handles remove len.
-
-            self.ghost_suspended = Ghost(
-                self.ghost_suspended@.insert(old_running as int)
-            );
-            self.ghost_ready = Ghost(
-                self.ghost_ready@.remove(chosen_next as int)
-            );
-        }
-
         self.suspended_count = self.suspended_count + 1;
         self.ready_count = self.ready_count - 1;
     }
 
-    /// Puts the running process to sleep but it still has runnable threads,
-    /// so it goes back to ready. Runs chosen_next from ready.
-    ///
-    /// Models the case where the running thread sleeps but the process has
-    /// other runnable threads, so the process stays in ready.
-    ///
-    /// # Parameters
-    ///
-    /// - `chosen_next`: PID from the extended ready set to run next.
+    /// Running thread sleeps but process still has runnable threads → stays ready.
     pub fn sleep_thread_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -384,16 +312,17 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         let old_running: i32 = self.running_pid;
-        self.running_pid = chosen_next;
 
         proof {
             let old_ready: Set<int> = old(self).ghost_ready@;
             Self::lemma_schedule_ready_len(old_ready, old_running as int, chosen_next as int);
             self.lemma_kernel_alive_after_schedule(chosen_next as int);
-            self.ghost_ready = Ghost(
-                old_ready.insert(old_running as int).remove(chosen_next as int)
-            );
         }
+
+        self.ghost_ready = Ghost(
+            self.ghost_ready@.insert(old_running as int).remove(chosen_next as int)
+        );
+        self.running_pid = chosen_next;
     }
 
     //==============================================================================================
@@ -401,13 +330,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Terminates the running process (moves to zombie) and runs chosen_next.
-    ///
-    /// Models the case where the running process has no more runnable threads
-    /// and becomes a zombie. The kernel process (PID 0) cannot exit.
-    ///
-    /// # Parameters
-    ///
-    /// - `chosen_next`: PID from the ready queue to run next.
     pub fn exit_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -430,33 +352,15 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         let old_running: i32 = self.running_pid;
+
+        self.ghost_zombies = Ghost(self.ghost_zombies@.insert(old_running as int));
+        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
         self.running_pid = chosen_next;
-
-        proof {
-            // Broadcast axiom handles insert len.
-            // Broadcast axiom handles remove len.
-
-            self.ghost_zombies = Ghost(
-                self.ghost_zombies@.insert(old_running as int)
-            );
-            self.ghost_ready = Ghost(
-                self.ghost_ready@.remove(chosen_next as int)
-            );
-        }
-
         self.zombie_count = self.zombie_count + 1;
         self.ready_count = self.ready_count - 1;
     }
 
-    /// Terminates the running thread but the process still has runnable threads,
-    /// so it goes back to ready. Runs chosen_next from ready.
-    ///
-    /// Models the case where exit_thread is called but the process has other
-    /// runnable threads remaining.
-    ///
-    /// # Parameters
-    ///
-    /// - `chosen_next`: PID from the extended ready set to run next.
+    /// Running thread exits but process still has runnable threads → stays ready.
     pub fn exit_thread_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -478,26 +382,20 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         let old_running: i32 = self.running_pid;
-        self.running_pid = chosen_next;
 
         proof {
             let old_ready: Set<int> = old(self).ghost_ready@;
             Self::lemma_schedule_ready_len(old_ready, old_running as int, chosen_next as int);
             self.lemma_kernel_alive_after_schedule(chosen_next as int);
-            self.ghost_ready = Ghost(
-                old_ready.insert(old_running as int).remove(chosen_next as int)
-            );
         }
+
+        self.ghost_ready = Ghost(
+            self.ghost_ready@.insert(old_running as int).remove(chosen_next as int)
+        );
+        self.running_pid = chosen_next;
     }
 
-    /// Terminates the running thread; the process has only sleeping threads left,
-    /// so it goes to suspended. Runs chosen_next from ready.
-    ///
-    /// Models exit_thread when remaining threads are all sleeping.
-    ///
-    /// # Parameters
-    ///
-    /// - `chosen_next`: PID from the ready queue to run next.
+    /// Running thread exits; only sleeping threads remain → process to suspended.
     pub fn exit_thread_to_suspended(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -519,32 +417,15 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
     {
         let old_running: i32 = self.running_pid;
+
+        self.ghost_suspended = Ghost(self.ghost_suspended@.insert(old_running as int));
+        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
         self.running_pid = chosen_next;
-
-        proof {
-            // Broadcast axiom handles insert len.
-            // Broadcast axiom handles remove len.
-
-            self.ghost_suspended = Ghost(
-                self.ghost_suspended@.insert(old_running as int)
-            );
-            self.ghost_ready = Ghost(
-                self.ghost_ready@.remove(chosen_next as int)
-            );
-        }
-
         self.suspended_count = self.suspended_count + 1;
         self.ready_count = self.ready_count - 1;
     }
 
-    /// Terminates the running thread; all threads are now zombies,
-    /// so the process goes to zombie. Runs chosen_next from ready.
-    ///
-    /// Models exit_thread when all remaining threads become zombies.
-    ///
-    /// # Parameters
-    ///
-    /// - `chosen_next`: PID from the ready queue to run next.
+    /// Running thread exits; all threads now zombies → process to zombie.
     pub fn exit_thread_to_zombie(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -566,20 +447,10 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
     {
         let old_running: i32 = self.running_pid;
+
+        self.ghost_zombies = Ghost(self.ghost_zombies@.insert(old_running as int));
+        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
         self.running_pid = chosen_next;
-
-        proof {
-            // Broadcast axiom handles insert len.
-            // Broadcast axiom handles remove len.
-
-            self.ghost_zombies = Ghost(
-                self.ghost_zombies@.insert(old_running as int)
-            );
-            self.ghost_ready = Ghost(
-                self.ghost_ready@.remove(chosen_next as int)
-            );
-        }
-
         self.zombie_count = self.zombie_count + 1;
         self.ready_count = self.ready_count - 1;
     }
@@ -589,13 +460,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Wakes up a suspended process and moves it to the ready queue.
-    ///
-    /// Models `ProcessManagerInner::wakeup()` for the case where the woken
-    /// thread makes the process runnable.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: PID of the suspended process to wake up.
     pub fn wakeup_to_ready(&mut self, pid: i32)
         requires
             old(self).wf(),
@@ -612,12 +476,8 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
-        proof {
-            // Broadcast axioms handle insert/remove len reasoning.
-            self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
-            self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
-        }
-
+        self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
+        self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
         self.suspended_count = self.suspended_count - 1;
         self.ready_count = self.ready_count + 1;
     }
@@ -627,9 +487,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Resumes all interrupted processes by moving them to the ready queue.
-    ///
-    /// Models the loop in `ProcessManagerInner::schedule()` that processes
-    /// all interrupted processes before selecting the next to run.
     pub fn resume_all_interrupted(&mut self)
         requires
             old(self).wf(),
@@ -648,11 +505,10 @@ impl ProcessManagerInner {
     {
         proof {
             Self::lemma_union_disjoint_len(self.ghost_ready@, self.ghost_interrupted@);
-
-            self.ghost_ready = Ghost(self.ghost_ready@.union(self.ghost_interrupted@));
-            self.ghost_interrupted = Ghost(Set::empty());
         }
 
+        self.ghost_ready = Ghost(self.ghost_ready@.union(self.ghost_interrupted@));
+        self.ghost_interrupted = Ghost(Set::empty());
         self.ready_count = self.ready_count + self.interrupted_count;
         self.interrupted_count = 0;
     }
@@ -662,14 +518,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Terminates a ready process by moving it to the zombie queue.
-    ///
-    /// Models `ProcessManagerInner::terminate()` for a process in the ready queue
-    /// that has no more runnable threads after termination.
-    /// The kernel process (PID 0) cannot be terminated.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: PID of the ready process to terminate.
     pub fn terminate_ready(&mut self, pid: i32)
         requires
             old(self).wf(),
@@ -687,27 +535,13 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
-        proof {
-            // Broadcast axiom handles remove len.
-            // Broadcast axiom handles insert len.
-
-            self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
-            self.ghost_zombies = Ghost(self.ghost_zombies@.insert(pid as int));
-        }
-
+        self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
+        self.ghost_zombies = Ghost(self.ghost_zombies@.insert(pid as int));
         self.ready_count = self.ready_count - 1;
         self.zombie_count = self.zombie_count + 1;
     }
 
     /// Terminates a ready process that still has threads; moves to interrupted.
-    ///
-    /// Models `ProcessManagerInner::terminate()` for a process that has threads
-    /// remaining (will be resumed and can then be cleaned up).
-    /// The kernel process (PID 0) cannot be terminated.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: PID of the ready process to terminate.
     pub fn terminate_ready_to_interrupted(&mut self, pid: i32)
         requires
             old(self).wf(),
@@ -725,28 +559,13 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
-        proof {
-            // Broadcast axiom handles remove len.
-            // Broadcast axiom handles insert len.
-
-            self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
-            self.ghost_interrupted = Ghost(
-                self.ghost_interrupted@.insert(pid as int)
-            );
-        }
-
+        self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
+        self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
         self.ready_count = self.ready_count - 1;
         self.interrupted_count = self.interrupted_count + 1;
     }
 
     /// Terminates a suspended process by moving it to the interrupted queue.
-    ///
-    /// Models `ProcessManagerInner::terminate()` for a suspended process.
-    /// The kernel process (PID 0) cannot be terminated (and cannot be suspended).
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: PID of the suspended process to terminate.
     pub fn terminate_suspended(&mut self, pid: i32)
         requires
             old(self).wf(),
@@ -763,16 +582,8 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
-        proof {
-            // Broadcast axiom handles remove len.
-            // Broadcast axiom handles insert len.
-
-            self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
-            self.ghost_interrupted = Ghost(
-                self.ghost_interrupted@.insert(pid as int)
-            );
-        }
-
+        self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
+        self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
         self.suspended_count = self.suspended_count - 1;
         self.interrupted_count = self.interrupted_count + 1;
     }
@@ -782,13 +593,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Harvests (removes) a zombie process from the zombie queue.
-    ///
-    /// Models `ProcessManagerInner::harvest_zombies()`. The zombie is removed
-    /// from the zombie set; its resources are freed by the caller.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: PID of the zombie process to harvest.
     pub fn harvest_zombie(&mut self, pid: i32)
         requires
             old(self).wf(),
@@ -805,12 +609,7 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
             !self.spec_process_exists(pid as int),
     {
-        proof {
-            // Broadcast axiom handles remove len.
-
-            self.ghost_zombies = Ghost(self.ghost_zombies@.remove(pid as int));
-        }
-
+        self.ghost_zombies = Ghost(self.ghost_zombies@.remove(pid as int));
         self.zombie_count = self.zombie_count - 1;
     }
 
@@ -819,8 +618,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Increments the buffered message count.
-    ///
-    /// Models the message buffering in `ProcessManagerInner::post_message()`.
     pub fn post_message(&mut self)
         requires
             old(self).wf(),
@@ -839,8 +636,6 @@ impl ProcessManagerInner {
     }
 
     /// Decrements the buffered message count.
-    ///
-    /// Models message consumption in `try_recv()`.
     pub fn recv_message(&mut self)
         requires
             old(self).wf(),
@@ -862,12 +657,7 @@ impl ProcessManagerInner {
     // Capability Control (no state machine change)
     //==============================================================================================
 
-    /// Models `ProcessManagerInner::capctl()`. Capability changes do not
-    /// affect the process state machine (queue membership).
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: PID of the process whose capabilities to change.
+    /// Models capctl: no process state change.
     pub fn capctl(&self, pid: i32)
         requires
             self.wf(),
@@ -875,7 +665,6 @@ impl ProcessManagerInner {
         ensures
             self.wf(),
     {
-        // No state change; capabilities are orthogonal to the state machine.
     }
 
     //==============================================================================================
@@ -883,12 +672,6 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Moves a suspended process to the interrupted queue due to alarm expiry.
-    ///
-    /// Models the alarm checking in `ProcessManagerInner::check_alarm()`.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: PID of the suspended process whose alarm expired.
     pub fn alarm_interrupt(&mut self, pid: i32)
         requires
             old(self).wf(),
@@ -905,16 +688,8 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
-        proof {
-            // Broadcast axiom handles remove len.
-            // Broadcast axiom handles insert len.
-
-            self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
-            self.ghost_interrupted = Ghost(
-                self.ghost_interrupted@.insert(pid as int)
-            );
-        }
-
+        self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
+        self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
         self.suspended_count = self.suspended_count - 1;
         self.interrupted_count = self.interrupted_count + 1;
     }
