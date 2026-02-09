@@ -1,0 +1,30 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:47:01 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+error: assertion failed
+   --> kernel/pm/process/state/runnable.proof.rs:461:16
+    |
+461 |           assert(0 <= idx < self.ready_admission_times@.len()
+    |  ________________^
+462 | |             && forall|j: int| 0 <= j < self.ready_admission_times@.len()
+463 | |                 ==> (#[trigger] self.ready_admission_times@[idx])
+464 | |                     <= (#[trigger] self.ready_admission_times@[j]));
+    | |__________________________________________________________________^ assertion failed
+
+verification results:: 39 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 39
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:39, errors:1)
