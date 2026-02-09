@@ -785,14 +785,19 @@ impl ProcessManagerInner {
         requires
             old(self).wf(),
             // chosen_next must be in the ready+interrupted+running pool after merging.
-            old(self).ghost_ready@.union(old(self).ghost_interrupted@).insert(
-                old(self).running_pid as int
-            ).contains(chosen_next as int),
+            old(self).spec_full_schedule_pool().contains(chosen_next as int),
             chosen_next >= 0i32,
             chosen_next < old(self).next_pid,
         ensures
             self.wf(),
             self.running_pid == chosen_next,
+            // Ready set: merge interrupted into ready, insert old running, remove chosen.
+            self.ghost_ready@ =~= old(self).ghost_ready@.union(
+                old(self).ghost_interrupted@
+            ).insert(old(self).running_pid as int).remove(chosen_next as int),
+            // Ready count: old ready + old interrupted (schedule is a net-zero swap).
+            self.ready_count as int == old(self).ready_count as int
+                + old(self).interrupted_count as int,
             self.interrupted_count == 0,
             self.ghost_interrupted@ =~= Set::<int>::empty(),
             self.suspended_count == old(self).suspended_count,
@@ -851,6 +856,20 @@ impl ProcessManagerInner {
         // Thread wakeup within a ready process: no queue-level change (T3).
     }
 
+    /// Wakeup error path: target thread not found in any process.
+    ///
+    /// Models `ProcessManagerInner::wakeup()` / `try_wakeup()` when the TID does
+    /// not match any thread in any queue. The original returns `Err(NoSuchEntry)`
+    /// without modifying any state. State is preserved trivially.
+    pub fn wakeup_not_found(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Error path: TID not found. No state change.
+    }
+
     //==============================================================================================
     // Query Operations (no state change)
     //==============================================================================================
@@ -902,7 +921,8 @@ impl ProcessManagerInner {
     /// Models `create_thread`: creates a new thread in an existing process.
     ///
     /// The queue-level effect depends on the process state:
-    /// - If the process is sleeping, it moves to ready (modeled by `wakeup_to_ready`).
+    /// - If the process is sleeping, it moves to ready (modeled by
+    ///   `create_thread_from_suspended`).
     /// - If the process is ready, it stays in ready (no change modeled here).
     /// The actual thread creation is trust boundary T3.
     ///
@@ -915,6 +935,33 @@ impl ProcessManagerInner {
             self.wf(),
     {
         // Thread creation in a ready process: no queue-level change (T3).
+    }
+
+    /// Models `create_thread` / `try_add_thread` for a sleeping process.
+    ///
+    /// When a thread is created in a suspended process, the original code
+    /// (mod.rs:325-393) wakes the process by moving it from suspended to ready.
+    /// This is the queue-level transition; thread-level details are T3.
+    ///
+    /// Delegates to `wakeup_to_ready` for the actual queue transition.
+    pub fn create_thread_from_suspended(&mut self, pid: i32)
+        requires
+            old(self).wf(),
+            old(self).ghost_suspended@.contains(pid as int),
+        ensures
+            self.wf(),
+            self.running_pid == old(self).running_pid,
+            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
+            self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int),
+            self.ready_count == old(self).ready_count + 1,
+            self.suspended_count == old(self).suspended_count - 1,
+            self.interrupted_count == old(self).interrupted_count,
+            self.zombie_count == old(self).zombie_count,
+            self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
+    {
+        self.wakeup_to_ready(pid);
     }
 
     /// Models `set_thread_data_area`: sets the TDA for a thread in a sleeping process.
@@ -1020,6 +1067,389 @@ impl ProcessManagerInner {
     ///
     /// FPU state management is per-thread, not per-queue. No queue change.
     pub fn handle_fpu_exception(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    //==============================================================================================
+    // Internal Helpers (no queue change)
+    //==============================================================================================
+
+    /// Models `forge_user_context`: creates a user-mode context for a process.
+    ///
+    /// The original (mod.rs:203-267) sets up memory mappings and context info
+    /// for a newly created process. No queue-level state change; the process
+    /// is already in the ready queue from `create_process`.
+    pub fn forge_user_context(&self, pid: i32)
+        requires
+            self.wf(),
+            self.ghost_ready@.contains(pid as int),
+        ensures
+            self.wf(),
+    {
+        // Context setup: no queue-level change.
+    }
+
+    /// Models `take_running`: extracts the running process from the manager.
+    ///
+    /// Internal helper (mod.rs:1374-1377). Temporarily removes the running
+    /// process for manipulation. At the queue level, the running PID is still
+    /// tracked; the caller is responsible for re-inserting into a queue.
+    /// This is subsumed by the verified schedule/sleep/exit functions.
+    pub fn take_running(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Internal helper subsumed by schedule/sleep/exit verified transitions.
+    }
+
+    /// Models `get_running`: returns a reference to the running process.
+    ///
+    /// Pure query (mod.rs:1379-1382). No state change.
+    pub fn get_running(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `get_running_mut`: returns a mutable reference to the running process.
+    ///
+    /// Query helper (mod.rs:1384-1387). Any mutations through the reference
+    /// are thread-level (T3) and do not affect queue membership.
+    pub fn get_running_mut(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `take_earliest_ready`: selects the next process from the ready queue.
+    ///
+    /// Internal helper (mod.rs:1352-1372). Abstracted by trust boundary T1:
+    /// the `chosen_next` parameter in `schedule`/`full_schedule` represents the
+    /// result of this selection. The precondition requires `chosen_next` to be a
+    /// valid ready PID, which is the postcondition of `take_earliest_ready`.
+    pub fn take_earliest_ready(&self)
+        requires
+            self.wf(),
+            self.spec_has_ready(),
+        ensures
+            self.wf(),
+    {
+        // Selection is abstracted by T1: chosen_next parameter in schedule.
+    }
+
+    /// Models `find_process_by_tid`: looks up a process by thread ID.
+    ///
+    /// Query operation (mod.rs:1439-1481). Iterates all queues searching for
+    /// a thread with the given TID. No state change.
+    pub fn find_process_by_tid(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `find_thread_mut`: looks up a mutable thread reference by TID.
+    ///
+    /// Query operation (mod.rs:1483-1525). Iterates all queues. Any mutations
+    /// through the reference are thread-level (T3). No queue change.
+    pub fn find_thread_mut(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `sleep` wrapper: the complete sleep operation.
+    ///
+    /// The original `sleep` (mod.rs:725-784) calls `take_running`, transitions
+    /// the process to sleeping, and selects the next ready process. The queue
+    /// transition is modeled by `sleep_running` (process→suspended) or
+    /// `sleep_thread_running` (thread sleeps, process stays ready).
+    /// This stub documents the wrapper; actual transitions use the verified fns.
+    pub fn sleep_wrapper(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Wrapper documentation: actual transitions via sleep_running /
+        // sleep_thread_running.
+    }
+
+    /// Models `exit` wrapper: the complete exit operation.
+    ///
+    /// The original `exit` (mod.rs:895-972) calls `take_running`, transitions
+    /// the process based on remaining threads. Modeled by `exit_running` (last
+    /// process→zombie), `exit_thread_running` (thread exits, process stays ready),
+    /// `exit_thread_to_suspended`, or `exit_thread_to_zombie`.
+    pub fn exit_wrapper(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Wrapper documentation: actual transitions via exit_running /
+        // exit_thread_running / exit_thread_to_suspended / exit_thread_to_zombie.
+    }
+
+    /// Models `exit_thread` wrapper: exit a non-running thread.
+    ///
+    /// The original `exit_thread` (mod.rs:974-1034) finds the process containing
+    /// the thread and exits the thread. If the process was sleeping and the thread
+    /// was the running thread of that process, the process may transition. At the
+    /// queue level, this is captured by the existing verified transition functions.
+    pub fn exit_thread_wrapper(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Wrapper documentation: thread-level logic is T3.
+    }
+
+    /// Models `check_alarm` wrapper: iterates suspended processes for expired alarms.
+    ///
+    /// The original `check_alarm` (mod.rs:682-704) iterates the suspended list and
+    /// moves expired-alarm processes to interrupted. Each individual transition is
+    /// modeled by `alarm_interrupt`. The iteration count is a runtime decision
+    /// (trust boundary T1: alarm expiry timing).
+    pub fn check_alarm_wrapper(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Each alarm transition uses alarm_interrupt. Iteration is T1.
+    }
+
+    /// Models `harvest_zombies` (plural): iterates zombie queue, cleaning up.
+    ///
+    /// The original (mod.rs:1191-1209) pops zombie processes, performs memory
+    /// cleanup, and returns the list. Each individual removal is modeled by
+    /// `harvest_zombie`. Memory cleanup is out of scope.
+    pub fn harvest_zombies_wrapper(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Each zombie removal uses harvest_zombie. Memory cleanup is out of scope.
+    }
+
+    //==============================================================================================
+    // Outer ProcessManager API (T2: RefCell boundary)
+    //==============================================================================================
+    //
+    // The outer `ProcessManager` (mod.rs:1529-1982) wraps `ProcessManagerInner`
+    // in `Rc<RefCell<_>>`. Every public method follows the pattern:
+    //   1. try_borrow[_mut]() → returns Err(ResourceBusy) on failure.
+    //   2. Delegates to the corresponding inner method.
+    //   3. Returns the result.
+    //
+    // The RefCell borrow checking is trust boundary T2 (runtime safety).
+    // The following stubs model the outer API as pass-through wrappers.
+
+    /// Models `ProcessManager::get_pid`: reads running process PID.
+    ///
+    /// Outer wrapper (mod.rs:1542-1555). Borrows inner, reads running PID.
+    /// Equivalent to `get_running_pid` on the inner.
+    pub fn outer_get_pid(&self) -> (result: i32)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+            result as int == self.spec_running_pid(),
+            result >= 0i32,
+    {
+        self.running_pid
+    }
+
+    /// Models `ProcessManager::get_tid`: reads running thread TID.
+    ///
+    /// Outer wrapper (mod.rs:1557-1576). Borrows inner, reads running TID.
+    /// Thread-level query, no queue change. TID is not part of queue model.
+    pub fn outer_get_tid(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::has_capability`: checks process capability.
+    ///
+    /// Outer wrapper (mod.rs:1686-1697). Borrows inner, queries capability
+    /// on the found process. No queue change.
+    pub fn outer_has_capability(&self, pid: i32)
+        requires
+            self.wf(),
+            self.spec_process_exists(pid as int),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::vmcopy_from_user`: copies memory from user space.
+    ///
+    /// Outer wrapper (mod.rs:1711-1724). Memory operation on the running process.
+    /// No queue-level state change.
+    pub fn outer_vmcopy_from_user(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::vmcopy_to_user`: copies memory to user space.
+    ///
+    /// Outer wrapper (mod.rs:1724-1737). Memory operation on the running process.
+    /// No queue-level state change.
+    pub fn outer_vmcopy_to_user(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::mmap`: maps memory for a process.
+    ///
+    /// Outer wrapper (mod.rs:1784-1797). Memory management operation.
+    /// No queue-level state change.
+    pub fn outer_mmap(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::munmap`: unmaps memory for a process.
+    ///
+    /// Outer wrapper (mod.rs:1797-1809). Memory management operation.
+    /// No queue-level state change.
+    pub fn outer_munmap(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::mctrl`: memory control for a process.
+    ///
+    /// Outer wrapper (mod.rs:1809-1822). Memory management operation.
+    /// No queue-level state change.
+    pub fn outer_mctrl(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::mmio_alloc`: allocates MMIO region.
+    ///
+    /// Outer wrapper (mod.rs:1822-1840). MMIO management.
+    /// No queue-level state change.
+    pub fn outer_mmio_alloc(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::mmio_free`: frees MMIO region.
+    ///
+    /// Outer wrapper (mod.rs:1840-1853). MMIO management.
+    /// No queue-level state change.
+    pub fn outer_mmio_free(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::attach_pmio`: attaches a port I/O resource.
+    ///
+    /// Outer wrapper (mod.rs:1853-1860). PMIO management.
+    /// No queue-level state change.
+    pub fn outer_attach_pmio(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::detach_pmio`: detaches a port I/O resource.
+    ///
+    /// Outer wrapper (mod.rs:1860-1870). PMIO management.
+    /// No queue-level state change.
+    pub fn outer_detach_pmio(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::read_pmio`: reads from a port I/O resource.
+    ///
+    /// Outer wrapper (mod.rs:1870-1881). PMIO management.
+    /// No queue-level state change.
+    pub fn outer_read_pmio(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::write_pmio`: writes to a port I/O resource.
+    ///
+    /// Outer wrapper (mod.rs:1881-1909). PMIO management.
+    /// No queue-level state change.
+    pub fn outer_write_pmio(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::add_event`: registers an event.
+    ///
+    /// Outer wrapper (mod.rs:1924-1933). Event management.
+    /// No queue-level state change.
+    pub fn outer_add_event(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::remove_event`: unregisters an event.
+    ///
+    /// Outer wrapper (mod.rs:1933-1953). Event management.
+    /// No queue-level state change.
+    pub fn outer_remove_event(&self)
         requires
             self.wf(),
         ensures
