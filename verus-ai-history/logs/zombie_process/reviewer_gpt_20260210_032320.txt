@@ -1,0 +1,109 @@
+=== Copilot Session ===
+Timestamp: 2026-02-10T03:25:13.765548
+Model: gpt-5.2-codex
+Session: 1615b6a3-1f16-4079-b359-c97adde53086
+Duration: 113.4s
+Exit code: 0
+
+=== Prompt ===
+Review the Verus verification of zombie_process.
+
+Original source: src/kernel/src/pm/process/state/zombie.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - zombie.rs (exec)
+  - zombie.spec.rs (spec)
+  - zombie.proof.rs (proof)
+
+This is an OS kernel component. Evaluate if the verification captures the
+essential correctness properties.
+
+Review criteria:
+1. COVERAGE: All functions in original source (public and private) have verified versions
+2. SPECIFICATIONS: Specs capture intended behavior (not too weak, not too strong)
+3. SOUNDNESS: No unjustified assume/external_body in core module
+4. EQUIVALENCE: Verified code is semantically equivalent to original
+5. INVARIANTS: State invariants are sufficient to prove correctness
+6. PROPERTIES: Are the key safety and liveness properties identified and proven?
+7. SPLIT QUALITY: Are spec/proof properly separated from exec code?
+
+Verification command: ./verus-ai/scripts/verify.sh zombie_process
+
+For each issue found, provide:
+- Priority: Critical / High / Medium / Low
+- Location: Function or spec name (and which file: exec/spec/proof)
+- Description: What is wrong or missing
+- Suggested Fix: How to address it
+
+Output format (write to /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process/gpt_r1_a1.md):
+```markdown
+# Review: zombie_process (gpt-5.2-codex)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+
+### Critical
+- ...
+
+### High
+- ...
+
+### Medium
+- ...
+
+### Low
+- ...
+
+## Positive Observations
+- ...
+
+## Summary
+[Overall assessment and recommendations]
+```
+
+=== Output ===
+● Read verus/split/kernel/pm/process/state/zombie.spec.rs
+  └ 199 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.proof.rs
+  └ 253 lines read
+
+● Read src/kernel/src/pm/process/state/zombie.rs
+  └ 111 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.rs
+  └ 307 lines read
+
+● Create plan.md for the review
+  $ cat <<'EOF' > /home/ubuntu/.copilot/session-state/1615b6a3-1f16-4079-b359-c97adde53086/plan.md
+  # Plan
+  - Inspect original zombie process implementation and Verus exec/spec/proof split for coverage
+  and assumptions.
+  - Check for semantic mismatches, missing invariants, or unproven obligations....
+  └ 4 lines...
+
+● Run Verus verification for zombie_process
+  $ ./verus-ai/scripts/verify.sh zombie_process
+  └ 23 lines...
+
+● Write zombie_process review report
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process && cat <<'EOF' >
+  /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process/gpt_r1_a1.md
+  # Review: zombie_process (gpt-5.2-codex)
+
+  ## Grade: B-...
+  └ 79 lines...
+
+✓ Task complete
+
+Review report written to verus-ai-history/reviews/zombie_process/gpt_r1_a1.md; verification run: `./verus-ai/scripts/verify.sh zombie_process`.
+
+
+Total usage est:        1 Premium request
+API time spent:         1m 35.607s
+Total session time:     1m 51.986s
+Total code changes:     +0 -0
+Breakdown by AI model:
+ gpt-5.2-codex           179.0k in, 6.1k out, 166.4k cached (Est. 1 Premium request)
+
+=== End ===
