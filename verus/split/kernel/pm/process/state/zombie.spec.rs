@@ -192,6 +192,19 @@ impl ZombieProcess {
     /// must establish `spec_find_thread_search_predicate_obligation` (predicate
     /// equivalence) and that `Iterator::find`'s first-match semantics match
     /// the existential quantifier in `spec_has_zombie_thread` under `wf()`.
+    ///
+    /// ## Integration Proof Plan
+    ///
+    /// To discharge this obligation, an integration module must:
+    /// 1. Verify that `NonEmptyVecDeque<ZombieThread>::iter()` visits elements
+    ///    in the same order as the ghost `Seq<int>` indices.
+    /// 2. Verify that `ZombieThread::id()` returns an integer matching the
+    ///    ghost sequence element at the same index (predicate obligation).
+    /// 3. Show that `Iterator::find` returns `Some` iff the existential in
+    ///    `spec_has_zombie_thread` is satisfied. Under `wf()` (no duplicates),
+    ///    first-match and existential are equivalent.
+    /// 4. Use `lemma_predicate_obligation_implies_search_equivalence` (with
+    ///    explicit `real_ids`) to bridge the gap.
     pub open spec fn spec_find_thread_integration_obligation(
         &self, tid: int, real_result: Option<int>,
     ) -> bool {
@@ -285,6 +298,22 @@ impl ZombieProcess {
     /// caller (parent process) for resource cleanup. The ghost model only
     /// verifies identity preservation (PID, thread IDs, status match).
     ///
+    /// ## Rust Move Semantics Argument
+    ///
+    /// The original `bury(self)` takes `self` by value, consuming the
+    /// `ZombieProcess`. Rust's move semantics guarantee:
+    /// 1. The caller receives sole ownership of all returned fields.
+    /// 2. The original `ZombieProcess` is fully consumed (no aliasing).
+    /// 3. Field destructuring (`self.zombie_threads`, `self.process`,
+    ///    `self.status`) moves each field into the returned tuple — these
+    ///    are bitwise moves, not copies, so the returned objects are the
+    ///    exact same heap allocations.
+    /// 4. After `bury()` returns, no code path can access the original
+    ///    `ZombieProcess` (enforced by the borrow checker).
+    /// These properties make the ownership transfer trivially correct by
+    /// construction. Formal verification of this requires Verus tracked
+    /// types, which are outside the ghost model scope.
+    ///
     /// An integration proof must establish that:
     /// 1. The returned `NonEmptyVecDeque<ZombieThread>` contains the same
     ///    thread objects (not just IDs) as the original `zombie_threads`.
@@ -293,9 +322,7 @@ impl ZombieProcess {
     /// 3. The returned `ExitStatus` equals the original `status`.
     /// 4. The original `ZombieProcess` is fully consumed (no residual state).
     ///
-    /// Properties 1-3 follow trivially from `bury()`'s implementation
-    /// (field destructuring), but executable verification requires Verus
-    /// tracked types which are outside this ghost model's scope.
+    /// Properties 1-4 follow from Rust's move semantics (field destructuring).
     ///
     /// `ghost_ids` and `real_ids` are the ghost and real thread ID sequences.
     /// The obligation requires they match.

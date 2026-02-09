@@ -25,9 +25,9 @@
 //     ghost IDs against themselves.
 //   - `lemma_find_thread_mut_obligation_preserves_wf`: caller obligation for
 //     mutable thread access preserves identity.
-//   - `lemma_state_mut_stability_consistent`: PID stability obligation is
-//     self-consistent. Substantive PID preservation is **verified** in the
-//     `process_state` dependency module.
+//   - `lemma_pid_stability_obligation_well_formed`: PID stability obligation
+//     is well-formed (reflexive). Substantive PID preservation is **verified**
+//     in the `process_state` dependency module.
 //   - `lemma_bury_satisfies_identity_obligation`: ghost model satisfies the
 //     identity part of the ownership transfer obligation.
 //   - PID obligation at construction.
@@ -106,29 +106,18 @@ impl ZombieProcess {
     //==============================================================================================
 
     /// Lemma: bury() returns components matching the abstract View.
+    /// Covers PID, status, and zombie thread IDs — all match the View fields.
     pub proof fn lemma_bury_matches_view(&self)
         requires
             self.wf(),
         ensures
             self.zombie_thread_ids@ == self@.zombie_thread_ids,
             self.spec_pid() == self@.pid,
+            self.spec_pid() == self.pid@,
             self.spec_status() == self@.status,
+            self.spec_status() == self.status@,
             self.zombie_thread_ids@.len() >= 1,
             self.zombie_thread_ids@.len() == self.spec_zombie_count(),
-    {
-    }
-
-    /// Lemma: bury() returns the correct PID.
-    pub proof fn lemma_bury_preserves_pid(&self)
-        ensures
-            self.spec_pid() == self.pid@,
-    {
-    }
-
-    /// Lemma: bury() returns the correct exit status.
-    pub proof fn lemma_bury_preserves_status(&self)
-        ensures
-            self.spec_status() == self.status@,
     {
     }
 
@@ -314,15 +303,15 @@ impl ZombieProcess {
     {
     }
 
-    /// Lemma: `state_mut()` PID stability obligation is self-consistent.
+    /// Lemma: PID stability obligation is well-formed.
     ///
-    /// This confirms the obligation is trivially satisfied when no mutation
-    /// occurs. The substantive proof that mutation preserves PID is in the
-    /// **verified** `process_state` dependency module, where every public
-    /// mutator has a verified postcondition
-    /// `self.spec_pid() == old(self).spec_pid()`. This lemma documents that
-    /// the obligation formulation is well-formed.
-    pub proof fn lemma_state_mut_stability_consistent(&self)
+    /// Confirms the obligation formulation is trivially satisfiable (reflexive).
+    /// The substantive proof that mutation preserves PID is in the **verified**
+    /// `process_state` dependency module, where every public mutator has a
+    /// verified postcondition `self.spec_pid() == old(self).spec_pid()`.
+    /// This lemma documents that the obligation spec is consistent, not that
+    /// mutation preserves PID — the latter is proven cross-module.
+    pub proof fn lemma_pid_stability_obligation_well_formed(&self)
         requires
             self.wf(),
         ensures
