@@ -1,0 +1,30 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 18:19:39 CST 2026
+Module: kernel::pm::process::capability
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0614]: type `vstd::prelude::Ghost<kernel::pm::process::capability::Capabilities>` cannot be dereferenced
+   --> kernel/pm/process/capability.rs:108:46
+    |
+108 |             Capabilities::lemma_set_then_has(*old_self, capability);
+    |                                              ^^^^^^^^^ can't be dereferenced
+
+error[E0614]: type `vstd::prelude::Ghost<kernel::pm::process::capability::Capabilities>` cannot be dereferenced
+   --> kernel/pm/process/capability.rs:139:52
+    |
+139 |             Capabilities::lemma_clear_then_not_has(*old_self, capability);
+    |                                                    ^^^^^^^^^ can't be dereferenced
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0614`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::capability (verified:0, errors:0)
