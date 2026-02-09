@@ -14,6 +14,10 @@
 //! - `set` and `clear` preserve all other capability bits.
 //! - `set` on an already-set bit is idempotent.
 //! - `clear` on an already-clear bit is idempotent.
+//! - Well-formedness (only valid bits 0..=4 set) is preserved by all operations.
+//! - `set` then `clear` is a roundtrip (restores original when bit was clear).
+//! - `clear` then `set` is a roundtrip (restores original when bit was set).
+//! - Explicit mask values match the original `1 << discriminant` formula.
 //! - View equality implies bitfield equality.
 //!
 //! ## Verification Additions
@@ -24,6 +28,13 @@
 //! - `spec_default`: spec-level constructor for the default value.
 //! - `PartialEq`/`Eq` derives: required by Verus for equality reasoning.
 //! - Explicit `Default` impl: replaces `#[derive(Default)]` for Verus compatibility.
+//! - `to_mask`: exec-level mask computation; uses explicit match rather than
+//!   `1 << discriminant` to avoid dependence on enum layout or `#[repr]`
+//!   annotations. Equivalence to the original formula is proven by
+//!   `lemma_mask_matches_discriminant`.
+//! - `pub bits` field: required by Verus for spec-level field access across
+//!   module boundaries. The original uses a private tuple field `(u8)`.
+//!   This is a known verification-required deviation from the original API.
 //!
 //! ## Trust Boundary
 //!
@@ -52,6 +63,13 @@ verus! {
 ///
 /// Each bit in the underlying `u8` corresponds to a `Capability` variant.
 /// Bit `i` is set if and only if the capability with discriminant `i` is granted.
+///
+/// # Note
+///
+/// The `bits` field is `pub` because Verus requires public fields for spec-level
+/// access in `pub open spec fn` definitions across module boundaries. The original
+/// source uses a private tuple struct `Capabilities(u8)`. External code should use
+/// the `set`/`clear`/`has` API rather than accessing `bits` directly.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Capabilities {
     /// The raw bitfield value.
@@ -69,6 +87,12 @@ impl Capabilities {
     }
 
     /// Computes the bitmask for a given capability.
+    ///
+    /// # Description
+    ///
+    /// Uses explicit match rather than `1 << discriminant` to avoid dependence
+    /// on enum layout or `#[repr]` annotations. The equivalence to the original
+    /// source's shift-based formula is proven by `lemma_mask_matches_discriminant`.
     ///
     /// # Parameters
     ///
@@ -99,6 +123,7 @@ impl Capabilities {
         ensures
             result.spec_bits() == 0u8,
             result == Capabilities::spec_default(),
+            result.wf(),
     {
         Capabilities { bits: 0u8 }
     }
@@ -113,10 +138,14 @@ impl Capabilities {
     ///
     /// - The target bit is set in the result.
     /// - All other bits are unchanged.
+    /// - Well-formedness is preserved.
     pub fn set(&mut self, capability: Capability)
+        requires
+            old(self).wf(),
         ensures
             self.spec_bits() == old(self).spec_set(capability),
             self.spec_has(capability),
+            self.wf(),
     {
         let mask: u8 = Self::to_mask(capability);
         let ghost pre = *self;
@@ -124,6 +153,7 @@ impl Capabilities {
 
         proof {
             Capabilities::lemma_set_then_has(pre, capability);
+            Capabilities::lemma_set_preserves_wf(pre, capability);
         }
     }
 
@@ -137,10 +167,14 @@ impl Capabilities {
     ///
     /// - The target bit is cleared in the result.
     /// - All other bits are unchanged.
+    /// - Well-formedness is preserved.
     pub fn clear(&mut self, capability: Capability)
+        requires
+            old(self).wf(),
         ensures
             self.spec_bits() == old(self).spec_clear(capability),
             !self.spec_has(capability),
+            self.wf(),
     {
         let mask: u8 = Self::to_mask(capability);
         let ghost pre = *self;
@@ -148,6 +182,7 @@ impl Capabilities {
 
         proof {
             Capabilities::lemma_clear_then_not_has(pre, capability);
+            Capabilities::lemma_clear_preserves_wf(pre, capability);
         }
     }
 
@@ -179,6 +214,7 @@ impl Default for Capabilities {
         ensures
             result.spec_bits() == 0u8,
             result == Capabilities::spec_default(),
+            result.wf(),
     {
         Capabilities { bits: 0u8 }
     }

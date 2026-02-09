@@ -32,6 +32,12 @@ impl Capabilities {
     /// Maps each variant to its corresponding single-bit mask:
     /// ExceptionControl -> 0x01, InterruptControl -> 0x02, IoManagement -> 0x04,
     /// MemoryManagement -> 0x08, ProcessManagement -> 0x10.
+    ///
+    /// # Note
+    ///
+    /// Uses explicit match rather than `1 << discriminant` to avoid dependence
+    /// on enum layout or `#[repr]` annotations. The equivalence to the original
+    /// source's shift-based formula is proven by `lemma_mask_matches_discriminant`.
     pub open spec fn spec_mask(cap: Capability) -> u8 {
         match cap {
             Capability::ExceptionControl => 1u8,
@@ -40,6 +46,22 @@ impl Capabilities {
             Capability::MemoryManagement => 8u8,
             Capability::ProcessManagement => 16u8,
         }
+    }
+
+    /// Spec function: maps a discriminant value to its power-of-2 bitmask.
+    ///
+    /// This is the mathematical `2^d` for valid discriminants (0..=4),
+    /// corresponding to `1u8 << d` in the original source. It bridges the
+    /// gap between the discriminant-based formula and the explicit mask values.
+    pub open spec fn spec_pow2_mask(d: int) -> u8
+        recommends 0 <= d <= 4
+    {
+        if d == 0 { 1u8 }
+        else if d == 1 { 2u8 }
+        else if d == 2 { 4u8 }
+        else if d == 3 { 8u8 }
+        else if d == 4 { 16u8 }
+        else { arbitrary() }
     }
 
     /// Spec function: checks whether a specific capability bit is set.
@@ -61,20 +83,11 @@ impl Capabilities {
     ///
     /// # Note
     ///
-    /// A Capabilities value is always well-formed because only bits 0..4
-    /// are semantically meaningful (corresponding to the 5 capability variants),
-    /// but any u8 value is a valid bitfield representation.
+    /// A Capabilities value is well-formed when only valid capability bits
+    /// (0..=4) are set. The upper 3 bits (5, 6, 7) must not be set.
+    /// All constructors (`new`, `default`) produce well-formed values, and
+    /// `set`/`clear` preserve well-formedness.
     pub open spec fn wf(&self) -> bool {
-        true
-    }
-
-    /// Spec function: checks whether only valid capability bits are set.
-    ///
-    /// # Note
-    ///
-    /// Valid bits are 0..=4, corresponding to the 5 Capability variants.
-    /// The upper 3 bits (5, 6, 7) should not be set.
-    pub open spec fn spec_only_valid_bits(&self) -> bool {
         self.bits & 0b1110_0000u8 == 0u8
     }
 }

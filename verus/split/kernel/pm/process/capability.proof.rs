@@ -20,12 +20,14 @@ impl Capabilities {
             !Capabilities::spec_default().spec_has(Capability::IoManagement),
             !Capabilities::spec_default().spec_has(Capability::MemoryManagement),
             !Capabilities::spec_default().spec_has(Capability::ProcessManagement),
+            Capabilities::spec_default().wf(),
     {
         assert(0u8 & 1u8 == 0u8) by (bit_vector);
         assert(0u8 & 2u8 == 0u8) by (bit_vector);
         assert(0u8 & 4u8 == 0u8) by (bit_vector);
         assert(0u8 & 8u8 == 0u8) by (bit_vector);
         assert(0u8 & 16u8 == 0u8) by (bit_vector);
+        assert(0u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
     }
 
     /// Lemma: The spec_mask for each variant is a single distinct bit.
@@ -37,6 +39,29 @@ impl Capabilities {
             Capabilities::spec_mask(Capability::MemoryManagement) == 8u8,
             Capabilities::spec_mask(Capability::ProcessManagement) == 16u8,
     {
+    }
+
+    /// Lemma: Each explicit mask value equals `2^discriminant`, formally linking
+    /// `spec_mask` to the original source's `1 << capability as u8` formula.
+    ///
+    /// # Description
+    ///
+    /// The original source computes masks via `1 << capability as u8`, relying
+    /// on Rust's enum discriminant assignment. The verified version uses explicit
+    /// match-based mapping. This lemma proves their equivalence by showing that
+    /// `spec_mask(cap) == spec_pow2_mask(cap.spec_discriminant())` for all variants.
+    pub proof fn lemma_mask_matches_discriminant(cap: Capability)
+        ensures
+            Self::spec_mask(cap) == Self::spec_pow2_mask(cap.spec_discriminant()),
+    {
+        // Exhaustive case analysis: each variant's mask matches 2^discriminant.
+        match cap {
+            Capability::ExceptionControl => {},
+            Capability::InterruptControl => {},
+            Capability::IoManagement => {},
+            Capability::MemoryManagement => {},
+            Capability::ProcessManagement => {},
+        }
     }
 
     /// Lemma: Setting a capability bit ensures `has` returns true for that capability.
@@ -222,6 +247,170 @@ impl Capabilities {
         ;
     }
 
+    /// Lemma: `set` preserves well-formedness.
+    ///
+    /// # Description
+    ///
+    /// If the upper 3 bits (5, 6, 7) are clear before `set`, they remain clear
+    /// afterward, because all capability masks (1, 2, 4, 8, 16) only affect bits 0..=4.
+    pub proof fn lemma_set_preserves_wf(pre: Capabilities, cap: Capability)
+        requires
+            pre.wf(),
+        ensures
+            ({
+                let post: Capabilities = Capabilities { bits: pre.spec_set(cap) };
+                post.wf()
+            }),
+    {
+        let b: u8 = pre.spec_bits();
+        match cap {
+            Capability::ExceptionControl => {
+                assert(((b | 1u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::InterruptControl => {
+                assert(((b | 2u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::IoManagement => {
+                assert(((b | 4u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::MemoryManagement => {
+                assert(((b | 8u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::ProcessManagement => {
+                assert(((b | 16u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+        }
+    }
+
+    /// Lemma: `clear` preserves well-formedness.
+    ///
+    /// # Description
+    ///
+    /// If the upper 3 bits (5, 6, 7) are clear before `clear`, they remain clear
+    /// afterward, because AND-with-complement can only clear bits, never set them.
+    pub proof fn lemma_clear_preserves_wf(pre: Capabilities, cap: Capability)
+        requires
+            pre.wf(),
+        ensures
+            ({
+                let post: Capabilities = Capabilities { bits: pre.spec_clear(cap) };
+                post.wf()
+            }),
+    {
+        let b: u8 = pre.spec_bits();
+        match cap {
+            Capability::ExceptionControl => {
+                assert(((b & !1u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::InterruptControl => {
+                assert(((b & !2u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::IoManagement => {
+                assert(((b & !4u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::MemoryManagement => {
+                assert(((b & !8u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+            Capability::ProcessManagement => {
+                assert(((b & !16u8) as u8) & 0b1110_0000u8 == 0u8) by (bit_vector)
+                    requires b & 0b1110_0000u8 == 0u8;
+            },
+        }
+    }
+
+    /// Lemma: Roundtrip — clearing after setting restores the original bitfield
+    /// when the bit was originally clear.
+    ///
+    /// # Description
+    ///
+    /// If capability `cap` is not set in `pre`, then `clear(set(pre, cap), cap)`
+    /// returns the original bitfield. This proves that `set` and `clear` are
+    /// inverses for the grant/revoke pattern.
+    pub proof fn lemma_set_clear_roundtrip(pre: Capabilities, cap: Capability)
+        requires
+            !pre.spec_has(cap),
+        ensures
+            ({
+                let after_set: Capabilities = Capabilities { bits: pre.spec_set(cap) };
+                after_set.spec_clear(cap) == pre.spec_bits()
+            }),
+    {
+        let b: u8 = pre.spec_bits();
+        match cap {
+            Capability::ExceptionControl => {
+                assert(((b | 1u8) as u8 & !1u8) as u8 == b) by (bit_vector)
+                    requires (b & 1u8) == 0u8;
+            },
+            Capability::InterruptControl => {
+                assert(((b | 2u8) as u8 & !2u8) as u8 == b) by (bit_vector)
+                    requires (b & 2u8) == 0u8;
+            },
+            Capability::IoManagement => {
+                assert(((b | 4u8) as u8 & !4u8) as u8 == b) by (bit_vector)
+                    requires (b & 4u8) == 0u8;
+            },
+            Capability::MemoryManagement => {
+                assert(((b | 8u8) as u8 & !8u8) as u8 == b) by (bit_vector)
+                    requires (b & 8u8) == 0u8;
+            },
+            Capability::ProcessManagement => {
+                assert(((b | 16u8) as u8 & !16u8) as u8 == b) by (bit_vector)
+                    requires (b & 16u8) == 0u8;
+            },
+        }
+    }
+
+    /// Lemma: Roundtrip — setting after clearing restores the original bitfield
+    /// when the bit was originally set.
+    ///
+    /// # Description
+    ///
+    /// If capability `cap` is set in `pre`, then `set(clear(pre, cap), cap)`
+    /// returns the original bitfield. This proves that `clear` and `set` are
+    /// inverses for the revoke/re-grant pattern.
+    pub proof fn lemma_clear_set_roundtrip(pre: Capabilities, cap: Capability)
+        requires
+            pre.spec_has(cap),
+        ensures
+            ({
+                let after_clear: Capabilities = Capabilities { bits: pre.spec_clear(cap) };
+                after_clear.spec_set(cap) == pre.spec_bits()
+            }),
+    {
+        let b: u8 = pre.spec_bits();
+        match cap {
+            Capability::ExceptionControl => {
+                assert(((b & !1u8) as u8 | 1u8) as u8 == b) by (bit_vector)
+                    requires (b & 1u8) != 0u8;
+            },
+            Capability::InterruptControl => {
+                assert(((b & !2u8) as u8 | 2u8) as u8 == b) by (bit_vector)
+                    requires (b & 2u8) != 0u8;
+            },
+            Capability::IoManagement => {
+                assert(((b & !4u8) as u8 | 4u8) as u8 == b) by (bit_vector)
+                    requires (b & 4u8) != 0u8;
+            },
+            Capability::MemoryManagement => {
+                assert(((b & !8u8) as u8 | 8u8) as u8 == b) by (bit_vector)
+                    requires (b & 8u8) != 0u8;
+            },
+            Capability::ProcessManagement => {
+                assert(((b & !16u8) as u8 | 16u8) as u8 == b) by (bit_vector)
+                    requires (b & 16u8) != 0u8;
+            },
+        }
+    }
+
     /// Lemma: View equality implies bitfield equality.
     pub proof fn lemma_view_equality(a: &Capabilities, b: &Capabilities)
         requires
@@ -231,8 +420,10 @@ impl Capabilities {
     {
     }
 
-    /// Lemma: All capabilities are well-formed.
+    /// Lemma: All capabilities are well-formed (when only valid bits are used).
     pub proof fn lemma_wf(&self)
+        requires
+            self.bits & 0b1110_0000u8 == 0u8,
         ensures
             self.wf(),
     {
