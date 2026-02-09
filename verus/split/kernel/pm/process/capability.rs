@@ -92,7 +92,7 @@ verus! {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Capabilities {
     /// The raw bitfield value.
-    pub(super) bits: u8,
+    bits: u8,
 }
 
 //==================================================================================================
