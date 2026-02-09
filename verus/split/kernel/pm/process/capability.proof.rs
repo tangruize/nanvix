@@ -485,6 +485,37 @@ impl Capabilities {
             },
         }
     }
+
+    /// Lemma: The API-reachable state space is fully `wf`-invariant.
+    ///
+    /// # Description
+    ///
+    /// Starting from a `new()`/`default()` value (which satisfies `wf()`), any
+    /// finite sequence of `set`/`clear` operations produces a `wf()` value. This
+    /// formalizes the invariant enforcement story: although the `pub bits` field
+    /// permits constructing arbitrary `Capabilities` values, any value reachable
+    /// through the public constructor + mutation API satisfies `wf()`.
+    ///
+    /// This lemma proves a single inductive step: if `pre.wf()`, then one `set`
+    /// or `clear` produces a `wf()` result. Combined with the base case
+    /// (`new()`/`default()` ensures `wf()`), this establishes the invariant by
+    /// induction over any operation sequence.
+    pub proof fn lemma_api_preserves_wf(pre: Capabilities, cap: Capability)
+        requires
+            pre.wf(),
+        ensures
+            ({
+                let post_set: Capabilities = Capabilities { bits: pre.spec_set(cap) };
+                post_set.wf()
+            }),
+            ({
+                let post_clear: Capabilities = Capabilities { bits: pre.spec_clear(cap) };
+                post_clear.wf()
+            }),
+    {
+        Self::lemma_set_preserves_wf(pre, cap);
+        Self::lemma_clear_preserves_wf(pre, cap);
+    }
 }
 
 } // verus!

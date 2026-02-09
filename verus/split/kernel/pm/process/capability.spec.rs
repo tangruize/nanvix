@@ -23,7 +23,7 @@ pub struct CapabilitiesView {
 
 impl Capabilities {
     /// Spec function: returns the raw bitfield value.
-    pub closed spec fn spec_bits(&self) -> u8 {
+    pub open spec fn spec_bits(&self) -> u8 {
         self.bits
     }
 
@@ -38,7 +38,7 @@ impl Capabilities {
     /// Uses explicit match rather than `1 << discriminant` to avoid dependence
     /// on enum layout or `#[repr]` annotations. The equivalence to the original
     /// source's shift-based formula is proven by `lemma_mask_matches_discriminant`.
-    pub closed spec fn spec_mask(cap: Capability) -> u8 {
+    pub open spec fn spec_mask(cap: Capability) -> u8 {
         match cap {
             Capability::ExceptionControl => 1u8,
             Capability::InterruptControl => 2u8,
@@ -53,7 +53,7 @@ impl Capabilities {
     /// This is the mathematical `2^d` for valid discriminants (0..=4),
     /// corresponding to `1u8 << d` in the original source. It bridges the
     /// gap between the discriminant-based formula and the explicit mask values.
-    pub closed spec fn spec_pow2_mask(d: int) -> u8
+    pub open spec fn spec_pow2_mask(d: int) -> u8
         recommends 0 <= d <= 4
     {
         if d == 0 { 1u8 }
@@ -65,17 +65,17 @@ impl Capabilities {
     }
 
     /// Spec function: checks whether a specific capability bit is set.
-    pub closed spec fn spec_has(&self, cap: Capability) -> bool {
+    pub open spec fn spec_has(&self, cap: Capability) -> bool {
         (self.bits & Self::spec_mask(cap)) != 0u8
     }
 
     /// Spec function: returns the bitfield after setting a capability bit.
-    pub closed spec fn spec_set(&self, cap: Capability) -> u8 {
+    pub open spec fn spec_set(&self, cap: Capability) -> u8 {
         (self.bits | Self::spec_mask(cap)) as u8
     }
 
     /// Spec function: returns the bitfield after clearing a capability bit.
-    pub closed spec fn spec_clear(&self, cap: Capability) -> u8 {
+    pub open spec fn spec_clear(&self, cap: Capability) -> u8 {
         (self.bits & !Self::spec_mask(cap)) as u8
     }
 
@@ -92,7 +92,7 @@ impl Capabilities {
     /// always satisfy `wf()`. The `pub bits` field allows constructing non-`wf`
     /// values, but such values are outside the intended usage; the verification
     /// guarantees correctness for the API-reachable state space.
-    pub closed spec fn wf(&self) -> bool {
+    pub open spec fn wf(&self) -> bool {
         self.bits & 0b1110_0000u8 == 0u8
     }
 
@@ -104,7 +104,7 @@ impl Capabilities {
     /// This is a consequence of the closed-world enum: since all 5 discriminants
     /// are in [0, 4], all masks are powers of 2 up to 2^4 = 16, and none set
     /// bits 5, 6, or 7. This connects `spec_mask` to `wf()`.
-    pub closed spec fn spec_mask_is_valid(cap: Capability) -> bool {
+    pub open spec fn spec_mask_is_valid(cap: Capability) -> bool {
         Self::spec_mask(cap) & 0b1110_0000u8 == 0u8
     }
 }
@@ -116,7 +116,7 @@ impl Capabilities {
 impl View for Capabilities {
     type V = CapabilitiesView;
 
-    closed spec fn view(&self) -> CapabilitiesView {
+    open spec fn view(&self) -> CapabilitiesView {
         CapabilitiesView { bits: self.bits }
     }
 }

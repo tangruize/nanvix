@@ -34,14 +34,32 @@
 //!   annotations. Equivalence to the original formula is proven by
 //!   `lemma_mask_matches_discriminant`.
 //! - `pub bits` field: required by Verus for spec-level field access in
-//!   `pub open spec fn` definitions. Verus requires that field access in a
-//!   `pub open spec fn` be well-formed everywhere the spec fn is visible;
-//!   since the spec fns are `pub`, the field must also be `pub`. This is the
-//!   established pattern in the Nanvix verification crate (cf. `ProcessIdentifier.value`).
+//!   `pub open spec fn` definitions. Verus enforces that field expressions in
+//!   `pub open spec fn` must be well-formed everywhere the spec fn is visible.
+//!   Because these spec fns are `pub` (needed for downstream compositional
+//!   verification), the field must also be `pub`. Alternatives were tested and
+//!   rejected:
+//!   - `pub(crate)`: Verus error — "must be well-formed everywhere, which is
+//!     wider than `lib`".
+//!   - `pub(super)`: Same Verus error.
+//!   - Private field + `closed spec fn`: Verus error — constructors in `ensures`
+//!     clauses of pub functions must also be well-formed everywhere.
+//!   This is the established pattern in the Nanvix verification crate
+//!   (cf. `ProcessIdentifier.value` in `kernel/pm/sys/pid.rs`).
 //!   The original uses a private tuple field `(u8)`. External code should use
-//!   the `set`/`clear`/`has` API rather than accessing `bits` directly. The
-//!   `wf()` predicate serves as a module-level invariant that all API-constructed
-//!   values satisfy and all operations preserve.
+//!   the `set`/`clear`/`has` API rather than accessing `bits` directly.
+//!
+//! ## Invariant Enforcement
+//!
+//! The `wf()` predicate (only bits 0..=4 may be set) serves as the module-level
+//! invariant. While the `pub bits` field permits constructing non-`wf` values,
+//! the invariant is enforced by proof obligations:
+//! - All constructors (`new`, `default`) guarantee `wf()` in their postconditions.
+//! - `set`/`clear` guarantee `old(self).wf() ==> self.wf()` (conditional preservation).
+//! - Downstream modules that require `wf()` can assert it as a precondition,
+//!   knowing that any value produced through the API satisfies it.
+//! This pattern matches the Nanvix verification crate convention where `wf()`
+//! is a proof-level obligation, not a runtime-enforced type invariant.
 //!
 //! ## Closed-World Assumption
 //!
@@ -82,17 +100,17 @@ verus! {
 ///
 /// # Note
 ///
-/// The `bits` field is `pub` because Verus requires public fields for spec-level
-/// access in `pub open spec fn` definitions. This is a Verus constraint: field
-/// expressions in `pub open spec fn` must be well-formed everywhere the spec fn
-/// is visible. The original source uses a private tuple struct `Capabilities(u8)`.
-/// External code should use the `set`/`clear`/`has` API rather than accessing
-/// `bits` directly. The `wf()` predicate is the module-level invariant:
-/// all API-constructed values satisfy it and all operations preserve it.
+/// The `bits` field is `pub` due to a Verus tooling constraint: `pub open spec fn`
+/// definitions require field expressions to be well-formed at all visibility scopes,
+/// and `pub(crate)`, `pub(super)`, and private fields all trigger Verus errors.
+/// The original source uses a private tuple struct `Capabilities(u8)`. External
+/// code must use `set`/`clear`/`has` rather than accessing `bits` directly.
+/// The `wf()` predicate is the proof-level invariant: all API-constructed values
+/// satisfy it and all operations conditionally preserve it.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Capabilities {
     /// The raw bitfield value.
-    bits: u8,
+    pub bits: u8,
 }
 
 //==================================================================================================
