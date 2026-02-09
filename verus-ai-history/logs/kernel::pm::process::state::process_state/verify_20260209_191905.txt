@@ -1,0 +1,46 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 19:19:05 CST 2026
+Module: kernel::pm::process::state::process_state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::process_state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: invalid suffix `int` for number literal
+   --> kernel/pm/process/state/process_state.rs:268:32
+    |
+268 |             let new_val: int = 0int; // abstract placeholder value.
+    |                                ^^^^ invalid suffix `int`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error: invalid suffix `int` for number literal
+   --> kernel/pm/process/state/process_state.rs:373:32
+    |
+373 |             let new_val: int = 0int;
+    |                                ^^^^ invalid suffix `int`
+    |
+    = help: the suffix must be one of the numeric types (`u32`, `isize`, `f32`, etc.)
+
+error[E0608]: cannot index into a value of type `vstd::map::Map<vstd::prelude::int, vstd::prelude::int>`
+   --> kernel/pm/process/state/process_state.rs:264:47
+    |
+264 |             let val: int = self.ghost_mutexes@[mutex_addr@];
+    |                                               ^^^^^^^^^^^^^
+
+error[E0608]: cannot index into a value of type `vstd::map::Map<vstd::prelude::int, vstd::prelude::int>`
+   --> kernel/pm/process/state/process_state.rs:370:50
+    |
+370 |             let val: int = self.ghost_conditions@[cond_addr@];
+    |                                                  ^^^^^^^^^^^^
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0608`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::process_state (verified:0, errors:0)
