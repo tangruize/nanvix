@@ -203,6 +203,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.number_buffered_messages == old(self).number_buffered_messages,
             self.spec_process_exists(result as int),
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let pid: i32 = self.next_pid;
 
@@ -268,6 +269,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -308,6 +310,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -338,6 +341,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -378,6 +382,7 @@ impl ProcessManagerInner {
             self.interrupted_count == old(self).interrupted_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -408,6 +413,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -443,6 +449,8 @@ impl ProcessManagerInner {
             self.interrupted_count == old(self).interrupted_count,
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -473,6 +481,8 @@ impl ProcessManagerInner {
             self.suspended_count == old(self).suspended_count,
             self.interrupted_count == old(self).interrupted_count,
             self.next_pid == old(self).next_pid,
+            self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -503,6 +513,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
         self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
@@ -530,6 +541,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         proof {
             Self::lemma_union_disjoint_len(self.ghost_ready@, self.ghost_interrupted@);
@@ -562,6 +574,7 @@ impl ProcessManagerInner {
             self.interrupted_count == old(self).interrupted_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
         self.ghost_zombies = Ghost(self.ghost_zombies@.insert(pid as int));
@@ -569,28 +582,28 @@ impl ProcessManagerInner {
         self.zombie_count = self.zombie_count + 1;
     }
 
-    /// Terminates a ready process that still has threads; moves to interrupted.
-    pub fn terminate_ready_to_interrupted(&mut self, pid: i32)
+    /// Terminates a ready process that still has threads; process stays in ready.
+    ///
+    /// Models `ProcessManagerInner::terminate()` for a process in the ready queue
+    /// that has surviving threads. In the original code (mod.rs:1054-1058), the
+    /// process goes through `terminate() → Ok(interrupted) → resume() → push_back(ready)`.
+    /// The net queue-level effect is a no-op: the process remains in the ready queue.
+    /// Internal thread state changes (marking the running thread for termination) are
+    /// abstracted away as part of trust boundary T3.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: PID of the ready process to terminate (must not be kernel PID 0).
+    pub fn terminate_ready_stays_ready(&self, pid: i32)
         requires
-            old(self).wf(),
-            old(self).ghost_ready@.contains(pid as int),
+            self.wf(),
+            self.ghost_ready@.contains(pid as int),
             pid as int != 0int,
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_ready@ =~= old(self).ghost_ready@.remove(pid as int),
-            self.ghost_interrupted@ =~= old(self).ghost_interrupted@.insert(pid as int),
-            self.ready_count == old(self).ready_count - 1,
-            self.interrupted_count == old(self).interrupted_count + 1,
-            self.suspended_count == old(self).suspended_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
     {
-        self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
-        self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
-        self.ready_count = self.ready_count - 1;
-        self.interrupted_count = self.interrupted_count + 1;
+        // No queue-level state change: the process stays in ready after
+        // terminate + resume. Internal thread state changes are out of scope (T3).
     }
 
     /// Terminates a suspended process by moving it to the interrupted queue.
@@ -609,6 +622,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
         self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
@@ -636,6 +650,7 @@ impl ProcessManagerInner {
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
             !self.spec_process_exists(pid as int),
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         self.ghost_zombies = Ghost(self.ghost_zombies@.remove(pid as int));
         self.zombie_count = self.zombie_count - 1;
@@ -659,11 +674,18 @@ impl ProcessManagerInner {
             self.interrupted_count == old(self).interrupted_count,
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         self.number_buffered_messages = self.number_buffered_messages + 1;
     }
 
     /// Decrements the buffered message count.
+    ///
+    /// Models the implicit decrement that occurs when messages are consumed
+    /// through `ProcessState::receive_message()`. The original `ProcessManagerInner`
+    /// does not have a direct `recv_message` method; instead, the decrement happens
+    /// in `unsafe::try_recv()` (unsafe.rs:650-658) which calls
+    /// `running.state_mut().receive_message(tid)` and then decrements the counter.
     pub fn recv_message(&mut self)
         requires
             old(self).wf(),
@@ -677,6 +699,7 @@ impl ProcessManagerInner {
             self.interrupted_count == old(self).interrupted_count,
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         self.number_buffered_messages = self.number_buffered_messages - 1;
     }
@@ -715,6 +738,7 @@ impl ProcessManagerInner {
             self.zombie_count == old(self).zombie_count,
             self.next_pid == old(self).next_pid,
             self.number_buffered_messages == old(self).number_buffered_messages,
+            self.interrupt_capable == old(self).interrupt_capable,
     {
         self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
         self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));

@@ -14,6 +14,80 @@
 // - The kernel process (PID 0) is always alive (running or ready).
 // - All PIDs are bounded by next_pid (monotonic allocation).
 // - Counts are bounded to prevent arithmetic overflow.
+//
+// ## Trust Boundary T3: Thread-Level Operations
+//
+// The following original `ProcessManagerInner` functions are not modeled because
+// they operate at the thread level within a process. Their queue-level effects
+// are captured by the verified transition functions:
+//
+// - `create_thread` / `try_add_thread`: Adds a thread to a process. May move a
+//    sleeping process to ready (modeled by `wakeup_to_ready`).
+// - `wakeup` / `try_wakeup`: Searches all queues for a sleeping thread and wakes
+//    it. The queue transition (suspended→ready) is modeled by `wakeup_to_ready`.
+// - `exit_thread` (internal branching): Depending on remaining threads, the process
+//    goes to ready, suspended, or zombie. Modeled by `exit_thread_running`,
+//    `exit_thread_to_suspended`, and `exit_thread_to_zombie` respectively.
+// - `set_thread_data_area` / `get_thread_data_area`: Thread metadata; no queue change.
+// - `try_join_thread`: Thread join; no queue-level state change.
+// - `get_mutex` / `get_cond` / `put_cond` / `put_mutex_guard` / `take_mutex_guard`:
+//    Synchronization primitives; no queue-level state change.
+// - `find_process` / `find_process_mut` / `find_process_by_tid` / `find_thread_mut`:
+//    Query operations; no state change.
+// - `handle_fpu_exception`: FPU state management; no queue-level state change.
+// - `interrupt_reason`: Returns and clears the interrupt reason; no queue change.
+//
+// ## Trust Boundary T2: Outer ProcessManager Wrapper
+//
+// The outer `ProcessManager` (mod.rs:1529-1982) wraps `ProcessManagerInner` in
+// `Rc<RefCell<_>>`. The mapping from outer public API to verified inner functions:
+//
+// - `ProcessManager::get_pid` → reads `running.state().pid()` (query, no mutation)
+// - `ProcessManager::get_tid` → reads `running.get_tid()` (query, no mutation)
+// - `ProcessManager::create_process` → `inner.create_process` (verified: `create_process`)
+// - `ProcessManager::create_thread` → `inner.create_thread` (trust boundary T3)
+// - `ProcessManager::set_thread_data_area` → `inner.set_thread_data_area` (T3, no queue change)
+// - `ProcessManager::get_thread_data_area` → `inner.get_thread_data_area` (T3, no queue change)
+// - `ProcessManager::has_capability` → reads process capability (query, no mutation)
+// - `ProcessManager::capctl` → `inner.capctl` (verified: `capctl`, no queue change)
+// - `ProcessManager::terminate` → `inner.terminate` (verified: `terminate_ready`,
+//    `terminate_ready_stays_ready`, `terminate_suspended`)
+// - `ProcessManager::harvest_zombies` → `inner.harvest_zombies` + memory cleanup
+//    (verified: `harvest_zombie` for queue transition; memory cleanup is out of scope)
+// - `ProcessManager::vmcopy_from_user` / `vmcopy_to_user` → memory ops (no queue change)
+// - `ProcessManager::mmap` / `munmap` / `mctrl` → memory management (no queue change)
+// - `ProcessManager::mmio_alloc` / `mmio_free` → MMIO management (no queue change)
+// - `ProcessManager::attach_pmio` / `detach_pmio` / `read_pmio` / `write_pmio` → PMIO (no queue change)
+// - `ProcessManager::post_message` → `inner.post_message` (verified: `post_message`)
+// - `ProcessManager::add_event` / `remove_event` → event management (no queue change)
+// - `ProcessManager::number_buffered_messages` → reads counter (query, no mutation)
+// - `ProcessManager::handle_fpu_exception` → `inner.handle_fpu_exception` (T3, no queue change)
+// - `ProcessManager::try_borrow` / `try_borrow_mut` → RefCell borrow (T2)
+//
+// The `try_borrow`/`try_borrow_mut` pattern returns `Err(ResourceBusy)` on
+// contention. Since Nanvix is single-threaded with cooperative scheduling,
+// borrow failures can only occur during re-entrant calls (e.g., interrupt
+// handlers). This is a runtime safety mechanism, not a formal invariant.
+//
+// ## Error Path Verification Model
+//
+// Original functions return `Result<T, Error>` with failure modes including
+// process-not-found, kernel-process-rejection, and running-process-rejection.
+// The verified model uses preconditions to eliminate error cases (e.g.,
+// `terminate_ready` requires `ghost_ready@.contains(pid)`). This is standard
+// for verification: preconditions model the conditions under which the operation
+// succeeds. Error-handling code paths (which return early with Error objects
+// without mutating state) are trivially state-preserving and do not require
+// formal verification. Callers must ensure preconditions hold at call sites.
+//
+// ## Queue Ordering
+//
+// The original uses `LinkedList` with FIFO ordering and `take_earliest_ready`
+// selects by earliest admission time. The verified model uses `Set<int>` which
+// abstracts away ordering. This is acceptable for the current verification
+// goals (process partitioning, kernel liveness, PID uniqueness). If scheduling
+// fairness properties are needed in the future, consider using `Seq<int>` for
+// the ready queue.
 
 use vstd::prelude::*;
 
