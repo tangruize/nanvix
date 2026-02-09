@@ -677,7 +677,7 @@ impl ProcessManagerUnsafeState {
     /// `running.state_mut().receive_message(tid)`. The message is dequeued from
     /// the running process's message buffer for the given TID. The ghost `tid`
     /// parameter ensures callers reason about which thread receives the message.
-    pub fn try_recv_some(&mut self, ghost tid: int)
+    pub fn try_recv_some(&mut self, Ghost(tid): Ghost<int>)
         requires
             old(self).wf(),
             old(self).inner.number_buffered_messages > 0,
@@ -703,7 +703,7 @@ impl ProcessManagerUnsafeState {
     /// Models `ProcessManager::try_recv()` when no message is available.
     ///
     /// Returns None. No state change.
-    pub fn try_recv_none(&self, ghost tid: int)
+    pub fn try_recv_none(&self, Ghost(tid): Ghost<int>)
         requires
             self.wf(),
             tid >= 0,
