@@ -202,10 +202,12 @@ impl RunnableProcess {
             result.spec_zombie_count() == 0,
             result.wf(),
     {
+        let ghost rid_seq: Seq<int> = seq![ready_tid@];
+        let ghost rtime_seq: Seq<int> = seq![ready_time@];
         RunnableProcess {
             pid: pid,
-            ready_thread_ids: Ghost(seq![ready_tid@]),
-            ready_admission_times: Ghost(seq![ready_time@]),
+            ready_thread_ids: Ghost(rid_seq),
+            ready_admission_times: Ghost(rtime_seq),
             interrupted_thread_ids: Ghost(Seq::empty()),
             sleeping_thread_ids: Ghost(Seq::empty()),
             zombie_thread_ids: Ghost(Seq::empty()),
