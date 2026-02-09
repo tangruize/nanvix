@@ -1,0 +1,34 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 21:48:00 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+error: could not prove termination
+   --> kernel/pm/process/state/runnable.spec.rs:253:29
+    |
+253 |             let prev: int = Self::spec_min_index_rec(s, n - 1);
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+[rust_verify/src/verifier.rs:100:17] &note = "recommendation not met"
+[rust_verify/src/verifier.rs:100:17] &sp.as_string = "vstd/seq.rs:62:13: 62:32 (#0)"
+note: recommendation not met
+   --> kernel/pm/process/state/runnable.spec.rs:254:27
+    |
+254 |             if s[n - 1] < s[prev] {
+    |                           ^^^^^^^
+
+verification results:: 41 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 41
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:41, errors:1)
