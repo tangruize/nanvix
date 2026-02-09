@@ -72,6 +72,26 @@ impl Capabilities {
         ;
     }
 
+    /// Lemma: Distinct capabilities have disjoint (non-overlapping) masks.
+    pub proof fn lemma_distinct_masks_disjoint(a: Capability, b: Capability)
+        requires
+            Self::spec_mask(a) != Self::spec_mask(b),
+        ensures
+            Self::spec_mask(a) & Self::spec_mask(b) == 0u8,
+    {
+        // Exhaustive match: all 5 masks are distinct powers of 2.
+        assert(1u8 & 2u8 == 0u8) by (bit_vector);
+        assert(1u8 & 4u8 == 0u8) by (bit_vector);
+        assert(1u8 & 8u8 == 0u8) by (bit_vector);
+        assert(1u8 & 16u8 == 0u8) by (bit_vector);
+        assert(2u8 & 4u8 == 0u8) by (bit_vector);
+        assert(2u8 & 8u8 == 0u8) by (bit_vector);
+        assert(2u8 & 16u8 == 0u8) by (bit_vector);
+        assert(4u8 & 8u8 == 0u8) by (bit_vector);
+        assert(4u8 & 16u8 == 0u8) by (bit_vector);
+        assert(8u8 & 16u8 == 0u8) by (bit_vector);
+    }
+
     /// Lemma: Setting a capability preserves other bits.
     pub proof fn lemma_set_preserves_other(pre: Capabilities, cap_set: Capability, cap_other: Capability)
         requires
@@ -86,17 +106,15 @@ impl Capabilities {
     {
         let mask_s: u8 = Self::spec_mask(cap_set);
         let mask_o: u8 = Self::spec_mask(cap_other);
-        let result: u8 = (pre.spec_bits() | mask_s) as u8;
+        let b: u8 = pre.spec_bits();
 
-        // Enumerate all valid mask pairs to help the solver.
-        assert forall|ms: u8, mo: u8, b: u8|
-            ms != mo && (ms == 1u8 || ms == 2u8 || ms == 4u8 || ms == 8u8 || ms == 16u8)
-            && (mo == 1u8 || mo == 2u8 || mo == 4u8 || mo == 8u8 || mo == 16u8)
-        implies
-            #[trigger] (((b | ms) as u8) & mo != 0u8) == (b & mo != 0u8)
-        by {
-            assert(((b | ms) as u8) & mo != 0u8 == (b & mo != 0u8)) by (bit_vector);
-        };
+        // All valid masks are distinct powers of 2, so distinct masks don't overlap.
+        Self::lemma_distinct_masks_disjoint(cap_set, cap_other);
+
+        assert(((b | mask_s) as u8 & mask_o != 0u8) == (b & mask_o != 0u8)) by (bit_vector)
+            requires
+                mask_s & mask_o == 0u8,
+        ;
     }
 
     /// Lemma: Clearing a capability preserves other bits.
@@ -113,17 +131,15 @@ impl Capabilities {
     {
         let mask_c: u8 = Self::spec_mask(cap_clear);
         let mask_o: u8 = Self::spec_mask(cap_other);
-        let result: u8 = (pre.spec_bits() & !mask_c) as u8;
+        let b: u8 = pre.spec_bits();
 
-        // Enumerate all valid mask pairs to help the solver.
-        assert forall|mc: u8, mo: u8, b: u8|
-            mc != mo && (mc == 1u8 || mc == 2u8 || mc == 4u8 || mc == 8u8 || mc == 16u8)
-            && (mo == 1u8 || mo == 2u8 || mo == 4u8 || mo == 8u8 || mo == 16u8)
-        implies
-            #[trigger] (((b & !mc) as u8) & mo != 0u8) == (b & mo != 0u8)
-        by {
-            assert(((b & !mc) as u8) & mo != 0u8 == (b & mo != 0u8)) by (bit_vector);
-        };
+        // All valid masks are distinct powers of 2, so distinct masks don't overlap.
+        Self::lemma_distinct_masks_disjoint(cap_clear, cap_other);
+
+        assert(((b & !mask_c) as u8 & mask_o != 0u8) == (b & mask_o != 0u8)) by (bit_vector)
+            requires
+                mask_c & mask_o == 0u8,
+        ;
     }
 
     /// Lemma: Setting an already-set bit is idempotent.
