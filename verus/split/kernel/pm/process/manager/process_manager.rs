@@ -679,10 +679,17 @@ impl ProcessManagerInner {
     // Message Tracking
     //==============================================================================================
 
-    /// Increments the buffered message count.
-    pub fn post_message(&mut self)
+    /// Increments the buffered message count (success path).
+    ///
+    /// Models `ProcessManagerInner`'s message posting when the receiver process/thread
+    /// is found. The original `ProcessManager::post_message` (mod.rs:1909-1923) first
+    /// resolves the receiver via `find_process_mut(pid)` or `find_process_by_tid(tid)`,
+    /// then posts the message and increments the counter. The precondition
+    /// `spec_process_exists(receiver_pid)` captures the successful lookup.
+    pub fn post_message(&mut self, receiver_pid: i32)
         requires
             old(self).wf(),
+            old(self).spec_process_exists(receiver_pid as int),
             old(self).number_buffered_messages < usize::MAX - 1,
         ensures
             self.wf(),
@@ -696,6 +703,19 @@ impl ProcessManagerInner {
             self.interrupt_capable == old(self).interrupt_capable,
     {
         self.number_buffered_messages = self.number_buffered_messages + 1;
+    }
+
+    /// Error path for post_message: receiver not found, no state change.
+    ///
+    /// Models `ProcessManager::post_message` when `find_process_mut` or
+    /// `find_process_by_tid` returns `Err`. The counter is not incremented.
+    pub fn post_message_not_found(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+        // Error path: receiver not found. No state change.
     }
 
     /// Decrements the buffered message count.
@@ -724,10 +744,16 @@ impl ProcessManagerInner {
     }
 
     //==============================================================================================
-    // Capability Control (no state machine change)
+    // Capability Control
     //==============================================================================================
 
-    /// Models capctl: no process state change.
+    /// Models capctl success path: sets or clears a capability on a process.
+    ///
+    /// The original `capctl` (mod.rs:1095-1128) modifies per-process capability
+    /// bits. Capabilities are per-process metadata (like thread state) and are not
+    /// part of the queue state machine. The queue-level effect is a no-op.
+    /// The precondition `spec_process_exists(pid)` models the `find_process_mut`
+    /// lookup. Capability bit values are trust boundary T3 (per-process metadata).
     pub fn capctl(&self, pid: i32)
         requires
             self.wf(),
@@ -735,6 +761,20 @@ impl ProcessManagerInner {
         ensures
             self.wf(),
     {
+    }
+
+    /// Models capctl error path: capability already set or not set.
+    ///
+    /// The original returns `Err(ResourceBusy)` if setting an already-set capability,
+    /// or `Err(NoSuchEntry)` if clearing an unset capability. No state change.
+    pub fn capctl_error_noop(&self, pid: i32)
+        requires
+            self.wf(),
+            self.spec_process_exists(pid as int),
+        ensures
+            self.wf(),
+    {
+        // Error path: capability conflict. No state change.
     }
 
     //==============================================================================================
@@ -1494,6 +1534,44 @@ impl ProcessManagerInner {
         ensures
             self.wf(),
     {
+    }
+
+    /// Models `ProcessManager::post_message`: posts a message to a receiver.
+    ///
+    /// Outer wrapper (mod.rs:1909-1923). Delegates to inner `post_message` on
+    /// success, or returns error on borrow failure (T2) or receiver-not-found.
+    /// On success, increments `number_buffered_messages`.
+    pub fn outer_post_message(&mut self, receiver_pid: i32)
+        requires
+            old(self).wf(),
+            old(self).spec_process_exists(receiver_pid as int),
+            old(self).number_buffered_messages < usize::MAX - 1,
+        ensures
+            self.wf(),
+            self.number_buffered_messages == old(self).number_buffered_messages + 1,
+            self.running_pid == old(self).running_pid,
+            self.ready_count == old(self).ready_count,
+            self.suspended_count == old(self).suspended_count,
+            self.interrupted_count == old(self).interrupted_count,
+            self.zombie_count == old(self).zombie_count,
+            self.next_pid == old(self).next_pid,
+            self.interrupt_capable == old(self).interrupt_capable,
+    {
+        self.post_message(receiver_pid);
+    }
+
+    /// Models `ProcessManager::number_buffered_messages`: reads counter.
+    ///
+    /// Outer wrapper (mod.rs:1953-1960). Borrows inner (T2), reads and
+    /// returns the buffered message count. Pure query, no state change.
+    pub fn outer_number_buffered_messages(&self) -> (result: usize)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+            result as nat == self.number_buffered_messages as nat,
+    {
+        self.number_buffered_messages
     }
 }
 

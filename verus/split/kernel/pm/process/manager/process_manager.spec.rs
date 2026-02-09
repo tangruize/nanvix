@@ -67,7 +67,7 @@
 // - `ProcessManager::set_thread_data_area` → verified: `set_thread_data_area`
 // - `ProcessManager::get_thread_data_area` → verified: `get_thread_data_area`
 // - `ProcessManager::has_capability` → verified: `outer_has_capability`
-// - `ProcessManager::capctl` → verified: `capctl`
+// - `ProcessManager::capctl` → verified: `capctl`, `capctl_error_noop`
 // - `ProcessManager::terminate` → verified: `terminate_ready`,
 //    `terminate_ready_stays_ready`, `terminate_suspended`
 // - `ProcessManager::harvest_zombies` → verified: `harvest_zombie`,
@@ -83,10 +83,12 @@
 // - `ProcessManager::detach_pmio` → verified: `outer_detach_pmio`
 // - `ProcessManager::read_pmio` → verified: `outer_read_pmio`
 // - `ProcessManager::write_pmio` → verified: `outer_write_pmio`
-// - `ProcessManager::post_message` → verified: `post_message`
+// - `ProcessManager::post_message` → verified: `outer_post_message`, `post_message`,
+//    `post_message_not_found`
 // - `ProcessManager::add_event` → verified: `outer_add_event`
 // - `ProcessManager::remove_event` → verified: `outer_remove_event`
-// - `ProcessManager::number_buffered_messages` → verified: `get_buffered_message_count`
+// - `ProcessManager::number_buffered_messages` → verified: `outer_number_buffered_messages`,
+//    `get_buffered_message_count`
 // - `ProcessManager::handle_fpu_exception` → verified: `handle_fpu_exception`
 // - `ProcessManager::try_borrow` / `try_borrow_mut` → RefCell borrow (T2 runtime)
 //
