@@ -1,0 +1,53 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 18:25:36 CST 2026
+Module: kernel::pm::process::capability
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::capability
+
+error: bitvector assertion not satisfied
+  --> kernel/pm/process/capability.proof.rs:53:9
+   |
+53 |         assert((result & mask) != 0u8) by (bit_vector)
+   |         ^^^^^^
+
+error: postcondition not satisfied
+  --> kernel/pm/process/capability.proof.rs:81:13
+   |
+77 |     pub proof fn lemma_distinct_masks_disjoint(a: Capability, b: Capability)
+   |     ------------------------------------------------------------------------ at the end of the function body
+...
+81 |             Self::spec_mask(a) & Self::spec_mask(b) == 0u8,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/process/capability.rs:119:13
+    |
+116 |     pub fn set(&mut self, capability: Capability)
+    |     --------------------------------------------- at the end of the function body
+...
+119 |             self.spec_has(capability),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/process/capability.rs:138:13
+    |
+135 |     pub fn clear(&mut self, capability: Capability)
+    |     ----------------------------------------------- at the end of the function body
+...
+138 |             !self.spec_has(capability),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 35 verified, 4 errors (partial verification with `--verify-*`)
+error: aborting due to 4 previous errors
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 35
+Errors: 4
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::capability (verified:35, errors:4)
