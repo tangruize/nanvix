@@ -148,6 +148,11 @@ impl TimerTicks {
             self.minor = self.minor + 1;
             proof {
                 assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
+                // old(self).minor < u32::MAX, so old(self).spec_minor() <= u32::MAX - 1.
+                assert(old(self).spec_minor() <= u32::MAX as nat - 1);
+                assert(old(self).spec_major() <= u32::MAX as nat);
+                // old(self).spec_ticks() <= u32::MAX * M + (u32::MAX - 1) = u64::MAX - 1 < u64::MAX.
+                assert(!old(self).spec_is_max());
                 self.lemma_always_wf();
             }
         } else {
@@ -157,6 +162,13 @@ impl TimerTicks {
                 proof {
                     assert(Self::MINOR_MODULUS() == u32::MAX as nat + 1);
                     assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
+                    // old(self).major < u32::MAX, so old(self).spec_ticks() < u64::MAX.
+                    assert(old(self).spec_major() < u32::MAX as nat);
+                    assert(old(self).spec_ticks() == old(self).spec_major() * Self::MINOR_MODULUS() + u32::MAX as nat);
+                    assert(old(self).spec_ticks() < u64::MAX as nat);
+                    assert(!old(self).spec_is_max());
+                    // (old.major + 1) * M = old.major * M + M = old.major * M + u32::MAX + 1.
+                    assert(self.spec_ticks() == (old(self).spec_major() + 1) * Self::MINOR_MODULUS());
                     self.lemma_always_wf();
                 }
             } else {
@@ -164,6 +176,9 @@ impl TimerTicks {
                 proof {
                     assert(Self::MINOR_MODULUS() == u32::MAX as nat + 1);
                     assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
+                    assert(old(self).spec_ticks() == u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat);
+                    assert(old(self).spec_is_max());
+                    assert(self.spec_ticks() == 0);
                     self.lemma_always_wf();
                 }
             }
@@ -215,6 +230,14 @@ impl TimerTicks {
         ensures
             result == self.spec_is_zero(),
     {
+        proof {
+            assert(Self::MINOR_MODULUS() > 0);
+            if self.major > 0 {
+                assert(self.spec_major() >= 1);
+                assert(self.spec_major() * Self::MINOR_MODULUS() >= Self::MINOR_MODULUS());
+                assert(self.spec_ticks() >= Self::MINOR_MODULUS());
+            }
+        }
         self.minor == 0 && self.major == 0
     }
 }
