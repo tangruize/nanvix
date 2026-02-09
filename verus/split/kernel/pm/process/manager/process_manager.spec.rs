@@ -28,10 +28,21 @@
 // - `wakeup` / `try_wakeup`: Searches all queues for a sleeping thread and wakes
 //    it. The queue transition (suspended→ready) is modeled by `wakeup_to_ready`.
 //    The running-process case is modeled by `wakeup_running_noop`, the ready-process
-//    case by `wakeup_ready_noop`, and the not-found error path by `wakeup_not_found`.
+//    case by `wakeup_ready_noop`, the not-found error path by `wakeup_not_found`,
+//    and the found-but-failed path by `wakeup_suspended_failed_noop`.
 // - `exit_thread` (internal branching): Depending on remaining threads, the process
 //    goes to ready, suspended, or zombie. Modeled by `exit_thread_running`,
 //    `exit_thread_to_suspended`, and `exit_thread_to_zombie` respectively.
+//    These branches are mutually exclusive: the process has either (a) remaining
+//    runnable threads (→ready), (b) only sleeping threads (→suspended), or
+//    (c) all threads are zombie (→zombie). The branch choice is a parameter
+//    in the verified model, trusting the thread-level logic to select correctly.
+//    `exit_thread_running` also models the Ok path of `exit()` (mod.rs:918-922)
+//    where the process-level exit finds remaining runnable threads.
+// - `sleep` (internal branching): If the running thread sleeps and other threads
+//    are runnable, the process stays ready (modeled by `sleep_thread_running`).
+//    If all threads are sleeping, the process moves to suspended (modeled by
+//    `sleep_running`). These branches are mutually exclusive.
 // - `set_thread_data_area` / `get_thread_data_area`: Thread metadata; no queue change.
 // - `try_join_thread`: Thread join; no queue-level state change.
 // - `get_mutex` / `get_cond` / `put_cond` / `put_mutex_guard` / `take_mutex_guard`:
@@ -94,6 +105,16 @@
 // succeeds. Error-handling code paths (which return early with Error objects
 // without mutating state) are trivially state-preserving and do not require
 // formal verification. Callers must ensure preconditions hold at call sites.
+//
+// Notable error paths explicitly documented:
+// - `terminate` for the running process (mod.rs:1044-1049): returns
+//    `Err(InvalidArgument)`. The running process cannot be terminated; this is
+//    a precondition violation (no queue change).
+// - `wakeup`/`try_wakeup` not-found (mod.rs:802-811): returns `Err(NoSuchEntry)`.
+//    Modeled by `wakeup_not_found` (no queue change).
+// - `try_wakeup` found-but-failed (mod.rs:832): the thread is found in a
+//    suspended process but the wakeup fails (e.g., thread is not sleeping).
+//    Process stays suspended. Modeled by `wakeup_suspended_failed_noop`.
 //
 // ## Queue Ordering
 //
@@ -274,6 +295,18 @@ impl ProcessManagerInner {
         && !self.ghost_suspended@.contains(pid)
         && !self.ghost_interrupted@.contains(pid)
         && !self.ghost_zombies@.contains(pid)
+    }
+
+    /// Spec function: whether a new process can be created.
+    ///
+    /// Returns true iff PID space is not exhausted. Nanvix uses monotonic PID
+    /// allocation (PIDs are never recycled), so the system has a hard upper
+    /// bound of `i32::MAX` (~2 billion) processes over its lifetime. This is
+    /// a known design limitation: once `next_pid == i32::MAX`, no new processes
+    /// can be created. To support longer-running systems, PID recycling from
+    /// harvested zombies would be needed (future work).
+    pub open spec fn spec_can_create_process(&self) -> bool {
+        (self.next_pid as int) < i32::MAX as int
     }
 
     /// Spec function: the set of all PIDs in the ready queue after inserting

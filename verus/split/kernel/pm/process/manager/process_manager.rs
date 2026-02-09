@@ -194,7 +194,7 @@ impl ProcessManagerInner {
     pub fn create_process(&mut self) -> (result: i32)
         requires
             old(self).wf(),
-            old(self).next_pid < i32::MAX,
+            old(self).spec_can_create_process(),
         ensures
             self.wf(),
             result as int == old(self).next_pid as int,
@@ -398,6 +398,13 @@ impl ProcessManagerInner {
     }
 
     /// Running thread exits but process still has runnable threads → stays ready.
+    ///
+    /// Models two original code paths with identical queue-level effects:
+    /// 1. `exit()` Ok path (mod.rs:918-922): the process-level exit terminates
+    ///    the running thread, but other runnable threads remain → process to ready.
+    /// 2. `exit_thread()` Ok path (mod.rs:1001-1005): a specific thread exits,
+    ///    other runnable threads remain → process to ready.
+    /// Both paths produce the same queue transition: running→ready, chosen→running.
     pub fn exit_thread_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -870,6 +877,27 @@ impl ProcessManagerInner {
         // Error path: TID not found. No state change.
     }
 
+    /// Wakeup error path: thread found in suspended process but wakeup fails.
+    ///
+    /// Models `ProcessManagerInner::try_wakeup()` (mod.rs:828-835) when the thread
+    /// is found in a suspended process but `process.wakeup(tid)` returns `Err`.
+    /// This can happen when the thread is not in a sleeping state within the process
+    /// (e.g., the thread is already running within the sleeping process). The process
+    /// stays in the suspended queue and `try_wakeup` returns `None`.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: PID of the suspended process containing the thread.
+    pub fn wakeup_suspended_failed_noop(&self, pid: i32)
+        requires
+            self.wf(),
+            self.ghost_suspended@.contains(pid as int),
+        ensures
+            self.wf(),
+    {
+        // Error path: thread found but wakeup failed. Process stays suspended.
+    }
+
     //==============================================================================================
     // Query Operations (no state change)
     //==============================================================================================
@@ -1303,11 +1331,13 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::vmcopy_from_user`: copies memory from user space.
     ///
-    /// Outer wrapper (mod.rs:1711-1724). Memory operation on the running process.
+    /// Outer wrapper (mod.rs:1711-1724). Memory operation on the found process.
+    /// Calls `find_process_mut(pid)` internally.
     /// No queue-level state change.
-    pub fn outer_vmcopy_from_user(&self)
+    pub fn outer_vmcopy_from_user(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1315,11 +1345,13 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::vmcopy_to_user`: copies memory to user space.
     ///
-    /// Outer wrapper (mod.rs:1724-1737). Memory operation on the running process.
+    /// Outer wrapper (mod.rs:1724-1737). Memory operation on the found process.
+    /// Calls `find_process_mut(pid)` internally.
     /// No queue-level state change.
-    pub fn outer_vmcopy_to_user(&self)
+    pub fn outer_vmcopy_to_user(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1327,11 +1359,12 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::mmap`: maps memory for a process.
     ///
-    /// Outer wrapper (mod.rs:1784-1797). Memory management operation.
+    /// Outer wrapper (mod.rs:1784-1797). Calls `find_process_mut(pid)`.
     /// No queue-level state change.
-    pub fn outer_mmap(&self)
+    pub fn outer_mmap(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1339,11 +1372,12 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::munmap`: unmaps memory for a process.
     ///
-    /// Outer wrapper (mod.rs:1797-1809). Memory management operation.
+    /// Outer wrapper (mod.rs:1797-1809). Calls `find_process_mut(pid)`.
     /// No queue-level state change.
-    pub fn outer_munmap(&self)
+    pub fn outer_munmap(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1351,11 +1385,12 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::mctrl`: memory control for a process.
     ///
-    /// Outer wrapper (mod.rs:1809-1822). Memory management operation.
+    /// Outer wrapper (mod.rs:1809-1822). Calls `find_process_mut(pid)`.
     /// No queue-level state change.
-    pub fn outer_mctrl(&self)
+    pub fn outer_mctrl(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1363,11 +1398,12 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::mmio_alloc`: allocates MMIO region.
     ///
-    /// Outer wrapper (mod.rs:1822-1840). MMIO management.
+    /// Outer wrapper (mod.rs:1822-1840). Calls `find_process_mut(pid)`.
     /// No queue-level state change.
-    pub fn outer_mmio_alloc(&self)
+    pub fn outer_mmio_alloc(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1375,11 +1411,12 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::mmio_free`: frees MMIO region.
     ///
-    /// Outer wrapper (mod.rs:1840-1853). MMIO management.
+    /// Outer wrapper (mod.rs:1840-1853). Calls `find_process_mut(pid)`.
     /// No queue-level state change.
-    pub fn outer_mmio_free(&self)
+    pub fn outer_mmio_free(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1387,11 +1424,12 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::attach_pmio`: attaches a port I/O resource.
     ///
-    /// Outer wrapper (mod.rs:1853-1860). PMIO management.
+    /// Outer wrapper (mod.rs:1853-1860). Calls `find_process_mut(pid)`.
     /// No queue-level state change.
-    pub fn outer_attach_pmio(&self)
+    pub fn outer_attach_pmio(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1399,11 +1437,12 @@ impl ProcessManagerInner {
 
     /// Models `ProcessManager::detach_pmio`: detaches a port I/O resource.
     ///
-    /// Outer wrapper (mod.rs:1860-1870). PMIO management.
+    /// Outer wrapper (mod.rs:1860-1870). Calls `find_process_mut(pid)`.
     /// No queue-level state change.
-    pub fn outer_detach_pmio(&self)
+    pub fn outer_detach_pmio(&self, pid: i32)
         requires
             self.wf(),
+            self.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
