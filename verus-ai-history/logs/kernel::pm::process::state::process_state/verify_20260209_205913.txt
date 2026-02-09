@@ -1,0 +1,35 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 20:59:13 CST 2026
+Module: kernel::pm::process::state::process_state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::process_state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::process_state
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/process_state.proof.rs:371:13
+    |
+367 |       pub proof fn lemma_pmio_change_preserves_wf(&self, new_pmio: Seq<int>)
+    |       ---------------------------------------------------------------------- at the end of the function body
+...
+371 | /             ({
+372 | |                 let post: ProcessState = ProcessState {
+373 | |                     ghost_pmio: Ghost(new_pmio),
+374 | |                     ..*self
+375 | |                 };
+376 | |                 post.wf()
+377 | |             }),
+    | |______________^ failed this postcondition
+
+verification results:: 46 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 46
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::process_state (verified:46, errors:1)
