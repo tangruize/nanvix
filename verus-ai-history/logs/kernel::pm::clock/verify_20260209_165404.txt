@@ -1,0 +1,67 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 16:54:04 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::clock
+
+error: postcondition not satisfied
+   --> kernel/pm/clock.proof.rs:208:13
+    |
+204 |       pub proof fn lemma_n_increments_from_zero(n: nat)
+    |       ------------------------------------------------- at the end of the function body
+...
+208 | /             ({
+209 | |                 // After n increments: minor = n % 2^32, major = n / 2^32.
+210 | |                 let minor: nat = n % TimerTicks::MINOR_MODULUS();
+211 | |                 let major: nat = n / TimerTicks::MINOR_MODULUS();
+212 | |                 major * TimerTicks::MINOR_MODULUS() + minor == n
+213 | |             }),
+    | |______________^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/clock.rs:137:5
+    |
+137 |     pub fn increment(&mut self) -> (result: u32)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/clock.rs:143:13
+    |
+143 |             old(self).spec_is_max() ==> self.spec_ticks() == 0,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+171 |         self.minor
+    |         ---------- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/clock.rs:144:13
+    |
+144 |             !old(self).spec_is_max() ==> self.spec_ticks() == old(self).spec_ticks() + 1,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+171 |         self.minor
+    |         ---------- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/clock.rs:216:13
+    |
+216 |             result == self.spec_is_zero(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+217 |     {
+218 |         self.minor == 0 && self.major == 0
+    |         ---------------------------------- at the end of the function body
+
+verification results:: 18 verified, 3 errors (partial verification with `--verify-*`)
+error: aborting due to 4 previous errors
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 18
+Errors: 3
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::clock (verified:18, errors:3)
