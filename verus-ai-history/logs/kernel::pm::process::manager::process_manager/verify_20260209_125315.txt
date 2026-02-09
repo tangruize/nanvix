@@ -1,0 +1,120 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 12:53:15 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: expected `,`
+   --> kernel/pm/process/manager/process_manager.rs:221:37
+    |
+221 |             assert(pid as int < pid as int + 1);
+    |                                     ^^
+
+error[E0412]: cannot find type `ProcessManagerInner` in this scope
+  --> kernel/pm/process/manager/process_manager.spec.rs:54:6
+   |
+31 | pub struct ProcessManagerInnerView {
+   | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+...
+54 | impl ProcessManagerInner {
+   |      ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+
+error[E0412]: cannot find type `ProcessManagerInner` in this scope
+   --> kernel/pm/process/manager/process_manager.spec.rs:186:15
+    |
+ 31 | pub struct ProcessManagerInnerView {
+    | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+...
+186 | impl View for ProcessManagerInner {
+    |               ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+
+error[E0412]: cannot find type `ProcessManagerInner` in this scope
+  --> kernel/pm/process/manager/process_manager.proof.rs:27:6
+   |
+27 | impl ProcessManagerInner {
+   |      ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+   |
+  ::: kernel/pm/process/manager/process_manager.spec.rs:31:1
+   |
+31 | pub struct ProcessManagerInnerView {
+   | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+
+error[E0412]: cannot find type `ProcessManagerInner` in this scope
+  --> kernel/pm/process/manager/process_manager.proof.rs:37:25
+   |
+37 |                 let pm: ProcessManagerInner = ProcessManagerInner {
+   |                         ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+   |
+  ::: kernel/pm/process/manager/process_manager.spec.rs:31:1
+   |
+31 | pub struct ProcessManagerInnerView {
+   | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerInner` in this scope
+  --> kernel/pm/process/manager/process_manager.proof.rs:37:47
+   |
+37 |                 let pm: ProcessManagerInner = ProcessManagerInner {
+   |                                               ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+   |
+  ::: kernel/pm/process/manager/process_manager.spec.rs:31:1
+   |
+31 | pub struct ProcessManagerInnerView {
+   | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+
+error[E0412]: cannot find type `ProcessManagerInner` in this scope
+   --> kernel/pm/process/manager/process_manager.proof.rs:119:25
+    |
+119 |                 let pm: ProcessManagerInner = ProcessManagerInner {
+    |                         ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+    |
+   ::: kernel/pm/process/manager/process_manager.spec.rs:31:1
+    |
+ 31 | pub struct ProcessManagerInnerView {
+    | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+
+error[E0422]: cannot find struct, variant or union type `ProcessManagerInner` in this scope
+   --> kernel/pm/process/manager/process_manager.proof.rs:119:47
+    |
+119 |                 let pm: ProcessManagerInner = ProcessManagerInner {
+    |                                               ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+    |
+   ::: kernel/pm/process/manager/process_manager.spec.rs:31:1
+    |
+ 31 | pub struct ProcessManagerInnerView {
+    | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+
+error[E0412]: cannot find type `ProcessManagerInner` in this scope
+   --> kernel/pm/process/manager/process_manager.proof.rs:205:42
+    |
+205 |     pub proof fn lemma_view_equality(a: &ProcessManagerInner, b: &ProcessManagerInner)
+    |                                          ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+    |
+   ::: kernel/pm/process/manager/process_manager.spec.rs:31:1
+    |
+ 31 | pub struct ProcessManagerInnerView {
+    | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+
+error[E0412]: cannot find type `ProcessManagerInner` in this scope
+   --> kernel/pm/process/manager/process_manager.proof.rs:205:67
+    |
+205 |     pub proof fn lemma_view_equality(a: &ProcessManagerInner, b: &ProcessManagerInner)
+    |                                                                   ^^^^^^^^^^^^^^^^^^^ help: a struct with a similar name exists: `ProcessManagerInnerView`
+    |
+   ::: kernel/pm/process/manager/process_manager.spec.rs:31:1
+    |
+ 31 | pub struct ProcessManagerInnerView {
+    | ---------------------------------- similarly named struct `ProcessManagerInnerView` defined here
+
+error: aborting due to 10 previous errors
+
+Some errors have detailed explanations: E0412, E0422.
+For more information about an error, try `rustc --explain E0412`.
+
+Duration: 1s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+No changes to commit in verus/
