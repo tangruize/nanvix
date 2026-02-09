@@ -54,6 +54,11 @@ impl ThreadManager {
     /// A ThreadManager is well-formed when the next_id is at least 1,
     /// because ID 0 is reserved for the kernel thread and is assigned
     /// during construction.
+    ///
+    /// Note: `next_id <= i32::MAX` is NOT part of `wf()` by design.
+    /// Overflow is an operational constraint checked separately in
+    /// `create_thread`'s precondition. A manager with `next_id == i32::MAX`
+    /// is structurally valid but cannot create more threads.
     pub open spec fn wf(&self) -> bool {
         self.next_id.spec_value() >= 1
     }

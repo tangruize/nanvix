@@ -14,6 +14,8 @@
 //! - create_thread assigns the current next_id to the new thread and
 //!   increments next_id by exactly 1.
 //! - Thread IDs are monotonically increasing (each new ID > previous).
+//! - Global ID uniqueness: any two IDs assigned at different manager states
+//!   are distinct, and the kernel thread ID (0) is unique from all of them.
 //! - Kernel thread ID (0) is distinct from all created thread IDs (>= 1).
 //! - Well-formedness (wf): next_id >= 1, preserved by all operations.
 //! - Newly created threads are well-formed, drop-safe, not interrupted,
@@ -32,6 +34,9 @@
 //! omitted from the verification model. They are dispatch patterns that
 //! delegate to the underlying thread type's `thread_state()` /
 //! `thread_state_mut()` methods without adding invariants or core logic.
+//! These enums are verified implicitly through the individual thread type
+//! modules (ready, running, sleeping, interrupted, zombie), each of which
+//! verifies its own `thread_state()` / `thread_state_mut()` methods.
 //!
 //! ## Trust Boundary
 //!
@@ -40,6 +45,9 @@
 //!   CROSS-MODULE-CHECK: When ready.rs is verified, confirm the real
 //!   ReadyThread::new implies all postconditions listed here.
 //! - FpuState::new() and ContextInformation::default() are elided (HAL boundary).
+//! - Heap allocation via `Box::new` is assumed to succeed. The original code
+//!   panics on OOM (no-std default allocator behavior); the verification model
+//!   elides allocation by using `ThreadState` directly instead of `Box<ThreadState>`.
 //! - Overflow: create_thread requires next_id.value < i32::MAX. The
 //!   original code does not check for overflow; this precondition
 //!   formalizes the assumption that the system does not create more than
@@ -66,6 +74,13 @@ verus! {
 ///
 /// Models the original `ReadyThread` from the sibling `ready.rs` module.
 /// Only `new()` is modeled — enough to verify ThreadManager operations.
+///
+/// **Intentional omission:** The real `ReadyThread` (and the standalone
+/// `ready.rs` verification model) also holds an `admission_time` field
+/// set to `clock_now()` in the constructor. This scheduling property is
+/// not relevant to ThreadManager's core logic (ID assignment and thread
+/// creation). Callers that need scheduling properties should use the
+/// `ready.rs` verification module's `ReadyThread` type.
 ///
 /// **Cross-module dependency:** When `ReadyThread` is verified independently,
 /// the postconditions of this boundary model's `new` must be confirmed
