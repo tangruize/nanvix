@@ -337,13 +337,19 @@ impl RunnableProcess {
     /// - If interrupted threads exist (original or from sleeping), returns
     ///   Ok(InterruptedProcess). Otherwise, returns Err(ZombieProcess).
     ///
+    /// # Parameters
+    ///
+    /// - `has_interrupted`: Oracle parameter — whether interrupted threads exist
+    ///   (original interrupted + sleeping converted to interrupted).
+    ///
     /// # Returns
     ///
     /// TerminateResult::Interrupted if any interrupted threads remain,
     /// TerminateResult::Zombie if only zombie threads remain.
-    pub fn terminate(self) -> (result: TerminateResult)
+    pub fn terminate(self, has_interrupted: bool) -> (result: TerminateResult)
         requires
             self.wf(),
+            has_interrupted == (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0),
         ensures
             match result {
                 TerminateResult::Interrupted(ip) => {
@@ -382,7 +388,7 @@ impl RunnableProcess {
         let ghost new_interrupted_ids: Seq<int> =
             self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
 
-        if self.interrupted_thread_ids@.len() as int > 0 || self.sleeping_thread_ids@.len() as int > 0 {
+        if has_interrupted {
             proof {
                 assert(new_interrupted_ids.len() ==
                     self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
