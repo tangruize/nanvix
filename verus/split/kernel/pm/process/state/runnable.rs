@@ -478,10 +478,10 @@ impl RunnableProcess {
                     && r.spec_interrupted_count() == self.spec_interrupted_count()
                     && r.spec_zombie_count() == self.spec_zombie_count()
                     // Content specs: ready list gets the woken thread appended.
-                    && r.ready_thread_ids@.len() == self.ready_thread_ids@.len() + 1
-                    && (forall|i: int| 0 <= i < self.ready_thread_ids@.len()
-                        ==> r.ready_thread_ids@[i] == self.ready_thread_ids@[i])
-                    && r.ready_thread_ids@[self.ready_thread_ids@.len() as int] == tid@
+                    && r.ready_thread_ids@ == self.ready_thread_ids@.push(tid@)
+                    // Admission times grow by exactly one non-negative element.
+                    && (exists|t: int| t >= 0
+                        && r.ready_admission_times@ == self.ready_admission_times@.push(t))
                     // Sleeping list has the found thread removed.
                     && r.sleeping_thread_ids@ ==
                         Self::spec_remove_at(self.sleeping_thread_ids@, found_idx@)

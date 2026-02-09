@@ -292,17 +292,16 @@ impl RunningProcess {
 
     /// Spec function: well-formedness predicate.
     ///
-    /// A RunningProcess is well-formed when the running thread list sizes
-    /// are consistent and the running thread ID is assigned.
+    /// This boundary model intentionally has a weak wf() because
+    /// RunningProcess is verified independently in its own module with a
+    /// stronger invariant. Here we only need enough to verify that
+    /// RunnableProcess transitions produce valid output.
+    ///
+    /// TODO (cross-module): When RunningProcess verification is complete,
+    /// add a cross-module linking assertion confirming this boundary model's
+    /// postconditions are implied by the real RunningProcess module's specs.
     pub open spec fn wf(&self) -> bool {
-        // The running thread ID exists (not vacuous).
-        // Sleeping and interrupted lists may be empty.
-        // Ready list may be empty (all threads could be sleeping/interrupted/zombie).
         true
-        // Note: This boundary model intentionally has a weak wf() because
-        // RunningProcess is verified independently in its own module. When
-        // that module is verified, its stronger wf() applies. Here we only
-        // need enough to verify RunnableProcess transitions produce valid output.
     }
 }
 
