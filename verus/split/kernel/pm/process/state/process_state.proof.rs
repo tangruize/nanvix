@@ -300,6 +300,8 @@ impl ProcessState {
 
     /// Lemma: The first-occurrence precondition on remove_pmio is satisfiable.
     /// If a port is present, there exists a smallest index where it occurs.
+    /// This follows from finite sequence well-ordering: among all matching
+    /// indices, one must be the minimum.
     pub proof fn lemma_pmio_first_occurrence_exists(&self, port_number: int)
         requires
             self.spec_has_pmio(port_number),
@@ -308,12 +310,37 @@ impl ProcessState {
                 && self.ghost_pmio@[idx] == port_number
                 && forall|j: int| 0 <= j < idx ==> self.ghost_pmio@[j] != port_number,
     {
-        // The existence of some matching index is given by spec_has_pmio.
-        // Among all matching indices, there is a minimum (well-ordering of nat).
-        let ghost first: int = choose|i: int| 0 <= i < self.ghost_pmio@.len()
-            && self.ghost_pmio@[i] == port_number
-            && forall|j: int| 0 <= j < i ==> self.ghost_pmio@[j] != port_number;
-        // Verus can derive this from the finite sequence and existential.
+        // spec_has_pmio guarantees existence of some matching index.
+        let witness: int = choose|i: int| 0 <= i < self.ghost_pmio@.len()
+            && self.ghost_pmio@[i] == port_number;
+        // Use decreasing induction: the minimum matching index satisfies the postcondition.
+        Self::lemma_pmio_min_index_helper(&self.ghost_pmio@, port_number, witness);
+    }
+
+    /// Helper: Given a sequence and a valid matching index, find the first occurrence.
+    proof fn lemma_pmio_min_index_helper(seq: &Seq<int>, val: int, bound: int)
+        requires
+            0 <= bound < seq.len(),
+            seq[bound] == val,
+        ensures
+            exists|idx: int| 0 <= idx <= bound
+                && seq[idx] == val
+                && forall|j: int| 0 <= j < idx ==> seq[j] != val,
+        decreases bound,
+    {
+        if bound == 0 {
+            // Base case: bound is 0, so it is the first occurrence.
+            assert(seq[0] == val);
+        } else {
+            // Check if there's an earlier match.
+            if exists|k: int| 0 <= k < bound && seq[k] == val {
+                let earlier: int = choose|k: int| 0 <= k < bound && seq[k] == val;
+                Self::lemma_pmio_min_index_helper(seq, val, earlier);
+            } else {
+                // No earlier match, so bound is the first occurrence.
+                assert(forall|j: int| 0 <= j < bound ==> seq[j] != val);
+            }
+        }
     }
 
     //==============================================================================================
