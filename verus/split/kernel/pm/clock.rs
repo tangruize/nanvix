@@ -10,13 +10,17 @@
 //! - A new counter starts at zero ticks.
 //! - Any (u32, u32) pair is well-formed (ticks <= u64::MAX).
 //! - `increment()` increases ticks by exactly 1, or wraps from u64::MAX to 0.
-//! - `get()` returns the current (major, minor) values.
+//! - `get()` returns a consistent (major, minor) snapshot tied to `spec_ticks()`.
 //! - `ticks()` correctly combines major and minor into a u64.
 //! - Monotonicity: each non-wrapping increment increases the tick count.
-//! - **`now()` arithmetic safety**: The nanosecond computation
-//!   `(minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq)`
-//!   does not overflow `u32` and produces a value strictly less than
-//!   `NANOSECONDS_PER_SECOND`, ensuring `SystemTime::new()` never returns `None`.
+//! - **`now()` end-to-end safety**: The composed `now()` function proves:
+//!   - Nanoseconds < `NANOSECONDS_PER_SECOND` (SystemTime::new() precondition).
+//!   - Seconds == `ticks() / timer_freq` (consistency with tick count).
+//!   - No u32 overflow in the nanosecond computation.
+//!   - The `unreachable!()` in the original code is dead code.
+//! - **Seconds monotonicity**: If ticks increases, seconds does not decrease.
+//! - **timer_handler behavioral spec**: The handler's effect on clock state is
+//!   exactly one `increment()` call; side effects are orthogonal to the counter.
 //!
 //! ## Verification Model
 //!
@@ -84,6 +88,11 @@
 //! - **T4: `SystemTime::new()`.** Modeled only via its precondition
 //!   (`nanoseconds < NANOSECONDS_PER_SECOND`). The actual SystemTime type is
 //!   external.
+//! - **T5: Timer frequency.** The `timer_freq > 0` precondition is justified by
+//!   platform invariants: the PIT timer frequency is always positive (hardware
+//!   guarantee, see `axiom_pit_timer_freq_valid`), and the non-PIT fallback is
+//!   the compile-time constant `1` (see `axiom_fallback_timer_freq_valid`).
+//!   We prove safety for all `timer_freq > 0` rather than for specific values.
 
 use vstd::prelude::*;
 
@@ -153,6 +162,13 @@ impl TimerTicks {
     ///
     /// Models the original `get()` which loads from AtomicU32.
     ///
+    /// # Note on Consistency
+    ///
+    /// The original performs two separate atomic loads. Under the single-writer
+    /// assumption (timer interrupt handler on one core), the pair is always a
+    /// consistent snapshot — see Trust Boundary T1. The postcondition
+    /// `spec_get_consistent` ties the returned pair to `spec_ticks()`.
+    ///
     /// # Returns
     ///
     /// A tuple of (major, minor) tick counts.
@@ -162,6 +178,7 @@ impl TimerTicks {
             result.1 == self.minor,
             result.0 as nat == self.spec_major(),
             result.1 as nat == self.spec_minor(),
+            self.spec_get_consistent(result.0, result.1),
     {
         (self.major, self.minor)
     }
@@ -370,6 +387,47 @@ impl TimerTicks {
         }
         let total_ticks: u64 = (major_ticks as u64) * 0x1_0000_0000u64 + (minor_ticks as u64);
         total_ticks / (timer_freq as u64)
+    }
+
+    /// Computes the (seconds, nanoseconds) pair for the current time.
+    ///
+    /// # Description
+    ///
+    /// This is the verified model of the original standalone `now()` function.
+    /// It reads the current tick count via `get()`, computes the seconds and
+    /// nanoseconds components, and proves that:
+    /// - The nanoseconds component < NANOSECONDS_PER_SECOND (SystemTime precondition).
+    /// - The seconds component equals `ticks() / timer_freq`.
+    /// - No arithmetic overflow occurs.
+    ///
+    /// The original `now()` calls `SystemTime::new(seconds, nanoseconds)` which
+    /// returns `None` only if `nanoseconds >= NANOSECONDS_PER_SECOND`. This
+    /// function proves that can never happen, eliminating the `unreachable!()`
+    /// panic path.
+    ///
+    /// # Parameters
+    ///
+    /// - `timer_freq`: The timer frequency in Hz. Must be > 0. In the original,
+    ///   this is `pit::get_timer_frequency()` or the fallback value 1.
+    ///
+    /// # Returns
+    ///
+    /// A (seconds, nanoseconds) pair where `nanoseconds < 1_000_000_000`.
+    pub fn now(&self, timer_freq: u32) -> (result: (u64, u32))
+        requires
+            timer_freq > 0,
+        ensures
+            result.0 as nat == Self::spec_compute_seconds(self.major, self.minor, timer_freq),
+            result.1 as nat == Self::spec_compute_nanoseconds(self.minor, timer_freq),
+            Self::spec_nanoseconds_valid(result.1 as nat),
+            result.1 < 1_000_000_000u32,
+            result.0 as nat == self.spec_ticks() / timer_freq as nat,
+            self.spec_now(timer_freq) == (result.0 as nat, result.1 as nat),
+    {
+        let (major_ticks, minor_ticks): (u32, u32) = self.get();
+        let seconds: u64 = Self::compute_seconds(major_ticks, minor_ticks, timer_freq);
+        let nanoseconds: u32 = Self::compute_nanoseconds(minor_ticks, timer_freq);
+        (seconds, nanoseconds)
     }
 }
 

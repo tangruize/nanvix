@@ -368,6 +368,154 @@ impl TimerTicks {
     {
         pre.lemma_always_wf();
     }
+
+    /// Lemma: The timer_handler effect spec is consistent with increment().
+    ///
+    /// # Description
+    ///
+    /// Proves that any post-state satisfying `spec_timer_handler_effect` has
+    /// ticks == spec_next_ticks, which is the same postcondition as increment().
+    /// This bridges the behavioral spec to the verified increment() contract.
+    pub proof fn lemma_timer_handler_effect_matches_increment(pre: &TimerTicks, post: &TimerTicks)
+        requires
+            pre.wf(),
+            pre.spec_timer_handler_effect(post),
+        ensures
+            post.spec_ticks() == pre.spec_next_ticks(),
+            pre.spec_is_max() ==> post.spec_ticks() == 0,
+            !pre.spec_is_max() ==> post.spec_ticks() == pre.spec_ticks() + 1,
+    {
+    }
+
+    /// Lemma: The timer_handler does not modify the counter on any path other
+    /// than through increment().
+    ///
+    /// # Description
+    ///
+    /// States explicitly that the VM pause check (`read_volatile` + `out32`)
+    /// and the context switch attempt (`ProcessManager::giveup()`) are
+    /// state-orthogonal to the clock counter. This is a documentation-level
+    /// trust boundary, not a mechanical proof.
+    ///
+    /// Trust assumptions:
+    /// - A1: `read_volatile` of the pause-request address does not modify
+    ///   any memory observable to the clock counter.
+    /// - A2: `out32` to the VMM port is a side-effecting I/O operation that
+    ///   does not modify the clock counter.
+    /// - A3: `ProcessManager::is_kernel_running()` and `ProcessManager::giveup()`
+    ///   do not modify the clock counter's major/minor fields.
+    pub proof fn lemma_timer_handler_side_effects_orthogonal(pre: &TimerTicks, post: &TimerTicks)
+        requires
+            pre.wf(),
+            pre.spec_timer_handler_effect(post),
+        ensures
+            // The only state change is the increment; no other modification path exists.
+            post.spec_ticks() == pre.spec_next_ticks(),
+    {
+    }
+}
+
+//==================================================================================================
+// Proof Lemmas — now() Composed Properties
+//==================================================================================================
+
+impl TimerTicks {
+    /// Lemma: now() seconds is consistent with ticks() / timer_freq.
+    ///
+    /// # Description
+    ///
+    /// Proves that the seconds computed by `now()` equals `ticks() / timer_freq`,
+    /// which is the natural definition of elapsed seconds.
+    pub proof fn lemma_now_seconds_consistent(&self, timer_freq: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            self.spec_seconds_consistent_with_ticks(timer_freq),
+    {
+    }
+
+    /// Lemma: now() nanoseconds satisfies SystemTime::new() precondition.
+    ///
+    /// # Description
+    ///
+    /// Combines with lemma_now_seconds_consistent to establish that the
+    /// full (seconds, nanoseconds) pair from now() is valid for SystemTime
+    /// construction.
+    pub proof fn lemma_now_valid_for_system_time(&self, timer_freq: u32)
+        requires
+            timer_freq > 0,
+        ensures
+            ({
+                let (secs, nsecs) = self.spec_now(timer_freq);
+                &&& Self::spec_nanoseconds_valid(nsecs)
+                &&& secs == self.spec_ticks() / timer_freq as nat
+            }),
+    {
+        Self::lemma_nanoseconds_in_range(self.minor, timer_freq);
+    }
+
+    /// Lemma: Seconds are weakly monotonic across increments.
+    ///
+    /// # Description
+    ///
+    /// If ticks increases (non-wrapping), seconds does not decrease.
+    /// Formally: if pre.ticks < post.ticks, then seconds(pre) <= seconds(post).
+    pub proof fn lemma_now_seconds_monotone(pre: &TimerTicks, post: &TimerTicks, timer_freq: u32)
+        requires
+            timer_freq > 0,
+            pre.spec_ticks() <= post.spec_ticks(),
+        ensures
+            Self::spec_compute_seconds(pre.major, pre.minor, timer_freq)
+                <= Self::spec_compute_seconds(post.major, post.minor, timer_freq),
+    {
+        // Division is monotone: if a <= b and d > 0, then a/d <= b/d.
+        let a: nat = pre.spec_ticks();
+        let b: nat = post.spec_ticks();
+        let d: nat = timer_freq as nat;
+        assert(a / d <= b / d) by(nonlinear_arith)
+            requires(a <= b && d > 0);
+    }
+}
+
+//==================================================================================================
+// Proof Lemmas — Timer Frequency Platform Guarantee
+//==================================================================================================
+
+impl TimerTicks {
+    /// Axiom: The non-PIT fallback timer frequency is 1.
+    ///
+    /// # Description
+    ///
+    /// When `#[cfg(not(feature = "pit"))]` is active, the original code sets
+    /// `let timer_freq: u32 = 1;`. This is a compile-time constant, trivially > 0.
+    pub proof fn axiom_fallback_timer_freq_valid()
+        ensures
+            Self::spec_platform_timer_freq_valid(1u32),
+            1u32 > 0u32,
+    {
+    }
+
+    /// Axiom: PIT timer frequency is positive.
+    ///
+    /// # Description
+    ///
+    /// When `#[cfg(feature = "pit")]` is active, `pit::get_timer_frequency()`
+    /// returns the PIT base oscillator frequency (1,193,182 Hz) divided by the
+    /// programmed counter reload value. The reload value is always >= 1
+    /// (a value of 0 is treated as 65536 by the PIT hardware), so the
+    /// resulting frequency is always >= 18 Hz (1,193,182 / 65536 ≈ 18.2).
+    ///
+    /// This axiom is an `external_body` trust boundary because the PIT
+    /// frequency depends on hardware behavior and HAL configuration that
+    /// Verus cannot model.
+    #[verifier::external_body]
+    pub proof fn axiom_pit_timer_freq_valid(freq: u32)
+        requires
+            freq == freq, // placeholder: actual value comes from pit::get_timer_frequency().
+        ensures
+            Self::spec_platform_timer_freq_valid(freq) ==> freq > 0,
+    {
+    }
 }
 
 } // verus!

@@ -138,6 +138,98 @@ impl TimerTicks {
     pub open spec fn spec_nanoseconds_valid(nanoseconds: nat) -> bool {
         nanoseconds < Self::NANOSECONDS_PER_SECOND()
     }
+
+    //==============================================================================================
+    // now() Composed Specs
+    //==============================================================================================
+
+    /// Spec function: full `now()` result as a (seconds, nanoseconds) pair.
+    ///
+    /// # Description
+    ///
+    /// Models the complete `now()` computation from the original source.
+    /// Given a TimerTicks state and a timer frequency, computes both the
+    /// seconds and nanoseconds components.
+    pub open spec fn spec_now(&self, timer_freq: u32) -> (nat, nat)
+        recommends timer_freq > 0,
+    {
+        (
+            Self::spec_compute_seconds(self.major, self.minor, timer_freq),
+            Self::spec_compute_nanoseconds(self.minor, timer_freq),
+        )
+    }
+
+    /// Spec function: the seconds component of `now()` is consistent with `ticks()`.
+    ///
+    /// # Description
+    ///
+    /// The seconds value equals `spec_ticks() / timer_freq`, which is the
+    /// same as `ticks() / timer_freq` at the exec level.
+    pub open spec fn spec_seconds_consistent_with_ticks(&self, timer_freq: u32) -> bool
+        recommends timer_freq > 0,
+    {
+        Self::spec_compute_seconds(self.major, self.minor, timer_freq) == self.spec_ticks() / timer_freq as nat
+    }
+
+    //==============================================================================================
+    // get() Consistency Specs
+    //==============================================================================================
+
+    /// Spec function: a (major, minor) pair from `get()` is consistent with `spec_ticks()`.
+    ///
+    /// # Description
+    ///
+    /// Given a pair returned by `get()`, the combined tick count equals
+    /// `major * MINOR_MODULUS + minor`, which is exactly `spec_ticks()`.
+    /// This establishes that the pair is a consistent snapshot.
+    ///
+    /// # Note on Atomics
+    ///
+    /// The original `get()` loads `major` and `minor` in two separate atomic
+    /// loads. Under the single-writer assumption (timer interrupt handler on
+    /// one core), tearing cannot occur because the writer is not concurrent
+    /// with the reader. This consistency property is assumed, not proved —
+    /// see Trust Boundary T1.
+    pub open spec fn spec_get_consistent(&self, major: u32, minor: u32) -> bool {
+        major as nat * Self::MINOR_MODULUS() + minor as nat == self.spec_ticks()
+    }
+
+    //==============================================================================================
+    // timer_handler Behavioral Specs
+    //==============================================================================================
+
+    /// Spec function: models the observable effect of one `timer_handler()` call.
+    ///
+    /// # Description
+    ///
+    /// The timer handler's only effect on the clock state is to call
+    /// `increment()` exactly once. The result state has ticks equal to
+    /// `spec_next_ticks()` of the pre-state. The handler's other side effects
+    /// (VM pause check via volatile read, context switch via `ProcessManager::giveup()`)
+    /// are HAL/scheduler interactions that do not modify the clock counter.
+    pub open spec fn spec_timer_handler_effect(&self, post: &TimerTicks) -> bool {
+        post.spec_ticks() == self.spec_next_ticks()
+    }
+
+    //==============================================================================================
+    // Timer Frequency Specs
+    //==============================================================================================
+
+    /// Spec function: platform timer frequency guarantee.
+    ///
+    /// # Description
+    ///
+    /// On all supported platforms, the timer frequency is positive:
+    /// - `#[cfg(feature = "pit")]`: `pit::get_timer_frequency()` returns the PIT
+    ///   oscillator frequency divided by the programmed divisor, which is always > 0.
+    /// - `#[cfg(not(feature = "pit"))]`: the fallback sets `timer_freq = 1`.
+    ///
+    /// This spec captures the platform invariant that justifies the
+    /// `timer_freq > 0` precondition on `compute_nanoseconds` and
+    /// `compute_seconds`.
+    pub open spec fn spec_platform_timer_freq_valid(timer_freq: u32) -> bool {
+        timer_freq > 0
+    }
 }
 
 //==================================================================================================
