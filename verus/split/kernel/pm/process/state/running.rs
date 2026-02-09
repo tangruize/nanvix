@@ -346,6 +346,168 @@ impl RunningProcess {
         unimplemented!()
     }
 
+    /// Returns a mutable reference to the process state.
+    ///
+    /// Models the original `RunningProcess::state_mut()`.
+    /// The original returns `&mut ProcessState`, which permits mutation of
+    /// ProcessState fields. Since we model ProcessState only as a PID, we
+    /// return Ghost<int>. Callers must ensure `mutation_frame_preserved()`
+    /// holds after any mutation (PID and all thread lists unchanged).
+    ///
+    /// # Returns
+    ///
+    /// The process identifier (as a ghost value).
+    #[verifier::external_body]
+    pub fn state_mut(&mut self) -> (result: Ghost<int>)
+        ensures
+            result@ == self.spec_pid(),
+            // Frame: mutation through state_mut does not change modeled fields.
+            self.spec_pid() == old(self).spec_pid(),
+            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
+            self.ready_thread_ids@ == old(self).ready_thread_ids@,
+            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
+            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
+            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            self.wf() == old(self).wf(),
+    {
+        unimplemented!()
+    }
+
+    /// Returns a mutable reference to the running thread.
+    ///
+    /// Models the original `RunningProcess::running_mut()`.
+    /// The original returns `&mut RunningThread`, which permits mutation of
+    /// RunningThread fields (e.g., priority). Since we model RunningThread
+    /// only as a thread ID, we return Ghost<int>. Callers must preserve the
+    /// running thread's ID and all structural invariants.
+    ///
+    /// # Returns
+    ///
+    /// The running thread identifier (as a ghost value).
+    #[verifier::external_body]
+    pub fn running_mut(&mut self) -> (result: Ghost<int>)
+        ensures
+            result@ == self.spec_running_thread_id(),
+            // Frame: mutation through running_mut does not change modeled fields.
+            self.spec_pid() == old(self).spec_pid(),
+            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
+            self.ready_thread_ids@ == old(self).ready_thread_ids@,
+            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
+            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
+            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            self.wf() == old(self).wf(),
+    {
+        unimplemented!()
+    }
+
+    /// Attempts to join (collect) a zombie thread by its identifier.
+    ///
+    /// Models the original `RunningProcess::try_join_thread(tid)`.
+    /// Returns an abstract result tag matching `spec_try_join_thread()`:
+    /// - `0`: Thread was zombie and has been removed from zombie list.
+    /// - `1`: Thread is the running thread (OperationNotPermitted).
+    /// - `2`: Thread is live (ready/sleeping/interrupted), returns condvar.
+    /// - `3`: Thread not found (NoSuchProcess).
+    ///
+    /// On successful zombie join (tag=0), `self` is mutated: the zombie
+    /// list shrinks by one (the joined thread is removed).
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Ghost thread identifier to join.
+    ///
+    /// # Returns
+    ///
+    /// The result tag as a ghost int.
+    #[verifier::external_body]
+    pub fn try_join_thread(&mut self, tid: Ghost<int>) -> (result: Ghost<int>)
+        requires
+            old(self).wf(),
+        ensures
+            result@ == old(self).spec_try_join_thread(tid@),
+            // PID and running thread unchanged.
+            self.spec_pid() == old(self).spec_pid(),
+            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
+            // Ready, interrupted, sleeping lists unchanged.
+            self.ready_thread_ids@ == old(self).ready_thread_ids@,
+            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
+            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
+            // Zombie list: removed on success, unchanged otherwise.
+            (result@ == 0 ==> self.zombie_thread_ids@ ==
+                old(self).spec_try_join_zombie_post(tid@)),
+            (result@ != 0 ==> self.zombie_thread_ids@ == old(self).zombie_thread_ids@),
+            self.wf(),
+    {
+        unimplemented!()
+    }
+
+    /// Finds a thread by its identifier and returns which list it belongs to.
+    ///
+    /// Models the original `RunningProcess::find_thread(tid)`.
+    /// The original returns `Option<ThreadRef>` (a reference enum). Since
+    /// Verus cannot express reference-returning functions, we return the
+    /// abstract list variant from `spec_find_thread()`:
+    /// - `Some(0)`: running thread.
+    /// - `Some(1)`: ready thread.
+    /// - `Some(2)`: interrupted thread.
+    /// - `Some(3)`: sleeping thread.
+    /// - `Some(4)`: zombie thread.
+    /// - `None`: not found.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Ghost thread identifier to search for.
+    ///
+    /// # Returns
+    ///
+    /// The list variant as `Option<Ghost<int>>`.
+    #[verifier::external_body]
+    pub fn find_thread(&self, tid: Ghost<int>) -> (result: Option<Ghost<int>>)
+        ensures
+            match result {
+                Some(v) => self.spec_find_thread(tid@) == Some(v@),
+                None => self.spec_find_thread(tid@).is_none(),
+            },
+    {
+        unimplemented!()
+    }
+
+    /// Finds a thread by its identifier (mutable variant).
+    ///
+    /// Models the original `RunningProcess::find_thread_mut(tid)`.
+    /// Same semantics as `find_thread()` — returns the list variant.
+    /// The mutable reference in the original allows in-place mutation of
+    /// the found thread, but this does not change the thread's identity
+    /// or list membership. Frame condition: self is unchanged.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Ghost thread identifier to search for.
+    ///
+    /// # Returns
+    ///
+    /// The list variant as `Option<Ghost<int>>`.
+    #[verifier::external_body]
+    pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Option<Ghost<int>>)
+        requires
+            old(self).wf(),
+        ensures
+            match result {
+                Some(v) => old(self).spec_find_thread(tid@) == Some(v@),
+                None => old(self).spec_find_thread(tid@).is_none(),
+            },
+            // Frame: find_thread_mut does not change any modeled fields.
+            self.spec_pid() == old(self).spec_pid(),
+            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
+            self.ready_thread_ids@ == old(self).ready_thread_ids@,
+            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
+            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
+            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            self.wf() == old(self).wf(),
+    {
+        unimplemented!()
+    }
+
     /// Transitions to a RunnableProcess by scheduling the running thread.
     ///
     /// Models the original `RunningProcess::schedule()`:
@@ -537,6 +699,13 @@ impl RunningProcess {
                     && rp.sleeping_thread_ids@.len() == 0
                     // Exactly one interrupted thread was resumed as ready.
                     && rp.ready_thread_ids@.len() == 1
+                    // The ready thread is the first element of the combined interrupted list.
+                    && rp.ready_thread_ids@[0] ==
+                        self.interrupted_thread_ids@.add(self.sleeping_thread_ids@)[0]
+                    // The remaining interrupted threads are the tail.
+                    && rp.interrupted_thread_ids@ ==
+                        self.interrupted_thread_ids@.add(self.sleeping_thread_ids@).subrange(
+                            1, (self.spec_interrupted_count() + self.spec_sleeping_count()) as int)
                 },
                 ExitResult::Zombie(zp) => {
                     zp.spec_pid() == self.spec_pid()
