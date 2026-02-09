@@ -15,6 +15,27 @@
 // - All PIDs are bounded by next_pid (monotonic allocation).
 // - Counts are bounded to prevent arithmetic overflow.
 //
+// ## Verification Scope and Approach
+//
+// This verification uses a *shadow model* of the process manager state machine.
+// The model (`ProcessManagerInner` with i32/usize/Ghost fields) abstracts the
+// original implementation (which uses `LinkedList<RunningProcess>`, `ThreadManager`,
+// etc.). This is a standard approach for verifying complex systems: the model
+// captures queue-level safety properties while deferring data-structure-level
+// verification to future work or to the Rust type system.
+//
+// The formal link between the model and the implementation is justified by:
+// 1. **Structural correspondence**: each model function mirrors an original
+//    function with matching control flow and queue-level effects.
+// 2. **Rust affine types**: process handles are move-only, preventing duplication
+//    and ensuring the LinkedList→Set abstraction preserves membership semantics.
+// 3. **Type accuracy**: the model uses `i32` for PIDs, matching the original
+//    `ProcessIdentifier(i32)` wrapper (see `src/libs/sys/src/sys/pm/pid.rs:41`).
+//
+// To achieve full implementation verification, the underlying data structures
+// (`LinkedList`, `RunningProcess`, `ThreadManager`) would need to be independently
+// verified and connected via a refinement proof. This is deferred as future work.
+//
 // ## Trust Boundary T3: Thread-Level Operations
 //
 // The following original `ProcessManagerInner` functions are not modeled because
