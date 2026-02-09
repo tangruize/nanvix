@@ -1,6 +1,6 @@
 {
   "module_name": "sleeping_process",
-  "outer_iteration": 1,
+  "outer_iteration": 2,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "034aaf79-53e5-4eee-8620-ea7e97b6a546",
