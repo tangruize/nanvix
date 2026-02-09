@@ -13,8 +13,9 @@
 //! - `set_capability` / `clear_capability` / `has_capability` delegate correctly
 //!   to the verified Capabilities type with well-formedness preservation.
 //! - `get_mutex` enforces capacity bound (MUTEX_MAX = 32): returns error when full
-//!   and address not present, inserts new entry with ref_count=1 when absent,
-//!   increments ref_count when present (modeling `clone()`).
+//!   and address not present, inserts new entry with ref_count=2 when absent
+//!   (BTreeMap entry + returned clone), increments ref_count when present
+//!   (modeling `clone()`).
 //! - `put_mutex` checks existence: returns error when not found. Conditionally
 //!   removes entry only when `ref_count <= MUTEX_REMOVE_THRESHOLD` (2), matching
 //!   the original `extract_if` with `reference_count() <= 2`.
@@ -57,9 +58,11 @@
 //!   `MUTEX_OPEN_MAX` and `COND_OPEN_MAX` from `build/kernel_config.toml`.
 //! - **T2: BTreeMap semantics.** The ghost Map model faithfully represents
 //!   BTreeMap insert/remove/contains_key behavior.
-//! - **T3: Arc reference counting.** The ghost `nat` value faithfully models
-//!   `Arc::strong_count()`. `clone()` increments it by 1, dropping the BTreeMap
-//!   entry decrements it. The original thresholds (2 for mutexes, 1 for condvars)
+//! - **T3: Arc reference counting.** The ghost `nat` value directly models
+//!   `Arc::strong_count()`. New entries start at 2 (one Arc in the BTreeMap,
+//!   one returned clone). Each subsequent `get_mutex`/`get_cond` increments by
+//!   1 (modeling `clone()`), and dropping the caller's clone decrements it.
+//!   The original thresholds (2 for mutexes, 1 for condvars)
 //!   correctly identify entries with no external references.
 //! - **T4: Frame conditions for omitted functions.** Functions marked
 //!   `external_body` that interact with opaque types (Vmem, EventOwnership,
@@ -239,8 +242,10 @@ impl ProcessState {
     ///
     /// Models the original `BTreeMap::entry(mutex_addr).or_insert_with(Mutex::new).clone()`.
     /// If the address already exists, the reference count is incremented (modeling `clone()`).
-    /// If it does not exist, a new entry is inserted with ref_count = 1 (the BTreeMap holds
-    /// one Arc reference). Returns the reference count of the returned clone.
+    /// If it does not exist, a new entry is inserted with ref_count = 2: one for the
+    /// BTreeMap entry and one for the clone returned to the caller, matching
+    /// `Arc::strong_count()` after `Mutex::new` + `.clone()`.
+    /// Returns the reference count of the returned clone.
     ///
     /// # Parameters
     ///
@@ -267,8 +272,8 @@ impl ProcessState {
                 &&& already_present ==>
                         self.spec_mutex_ref_count(mutex_addr@)
                             == old(self).spec_mutex_ref_count(mutex_addr@) + 1
-                // If was absent: new entry with ref_count = 1.
-                &&& !already_present ==> self.spec_mutex_ref_count(mutex_addr@) == 1
+                // If was absent: new entry with ref_count = 2 (BTreeMap entry + returned clone).
+                &&& !already_present ==> self.spec_mutex_ref_count(mutex_addr@) == 2
                 // The returned ghost value is the new ref count.
                 &&& result->Ok_0@ == self.spec_mutex_ref_count(mutex_addr@)
                 &&& self.spec_pid() == old(self).spec_pid()
@@ -304,10 +309,10 @@ impl ProcessState {
             let ghost new_rc: nat = self.ghost_mutexes@[mutex_addr@];
             Ok(Ghost(new_rc))
         } else {
-            // Insert new entry with ref_count = 1 (one Arc in the BTreeMap).
+            // Insert new entry with ref_count = 2 (one Arc in the BTreeMap + one clone returned).
             self.mutex_count = self.mutex_count + 1;
-            self.ghost_mutexes = Ghost(self.ghost_mutexes@.insert(mutex_addr@, 1nat));
-            Ok(Ghost(1nat))
+            self.ghost_mutexes = Ghost(self.ghost_mutexes@.insert(mutex_addr@, 2nat));
+            Ok(Ghost(2nat))
         }
     }
 
@@ -391,7 +396,8 @@ impl ProcessState {
     /// Returns a condition variable associated with the given address, or creates one.
     ///
     /// Models the original `BTreeMap::entry(cond_addr).or_insert_with(Condvar::new).clone()`.
-    /// Same reference-counting model as `get_mutex`.
+    /// Same reference-counting model as `get_mutex`: new entries get ref_count = 2
+    /// (BTreeMap entry + returned clone), existing entries get ref_count incremented by 1.
     ///
     /// # Parameters
     ///
@@ -417,7 +423,7 @@ impl ProcessState {
                 &&& already_present ==>
                         self.spec_cond_ref_count(cond_addr@)
                             == old(self).spec_cond_ref_count(cond_addr@) + 1
-                &&& !already_present ==> self.spec_cond_ref_count(cond_addr@) == 1
+                &&& !already_present ==> self.spec_cond_ref_count(cond_addr@) == 2
                 &&& result->Ok_0@ == self.spec_cond_ref_count(cond_addr@)
                 &&& self.spec_pid() == old(self).spec_pid()
                 &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
@@ -452,8 +458,8 @@ impl ProcessState {
             Ok(Ghost(new_rc))
         } else {
             self.cond_count = self.cond_count + 1;
-            self.ghost_conditions = Ghost(self.ghost_conditions@.insert(cond_addr@, 1nat));
-            Ok(Ghost(1nat))
+            self.ghost_conditions = Ghost(self.ghost_conditions@.insert(cond_addr@, 2nat));
+            Ok(Ghost(2nat))
         }
     }
 
@@ -625,6 +631,13 @@ impl ProcessState {
     // do not modify the verified state fields (PID, capabilities, mutexes,
     // condvars, PMIO). This increases verification coverage by formally
     // documenting the non-interference of these operations.
+    //
+    // NOTE: These stubs have simplified signatures compared to the originals.
+    // They are not intended to be API-compatible replacements. Their sole purpose
+    // is to assert frame conditions (non-interference with verified ghost state).
+    // The original functions take additional parameters (buffer pointers, port
+    // addresses, MMIO region descriptors, etc.) that are irrelevant to the
+    // verified state model.
 
     /// Stub: copy_from_user_unaligned preserves verified state.
     #[verifier::external_body]

@@ -359,28 +359,28 @@ impl ProcessState {
     // Reference Count Lemmas
     //==============================================================================================
 
-    /// Lemma: After get_mutex on a new address, ref count is 1.
-    pub proof fn lemma_new_mutex_ref_count_is_one(&self, addr: int)
+    /// Lemma: After get_mutex on a new address, ref count is 2 (BTreeMap + clone).
+    pub proof fn lemma_new_mutex_ref_count_is_two(&self, addr: int)
         requires
             self.wf(),
             !self.spec_has_mutex(addr),
         ensures
             ({
-                let new_map: Map<int, nat> = self.ghost_mutexes@.insert(addr, 1nat);
-                new_map[addr] == 1nat
+                let new_map: Map<int, nat> = self.ghost_mutexes@.insert(addr, 2nat);
+                new_map[addr] == 2nat
             }),
     {
     }
 
-    /// Lemma: After get_cond on a new address, ref count is 1.
-    pub proof fn lemma_new_cond_ref_count_is_one(&self, addr: int)
+    /// Lemma: After get_cond on a new address, ref count is 2 (BTreeMap + clone).
+    pub proof fn lemma_new_cond_ref_count_is_two(&self, addr: int)
         requires
             self.wf(),
             !self.spec_has_cond(addr),
         ensures
             ({
-                let new_map: Map<int, nat> = self.ghost_conditions@.insert(addr, 1nat);
-                new_map[addr] == 1nat
+                let new_map: Map<int, nat> = self.ghost_conditions@.insert(addr, 2nat);
+                new_map[addr] == 2nat
             }),
     {
     }

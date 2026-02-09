@@ -160,17 +160,21 @@ impl ProcessState {
 
     /// Spec constant: mutex Arc strong count threshold for removal.
     /// In the original, `extract_if` removes when `mutex.reference_count() <= 2`.
-    /// The BTreeMap entry holds one Arc clone, and the `get_mutex` return value holds
-    /// another. When `reference_count() <= 2`, only these two references exist
-    /// (no external holders), so the entry can be safely removed.
+    /// The ghost ref count directly models `Arc::strong_count()`: new entries start
+    /// at 2 (BTreeMap entry + returned clone), and each `get_mutex` on an existing
+    /// entry increments by 1 (modeling `clone()`). When `ref_count <= 2`, only the
+    /// BTreeMap entry and the caller's single clone exist (no external holders),
+    /// so the entry can be safely removed.
     pub open spec fn MUTEX_REMOVE_THRESHOLD() -> nat {
         2
     }
 
     /// Spec constant: condvar Arc strong count threshold for removal.
     /// In the original, `extract_if` removes when `cond.reference_count() <= 1`.
-    /// The BTreeMap entry holds one Arc clone. When `reference_count() <= 1`,
-    /// only the map entry's reference exists, so the entry can be safely removed.
+    /// The ghost ref count directly models `Arc::strong_count()`: new entries start
+    /// at 2 (BTreeMap entry + returned clone). When `ref_count <= 1`, only the
+    /// BTreeMap entry's reference exists (the caller has dropped its clone),
+    /// so the entry can be safely removed.
     pub open spec fn COND_REMOVE_THRESHOLD() -> nat {
         1
     }
