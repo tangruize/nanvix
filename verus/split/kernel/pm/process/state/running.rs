@@ -44,20 +44,41 @@
 //!   are boundary models of sibling modules.
 //! - `InterruptedProcess::resume()` is modeled via `interrupted_resume()` (external_body).
 //!   It preserves PID, produces a well-formed RunnableProcess, and threads through
-//!   sleeping and zombie thread lists from the InterruptedProcess.
+//!   sleeping and zombie thread lists from the InterruptedProcess. This assumption
+//!   is discharged when `src/kernel/src/pm/process/state/interrupted.rs::resume()`
+//!   is independently verified.
 //! - Thread state transitions (schedule, sleep, exit) are modeled as ID-preserving.
-//! - `find_thread()` / `find_thread_mut()` are modeled spec-only (return references
-//!   that Verus cannot express). See `spec_find_thread()` in spec file.
+//! - `find_thread()` / `find_thread_mut()` compute results from `spec_find_thread()`.
+//!   The exec-level search correctness (iterator-based linear scan) is a trust assumption
+//!   until Verus supports reference-returning functions. `find_thread_mut()` returns
+//!   `&mut ThreadRefMut` in the original, permitting mutation of the found thread;
+//!   callers must preserve thread identity and list membership after such mutation.
 //! - `try_join_thread()` is modeled spec-only via `spec_try_join_thread()`. The key
 //!   property: joining a running thread errors, joining a zombie removes it, joining
 //!   a live thread returns a condvar, joining a missing thread errors.
 //! - `state()` / `state_mut()` are elided (ProcessState access modeled via PID).
 //!   `state_mut()` permits arbitrary mutation; callers must preserve PID immutability.
+//!   Discharged when `ProcessState` is independently verified.
 //! - `running_mut()` returns `&mut RunningThread`, permitting arbitrary mutation.
 //!   Callers must preserve the running thread's ID (`spec_running_thread_id()`)
-//!   and any structural invariants. This is discharged when RunningThread is verified.
-//! - `wakeup()` takes a `found: bool` oracle because `Seq::contains()` is spec-only.
-//!   The precondition constrains it to match ghost state. See spec file for details.
+//!   and any structural invariants. Discharged when `RunningThread` is independently verified.
+//!
+//! ## Oracle Parameters
+//!
+//! `wakeup()` and `try_join_thread()` take oracle parameters (`found: bool`, `tag: u8`)
+//! because ghost `Seq::contains()` cannot be evaluated at exec time. The preconditions
+//! (`found == spec_seq_contains(...)`, `tag == spec_try_join_thread(tid)`) are verified
+//! by Verus at every call site. **All callers of these functions must be verified
+//! (not `external_body` or `assume`) for the oracle contracts to hold.** If a caller
+//! is itself `external_body`, the oracle constraint becomes a trust assumption.
+//!
+//! ## Modeling Assumptions
+//!
+//! - `ready_count < u64::MAX` in `wakeup()`: prevents arithmetic overflow on
+//!   `ready_count + 1`. Real systems never approach 2^64 threads per process.
+//! - `ContextInformation`, `Condvar`, `SystemTime` (alarm) are elided. These affect
+//!   HAL context switching, synchronization, and timing but not process state machine
+//!   logic. If HAL or sync correctness is ever verified, these elisions must be revisited.
 //!
 //! ## Bug Fix in Original Source
 //!
@@ -217,6 +238,9 @@ pub enum ExitThreadResult {
 //==================================================================================================
 
 /// Models `InterruptedProcess::resume()` — transitions to RunnableProcess.
+///
+/// Original source: `src/kernel/src/pm/process/state/interrupted.rs::resume()`.
+/// This external_body is discharged when that function is independently verified.
 ///
 /// In the original, `resume()` pops the front interrupted thread, makes it
 /// ready, and passes through sleeping and zombie threads. Specifically:
@@ -972,9 +996,6 @@ impl RunningProcess {
             self.wf(),
             found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid@),
             self.ready_count < u64::MAX,
-            // Solver hint: redundant given wf() and found == spec_seq_contains(...),
-            // but helps Verus prove the sleeping_count - 1 arithmetic.
-            self.sleeping_count > 0 || !found,
         ensures
             match result {
                 Ok(r) => {
@@ -1036,6 +1057,8 @@ impl RunningProcess {
 
         proof {
             self.lemma_spec_find_thread_index(tid);
+            // Derive sleeping_count > 0 from wf() and found == spec_seq_contains.
+            self.lemma_wf_and_found_implies_sleeping_positive(tid@);
         }
 
         let ghost new_ready_ids: Seq<int> = self.ready_thread_ids@.push(tid@);

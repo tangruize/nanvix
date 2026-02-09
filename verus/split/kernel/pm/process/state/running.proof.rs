@@ -323,6 +323,20 @@ impl RunningProcess {
     {
     }
 
+    /// Lemma: If wf() holds and spec_seq_contains is true for the sleeping list,
+    /// then sleeping_count > 0. Derives the exec-level counter bound from the
+    /// spec-level containment predicate.
+    pub proof fn lemma_wf_and_found_implies_sleeping_positive(&self, tid: int)
+        requires
+            self.wf(),
+            Self::spec_seq_contains(self.sleeping_thread_ids@, tid),
+        ensures
+            self.sleeping_count > 0,
+    {
+        // spec_seq_contains guarantees exists|i| 0 <= i < len && s[i] == tid,
+        // so len >= 1. wf() says sleeping_count == len.
+    }
+
     //==============================================================================================
     // get_tid() Lemmas
     //==============================================================================================
