@@ -1,0 +1,25 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 18:23:27 CST 2026
+Module: kernel::pm::process::capability
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::capability
+
+error: trigger must be a function call, a field access, or arithmetic operator
+  --> kernel/pm/process/capability.proof.rs:96:24
+   |
+96 |             #[trigger] (((b | ms) as u8) & mo != 0u8) == (b & mo != 0u8)
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::capability (verified:0, errors:0)
