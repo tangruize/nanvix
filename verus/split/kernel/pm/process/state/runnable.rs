@@ -575,34 +575,6 @@ impl RunnableProcess {
         }
     }
 
-    /// Returns the earliest admission time among ready threads.
-    ///
-    /// Models the original `RunnableProcess::earliest_admission_time()`.
-    ///
-    /// # Parameters
-    ///
-    /// - `min_idx`: Oracle parameter — the index of the minimum admission time.
-    ///
-    /// # Returns
-    ///
-    /// The earliest admission time.
-    pub fn earliest_admission_time(&self, min_idx: Ghost<int>) -> (result: int)
-        requires
-            self.wf(),
-            0 <= min_idx@ < self.ready_admission_times@.len(),
-            forall|j: int| 0 <= j < self.ready_admission_times@.len()
-                ==> self.ready_admission_times@[min_idx@]
-                    <= self.ready_admission_times@[j],
-        ensures
-            result == self.ready_admission_times@[min_idx@],
-            result >= 0,
-            // The result is the minimum: no admission time is smaller.
-            forall|j: int| 0 <= j < self.ready_admission_times@.len()
-                ==> result <= self.ready_admission_times@[j],
-    {
-        let ghost result_val: int = self.ready_admission_times@[min_idx@ as int];
-        result_val
-    }
 }
 
 } // verus!
