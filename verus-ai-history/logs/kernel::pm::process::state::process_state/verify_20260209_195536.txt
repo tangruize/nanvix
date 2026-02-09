@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Mon Feb  9 19:55:36 CST 2026
+Module: kernel::pm::process::state::process_state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::process_state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::process_state
+
+error: function body check: Resource limit (rlimit) exceeded; consider rerunning with --profile for more details
+   --> kernel/pm/process/state/process_state.proof.rs:303:5
+    |
+303 |     pub proof fn lemma_pmio_first_occurrence_exists(&self, port_number: int)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 45 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 45
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::process_state (verified:45, errors:1)
