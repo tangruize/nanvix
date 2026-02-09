@@ -21,10 +21,14 @@
 // they operate at the thread level within a process. Their queue-level effects
 // are captured by the verified transition functions:
 //
-// - `create_thread` / `try_add_thread`: Adds a thread to a process. May move a
-//    sleeping process to ready (modeled by `wakeup_to_ready`).
+// - `create_thread` / `try_add_thread`: Adds a thread to a process. If the process
+//    is ready, no queue change (modeled by `create_thread_in_ready`). If sleeping,
+//    the process wakes to ready (modeled by `create_thread_from_suspended` which
+//    delegates to `wakeup_to_ready`).
 // - `wakeup` / `try_wakeup`: Searches all queues for a sleeping thread and wakes
 //    it. The queue transition (suspended→ready) is modeled by `wakeup_to_ready`.
+//    The running-process case is modeled by `wakeup_running_noop`, the ready-process
+//    case by `wakeup_ready_noop`, and the not-found error path by `wakeup_not_found`.
 // - `exit_thread` (internal branching): Depending on remaining threads, the process
 //    goes to ready, suspended, or zombie. Modeled by `exit_thread_running`,
 //    `exit_thread_to_suspended`, and `exit_thread_to_zombie` respectively.
@@ -40,29 +44,40 @@
 // ## Trust Boundary T2: Outer ProcessManager Wrapper
 //
 // The outer `ProcessManager` (mod.rs:1529-1982) wraps `ProcessManagerInner` in
-// `Rc<RefCell<_>>`. The mapping from outer public API to verified inner functions:
+// `Rc<RefCell<_>>`. Every outer method has a verified stub (prefixed `outer_`)
+// that models the pass-through delegation and proves wf() preservation.
+// The mapping from outer public API to verified inner/outer functions:
 //
-// - `ProcessManager::get_pid` → reads `running.state().pid()` (query, no mutation)
-// - `ProcessManager::get_tid` → reads `running.get_tid()` (query, no mutation)
-// - `ProcessManager::create_process` → `inner.create_process` (verified: `create_process`)
-// - `ProcessManager::create_thread` → `inner.create_thread` (trust boundary T3)
-// - `ProcessManager::set_thread_data_area` → `inner.set_thread_data_area` (T3, no queue change)
-// - `ProcessManager::get_thread_data_area` → `inner.get_thread_data_area` (T3, no queue change)
-// - `ProcessManager::has_capability` → reads process capability (query, no mutation)
-// - `ProcessManager::capctl` → `inner.capctl` (verified: `capctl`, no queue change)
-// - `ProcessManager::terminate` → `inner.terminate` (verified: `terminate_ready`,
-//    `terminate_ready_stays_ready`, `terminate_suspended`)
-// - `ProcessManager::harvest_zombies` → `inner.harvest_zombies` + memory cleanup
-//    (verified: `harvest_zombie` for queue transition; memory cleanup is out of scope)
-// - `ProcessManager::vmcopy_from_user` / `vmcopy_to_user` → memory ops (no queue change)
-// - `ProcessManager::mmap` / `munmap` / `mctrl` → memory management (no queue change)
-// - `ProcessManager::mmio_alloc` / `mmio_free` → MMIO management (no queue change)
-// - `ProcessManager::attach_pmio` / `detach_pmio` / `read_pmio` / `write_pmio` → PMIO (no queue change)
-// - `ProcessManager::post_message` → `inner.post_message` (verified: `post_message`)
-// - `ProcessManager::add_event` / `remove_event` → event management (no queue change)
-// - `ProcessManager::number_buffered_messages` → reads counter (query, no mutation)
-// - `ProcessManager::handle_fpu_exception` → `inner.handle_fpu_exception` (T3, no queue change)
-// - `ProcessManager::try_borrow` / `try_borrow_mut` → RefCell borrow (T2)
+// - `ProcessManager::get_pid` → verified: `outer_get_pid`
+// - `ProcessManager::get_tid` → verified: `outer_get_tid`
+// - `ProcessManager::create_process` → verified: `create_process`
+// - `ProcessManager::create_thread` → verified: `create_thread_in_ready`,
+//    `create_thread_from_suspended`
+// - `ProcessManager::set_thread_data_area` → verified: `set_thread_data_area`
+// - `ProcessManager::get_thread_data_area` → verified: `get_thread_data_area`
+// - `ProcessManager::has_capability` → verified: `outer_has_capability`
+// - `ProcessManager::capctl` → verified: `capctl`
+// - `ProcessManager::terminate` → verified: `terminate_ready`,
+//    `terminate_ready_stays_ready`, `terminate_suspended`
+// - `ProcessManager::harvest_zombies` → verified: `harvest_zombie`,
+//    `harvest_zombies_wrapper`
+// - `ProcessManager::vmcopy_from_user` → verified: `outer_vmcopy_from_user`
+// - `ProcessManager::vmcopy_to_user` → verified: `outer_vmcopy_to_user`
+// - `ProcessManager::mmap` → verified: `outer_mmap`
+// - `ProcessManager::munmap` → verified: `outer_munmap`
+// - `ProcessManager::mctrl` → verified: `outer_mctrl`
+// - `ProcessManager::mmio_alloc` → verified: `outer_mmio_alloc`
+// - `ProcessManager::mmio_free` → verified: `outer_mmio_free`
+// - `ProcessManager::attach_pmio` → verified: `outer_attach_pmio`
+// - `ProcessManager::detach_pmio` → verified: `outer_detach_pmio`
+// - `ProcessManager::read_pmio` → verified: `outer_read_pmio`
+// - `ProcessManager::write_pmio` → verified: `outer_write_pmio`
+// - `ProcessManager::post_message` → verified: `post_message`
+// - `ProcessManager::add_event` → verified: `outer_add_event`
+// - `ProcessManager::remove_event` → verified: `outer_remove_event`
+// - `ProcessManager::number_buffered_messages` → verified: `get_buffered_message_count`
+// - `ProcessManager::handle_fpu_exception` → verified: `handle_fpu_exception`
+// - `ProcessManager::try_borrow` / `try_borrow_mut` → RefCell borrow (T2 runtime)
 //
 // The `try_borrow`/`try_borrow_mut` pattern returns `Err(ResourceBusy)` on
 // contention. Since Nanvix is single-threaded with cooperative scheduling,
