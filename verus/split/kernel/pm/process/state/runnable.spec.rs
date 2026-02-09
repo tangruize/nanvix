@@ -10,7 +10,12 @@
 // RunnableProcess manages process-level thread scheduling. For verification:
 // - Thread lists are modeled as `Seq<int>` of abstract thread IDs.
 // - `ready_admission_times` tracks admission times paired with ready thread IDs.
-// - `NonEmptyVecDeque<T>` is modeled as `Seq` with `len() >= 1` invariant.
+// - `Option<NonEmptyVecDeque<T>>` is modeled as `Seq<int>`:
+//   - `Seq::empty()` represents `None` (no threads in that state).
+//   - `Seq` with `len() >= 1` represents `Some(non_empty_deque)`.
+//   This is a sound isomorphism because `NonEmptyVecDeque` always has `len() >= 1`,
+//   and `wf()` enforces `ready_thread_ids.len() >= 1`. The verification checks
+//   correct lengths at all transition boundaries.
 // - `Box<ProcessState>` is transparent (modeled as ProcessState directly).
 // - `ProcessState` uses the verified dependency's `spec_pid()`.
 // - `RunningProcess`, `InterruptedProcess`, `ZombieProcess` are boundary models.
@@ -38,7 +43,34 @@
 // - Thread ID ownership/disjointness is inherited from Rust's type system
 //   (see above).
 // - `ContextInformation` and `VirtualAddress` from run() are omitted (HAL boundary).
-// - `InterruptReason` is modeled as abstract int tag.
+//   These are hardware abstraction layer types whose values are produced by
+//   architecture-specific code (context switching, TDA setup). They carry no
+//   protocol-level invariants relevant to process state verification.
+// - `InterruptReason` from run() return is modeled as abstract int tag.
+// - `UserTda` (user thread data area) from run() return is omitted (HAL boundary).
+//
+// ## Exec Coverage Notes
+//
+// The following original functions are NOT modeled as exec functions:
+// - `state()` / `state_mut()`: Return `&ProcessState` / `&mut ProcessState`.
+//   Verus cannot express these reference return types. The relevant property
+//   (PID access) is modeled via `pid_i32()` and `spec_pid()`.
+// - `find_thread()` / `find_thread_mut()`: Return `Option<ThreadRef>` containing
+//   references into internal collections. Modeled spec-only via `spec_find_thread`.
+// - `earliest_admission_time()`: Returns a ghost `int` — purely spec-level,
+//   modeled via `spec_earliest_admission_time()` with proven bounds.
+//
+// ## Oracle Parameter Justification
+//
+// `terminate()` requires a `has_interrupted: bool` oracle parameter because:
+// - The branch decision depends on `self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0`.
+// - Thread counts are `nat` (ghost-only type), so this comparison cannot be
+//   evaluated at exec level.
+// - The precondition `has_interrupted == (... > 0 || ... > 0)` ties the oracle
+//   to the ghost state, so the branch is fully constrained.
+// - `run()` and `wakeup()` have been de-oracled: `run()` derives its min-index
+//   via `lemma_earliest_ready_index_bounds`; `wakeup()` derives its search
+//   index via proof-level `choose` from `lemma_spec_find_thread_index`.
 
 use vstd::prelude::*;
 

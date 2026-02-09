@@ -357,8 +357,13 @@ impl RunnableProcess {
     /// - If interrupted threads exist (original or from sleeping), returns
     ///   Ok(InterruptedProcess). Otherwise, returns Err(ZombieProcess).
     ///
-    /// The branch decision is derived internally from the ghost state via a
-    /// proof block, eliminating the need for an oracle parameter.
+    /// # Parameters
+    ///
+    /// - `has_interrupted`: Oracle parameter — whether any interrupted threads
+    ///   will exist after termination (from original interrupted or
+    ///   sleeping→interrupted conversion). Required because thread counts are
+    ///   `nat` (ghost-only), so `count > 0` cannot be evaluated at exec level.
+    ///   The precondition constrains this to exactly match ghost state.
     ///
     /// # Returns
     ///
@@ -453,16 +458,15 @@ impl RunnableProcess {
     ///
     /// - `tid`: Ghost thread ID to wake up.
     /// - `found`: Oracle parameter — whether the thread was found in sleeping list.
-    /// - `found_idx`: Oracle parameter — index in sleeping list (if found).
+    ///   Required because `Seq::contains()` is spec-only and cannot be evaluated
+    ///   at exec level. The precondition constrains this to match ghost state.
     ///
     /// # Returns
     ///
     /// Ok with updated state if found, Err with unchanged state if not found.
     ///
-    /// The search index `found_idx` is derived internally via a proof block
-    /// using `choose`, eliminating the oracle parameter for the index.
-    /// The `found` boolean remains a parameter because the branch decision
-    /// requires exec-level evaluation, and `Seq::contains()` is spec-only.
+    /// The search index is derived internally via a proof block using `choose`,
+    /// eliminating the need for an oracle index parameter.
     pub fn wakeup(self, tid: Ghost<int>, found: bool) -> (result: Result<RunnableProcess, RunnableProcess>)
         requires
             self.wf(),
