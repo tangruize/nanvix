@@ -613,9 +613,7 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
     {
         proof {
-            Self::lemma_wakeup_suspended_len(self.ghost_suspended@, pid as int);
-            Self::lemma_wakeup_ready_len(self.ghost_ready@, pid as int);
-
+            // Broadcast axioms handle insert/remove len reasoning.
             self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
             self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
         }
