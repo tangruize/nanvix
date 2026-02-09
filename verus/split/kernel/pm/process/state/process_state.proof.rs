@@ -363,10 +363,12 @@ impl ProcessState {
     {
     }
 
-    /// Lemma: PMIO change preserves well-formedness.
+    /// Lemma: PMIO change preserves well-formedness (if port values are in range).
     pub proof fn lemma_pmio_change_preserves_wf(&self, new_pmio: Seq<int>)
         requires
             self.wf(),
+            forall|i: int| 0 <= i < new_pmio.len() ==>
+                0 <= #[trigger] new_pmio[i] && new_pmio[i] <= 0xFFFF,
         ensures
             ({
                 let post: ProcessState = ProcessState {
