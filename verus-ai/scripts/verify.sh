@@ -40,6 +40,14 @@ if [ -n "$MODULE" ] && [[ ! "$MODULE" == *"::"* ]]; then
             FOUND_PATH=$(find "$VERUS_DIR" -path "*/${REV_PATH}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
         fi
     fi
+    if [ -z "$FOUND_PATH" ]; then
+        # Fallback: search for last segment as filename inside a path containing the first segment.
+        # e.g., running_process -> find running.rs under a path containing /process/.
+        IFS='_' read -ra PARTS <<< "$MODULE"
+        if [ "${#PARTS[@]}" -eq 2 ]; then
+            FOUND_PATH=$(find "$VERUS_DIR" -path "*/${PARTS[1]}/*/${PARTS[0]}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
+        fi
+    fi
     if [ -n "$FOUND_PATH" ]; then
         # Convert file path to module path.
         # e.g., /path/verus/split/kernel/pm/sys/pid.rs -> kernel::pm::sys::pid
