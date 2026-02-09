@@ -35,10 +35,16 @@
 //!
 //! ## Verification Model
 //!
+//! This is a **protocol-level verification model**, not a drop-in replacement
+//! for the original `ProcessState`. The verification proves that the state
+//! management *protocol* (capacity enforcement, ref-count-based cleanup,
+//! PID immutability, error reporting) is correct by construction.
+//!
 //! The original `ProcessState` contains complex kernel types (`Vmem`,
 //! `EventOwnership`, `Mailbox`, `IoMemoryRegion`, `AnyIoPort`, `Mutex`,
 //! `Condvar`, `BTreeMap`, `LinkedList`) from HAL, MM, IPC, and sync
-//! subsystems. For verification we abstract these away:
+//! subsystems. Verus cannot verify the Rust standard library or kernel
+//! HAL types. For verification we abstract these away:
 //! - `vmem`, `events`, `mailbox`, `mmio` → elided (opaque HAL/MM/IPC boundary types).
 //!   Frame-condition stubs prove functions on these fields preserve verified state.
 //! - `mutexes` → `mutex_count: usize` (runtime counter) paired with
@@ -89,9 +95,15 @@
 //! This verification proves the **state management protocol** is correct:
 //! PID immutability, capability delegation, bounded collection management
 //! with proper error reporting and reference-counted cleanup, and I/O port
-//! tracking consistency. The `ProcessRefMut`/`ProcessRef` enums and their
-//! dispatch methods are accessor wrappers for different process lifecycle
-//! states and are out of scope for this module's protocol verification.
+//! tracking consistency.
+//!
+//! **ABI note:** The verified `ProcessState` struct is not ABI-compatible
+//! with the original. It replaces runtime containers with ghost state and
+//! counters. Method signatures use ghost parameters and oracle booleans.
+//! This is inherent to the protocol-model approach: the verified model
+//! establishes correctness of the protocol logic, which the original
+//! implementation follows. The `_stub` suffix on frame-condition methods
+//! distinguishes them from the original API to avoid confusion.
 //!
 //! The following are out of scope for deep verification but have frame-condition
 //! stubs or opaque type models:
