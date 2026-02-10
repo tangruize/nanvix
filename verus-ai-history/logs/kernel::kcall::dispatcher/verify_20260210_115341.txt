@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 11:53:41 CST 2026
+Module: kernel::kcall::dispatcher
+Command: verus --crate-type lib lib.rs --verify-module kernel::kcall::dispatcher
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::kcall::dispatcher
+
+error: trigger group 0 does not cover variable pid
+   --> kernel/kcall/dispatcher.proof.rs:662:9
+    |
+662 | /         forall|pid: i64, tid: i64, args: DispatchArgs|
+663 | |             #![trigger spec_classify_kcall(args.number)]
+664 | |             pid >= 0 && tid >= 0
+665 | |             && (args.number == KCALL_GET_PID() || args.number == KCALL_GET_TID())
+666 | |             ==> spec_classify_kcall(args.number) =~= DispatchCategory::LocalImmediate,
+    | |_____________________________________________________________________________________^
+
+error: aborting due to 1 previous error
+
+
+Duration: 5s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::kcall::dispatcher (verified:0, errors:0)
