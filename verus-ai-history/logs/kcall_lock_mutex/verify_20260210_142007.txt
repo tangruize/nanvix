@@ -1,0 +1,24 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 14:20:07 CST 2026
+Module: kcall_lock_mutex
+Command: verus --crate-type lib lib.rs --verify-module kcall_lock_mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0599]: no method named `arrow_1` found for enum `std::result::Result<T, E>` in the current scope
+   --> kernel/pm/kcall/lock_mutex.rs:368:36
+    |
+368 |         result is Err ==> (result->1).spec_view() == (LockMutexResultView::InvalidTimeoutError {
+    |                                    ^ method not found in `std::result::Result<bool, kernel::pm::kcall::lock_mutex::LockMutexResultModel>`
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0599`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kcall_lock_mutex (verified:0, errors:0)
