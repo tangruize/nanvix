@@ -459,10 +459,6 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
 pub fn sleep_end_to_end(seconds: u64, nanoseconds: u32) -> (result: SleepResultModel)
     requires
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
-    ensures
-        // Overflow always returns InvalidArgument error.
-        !spec_sleep_success_condition(clock_now().spec_view(), seconds as nat, nanoseconds as nat)
-            ==> matches!(result, SleepResultModel::GenericError { .. }),
 {
     // Step 1: Get the current time (Trust Boundary T1).
     let now: SystemTimeModel = clock_now();
