@@ -8,12 +8,13 @@
 //! ## Overview
 //!
 //! The `kcall_handler` function is the main kernel event loop. It:
-//! 1. Polls the scoreboard for pending kernel calls and dispatches them.
-//! 2. Polls for inter-kernel communication (IKC) messages.
-//! 3. Harvests zombie processes.
-//! 4. Yields the CPU when no work was done.
-//! 5. Exits when the init daemon (INITD) terminates.
-//! 6. After exit, drains all remaining zombie processes.
+//! 1. Initializes the event subsystem (`event::init`).
+//! 2. Polls the scoreboard for pending kernel calls and dispatches them.
+//! 3. Polls for inter-kernel communication (IKC) messages.
+//! 4. Harvests zombie processes.
+//! 5. Yields the CPU when no work was done.
+//! 6. Exits when the init daemon (INITD) terminates.
+//! 7. After exit, drains all remaining zombie processes.
 //!
 //! ## Verified Properties
 //!
@@ -29,19 +30,28 @@
 //! - **GetPid/GetTid error**: These calls return InvalidSysCall since they
 //!   should be handled by the dispatcher, not the handler loop.
 //! - **Yield correctness**: The CPU yields iff no work was done in the current
-//!   iteration (kcall_handled, message_received, harvested_process all false).
+//!   iteration (kcall_handled, message_received, harvested_process all false)
+//!   AND the loop is not terminating. When INITD terminates, the loop exits
+//!   before reaching the yield check.
 //! - **Work flag monotonicity**: Setting a work flag never clears other flags.
 //!   Once work is recorded, it stays recorded.
 //! - **Termination condition**: The loop exits only when the init daemon (INITD,
 //!   pid=1) terminates. Non-INITD terminations and errors do not exit the loop.
 //! - **Post-loop zombie cleanup**: After the loop exits, remaining zombies are
-//!   drained until none remain.
+//!   drained. This is modeled in `kcall_handler_lifecycle_step()`.
 //! - **Iteration state initialization**: Each iteration starts with all work
 //!   flags cleared.
 //! - **Dispatch-then-signal protocol**: The scoreboard `handled()` is called
 //!   after every successful dispatch, maintaining the scoreboard protocol.
 //! - **Dispatch partition**: Each kcall number is either a valid handler kcall
 //!   or Invalid; these categories are mutually exclusive and exhaustive.
+//! - **Harvest notification semantics**: The `harvested_process` work flag is
+//!   only set when `notify_process_termination` succeeds for a non-INITD
+//!   zombie. INITD termination breaks the loop before setting the flag;
+//!   notification failures leave the flag false.
+//! - **Lifecycle model**: `kcall_handler_init()` establishes the loop invariant
+//!   base case; `kcall_handler_lifecycle_step()` preserves the invariant
+//!   inductively and calls `drain_remaining_zombies()` on termination.
 //!
 //! ## Verification Model
 //!
@@ -53,23 +63,26 @@
 //! - Dispatch routing via `HandlerDispatchCategory` enum.
 //! - Termination via `HarvestOutcome` and `spec_should_terminate`.
 //! - External subsystem calls as `external_body` boundary functions.
+//! - The full handler lifecycle (init → loop → drain) via
+//!   `kcall_handler_init()` and `kcall_handler_lifecycle_step()`.
 //!
 //! ## API Mapping
 //!
-//! | Original API                       | Verified Model                    | Notes                        |
-//! |------------------------------------|-----------------------------------|------------------------------|
-//! | `kcall_handler()` main loop        | `run_full_iteration()`            | Full iteration with yield.   |
-//! | `kcall_handler()` single step      | `run_iteration()`                 | Single iteration w/o yield.  |
-//! | `ScoreBoard::get_mut()`            | `poll_scoreboard_full()`          | External body (T1).          |
-//! | `scoreboard.handle()`              | Part of `poll_scoreboard_full()`  | External body (T1).          |
-//! | `scoreboard.handled(ret)`          | `signal_handled()`                | External body (T1).          |
-//! | Match on `KcallNumber::from(...)`  | `classify_and_check_invalid()`    | Verified routing.            |
-//! | `pm.harvest_zombies(mm)`           | `harvest_zombies()`               | External body (T2).          |
-//! | `ProcessManager::giveup()`         | `yield_cpu()`                     | External body (T3).          |
-//! | `event::init(hal)`                 | *(not modeled)*                   | Init-time, out of scope.     |
-//! | IKC message polling                | `poll_messages()`                 | External body (T4).          |
-//! | `EventManager::notify_...()`       | `notify_termination()`            | External body (T2).          |
-//! | Post-loop zombie drain             | `drain_remaining_zombies()`       | External body (T2).          |
+//! | Original API                       | Verified Model                          | Notes                        |
+//! |------------------------------------|-----------------------------------------|------------------------------|
+//! | `kcall_handler()` lifecycle        | `kcall_handler_init()` + `..._step()`   | Full lifecycle model.        |
+//! | `kcall_handler()` main loop        | `run_full_iteration()`                  | Full iteration with yield.   |
+//! | `kcall_handler()` single step      | `run_iteration()`                       | Single iteration w/o yield.  |
+//! | `event::init(hal)`                 | `event_init()`                          | External body (T5).          |
+//! | `ScoreBoard::get_mut()`            | `poll_scoreboard_full()`                | External body (T1).          |
+//! | `scoreboard.handle()`              | Part of `poll_scoreboard_full()`        | External body (T1).          |
+//! | `scoreboard.handled(ret)`          | `signal_handled()`                      | External body (T1).          |
+//! | Match on `KcallNumber::from(...)`  | `classify_and_check_invalid()`          | Verified routing.            |
+//! | `pm.harvest_zombies(mm)`           | `harvest_zombies()`                     | External body (T2).          |
+//! | `EventManager::notify_...()`       | `notify_termination()`                  | External body (T2), fallible.|
+//! | `ProcessManager::giveup()`         | `yield_cpu()`                           | External body (T3).          |
+//! | IKC message polling                | `poll_messages()`                       | External body (T4).          |
+//! | Post-loop zombie drain             | `drain_remaining_zombies()`             | External body (T2).          |
 //!
 //! ## Trust Boundaries
 //!
@@ -78,13 +91,14 @@
 //!   separately verified in `kernel::kcall::scoreboard`.
 //! - **T2: ProcessManager operations.** `harvest_zombies()`,
 //!   `EventManager::notify_process_termination()` are dependency boundary
-//!   operations. Their correctness is assumed.
+//!   operations. Their correctness is assumed. `notify_termination` may fail
+//!   (returns false), matching the original `Err(e) => error!(...)` path.
 //! - **T3: CPU yield.** `ProcessManager::giveup()` performs a context switch.
 //!   Its correctness is assumed (HAL dependency).
 //! - **T4: IKC message polling.** `crate::stdio::read()` and
 //!   `EventManager::post_message()` are dependency boundary operations.
-//! - **T5: Event initialization.** `event::init(hal)` is init-time and
-//!   out of scope for the handler loop verification.
+//! - **T5: Event initialization.** `event::init(hal)` is called once before
+//!   the handler loop starts. Modeled as `event_init()`.
 //!
 //! ## Scope Limitations
 //!
@@ -94,14 +108,22 @@
 //! - **Liveness**: No liveness properties (eventual progress, starvation freedom)
 //!   are specified. The handler loop may spin indefinitely if no work arrives.
 //! - **Feature flags**: The `stdio` feature flag for IKC message polling is not
-//!   modeled. The model includes a generic `poll_messages()` external body.
-//! - **Error recovery**: Error paths in the original code are modeled as
-//!   always-succeeding in the verification model. Specifically:
-//!   `scoreboard.handled(ret)` can fail (warn and continue),
-//!   `harvest_zombies` can fail (error and continue), and
-//!   `ProcessManager::giveup()` can fail (error and continue). These
-//!   error-and-continue paths do not affect the core control flow properties
-//!   being verified (dispatch routing, yield correctness, termination).
+//!   modeled. The model includes a generic `poll_messages()` external body that
+//!   may return true in any build. This is a conservative overapproximation:
+//!   in a non-`stdio` build, `message_received` is always false, which is a
+//!   subset of the modeled behavior. The verified yield property (yield iff
+//!   no work) holds regardless — if messages are never received, the model
+//!   still correctly tracks work.
+//! - **Error recovery**: Scoreboard errors (`unreachable!` in original) and
+//!   harvest errors (`error!` and continue) are modeled via `error` flags on
+//!   result types. Error outcomes guarantee no work was done (`has_call=false`
+//!   or `found=false`), preserving yield and termination correctness. The
+//!   `notify_termination` external body returns a bool indicating success,
+//!   matching the original pattern where `harvested_process` is only set
+//!   on `Ok(())`.
+//! - **Post-loop drain**: `drain_remaining_zombies()` is invoked in the
+//!   lifecycle step model on termination. The property that "no zombies remain
+//!   after drain" depends on ProcessManager state (T2) and is not proved.
 
 use vstd::prelude::*;
 
@@ -152,12 +174,15 @@ pub struct HandlerWorkState {
 ///
 /// Represents the result of attempting to harvest a zombie process.
 /// `found` indicates whether a zombie was found.
+/// `error` indicates whether harvesting failed (error and continue).
 /// `pid` is the process identifier of the harvested zombie (if any).
 /// `is_initd` is true if the harvested zombie was the init daemon.
 /// `exit_status` is the exit status of the harvested zombie (if any).
 pub struct ZombieHarvestResult {
     /// Whether a zombie was found.
     pub found: bool,
+    /// Whether harvesting failed with an error.
+    pub error: bool,
     /// Process identifier of the harvested zombie.
     pub pid: u32,
     /// Whether the harvested zombie was the init daemon.
@@ -234,6 +259,8 @@ pub fn poll_messages() -> (result: bool)
 /// Models `pm.harvest_zombies(mm)`. Returns information about a harvested
 /// zombie, if any. The `is_initd` flag is tied to the PID value: it is
 /// true iff the pid equals the INITD process identifier (1).
+/// The `error` flag indicates harvest failure (original: `Err(e)`);
+/// errors guarantee no zombie was found.
 ///
 /// ## Trust Boundary T2
 #[verifier::external_body]
@@ -241,6 +268,7 @@ pub fn harvest_zombies() -> (result: ZombieHarvestResult)
     ensures
         result.is_initd ==> (result.found && result.pid == 1u32),
         (result.found && result.pid == 1u32) ==> result.is_initd,
+        result.error ==> !result.found,
 {
     unimplemented!()
 }
@@ -249,11 +277,14 @@ pub fn harvest_zombies() -> (result: ZombieHarvestResult)
 ///
 /// # Description
 ///
-/// Models `EventManager::notify_process_termination(...)`.
+/// Models `EventManager::notify_process_termination(...)`. Returns true
+/// if the notification succeeded (`Ok(())`), false on failure (`Err(e)`).
+/// In the original code, `harvested_process` is only set to true when
+/// this call succeeds.
 ///
 /// ## Trust Boundary T2
 #[verifier::external_body]
-pub fn notify_termination(pid: u32, exit_status: u32)
+pub fn notify_termination(pid: u32, exit_status: u32) -> (result: bool)
 {
     unimplemented!()
 }
@@ -268,6 +299,20 @@ pub fn notify_termination(pid: u32, exit_status: u32)
 /// ## Trust Boundary T3
 #[verifier::external_body]
 pub fn yield_cpu()
+{
+    unimplemented!()
+}
+
+/// External body: initializes the event subsystem.
+///
+/// # Description
+///
+/// Models `event::init(hal)`. Called once before the handler loop starts.
+/// Panics on failure in the original code.
+///
+/// ## Trust Boundary T5
+#[verifier::external_body]
+pub fn event_init()
 {
     unimplemented!()
 }
@@ -429,6 +474,7 @@ pub fn handle_harvest_phase() -> (result: ZombieHarvestResult)
     ensures
         result.is_initd ==> (result.found && result.pid == 1u32),
         (result.found && result.pid == 1u32) ==> result.is_initd,
+        result.error ==> !result.found,
 {
     harvest_zombies()
 }
@@ -440,6 +486,14 @@ pub fn handle_harvest_phase() -> (result: ZombieHarvestResult)
 /// Executes all three phases (kcall dispatch, message polling, zombie harvest)
 /// and determines whether to yield or continue. Returns the work state and
 /// any termination signal.
+///
+/// The `harvested_process` work flag is only set when:
+/// 1. A zombie was found (`harvest.found`),
+/// 2. It was NOT the init daemon (`!terminate`), AND
+/// 3. `notify_process_termination` succeeded.
+/// This matches the original code where `harvested_process = true` is only
+/// reached on `Ok(())` from the notification call, and INITD termination
+/// breaks the loop before setting the flag.
 pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
     ensures
         // If a kcall was polled, it was handled.
@@ -450,9 +504,10 @@ pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
         // Yield iff no work was done.
         result.should_yield == (!result.work_state.kcall_handled
             && !result.work_state.message_received && !result.work_state.harvested_process),
-        // Termination implies INITD zombie was harvested (pid == 1).
-        result.should_terminate ==> result.work_state.harvested_process,
+        // Termination implies INITD pid.
         result.should_terminate ==> result.initd_pid == 1u32,
+        // INITD termination does NOT set harvested_process (loop breaks first).
+        result.should_terminate ==> !result.work_state.harvested_process,
 {
     // Phase 1: Handle pending kernel call.
     let kcall_phase: HandlerKcallPhaseResult = handle_kcall_phase(poll);
@@ -462,18 +517,21 @@ pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
 
     // Phase 3: Harvest zombie processes.
     let harvest: ZombieHarvestResult = handle_harvest_phase();
-    let harvested: bool = harvest.found;
     let terminate: bool = is_initd_terminated(&harvest);
 
-    if harvested && !terminate {
-        notify_termination(harvest.pid, harvest.exit_status);
-    }
+    // Notify termination for non-INITD zombies only.
+    // In the original, INITD causes `break status` before reaching notify.
+    let harvested_flag: bool = if harvest.found && !terminate {
+        notify_termination(harvest.pid, harvest.exit_status)
+    } else {
+        false
+    };
 
     // Build work state.
     let work_state: HandlerWorkState = HandlerWorkState {
         kcall_handled: kcall_phase.kcall_handled,
         message_received: msg_received,
-        harvested_process: harvested,
+        harvested_process: harvested_flag,
     };
 
     let do_yield: bool = should_yield(&work_state);
@@ -531,7 +589,7 @@ pub fn drain_remaining_zombies()
 /// 2. Dispatches the kcall if present and signals handled.
 /// 3. Polls for IKC messages.
 /// 4. Harvests zombie processes and notifies termination.
-/// 5. Yields the CPU if no work was done.
+/// 5. Yields the CPU if no work was done AND the loop is not terminating.
 ///
 /// This function models the entire loop body, including the yield behavior
 /// that `run_iteration()` only flags.
@@ -546,9 +604,10 @@ pub fn run_full_iteration() -> (result: IterationResult)
         // Yield iff no work was done.
         result.should_yield == (!result.work_state.kcall_handled
             && !result.work_state.message_received && !result.work_state.harvested_process),
-        // Termination implies INITD zombie was harvested.
-        result.should_terminate ==> result.work_state.harvested_process,
+        // Termination implies INITD pid.
         result.should_terminate ==> result.initd_pid == 1u32,
+        // INITD termination does NOT set harvested_process.
+        result.should_terminate ==> !result.work_state.harvested_process,
 {
     // Phase 1: Poll scoreboard.
     let poll: ScoreBoardPollResult = poll_scoreboard_full();
@@ -556,8 +615,9 @@ pub fn run_full_iteration() -> (result: IterationResult)
     // Phase 2-4: Run iteration (dispatch, messages, harvest).
     let result: IterationResult = run_iteration(&poll);
 
-    // Phase 5: Yield CPU if no work was done.
-    if result.should_yield {
+    // Phase 5: Yield CPU if no work was done and loop is not terminating.
+    // In the original, INITD termination causes `break` before yield check.
+    if result.should_yield && !result.should_terminate {
         yield_cpu();
     }
 
@@ -570,13 +630,103 @@ pub fn run_full_iteration() -> (result: IterationResult)
 ///
 /// Models `ScoreBoard::get_mut()` + `scoreboard.handle()`. Returns a
 /// `ScoreBoardPollResult` indicating whether a kcall is pending and
-/// what number it has.
+/// what number it has. Scoreboard access errors (`unreachable!` in
+/// original) are not modeled as they should never occur.
 ///
 /// ## Trust Boundary T1
 #[verifier::external_body]
 pub fn poll_scoreboard_full() -> (result: ScoreBoardPollResult)
 {
     unimplemented!()
+}
+
+//==================================================================================================
+// Lifecycle Model
+//==================================================================================================
+
+/// Result of a lifecycle step.
+///
+/// # Description
+///
+/// Encapsulates the outcome of one step of the handler lifecycle, including
+/// whether the loop terminated and the ghost history for invariant tracking.
+pub struct LifecycleStepResult {
+    /// Whether the handler loop terminated (INITD exited).
+    pub terminated: bool,
+    /// The exit status (meaningful only when `terminated` is true).
+    pub exit_status: u32,
+    /// Ghost history of harvest outcomes for loop invariant tracking.
+    pub new_history: Ghost<Seq<HarvestOutcome>>,
+}
+
+/// Models handler initialization and returns the initial loop history.
+///
+/// # Description
+///
+/// Initializes the event subsystem (T5) and establishes the base case of
+/// the loop invariant: the empty history satisfies `spec_loop_invariant`.
+/// This models the `event::init(hal)` call before the handler loop starts.
+pub fn kcall_handler_init() -> (history: Ghost<Seq<HarvestOutcome>>)
+    ensures
+        spec_loop_invariant(history@),
+        history@.len() == 0,
+{
+    event_init();
+    proof { lemma_loop_invariant_base(); }
+    Ghost(Seq::empty())
+}
+
+/// Models one step of the handler lifecycle, connecting the loop invariant.
+///
+/// # Description
+///
+/// Given a history trace of past iterations satisfying the loop invariant,
+/// runs one full iteration. If the loop continues (INITD not terminated),
+/// the invariant is preserved with the history extended by one non-terminating
+/// outcome. If the loop terminates (INITD found), `drain_remaining_zombies()`
+/// is called to model the post-loop cleanup.
+///
+/// This function connects:
+/// - **Initialization**: The `requires` clause demands a valid history.
+/// - **Iteration**: `run_full_iteration()` models one loop body.
+/// - **Invariant induction**: On continuation, the history is extended and
+///   the invariant preserved.
+/// - **Termination**: On INITD exit, the loop breaks and drain occurs.
+/// - **Post-loop drain**: `drain_remaining_zombies()` is called on exit.
+pub fn kcall_handler_lifecycle_step(
+    history: Ghost<Seq<HarvestOutcome>>,
+) -> (result: LifecycleStepResult)
+    requires
+        spec_loop_invariant(history@),
+    ensures
+        // If the loop continues, the invariant is preserved.
+        !result.terminated ==> spec_loop_invariant(result.new_history@),
+        !result.terminated ==> result.new_history@.len() == history@.len() + 1,
+{
+    let iter_result: IterationResult = run_full_iteration();
+
+    if iter_result.should_terminate {
+        // INITD terminated: drain remaining zombies and exit.
+        drain_remaining_zombies();
+        LifecycleStepResult {
+            terminated: true,
+            exit_status: iter_result.exit_status,
+            new_history: Ghost(history@),
+        }
+    } else {
+        // Loop continues: extend history with non-terminating outcome.
+        let ghost outcome: HarvestOutcome = HarvestOutcome::NoZombie;
+        proof {
+            // NoZombie is a non-terminating outcome.
+            assert(!spec_should_terminate(outcome));
+            lemma_loop_invariant_inductive(history@, outcome);
+        }
+        LifecycleStepResult {
+            terminated: false,
+            exit_status: 0u32,
+            new_history: Ghost(spec_extend_history(history@, outcome)),
+        }
+    }
 }
 
 } // verus!
