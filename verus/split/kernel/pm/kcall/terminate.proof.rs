@@ -240,6 +240,20 @@ pub proof fn lemma_error_code_matches()
     assert(ErrorCode::InvalidArgument as int == 22int);
 }
 
+/// Proof: the spec constant ERROR_CODE_NO_SUCH_PROCESS matches ErrorCode::NoSuchProcess.
+///
+/// # Description
+///
+/// Links the spec-level error code constant to the concrete
+/// ErrorCode::NoSuchProcess discriminant (3 = ESRCH). Prevents silent
+/// drift if the ErrorCode enum changes.
+pub proof fn lemma_no_such_process_error_code_matches()
+    ensures
+        ERROR_CODE_NO_SUCH_PROCESS() == ErrorCode::NoSuchProcess as int,
+{
+    assert(ErrorCode::NoSuchProcess as int == 3int);
+}
+
 /// Proof: PID parse error always produces InvalidArgument error code.
 ///
 /// # Description

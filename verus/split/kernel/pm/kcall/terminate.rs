@@ -32,9 +32,10 @@
 //!   (`lemma_pid_error_code_preserved`, `lemma_terminate_error_code_preserved`).
 //! - **InvalidArgument for bad PID**: Invalid PID values produce
 //!   `ErrorCode::InvalidArgument` (22) (`lemma_invalid_pid_returns_invalid_argument`).
-//! - **Error code linkage**: The spec constant `ERROR_CODE_INVALID_ARGUMENT()`
-//!   is proven equal to `ErrorCode::InvalidArgument as int`
-//!   (`lemma_error_code_matches`).
+//! - **Error code linkage**: The spec constants `ERROR_CODE_INVALID_ARGUMENT()`
+//!   and `ERROR_CODE_NO_SUCH_PROCESS()` are proven equal to their respective
+//!   `ErrorCode` discriminants (`lemma_error_code_matches`,
+//!   `lemma_no_such_process_error_code_matches`).
 //! - **Success implies valid PID**: If the result is Success, then the PID was
 //!   valid and the process existed (`lemma_success_implies_valid_pid`).
 //! - **PID identity**: On successful parse, the parsed PID equals the input
@@ -296,6 +297,13 @@ pub fn process_manager_terminate(
         // On success: PID existed in pre-state.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> spec_pm_has_process(pm_pre, pid as nat),
+        // Frame: on success, no new PIDs are created (subset).
+        ret.0.spec_view() == TerminateOutcomeView::TmOk
+            ==> ret.1@.process_set.subset_of(pm_pre.process_set),
+        // Frame: on success, all PIDs other than the target are unchanged.
+        ret.0.spec_view() == TerminateOutcomeView::TmOk
+            ==> forall|p: nat| p != pid as nat ==>
+                (spec_pm_has_process(pm_pre, p) <==> spec_pm_has_process(ret.1@, p)),
         // On error: state is unchanged.
         ret.0.spec_view() matches TerminateOutcomeView::TmError { .. }
             ==> ret.1@ == pm_pre,

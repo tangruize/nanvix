@@ -25,6 +25,8 @@ pub enum ErrorCode {
     BadAddress = 14,
     /// No such entry.
     NoSuchEntry = 2,
+    /// No such process.
+    NoSuchProcess = 3,
 }
 
 /// An error type that combines an error code with a reason string.
