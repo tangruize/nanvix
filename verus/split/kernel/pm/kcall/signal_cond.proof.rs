@@ -439,4 +439,65 @@ pub proof fn lemma_cond_ref_released_on_get_cond_success(
 {
 }
 
+/// Proof: broadcast semantics are preserved through the pipeline to the result.
+///
+/// # Description
+///
+/// When the pipeline succeeds, the awakened count in the final result satisfies
+/// `spec_broadcast_semantics`. This bridges the trust boundary T2 postcondition
+/// (on `notify_model`) to the pipeline-level result.
+pub proof fn lemma_broadcast_semantics_preserved(
+    cond_addr: nat,
+    broadcast: bool,
+    awakened: nat,
+)
+    requires
+        // From notify_model's postcondition.
+        spec_broadcast_semantics(broadcast, cond_addr, awakened),
+    ensures
+        // The spec result preserves the awakened count.
+        spec_signal_cond_result(
+            GetCondOutcomeView::GcOk,
+            NotifyOutcomeView::NOk { awakened },
+            PutCondOutcomeView::PcOk,
+        ) == (SignalCondResultView::Success { awakened }),
+        // And broadcast semantics hold for the result.
+        spec_broadcast_semantics(broadcast, cond_addr, awakened),
+{
+}
+
+/// Proof: notify_first (non-broadcast) awakens at most one thread.
+///
+/// # Description
+///
+/// When `broadcast` is false, the spec guarantees that at most one thread
+/// is awakened. This is a direct consequence of `spec_broadcast_semantics`.
+pub proof fn lemma_notify_first_awakens_at_most_one(
+    cond_addr: nat,
+    awakened: nat,
+)
+    requires
+        spec_broadcast_semantics(false, cond_addr, awakened),
+    ensures
+        awakened <= 1,
+{
+}
+
+/// Proof: notify_all (broadcast) awakens all waiters.
+///
+/// # Description
+///
+/// When `broadcast` is true, the spec guarantees that all waiting threads
+/// are awakened. This is a direct consequence of `spec_broadcast_semantics`.
+pub proof fn lemma_notify_all_awakens_all_waiters(
+    cond_addr: nat,
+    awakened: nat,
+)
+    requires
+        spec_broadcast_semantics(true, cond_addr, awakened),
+    ensures
+        awakened == spec_num_waiters(cond_addr),
+{
+}
+
 } // verus!

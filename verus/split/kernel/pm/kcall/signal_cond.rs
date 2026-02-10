@@ -41,6 +41,12 @@
 //!   (`lemma_short_circuit_get_cond`, `lemma_short_circuit_notify`).
 //! - **Awakened count preservation**: On success, the returned count matches
 //!   the notify outcome (`lemma_success_awakened_count`).
+//! - **Broadcast semantics**: On success, the awakened count respects the
+//!   `broadcast` flag: `notify_first` (`!broadcast`) awakens at most 1 thread
+//!   (`lemma_notify_first_awakens_at_most_one`); `notify_all` (`broadcast`)
+//!   awakens all waiters (`lemma_notify_all_awakens_all_waiters`). This is
+//!   propagated from the T2 trust boundary to the pipeline result
+//!   (`lemma_broadcast_semantics_preserved`).
 //! - **Condvar drop on get_cond success**: When get_cond succeeds, the condvar
 //!   reference is always released (dropped at scope exit), regardless of
 //!   whether notify succeeds or fails. This is exposed as a postcondition
@@ -64,9 +70,16 @@
 //!   Condvar::notify_all() / Condvar::notify_first() is verified in the
 //!   condvar module.
 //! - **ProcessManager correctness**: get_cond / put_cond internals are
-//!   verified in the PM module.
+//!   verified in the PM module. Resource-release predicates
+//!   (`spec_cond_ref_released`, `spec_cond_slot_returned`) are uninterpreted
+//!   at this trust boundary — their concrete semantics (e.g., refcount
+//!   decrement, slot ownership transfer) are defined and verified in the
+//!   PM and condvar modules respectively. Introducing PM/condvar state
+//!   invariants here would break the trust boundary separation.
 //! - **Liveness**: Whether waiting threads actually wake up is a scheduler
-//!   concern, verified separately.
+//!   concern, verified separately. This verification assumes that the
+//!   condvar and scheduler modules correctly implement wakeup semantics;
+//!   liveness guarantees flow from those modules, not from this kcall pipeline.
 //!
 //! ## Known Limitations
 //!
@@ -265,8 +278,13 @@ pub fn get_cond_model(cond_addr: u32) -> (result: GetCondOutcomeModel)
 /// # Description
 ///
 /// Notifies threads waiting on the condition variable. If `broadcast` is true,
-/// models `cond.notify_all()`; otherwise models `cond.notify_first()`.
+/// models `cond.notify_all()` (awakens all waiters); otherwise models
+/// `cond.notify_first()` (awakens at most one waiter).
 /// Returns the number of awakened threads on success, or an error.
+///
+/// The broadcast-dependent postcondition captures the fundamental semantic
+/// difference: `notify_first` awakens at most 1 thread, while `notify_all`
+/// awakens all waiters (modeled via `spec_num_waiters`).
 ///
 /// # Parameters
 ///
@@ -277,6 +295,10 @@ pub fn notify_model(cond_addr: u32, broadcast: bool) -> (result: NotifyOutcomeMo
     ensures
         result matches NotifyOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),
+        // Broadcast semantics: on success, the awakened count respects the
+        // broadcast flag. notify_first awakens at most 1; notify_all awakens all.
+        result matches NotifyOutcomeModel::Ok { awakened }
+            ==> spec_broadcast_semantics(broadcast, cond_addr as nat, awakened as nat),
 {
     unimplemented!()
 }
@@ -394,6 +416,10 @@ pub fn signal_cond_model(
         // On success, the condvar slot was returned.
         spec_is_success(ret.0.spec_view()) ==>
             spec_cond_slot_returned(cond_addr as nat),
+        // On success, broadcast semantics are satisfied: the awakened count
+        // respects the broadcast flag (at most 1 for signal, all waiters for broadcast).
+        (ret.0.spec_view() matches SignalCondResultView::Success { awakened })
+            ==> spec_broadcast_semantics(broadcast, cond_addr as nat, awakened),
 {
     // Step 1: Get condvar reference (external).
     let gc_result: GetCondOutcomeModel = get_cond_model(cond_addr);

@@ -266,4 +266,37 @@ pub uninterp spec fn spec_cond_ref_released(cond_addr: nat) -> bool;
 /// Models the effect of ProcessManager::put_cond succeeding.
 pub uninterp spec fn spec_cond_slot_returned(cond_addr: nat) -> bool;
 
+/// Spec predicate: the number of threads waiting on a condvar.
+///
+/// # Description
+///
+/// Abstract predicate modeling the number of threads blocked on the condition
+/// variable at `cond_addr`. Used to specify broadcast semantics: `notify_all`
+/// awakens all waiters, while `notify_first` awakens at most one.
+/// The concrete waiter count is managed by the condvar module; this is an
+/// uninterpreted abstraction at the kcall trust boundary.
+pub uninterp spec fn spec_num_waiters(cond_addr: nat) -> nat;
+
+/// Spec predicate: broadcast semantics constraint on awakened count.
+///
+/// # Description
+///
+/// When `broadcast` is false (`notify_first`), at most one thread is awakened.
+/// When `broadcast` is true (`notify_all`), all waiting threads are awakened.
+/// This captures the fundamental semantic difference between the two notify
+/// variants.
+pub open spec fn spec_broadcast_semantics(
+    broadcast: bool,
+    cond_addr: nat,
+    awakened: nat,
+) -> bool {
+    if broadcast {
+        // notify_all: awakens all waiters.
+        awakened == spec_num_waiters(cond_addr)
+    } else {
+        // notify_first: awakens at most one waiter.
+        awakened <= 1
+    }
+}
+
 } // verus!
