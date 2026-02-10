@@ -4,7 +4,7 @@
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "b8b19c87-fbfc-4058-b18a-61bdd0fcd3d1",
-  "completed": false,
+  "completed": true,
   "final_grades": {
     "claude": "A",
     "gpt": "A",
