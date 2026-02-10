@@ -36,6 +36,13 @@ use ::sys::{
 ///
 /// Waits on a condition variable.
 ///
+/// # Verification
+///
+/// This function has a formal verification model in
+/// `verus/split/kernel/pm/kcall/wait_cond.rs` (`wait_cond_model`).
+/// Any changes to the control flow or error handling in this function
+/// must be reflected in the verification model to maintain equivalence.
+///
 /// # Parameters
 ///
 /// - `pid`: Process identifier.
