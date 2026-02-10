@@ -194,6 +194,8 @@ pub struct ScoreBoard {
     /// Current protocol phase.
     pub phase: ScoreBoardPhase,
     /// Count of completed cycles (verification-only; no original counterpart).
+    /// Uses `u64` rather than `Ghost<nat>` because Verus Ghost fields inside exec
+    /// structs complicate View trait derivation and pattern matching.
     pub completed_cycles: u64,
 }
 
@@ -243,7 +245,6 @@ impl KcallArgs {
                 arg2: arg2 as nat,
                 arg3: arg3 as nat,
             }),
-            result.wf(),
     {
         KcallArgs { pid, tid, number, arg0, arg1, arg2, arg3 }
     }

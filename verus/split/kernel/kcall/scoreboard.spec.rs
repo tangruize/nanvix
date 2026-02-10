@@ -146,17 +146,6 @@ impl View for ScoreBoard {
 //==================================================================================================
 
 impl KcallArgs {
-    /// Spec function: well-formedness of kernel call arguments.
-    ///
-    /// # Description
-    ///
-    /// All fields are fixed-width integers with no additional domain constraints.
-    /// `ProcessIdentifier` and `ThreadIdentifier` accept any `i32` value via
-    /// `From<i32>`, so no non-negativity restriction is imposed.
-    pub open spec fn wf(&self) -> bool {
-        true
-    }
-
     /// Spec function: returns the abstract view of the arguments.
     pub open spec fn spec_view(&self) -> KcallArgsView {
         self@
@@ -399,6 +388,11 @@ impl ScoreBoard {
     ///
     /// Recursively composes `n` full cycles using the same args and result.
     /// Used to prove inductive properties about the cycle counter.
+    ///
+    /// Note: this uses identical args/ret for all cycles. The cycle counter
+    /// property (`completed_cycles == initial + n`) generalizes to varying
+    /// inputs, since each `spec_full_cycle` increments the counter by 1
+    /// regardless of the specific args/ret values.
     pub open spec fn spec_n_identical_cycles(
         view: ScoreBoardView,
         args: KcallArgsView,
