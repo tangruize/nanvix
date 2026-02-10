@@ -510,6 +510,8 @@ pub fn get_cond_and_wait_model(cond_addr: u32, has_alarm: bool) -> (ret: (
     match gc_result {
         GetCondOutcomeModel::Error { error_code } => {
             // get_cond failed: store error, cond.wait is never called.
+            // Don't-care value: spec_stored_result ignores cw when gc fails,
+            // proven by lemma_get_cond_fail_ignores_cond_wait.
             let ghost cw_view: CondWaitOutcomeView = CondWaitOutcomeView::CwOk;
             (
                 WaitCondResultModel::GetCondError { error_code },

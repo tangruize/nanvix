@@ -728,17 +728,15 @@ pub proof fn lemma_reacquisition_no_timed_out(
     }
 }
 
-/// Proof: on success, the mutex protocol was followed (release-before-wait-before-reacquire).
+/// Proof: on success, all pipeline steps returned Ok.
 ///
 /// # Description
 ///
-/// When the result is Success, the exec model postconditions guarantee that:
-/// - spec_mutex_released (from take_mutex_guard_model on TmgOk).
-/// - spec_cond_ref_released (from put_cond_model on PcOk).
-/// - spec_mutex_reacquired (from mutex_lock_model on LoOk).
-///
-/// This lemma verifies that Success implies all three uninterpreted predicates
-/// must have been established during execution.
+/// When the result is Success, every step outcome must be the Ok variant.
+/// This is a necessary condition for the mutex protocol predicates
+/// (spec_mutex_released, spec_cond_ref_released, spec_mutex_reacquired) to hold.
+/// The predicates themselves are established by the external_body postconditions
+/// during exec verification in `wait_cond_model`.
 pub proof fn lemma_success_implies_all_predicates_set(
     timeout_s: nat,
     timeout_ns: nat,
@@ -772,6 +770,93 @@ pub proof fn lemma_success_implies_all_predicates_set(
         take_guard_outcome, get_cond_outcome, cond_wait_outcome,
         put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
     );
+}
+
+/// Proof: get_mutex error overrides stored get_cond error.
+///
+/// # Description
+///
+/// When get_cond fails AND get_mutex also fails, the get_mutex error
+/// takes priority (via `?` operator on the continuation pipeline).
+pub proof fn lemma_get_mutex_overrides_stored_error(
+    timeout_s: nat,
+    timeout_ns: nat,
+    gc_error_code: int,
+    cond_wait_outcome: CondWaitOutcomeView,
+    gm_error_code: int,
+)
+    requires
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+    ensures
+        spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            TakeMutexGuardOutcomeView::TmgOk,
+            GetCondOutcomeView::GcError { error_code: gc_error_code },
+            cond_wait_outcome,
+            PutCondOutcomeView::PcOk,
+            GetMutexOutcomeView::GmError { error_code: gm_error_code },
+            LockOutcomeView::LoOk,
+            PutGuardOutcomeView::PgOk,
+        ) == (WaitCondResultView::GetMutexError { error_code: gm_error_code }),
+{
+}
+
+/// Proof: lock error overrides stored get_cond error.
+///
+/// # Description
+///
+/// When get_cond fails AND mutex.lock also fails, the lock error
+/// takes priority (via `?` operator on the continuation pipeline).
+pub proof fn lemma_lock_overrides_stored_error(
+    timeout_s: nat,
+    timeout_ns: nat,
+    gc_error_code: int,
+    cond_wait_outcome: CondWaitOutcomeView,
+    lo_error_code: int,
+)
+    requires
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+    ensures
+        spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            TakeMutexGuardOutcomeView::TmgOk,
+            GetCondOutcomeView::GcError { error_code: gc_error_code },
+            cond_wait_outcome,
+            PutCondOutcomeView::PcOk,
+            GetMutexOutcomeView::GmOk,
+            LockOutcomeView::LoGenericError { error_code: lo_error_code },
+            PutGuardOutcomeView::PgOk,
+        ) == (WaitCondResultView::LockGenericError { error_code: lo_error_code }),
+{
+}
+
+/// Proof: put_guard error overrides stored get_cond error.
+///
+/// # Description
+///
+/// When get_cond fails AND put_mutex_guard also fails, the put_guard error
+/// takes priority (via `?` operator on the continuation pipeline).
+pub proof fn lemma_put_guard_overrides_stored_error(
+    timeout_s: nat,
+    timeout_ns: nat,
+    gc_error_code: int,
+    cond_wait_outcome: CondWaitOutcomeView,
+    pg_error_code: int,
+)
+    requires
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+    ensures
+        spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            TakeMutexGuardOutcomeView::TmgOk,
+            GetCondOutcomeView::GcError { error_code: gc_error_code },
+            cond_wait_outcome,
+            PutCondOutcomeView::PcOk,
+            GetMutexOutcomeView::GmOk,
+            LockOutcomeView::LoOk,
+            PutGuardOutcomeView::PgError { error_code: pg_error_code },
+        ) == (WaitCondResultView::PutGuardError { error_code: pg_error_code }),
+{
 }
 
 } // verus!
