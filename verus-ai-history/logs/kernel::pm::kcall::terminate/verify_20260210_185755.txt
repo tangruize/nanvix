@@ -1,0 +1,33 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 18:57:55 CST 2026
+Module: kernel::pm::kcall::terminate
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::terminate
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)
+   --> kernel/pm/kcall/terminate.rs:255:9
+    |
+255 | /         pid as nat == KERNEL_PID()
+256 | |             ==> ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
+257 | |                 && error_code == ERROR_CODE_INVALID_ARGUMENT(),
+    | |______________________________________________________________^
+
+error: matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)
+   --> kernel/pm/kcall/terminate.rs:259:9
+    |
+259 | /         pid as nat != KERNEL_PID() && !spec_pm_has_process(pm_pre, pid as nat)
+260 | |             ==> ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
+261 | |                 && error_code == ERROR_CODE_NO_SUCH_PROCESS(),
+    | |_____________________________________________________________^
+
+error: aborting due to 2 previous errors
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::terminate (verified:0, errors:0)
