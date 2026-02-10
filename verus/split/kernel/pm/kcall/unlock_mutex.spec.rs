@@ -217,24 +217,4 @@ pub uninterp spec fn spec_thread_owns_mutex(pid: nat, tid: nat, mutex_addr: nat)
 /// defined in the mutex module, not in this pipeline.
 pub uninterp spec fn spec_guard_dropped_and_mutex_unlocked(mutex_addr: nat) -> bool;
 
-/// Spec predicate: the mutex may have been implicitly unlocked on the error path.
-///
-/// # Description
-///
-/// In the PM implementation, `take_mutex_guard` internally:
-/// 1. Takes the guard from thread bookkeeping (succeeds).
-/// 2. Calls `put_mutex(mutex_addr)` to return the mutex slot.
-/// If step 2 fails, the function returns `Err` but the guard was already
-/// extracted in step 1. Rust's ownership system drops the `MutexGuard` at
-/// scope exit, which triggers `MutexGuard::drop()` and unlocks the mutex.
-///
-/// This means on certain error paths, the mutex IS unlocked as a side effect
-/// even though the kcall returns an error. This predicate models that
-/// possibility: when take_mutex_guard returns an error, the mutex may or may
-/// not have been unlocked depending on which internal error path was taken.
-///
-/// The concrete interpretation is a PM concern — the PM module should prove
-/// which error paths trigger implicit unlocks and which do not.
-pub uninterp spec fn spec_mutex_may_be_unlocked_on_error(mutex_addr: nat) -> bool;
-
 } // verus!
