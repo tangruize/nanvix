@@ -351,4 +351,23 @@ pub proof fn lemma_copy_error_code_valid(
 {
 }
 
+//==================================================================================================
+// Proof Functions — Error Code Domain
+//==================================================================================================
+
+/// Proof: error codes in the ErrorCode enum domain are valid positive codes.
+///
+/// # Description
+///
+/// Links `spec_is_error_code_value` (which enumerates the actual ErrorCode
+/// discriminants) to `spec_is_valid_error_code` (which requires code > 0).
+/// All ErrorCode values (2, 3, 12, 14, 16, 22) are positive.
+pub proof fn lemma_error_code_value_implies_valid(code: int)
+    requires
+        spec_is_error_code_value(code),
+    ensures
+        spec_is_valid_error_code(code),
+{
+}
+
 } // verus!

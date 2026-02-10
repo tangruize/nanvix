@@ -57,11 +57,13 @@
 //!   a TID matching the PM outcome (`lemma_success_implies_valid_tid`).
 //! - **Error code linkage**: `ERROR_CODE_INVALID_ARGUMENT()` is proven equal
 //!   to `ErrorCode::InvalidArgument as int` (`lemma_error_code_matches`).
-//! - **Argument identity tracking**: Ghost parameters on `pm_create_thread`
-//!   ensure the correct `pid` and `thread_create_args` are forwarded to the PM
-//!   call. Success postconditions link the ghost arguments to the input.
+//! - **Argument identity tracking**: Ghost `pid` parameter is threaded through
+//!   both `copy_from_user` and `pm_create_thread`, ensuring the same PID from
+//!   `KcallArgs` is used in both operations. Ghost `arg0` tracks the source
+//!   address. Success postconditions link the ghost arguments to the input view.
 //! - **Copy error validity**: The `copy_from_user` external body guarantees
-//!   that error codes are valid positive values (`spec_is_valid_error_code`).
+//!   that error codes match the `ErrorCode` enum domain (`spec_is_error_code_value`)
+//!   and are valid positive values (`spec_is_valid_error_code`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -106,9 +108,9 @@
 //!
 //! ### Abstraction Correctness
 //!
-//! The validation oracles (`is_user_region`, `is_user_addr`, `check_condition`)
-//! are modeled as boolean identity functions: they take a pre-computed boolean
-//! and return it unchanged. This means the **mapping from concrete types
+//! The validation oracles (`is_user_region`, `is_user_addr`) are modeled as
+//! boolean identity functions: they take a pre-computed boolean and return it
+//! unchanged. This means the **mapping from concrete types
 //! (`VirtualAddress`, `KcallArgs`, `ThreadCreateArgs`) to boolean inputs is
 //! entirely trusted**. The verification proves the control-flow dispatch logic
 //! is correct given boolean inputs, but does NOT prove that the booleans
@@ -130,8 +132,8 @@
 //! |-------------------------------------------|----------------------------------------|-----------------|
 //! | `Vmem::is_user_region(addr, size)`        | `is_user_region(addr_valid)`           | external_body   |
 //! | `Vmem::is_user_addr(addr)`                | `is_user_addr(addr_valid)`             | external_body   |
-//! | `thread_create_args.user_stack_size < ..`  | `check_condition(size_valid)`          | external_body   |
-//! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code)`| external_body   |
+//! | `thread_create_args.user_stack_size < ..`  | Direct `u32` comparison                | Fully verified  |
+//! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code, ghost_pid)` | external_body |
 //! | `pm.create_thread(mm, pid, args)`         | `pm_create_thread(ghost_pid, ghost_args)` | external_body |
 //! | `pub fn create_thread(pm, mm, args)`      | `create_thread_model(input, …)`        | Fully verified  |
 //!
@@ -195,8 +197,8 @@ pub struct ThreadCreateArgsModel {
     pub user_fn_valid: bool,
     /// Whether user_stack region lies in user address space.
     pub user_stack_valid: bool,
-    /// Whether user_stack_size >= USER_STACK_SIZE.
-    pub user_stack_size_valid: bool,
+    /// The user stack size in bytes.
+    pub user_stack_size: u32,
     /// Whether user_tda is present.
     pub has_user_tda: bool,
     /// Whether user_tda (if present) lies in user address space.
@@ -209,7 +211,7 @@ impl ThreadCreateArgsModel {
         ThreadCreateArgsView {
             user_fn_valid: self.user_fn_valid,
             user_stack_valid: self.user_stack_valid,
-            user_stack_size_valid: self.user_stack_size_valid,
+            user_stack_size: self.user_stack_size as nat,
             has_user_tda: self.has_user_tda,
             user_tda_valid: self.user_tda_valid,
         }
@@ -308,22 +310,6 @@ pub fn is_user_addr(valid: bool) -> (result: bool)
     unimplemented!()
 }
 
-/// Generic condition oracle for non-address validations.
-///
-/// # Description
-///
-/// Models boolean checks that are not address/region validations, such as
-/// `thread_create_args.user_stack_size < USER_STACK_SIZE`. Distinguished
-/// from `is_user_region`/`is_user_addr` to clarify the nature of the
-/// check being performed.
-#[verifier::external_body]
-pub fn check_condition(valid: bool) -> (result: bool)
-    ensures
-        result == valid,
-{
-    unimplemented!()
-}
-
 /// Trust Boundary T3: Models `pm::copy_from_user(pm, pid, dst, src)`.
 ///
 /// # Description
@@ -335,14 +321,19 @@ pub fn check_condition(valid: bool) -> (result: bool)
 /// Error codes from `copy_from_user` are guaranteed valid (positive) because
 /// the original returns `error.code` which is an `ErrorCode` enum value.
 #[verifier::external_body]
-pub fn copy_from_user(succeeded: bool, error_code: i32) -> (result: CopyFromUserResultModel)
+pub fn copy_from_user(
+    succeeded: bool,
+    error_code: i32,
+    Ghost(ghost_pid): Ghost<nat>,
+) -> (result: CopyFromUserResultModel)
     ensures
         succeeded ==> matches!(result, CopyFromUserResultModel::CopyOk),
         !succeeded ==> (result matches CopyFromUserResultModel::CopyError { error_code: ec }
             && ec == error_code),
         result.spec_succeeded() == succeeded,
         !succeeded ==> result.spec_error_code() == error_code as int,
-        // Error codes are always valid positive values (ErrorCode enum).
+        // Error codes match the ErrorCode enum domain and are valid positive values.
+        !succeeded ==> spec_is_error_code_value(error_code as int),
         !succeeded ==> spec_is_valid_error_code(error_code as int),
 {
     unimplemented!()
@@ -380,6 +371,8 @@ pub fn pm_create_thread(
         matches!(result, CreateThreadResultModel::CtOk { .. } | CreateThreadResultModel::CtError { .. }),
         result matches CreateThreadResultModel::CtOk { tid } ==> tid >= 0i32,
         result.spec_view() matches CreateThreadOutcomeView::CtError { error_code }
+            ==> spec_is_error_code_value(error_code),
+        result.spec_view() matches CreateThreadOutcomeView::CtError { error_code }
             ==> spec_is_valid_error_code(error_code),
 {
     unimplemented!()
@@ -407,7 +400,9 @@ pub fn pm_create_thread(
 /// - `copy_succeeded`: Whether copy_from_user succeeded.
 /// - `copy_error_code`: The error code from copy_from_user (if it failed).
 /// - `thread_args`: The validation results for thread_create_args fields.
+/// - `user_stack_size_min`: The minimum user stack size (USER_STACK_SIZE from config).
 /// - `Ghost(ghost_pid)`: Ghost PID for argument identity tracking.
+/// - `Ghost(ghost_arg0)`: Ghost arg0 (raw address) for argument identity tracking.
 ///
 /// # Returns
 ///
@@ -420,14 +415,20 @@ pub fn create_thread_model(
     copy_succeeded: bool,
     copy_error_code: i32,
     thread_args: &ThreadCreateArgsModel,
+    user_stack_size_min: u32,
     Ghost(ghost_pid): Ghost<nat>,
+    Ghost(ghost_arg0): Ghost<nat>,
 ) -> (ret: (KcallResultModel, Ghost<CreateThreadInputView>, Ghost<CreateThreadOutcomeView>))
     requires
+        // The minimum stack size parameter matches the spec constant.
+        user_stack_size_min as nat == USER_STACK_SIZE(),
         // Copy error code must be valid when copy fails.
         !copy_succeeded ==> spec_is_valid_error_code(copy_error_code as int),
     ensures
         // Build the ghost input from parameters.
         ret.1@ == (CreateThreadInputView {
+            pid: ghost_pid,
+            arg0: ghost_arg0,
             args_addr_valid: args_addr_valid,
             copy_succeeded: copy_succeeded,
             copy_error_code: copy_error_code as int,
@@ -456,6 +457,8 @@ pub fn create_thread_model(
 {
     // Build the ghost input view.
     let ghost input_view: CreateThreadInputView = CreateThreadInputView {
+        pid: ghost_pid,
+        arg0: ghost_arg0,
         args_addr_valid: args_addr_valid,
         copy_succeeded: copy_succeeded,
         copy_error_code: copy_error_code as int,
@@ -479,7 +482,7 @@ pub fn create_thread_model(
     }
 
     // Step 2: Copy thread_create_args from user space.
-    let copy_result: CopyFromUserResultModel = copy_from_user(copy_succeeded, copy_error_code);
+    let copy_result: CopyFromUserResultModel = copy_from_user(copy_succeeded, copy_error_code, Ghost(ghost_pid));
     match copy_result {
         CopyFromUserResultModel::CopyError { error_code } => {
             let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
@@ -528,9 +531,8 @@ pub fn create_thread_model(
         );
     }
 
-    // Step 4b: Check user_stack_size >= USER_STACK_SIZE (size comparison, not address check).
-    let stack_size_valid: bool = check_condition(thread_args.user_stack_size_valid);
-    if !stack_size_valid {
+    // Step 4b: Check user_stack_size >= USER_STACK_SIZE (concrete numeric comparison).
+    if thread_args.user_stack_size < user_stack_size_min {
         let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
         proof {
             lemma_user_stack_invalid_propagates(input_view, pm_view);

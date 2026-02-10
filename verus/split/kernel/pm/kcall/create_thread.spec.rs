@@ -34,6 +34,12 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
     22
 }
 
+/// The minimum user stack size in bytes (512 KiB = 524288).
+/// Corresponds to `config::memory_layout::USER_STACK_SIZE`.
+pub open spec fn USER_STACK_SIZE() -> nat {
+    524288
+}
+
 //==================================================================================================
 // View Types
 //==================================================================================================
@@ -50,8 +56,8 @@ pub struct ThreadCreateArgsView {
     pub user_fn_valid: bool,
     /// Whether user_stack region is in user address space.
     pub user_stack_valid: bool,
-    /// Whether user_stack_size >= USER_STACK_SIZE.
-    pub user_stack_size_valid: bool,
+    /// The user stack size in bytes.
+    pub user_stack_size: nat,
     /// Whether user_tda is present (Some).
     pub has_user_tda: bool,
     /// Whether user_tda address (if present) is in user address space.
@@ -66,6 +72,10 @@ pub struct ThreadCreateArgsView {
 /// the validation pipeline's behavior.
 #[verifier::ext_equal]
 pub struct CreateThreadInputView {
+    /// The process identifier from KcallArgs (ghost-tracked).
+    pub pid: nat,
+    /// The raw arg0 value from KcallArgs (ghost-tracked address).
+    pub arg0: nat,
     /// Whether the thread_create_args pointer lies in user space.
     pub args_addr_valid: bool,
     /// Whether copy_from_user succeeded.
@@ -127,7 +137,7 @@ pub open spec fn spec_user_fn_valid(input: CreateThreadInputView) -> bool {
 
 /// Whether the user stack region is valid (in user space and large enough).
 pub open spec fn spec_user_stack_valid(input: CreateThreadInputView) -> bool {
-    input.thread_args.user_stack_valid && input.thread_args.user_stack_size_valid
+    input.thread_args.user_stack_valid && input.thread_args.user_stack_size >= USER_STACK_SIZE()
 }
 
 /// Whether the user TDA is valid (either absent or in user space).
@@ -225,6 +235,22 @@ pub open spec fn spec_pm_create_thread_ok(outcome: CreateThreadOutcomeView) -> b
 /// Spec predicate: whether an error code is a valid positive error code.
 pub open spec fn spec_is_valid_error_code(code: int) -> bool {
     code > 0
+}
+
+/// Spec predicate: whether an error code matches the ErrorCode enum domain.
+///
+/// # Description
+///
+/// Enumerates the actual discriminant values of the `ErrorCode` enum
+/// (repr(i32)): NoSuchEntry=2, NoSuchProcess=3, OutOfMemory=12,
+/// BadAddress=14, ResourceBusy=16, InvalidArgument=22.
+pub open spec fn spec_is_error_code_value(code: int) -> bool {
+    code == 2    // NoSuchEntry
+    || code == 3    // NoSuchProcess
+    || code == 12   // OutOfMemory
+    || code == 14   // BadAddress
+    || code == 16   // ResourceBusy
+    || code == 22   // InvalidArgument
 }
 
 } // verus!
