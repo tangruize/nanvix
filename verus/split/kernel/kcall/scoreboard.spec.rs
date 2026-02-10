@@ -14,17 +14,21 @@ verus! {
 ///
 /// # Description
 ///
-/// Models the three-phase handshake between dispatcher and handler threads:
+/// Models the four-phase handshake between dispatcher and handler threads:
 /// - `Idle`: No dispatch pending. The scoreboard is ready for a new dispatch.
-/// - `Dispatched`: Arguments have been set and the handler has been signaled.
-///   The dispatcher is waiting for the handler to complete.
-/// - `Handled`: The handler has processed the call and set the result.
-///   The dispatcher can now read the result.
+/// - `Signaled`: Arguments have been set and the dispatched semaphore has been
+///   incremented (`up()`). The handler has not yet consumed the signal.
+/// - `Dispatched`: The handler has consumed the dispatched signal (`try_down()`)
+///   and is processing the call.
+/// - `Handled`: The handler has processed the call, set the result, and signaled
+///   the handled semaphore. The dispatcher can now read the result.
 #[verifier::ext_equal]
 pub enum ScoreBoardPhase {
     /// No dispatch pending; scoreboard is ready.
     Idle,
-    /// Arguments set, handler signaled, dispatcher waiting.
+    /// Args set, dispatched semaphore signaled, handler has not consumed yet.
+    Signaled,
+    /// Handler consumed dispatched signal; processing the call.
     Dispatched,
     /// Handler finished, result set, dispatcher can read.
     Handled,
@@ -35,7 +39,7 @@ pub enum ScoreBoardPhase {
 /// # Description
 ///
 /// Represents the observable state of a `KcallArgs` struct at the spec level.
-/// All fields are `nat` for spec-level reasoning (original uses `u32`/`i32`).
+/// All fields are `nat`/`int` for spec-level reasoning (original uses `u32`/`i32`).
 #[verifier::ext_equal]
 pub struct KcallArgsView {
     /// Process identifier (abstract).
@@ -58,12 +62,14 @@ pub struct KcallArgsView {
 ///
 /// # Description
 ///
-/// Models the `KcallResult` enum abstractly as an integer value.
-/// Positive/zero values represent success (`KcallSuccess`), negative values
-/// represent errors (`KcallError`).
+/// Models the `KcallResult` enum: `Success(KcallSuccess(i64))` or
+/// `Error(KcallError(i32))`. The `is_success` flag distinguishes the variant;
+/// the `value` field holds the payload.
 #[verifier::ext_equal]
 pub struct KcallResultView {
-    /// Abstract result value.
+    /// Whether this result represents a success variant.
+    pub is_success: bool,
+    /// Payload value: any i64 for success, must fit i32 for error.
     pub value: int,
 }
 
@@ -72,8 +78,7 @@ pub struct KcallResultView {
 /// # Description
 ///
 /// Captures the full observable state of the scoreboard: the current protocol
-/// phase, the kernel call arguments, the result, and whether mutual exclusion
-/// is held.
+/// phase, the kernel call arguments, the result, mutex and semaphore state.
 #[verifier::ext_equal]
 pub struct ScoreBoardView {
     /// Current protocol phase.
@@ -84,7 +89,11 @@ pub struct ScoreBoardView {
     pub result: KcallResultView,
     /// Whether the mutex is currently held (by a dispatcher).
     pub locked: bool,
-    /// Count of completed dispatch-handle-handled cycles.
+    /// Dispatched semaphore value (0 or 1).
+    pub dispatched_value: nat,
+    /// Handled semaphore value (0 or 1).
+    pub handled_value: nat,
+    /// Count of completed dispatch-handle-handled cycles (verification-only).
     pub completed_cycles: nat,
 }
 
@@ -112,7 +121,7 @@ impl View for KcallResult {
     type V = KcallResultView;
 
     open spec fn view(&self) -> KcallResultView {
-        KcallResultView { value: self.value as int }
+        KcallResultView { is_success: self.is_success, value: self.value as int }
     }
 }
 
@@ -125,6 +134,8 @@ impl View for ScoreBoard {
             args: self.args@,
             result: self.result@,
             locked: self.locked,
+            dispatched_value: self.dispatched_value as nat,
+            handled_value: self.handled_value as nat,
             completed_cycles: self.completed_cycles as nat,
         }
     }
@@ -139,17 +150,11 @@ impl KcallArgs {
     ///
     /// # Description
     ///
-    /// Arguments are well-formed if all fields are within their valid ranges.
-    /// The `number`, `arg0`..`arg3` fields are `u32`, so they must fit in 32 bits.
-    /// The `pid` and `tid` fields are `i32`, so they must fit in signed 32 bits.
+    /// All fields are fixed-width integers with no additional domain constraints.
+    /// `ProcessIdentifier` and `ThreadIdentifier` accept any `i32` value via
+    /// `From<i32>`, so no non-negativity restriction is imposed.
     pub open spec fn wf(&self) -> bool {
-        &&& 0 <= self.pid && self.pid <= i32::MAX as i32
-        &&& 0 <= self.tid && self.tid <= i32::MAX as i32
-        &&& self.number <= u32::MAX
-        &&& self.arg0 <= u32::MAX
-        &&& self.arg1 <= u32::MAX
-        &&& self.arg2 <= u32::MAX
-        &&& self.arg3 <= u32::MAX
+        true
     }
 
     /// Spec function: returns the abstract view of the arguments.
@@ -177,18 +182,24 @@ impl KcallArgs {
 
 impl KcallResult {
     /// Spec function: well-formedness of a kernel call result.
+    ///
+    /// # Description
+    ///
+    /// Models the original enum constraints:
+    /// - `Success(KcallSuccess(i64))`: any i64 value is valid.
+    /// - `Error(KcallError(i32))`: the value must fit in an i32.
     pub open spec fn wf(&self) -> bool {
-        i64::MIN as i64 <= self.value && self.value <= i64::MAX as i64
+        self.is_success || (i32::MIN as i64 <= self.value && self.value <= i32::MAX as i64)
     }
 
     /// Spec function: the default (ok) result view.
     pub open spec fn spec_ok_view() -> KcallResultView {
-        KcallResultView { value: 0 }
+        KcallResultView { is_success: true, value: 0 }
     }
 
-    /// Spec function: whether the result represents success.
+    /// Spec function: whether the result represents a success variant.
     pub open spec fn spec_is_ok(&self) -> bool {
-        self.value >= 0
+        self.is_success
     }
 }
 
@@ -198,36 +209,28 @@ impl ScoreBoard {
     /// # Description
     ///
     /// The scoreboard is well-formed when:
-    /// 1. Arguments are well-formed.
-    /// 2. Result is well-formed.
-    /// 3. Phase-consistency: in Idle phase, the board is not locked.
-    /// 4. The dispatched/handled semaphore values are consistent with the phase.
+    /// 1. The result is well-formed (error values fit in i32).
+    /// 2. The dispatched/handled semaphore values match phase expectations.
+    /// 3. The mutex is held in all non-Idle phases (Signaled, Dispatched, Handled).
+    /// 4. The mutex is released in the Idle phase.
     pub open spec fn wf(&self) -> bool {
-        &&& self.args.wf()
         &&& self.result.wf()
         &&& self.dispatched_value as nat == self.spec_dispatched_count()
         &&& self.handled_value as nat == self.spec_handled_count()
         &&& (self.phase == ScoreBoardPhase::Idle ==> !self.locked)
-        &&& (self.phase == ScoreBoardPhase::Idle ==> self.dispatched_value == 0)
-        &&& (self.phase == ScoreBoardPhase::Idle ==> self.handled_value == 0)
-        &&& (self.phase == ScoreBoardPhase::Dispatched ==> self.locked)
-        &&& (self.phase == ScoreBoardPhase::Dispatched ==> self.dispatched_value == 0)
-        &&& (self.phase == ScoreBoardPhase::Dispatched ==> self.handled_value == 0)
-        &&& (self.phase == ScoreBoardPhase::Handled ==> self.locked)
-        &&& (self.phase == ScoreBoardPhase::Handled ==> self.dispatched_value == 0)
-        &&& (self.phase == ScoreBoardPhase::Handled ==> self.handled_value == 1)
+        &&& (self.phase != ScoreBoardPhase::Idle ==> self.locked)
     }
 
     /// Spec function: expected dispatched semaphore count for the current phase.
     ///
     /// # Description
     ///
-    /// In all phases, the dispatched semaphore is 0 because:
-    /// - Idle: no pending dispatch.
-    /// - Dispatched: the handler has consumed the signal (try_down succeeded).
-    /// - Handled: the handler consumed the signal earlier.
+    /// - Idle: 0 (no pending dispatch).
+    /// - Signaled: 1 (dispatcher called `dispatched.up()`, handler has not consumed).
+    /// - Dispatched: 0 (handler consumed the signal via `try_down()`).
+    /// - Handled: 0 (handler consumed the signal earlier).
     pub open spec fn spec_dispatched_count(&self) -> nat {
-        0
+        if self.phase == ScoreBoardPhase::Signaled { 1 } else { 0 }
     }
 
     /// Spec function: expected handled semaphore count for the current phase.
@@ -235,8 +238,9 @@ impl ScoreBoard {
     /// # Description
     ///
     /// - Idle: 0 (no pending result).
+    /// - Signaled: 0 (handler has not started yet).
     /// - Dispatched: 0 (handler hasn't finished yet).
-    /// - Handled: 1 (handler has signaled completion).
+    /// - Handled: 1 (handler has signaled completion via `handled.up()`).
     pub open spec fn spec_handled_count(&self) -> nat {
         if self.phase == ScoreBoardPhase::Handled { 1 } else { 0 }
     }
@@ -244,6 +248,11 @@ impl ScoreBoard {
     /// Spec function: the scoreboard is in the idle phase.
     pub open spec fn spec_is_idle(&self) -> bool {
         self.phase == ScoreBoardPhase::Idle
+    }
+
+    /// Spec function: the scoreboard is in the signaled phase.
+    pub open spec fn spec_is_signaled(&self) -> bool {
+        self.phase == ScoreBoardPhase::Signaled
     }
 
     /// Spec function: the scoreboard is in the dispatched phase.
@@ -263,6 +272,8 @@ impl ScoreBoard {
             args: KcallArgs::spec_default_view(),
             result: KcallResult::spec_ok_view(),
             locked: false,
+            dispatched_value: 0,
+            handled_value: 0,
             completed_cycles: 0,
         }
     }
@@ -271,13 +282,13 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Models the first half of `dispatch()`: acquire mutex, set args,
+    /// Models the first part of `dispatch()`: acquire mutex, set args,
     /// signal handler via `dispatched.up()`. The phase transitions from
-    /// `Idle` to `Dispatched`.
+    /// `Idle` to `Signaled`, and `dispatched_value` becomes 1.
     ///
     /// # Parameters
     ///
-    /// - `view`: Current scoreboard view.
+    /// - `view`: Current scoreboard view (must be Idle).
     /// - `new_args`: The new kernel call arguments.
     ///
     /// # Returns
@@ -285,10 +296,12 @@ impl ScoreBoard {
     /// The updated view after begin-dispatch.
     pub open spec fn spec_begin_dispatch(view: ScoreBoardView, new_args: KcallArgsView) -> ScoreBoardView {
         ScoreBoardView {
-            phase: ScoreBoardPhase::Dispatched,
+            phase: ScoreBoardPhase::Signaled,
             args: new_args,
             result: view.result,
             locked: true,
+            dispatched_value: 1,
+            handled_value: 0,
             completed_cycles: view.completed_cycles,
         }
     }
@@ -298,10 +311,18 @@ impl ScoreBoard {
     /// # Description
     ///
     /// Models `handle()`: the handler consumes the dispatched signal
-    /// (via `dispatched.try_down()`) and reads args. Phase stays `Dispatched`
-    /// since the handler hasn't produced a result yet.
+    /// (via `dispatched.try_down()`) and reads args. The phase transitions
+    /// from `Signaled` to `Dispatched`, and `dispatched_value` becomes 0.
     pub open spec fn spec_handle(view: ScoreBoardView) -> ScoreBoardView {
-        view
+        ScoreBoardView {
+            phase: ScoreBoardPhase::Dispatched,
+            args: view.args,
+            result: view.result,
+            locked: view.locked,
+            dispatched_value: 0,
+            handled_value: view.handled_value,
+            completed_cycles: view.completed_cycles,
+        }
     }
 
     /// Spec function: state transition for the handled step.
@@ -310,7 +331,7 @@ impl ScoreBoard {
     ///
     /// Models `handled()`: the handler sets the result and signals the
     /// dispatcher via `handled.up()`. Phase transitions from `Dispatched`
-    /// to `Handled`.
+    /// to `Handled`, and `handled_value` becomes 1.
     ///
     /// # Parameters
     ///
@@ -326,6 +347,8 @@ impl ScoreBoard {
             args: view.args,
             result: ret,
             locked: view.locked,
+            dispatched_value: 0,
+            handled_value: 1,
             completed_cycles: view.completed_cycles,
         }
     }
@@ -336,7 +359,7 @@ impl ScoreBoard {
     ///
     /// Models the second half of `dispatch()`: after `handled.down()` returns,
     /// the dispatcher reads the result, the mutex guard drops, and the phase
-    /// returns to `Idle`. The completed_cycles counter is incremented.
+    /// returns to `Idle`. The `completed_cycles` counter is incremented.
     ///
     /// # Parameters
     ///
@@ -351,6 +374,8 @@ impl ScoreBoard {
             args: view.args,
             result: view.result,
             locked: false,
+            dispatched_value: 0,
+            handled_value: 0,
             completed_cycles: view.completed_cycles + 1,
         }
     }
@@ -359,11 +384,35 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Composes the three transitions into one specification of a complete cycle.
+    /// Composes the four transitions into one specification of a complete cycle:
+    /// `begin_dispatch` → `handle` → `handled` → `complete_dispatch`.
     pub open spec fn spec_full_cycle(view: ScoreBoardView, args: KcallArgsView, ret: KcallResultView) -> ScoreBoardView {
-        let after_dispatch: ScoreBoardView = Self::spec_begin_dispatch(view, args);
-        let after_handled: ScoreBoardView = Self::spec_handled(after_dispatch, ret);
+        let after_signal: ScoreBoardView = Self::spec_begin_dispatch(view, args);
+        let after_handle: ScoreBoardView = Self::spec_handle(after_signal);
+        let after_handled: ScoreBoardView = Self::spec_handled(after_handle, ret);
         Self::spec_complete_dispatch(after_handled)
+    }
+
+    /// Spec function: apply n identical full cycles.
+    ///
+    /// # Description
+    ///
+    /// Recursively composes `n` full cycles using the same args and result.
+    /// Used to prove inductive properties about the cycle counter.
+    pub open spec fn spec_n_identical_cycles(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+        n: nat,
+    ) -> ScoreBoardView
+        decreases n,
+    {
+        if n == 0 {
+            view
+        } else {
+            let after_one: ScoreBoardView = Self::spec_full_cycle(view, args, ret);
+            Self::spec_n_identical_cycles(after_one, args, ret, (n - 1) as nat)
+        }
     }
 }
 

@@ -17,6 +17,8 @@ impl ScoreBoard {
             let view: ScoreBoardView = ScoreBoard::spec_initial_view();
             &&& view.phase == ScoreBoardPhase::Idle
             &&& !view.locked
+            &&& view.dispatched_value == 0
+            &&& view.handled_value == 0
             &&& view.completed_cycles == 0
             &&& view.args == KcallArgs::spec_default_view()
             &&& view.result == KcallResult::spec_ok_view()
@@ -39,11 +41,12 @@ impl ScoreBoard {
     {
     }
 
-    /// Lemma: The default result is the ok result.
+    /// Lemma: The default result is a well-formed success.
     pub proof fn lemma_default_result_is_ok()
         ensures ({
             let result: KcallResultView = KcallResult::spec_ok_view();
-            result.value == 0
+            &&& result.is_success
+            &&& result.value == 0
         }),
     {
     }
@@ -52,20 +55,25 @@ impl ScoreBoard {
     // Proof Lemmas -- State Machine Transitions
     //==============================================================================================
 
-    /// Lemma: `begin_dispatch` transitions from Idle to Dispatched.
+    /// Lemma: `begin_dispatch` transitions from Idle to Signaled with signal set.
     ///
     /// # Description
     ///
     /// Proves that beginning a dispatch on an idle scoreboard produces
-    /// a valid Dispatched state with the new arguments and mutex held.
+    /// a valid Signaled state with the new arguments, mutex held, and
+    /// dispatched semaphore set to 1.
     pub proof fn lemma_begin_dispatch_transition(view: ScoreBoardView, new_args: KcallArgsView)
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures ({
             let after: ScoreBoardView = ScoreBoard::spec_begin_dispatch(view, new_args);
-            &&& after.phase == ScoreBoardPhase::Dispatched
+            &&& after.phase == ScoreBoardPhase::Signaled
             &&& after.locked
+            &&& after.dispatched_value == 1
+            &&& after.handled_value == 0
             &&& after.args == new_args
             &&& after.result == view.result
             &&& after.completed_cycles == view.completed_cycles
@@ -73,26 +81,36 @@ impl ScoreBoard {
     {
     }
 
-    /// Lemma: `handle` does not change the state.
+    /// Lemma: `handle` consumes the dispatched signal.
     ///
     /// # Description
     ///
-    /// The handle step is a read-only operation on the scoreboard state.
-    /// The handler reads the arguments but does not modify the board.
-    pub proof fn lemma_handle_is_readonly(view: ScoreBoardView)
+    /// Proves that the handler consuming the dispatched signal transitions
+    /// from Signaled to Dispatched, setting dispatched_value from 1 to 0.
+    /// The arguments are preserved for the handler to read.
+    pub proof fn lemma_handle_consumes_signal(view: ScoreBoardView)
         requires
-            view.phase == ScoreBoardPhase::Dispatched,
-        ensures
-            ScoreBoard::spec_handle(view) == view,
+            view.phase == ScoreBoardPhase::Signaled,
+            view.dispatched_value == 1,
+        ensures ({
+            let after: ScoreBoardView = ScoreBoard::spec_handle(view);
+            &&& after.phase == ScoreBoardPhase::Dispatched
+            &&& after.dispatched_value == 0
+            &&& after.args == view.args
+            &&& after.result == view.result
+            &&& after.locked == view.locked
+            &&& after.completed_cycles == view.completed_cycles
+        }),
     {
     }
 
-    /// Lemma: `handled` transitions from Dispatched to Handled.
+    /// Lemma: `handled` transitions from Dispatched to Handled with signal set.
     ///
     /// # Description
     ///
     /// Proves that signaling completion transitions the board to the
-    /// Handled phase with the result stored and mutex still held.
+    /// Handled phase with the result stored, handled_value set to 1,
+    /// and mutex still held.
     pub proof fn lemma_handled_transition(view: ScoreBoardView, ret: KcallResultView)
         requires
             view.phase == ScoreBoardPhase::Dispatched,
@@ -101,6 +119,8 @@ impl ScoreBoard {
             let after: ScoreBoardView = ScoreBoard::spec_handled(view, ret);
             &&& after.phase == ScoreBoardPhase::Handled
             &&& after.locked
+            &&& after.handled_value == 1
+            &&& after.dispatched_value == 0
             &&& after.result == ret
             &&& after.args == view.args
             &&& after.completed_cycles == view.completed_cycles
@@ -113,8 +133,8 @@ impl ScoreBoard {
     /// # Description
     ///
     /// Proves that completing a dispatch cycle returns the board to Idle,
-    /// releases the mutex, increments the cycle counter, and preserves
-    /// the last result for reading.
+    /// releases the mutex, clears both semaphores, increments the cycle
+    /// counter, and preserves the last result for reading.
     pub proof fn lemma_complete_dispatch_transition(view: ScoreBoardView)
         requires
             view.phase == ScoreBoardPhase::Handled,
@@ -123,6 +143,8 @@ impl ScoreBoard {
             let after: ScoreBoardView = ScoreBoard::spec_complete_dispatch(view);
             &&& after.phase == ScoreBoardPhase::Idle
             &&& !after.locked
+            &&& after.dispatched_value == 0
+            &&& after.handled_value == 0
             &&& after.result == view.result
             &&& after.args == view.args
             &&& after.completed_cycles == view.completed_cycles + 1
@@ -131,14 +153,59 @@ impl ScoreBoard {
     }
 
     //==============================================================================================
-    // Proof Lemmas -- Protocol Correctness
+    // Proof Lemmas -- Semaphore Signal Protocol
     //==============================================================================================
 
-    /// Lemma: A complete dispatch-handle-handled cycle returns to Idle.
+    /// Lemma: The dispatched semaphore follows the signal/consume pattern.
     ///
     /// # Description
     ///
-    /// Proves that the full three-phase protocol always returns to the Idle
+    /// Proves that the dispatched semaphore correctly transitions:
+    /// 0 (Idle) → 1 (Signaled, after begin_dispatch) → 0 (Dispatched, after handle).
+    pub proof fn lemma_dispatched_signal_protocol(view: ScoreBoardView, args: KcallArgsView)
+        requires
+            view.phase == ScoreBoardPhase::Idle,
+            !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
+        ensures ({
+            let signaled: ScoreBoardView = ScoreBoard::spec_begin_dispatch(view, args);
+            let dispatched: ScoreBoardView = ScoreBoard::spec_handle(signaled);
+            &&& signaled.dispatched_value == 1
+            &&& dispatched.dispatched_value == 0
+        }),
+    {
+    }
+
+    /// Lemma: The handled semaphore follows the signal/consume pattern.
+    ///
+    /// # Description
+    ///
+    /// Proves that the handled semaphore correctly transitions:
+    /// 0 (Dispatched) → 1 (Handled, after handled) → 0 (Idle, after complete_dispatch).
+    pub proof fn lemma_handled_signal_protocol(view: ScoreBoardView, ret: KcallResultView)
+        requires
+            view.phase == ScoreBoardPhase::Dispatched,
+            view.locked,
+            view.handled_value == 0,
+        ensures ({
+            let handled: ScoreBoardView = ScoreBoard::spec_handled(view, ret);
+            let completed: ScoreBoardView = ScoreBoard::spec_complete_dispatch(handled);
+            &&& handled.handled_value == 1
+            &&& completed.handled_value == 0
+        }),
+    {
+    }
+
+    //==============================================================================================
+    // Proof Lemmas -- Protocol Correctness
+    //==============================================================================================
+
+    /// Lemma: A complete dispatch cycle returns to Idle.
+    ///
+    /// # Description
+    ///
+    /// Proves that the full four-phase protocol always returns to the Idle
     /// state, preserving the result set by the handler and incrementing
     /// the cycle counter.
     pub proof fn lemma_full_cycle_returns_to_idle(
@@ -149,10 +216,14 @@ impl ScoreBoard {
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures ({
             let after: ScoreBoardView = ScoreBoard::spec_full_cycle(view, args, ret);
             &&& after.phase == ScoreBoardPhase::Idle
             &&& !after.locked
+            &&& after.dispatched_value == 0
+            &&& after.handled_value == 0
             &&& after.result == ret
             &&& after.args == args
             &&& after.completed_cycles == view.completed_cycles + 1
@@ -175,6 +246,8 @@ impl ScoreBoard {
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures
             ScoreBoard::spec_full_cycle(view, args, ret).result == ret,
     {
@@ -184,30 +257,46 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Proves argument integrity: after `begin_dispatch`, the args stored
+    /// Proves argument integrity: after `begin_dispatch` and `handle`, the args
     /// in the board are exactly those provided by the dispatcher.
     pub proof fn lemma_args_integrity(view: ScoreBoardView, args: KcallArgsView)
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
-        ensures
-            ScoreBoard::spec_begin_dispatch(view, args).args == args,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
+        ensures ({
+            let signaled: ScoreBoardView = ScoreBoard::spec_begin_dispatch(view, args);
+            let dispatched: ScoreBoardView = ScoreBoard::spec_handle(signaled);
+            &&& signaled.args == args
+            &&& dispatched.args == args
+        }),
     {
     }
 
-    /// Lemma: Mutual exclusion is held during the active phases.
+    /// Lemma: Mutex is held during all active phases (Signaled, Dispatched, Handled).
     ///
     /// # Description
     ///
-    /// In both `Dispatched` and `Handled` phases, the mutex is held.
-    /// This prevents concurrent dispatches from corrupting the shared state.
-    pub proof fn lemma_mutex_held_during_active_phases(view: ScoreBoardView, args: KcallArgsView)
+    /// Proves that the mutex is held throughout the entire active span of the
+    /// protocol. This prevents concurrent dispatches from corrupting shared state.
+    pub proof fn lemma_mutex_held_during_active_phases(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+    )
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures ({
-            let dispatched: ScoreBoardView = ScoreBoard::spec_begin_dispatch(view, args);
+            let signaled: ScoreBoardView = ScoreBoard::spec_begin_dispatch(view, args);
+            let dispatched: ScoreBoardView = ScoreBoard::spec_handle(signaled);
+            let handled: ScoreBoardView = ScoreBoard::spec_handled(dispatched, ret);
+            &&& signaled.locked
             &&& dispatched.locked
+            &&& handled.locked
         }),
     {
     }
@@ -216,8 +305,7 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Each completed cycle increments the counter by exactly 1. The
-    /// counter never decreases.
+    /// Each completed cycle increments the counter by exactly 1.
     pub proof fn lemma_cycle_counter_monotonic(
         view: ScoreBoardView,
         args: KcallArgsView,
@@ -226,6 +314,8 @@ impl ScoreBoard {
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures
             ScoreBoard::spec_full_cycle(view, args, ret).completed_cycles ==
                 view.completed_cycles + 1,
@@ -234,41 +324,66 @@ impl ScoreBoard {
     {
     }
 
-    /// Lemma: Multiple cycles correctly count.
+    /// Lemma: After n identical cycles, the cycle count is initial + n.
     ///
     /// # Description
     ///
-    /// After n full cycles starting from cycle count c, the count is c + n.
-    /// Proved by induction on n.
-    pub proof fn lemma_n_cycles_count(n: nat, initial_cycles: nat)
+    /// Proves inductively that `spec_n_identical_cycles` correctly composes
+    /// n full cycles, each incrementing the counter by 1, and the final
+    /// state is Idle with both semaphores at 0.
+    pub proof fn lemma_n_cycles_count(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+        n: nat,
+    )
+        requires
+            view.phase == ScoreBoardPhase::Idle,
+            !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures ({
-            let result_cycles: nat = initial_cycles + n;
-            result_cycles == initial_cycles + n
+            let after: ScoreBoardView = ScoreBoard::spec_n_identical_cycles(view, args, ret, n);
+            &&& after.phase == ScoreBoardPhase::Idle
+            &&& !after.locked
+            &&& after.dispatched_value == 0
+            &&& after.handled_value == 0
+            &&& after.completed_cycles == view.completed_cycles + n
         }),
+        decreases n,
     {
+        if n > 0 {
+            let after_one: ScoreBoardView = ScoreBoard::spec_full_cycle(view, args, ret);
+            Self::lemma_n_cycles_count(after_one, args, ret, (n - 1) as nat);
+        }
     }
 
-    /// Lemma: Phase transitions are deterministic.
+    /// Lemma: Different arguments produce observably different cycle outcomes.
     ///
     /// # Description
     ///
-    /// Each spec transition function is deterministic: given the same
-    /// inputs, the output is always the same.
-    pub proof fn lemma_transitions_deterministic(
+    /// Proves injectivity of the full cycle with respect to its inputs:
+    /// if the args differ, the output args differ; if the results differ,
+    /// the output results differ.
+    pub proof fn lemma_different_inputs_different_outputs(
         view: ScoreBoardView,
         args1: KcallArgsView,
-        args2: KcallArgsView,
         ret1: KcallResultView,
+        args2: KcallArgsView,
         ret2: KcallResultView,
     )
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
-            args1 == args2,
-            ret1 == ret2,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures
-            ScoreBoard::spec_full_cycle(view, args1, ret1) ==
-                ScoreBoard::spec_full_cycle(view, args2, ret2),
+            args1 != args2 ==>
+                ScoreBoard::spec_full_cycle(view, args1, ret1).args !=
+                ScoreBoard::spec_full_cycle(view, args2, ret2).args,
+            ret1 != ret2 ==>
+                ScoreBoard::spec_full_cycle(view, args1, ret1).result !=
+                ScoreBoard::spec_full_cycle(view, args2, ret2).result,
     {
     }
 
@@ -280,13 +395,13 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Documents that when a well-formed scoreboard is in `Dispatched` or
-    /// `Handled` phase, the mutex is held. Another dispatch attempt would
-    /// block on the mutex.
+    /// When a well-formed scoreboard is in any active phase (Signaled,
+    /// Dispatched, or Handled), the mutex is held. Another dispatch
+    /// attempt would block on the mutex.
     pub proof fn lemma_no_dispatch_when_active(sb: &ScoreBoard)
         requires
             sb.wf(),
-            sb.spec_is_dispatched() || sb.spec_is_handled(),
+            sb.spec_is_signaled() || sb.spec_is_dispatched() || sb.spec_is_handled(),
         ensures
             sb.locked,
     {
@@ -296,33 +411,38 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// The handler's `try_down` on the dispatched semaphore will fail
-    /// when no dispatch is pending. In the Idle phase, the mutex is not held.
-    pub proof fn lemma_no_handle_when_idle(sb: &ScoreBoard)
+    /// In the Idle phase, the mutex is not held and both semaphores are at 0.
+    pub proof fn lemma_idle_state_clean(sb: &ScoreBoard)
         requires
             sb.wf(),
             sb.spec_is_idle(),
         ensures
             !sb.locked,
+            sb.dispatched_value == 0,
+            sb.handled_value == 0,
     {
     }
 
-    //==============================================================================================
-    // Proof Lemmas -- Commutativity and Idempotence
-    //==============================================================================================
-
-    /// Lemma: The handle step is idempotent.
+    /// Lemma: A well-formed signaled scoreboard has dispatched_value == 1.
     ///
     /// # Description
     ///
-    /// Calling `spec_handle` multiple times has the same effect as calling
-    /// it once, since it is read-only.
-    pub proof fn lemma_handle_idempotent(view: ScoreBoardView)
+    /// In the Signaled phase, the dispatched semaphore has been signaled
+    /// and is waiting for the handler to consume it.
+    pub proof fn lemma_signaled_has_pending_signal(sb: &ScoreBoard)
+        requires
+            sb.wf(),
+            sb.spec_is_signaled(),
         ensures
-            ScoreBoard::spec_handle(ScoreBoard::spec_handle(view)) ==
-                ScoreBoard::spec_handle(view),
+            sb.dispatched_value == 1,
+            sb.handled_value == 0,
+            sb.locked,
     {
     }
+
+    //==============================================================================================
+    // Proof Lemmas -- Multi-Cycle Properties
+    //==============================================================================================
 
     /// Lemma: Two consecutive full cycles produce predictable state.
     ///
@@ -340,11 +460,15 @@ impl ScoreBoard {
         requires
             view.phase == ScoreBoardPhase::Idle,
             !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
         ensures ({
             let after1: ScoreBoardView = ScoreBoard::spec_full_cycle(view, args1, ret1);
             let after2: ScoreBoardView = ScoreBoard::spec_full_cycle(after1, args2, ret2);
             &&& after2.phase == ScoreBoardPhase::Idle
             &&& !after2.locked
+            &&& after2.dispatched_value == 0
+            &&& after2.handled_value == 0
             &&& after2.result == ret2
             &&& after2.args == args2
             &&& after2.completed_cycles == view.completed_cycles + 2
@@ -383,14 +507,46 @@ impl KcallResult {
     pub proof fn lemma_ok_is_valid()
         ensures ({
             let view: KcallResultView = KcallResult::spec_ok_view();
+            &&& view.is_success
             &&& view.value == 0
         }),
     {
     }
 
-    /// Lemma: Two KcallResults with equal values have equal views.
-    pub proof fn lemma_equal_value_equal_view(a: &KcallResult, b: &KcallResult)
+    /// Lemma: A success result is always well-formed regardless of value.
+    ///
+    /// # Description
+    ///
+    /// Proves that the wf() constraint is only meaningful for error results.
+    /// Success results (matching `KcallSuccess(i64)`) accept any i64 payload.
+    pub proof fn lemma_success_always_wf(r: &KcallResult)
         requires
+            r.is_success,
+        ensures
+            r.wf(),
+    {
+    }
+
+    /// Lemma: An error result requires value in i32 range.
+    ///
+    /// # Description
+    ///
+    /// Proves that the wf() constraint has teeth for error results:
+    /// the value must fit in i32, matching the original `KcallError(i32)`.
+    pub proof fn lemma_error_wf_constrains_range(r: &KcallResult)
+        requires
+            !r.is_success,
+            r.wf(),
+        ensures
+            i32::MIN as i64 <= r.value,
+            r.value <= i32::MAX as i64,
+    {
+    }
+
+    /// Lemma: Two KcallResults with equal fields have equal views.
+    pub proof fn lemma_equal_fields_equal_view(a: &KcallResult, b: &KcallResult)
+        requires
+            a.is_success == b.is_success,
             a.value == b.value,
         ensures
             a@ == b@,
