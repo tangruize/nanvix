@@ -1,0 +1,18 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 19:57:28 CST 2026
+Module: kernel::pm::kcall::create_thread
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::create_thread
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::kcall::create_thread
+
+verification results:: 17 verified, 0 errors (partial verification with `--verify-*`)
+
+Duration: 7s
+Exit code: 0
+
+=== Summary ===
+Verified: 17
+Errors: 0
+Status: PASSED
+Committed: [verus] Verification succeeded for kernel::pm::kcall::create_thread (verified:17, errors:0)
