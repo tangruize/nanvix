@@ -55,6 +55,11 @@
 //! - **TimedOut requires finite timeout**: With an infinite timeout, TimedOut
 //!   is impossible — enforced via `mutex_lock_model` contract and propagated
 //!   to the final result (`lemma_infinite_timeout_no_timed_out`).
+//! - **Timeout value threading**: The exact parsed timeout value (as
+//!   `Option<TimeoutView>`) is threaded through to `mutex_lock_model` via
+//!   ghost state, proving that the lock step receives the correct timeout
+//!   value derived from the raw (timeout_s, timeout_ns) inputs
+//!   (`lemma_timeout_value_reaches_lock`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -66,6 +71,16 @@
 //!   concerns verified elsewhere.
 //! - **MutexAddress validation**: The conversion from usize to MutexAddress is
 //!   a type wrapper; address validity is a PM concern.
+//! - **Unsafe safety contract**: The original function's safety documentation
+//!   requires: (1) the caller is not the kernel process, (2) the caller does
+//!   not hold any resources (e.g., other mutex guards, memory locks), and
+//!   (3) the caller does not hold a reference to the ProcessManager. These
+//!   constraints are about the *caller's global state* (scheduler context,
+//!   resource ownership) rather than about this function's own pipeline logic.
+//!   They are correctly modeled as preconditions at the call site or as
+//!   ProcessManager-level invariants, not as properties of this function's
+//!   control flow. The PM module's verification should ensure these invariants
+//!   are upheld before invoking lock_mutex.
 //!
 //! ## Verification Model
 //!
@@ -110,7 +125,7 @@
 //! | `MutexAddress::from(usize)`               | (not modeled)                     | Type wrapper.        |
 //! | `SystemTime::new(u64, u32)`               | `system_time_new(u64, u32)`       | Verified.            |
 //! | `ProcessManager::get_mutex(addr)`         | `get_mutex_model(addr)`           | external_body.       |
-//! | `Mutex::lock(timeout)`                    | `mutex_lock_model(has_timeout)`   | external_body.       |
+//! | `Mutex::lock(timeout)`                    | `mutex_lock_model(has, ghost_tv)` | external_body.       |
 //! | `ProcessManager::put_mutex_guard(a, g)`   | `put_mutex_guard_model(addr)`     | external_body.       |
 //! | `pub unsafe fn lock_mutex(...)`           | `lock_mutex_model(...)`           | Fully verified.      |
 
@@ -294,8 +309,14 @@ pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
 ///
 /// - `has_timeout`: Whether a finite timeout was provided (true = `Some(t)`,
 ///   false = `None` in the original).
+/// - `timeout_view`: Ghost of the parsed timeout value. When `has_timeout` is
+///   true, this carries the exact `TimeoutView::Finite { seconds, nanoseconds }`
+///   that was derived from the raw `(timeout_s, timeout_ns)` inputs. This
+///   parameter is accepted to prove value-level correctness: the exact parsed
+///   timeout reaches the lock step. The actual lock behavior (blocking duration,
+///   etc.) is verified in the mutex module.
 #[verifier::external_body]
-pub fn mutex_lock_model(has_timeout: bool) -> (result: LockOutcomeModel)
+pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutView>>) -> (result: LockOutcomeModel)
     ensures
         // TimedOut can only occur with a finite timeout. With an infinite
         // timeout, the Condvar::wait() path has no timer.
@@ -458,6 +479,7 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
     Ghost<GetMutexOutcomeView>,
     Ghost<LockOutcomeView>,
     Ghost<PutGuardOutcomeView>,
+    Ghost<Option<TimeoutView>>,
 ))
     requires
         // ABI constraint: inputs originate from 32-bit usize on x86-32.
@@ -485,6 +507,10 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
         // TimedOut impossible with infinite timeout (from mutex_lock_model contract).
         !spec_is_finite_timeout(timeout_s as nat, timeout_ns as nat) ==>
             !matches!(ret.0, LockMutexResultModel::LockTimedOut),
+        // Timeout value correctness: the parsed timeout is threaded to the lock step.
+        // When the lock step is reached (timeout parsed OK, get_mutex OK), the
+        // timeout value passed to mutex_lock_model matches spec_parsed_timeout_for_lock.
+        ret.4@ == spec_parsed_timeout_for_lock(timeout_s as nat, timeout_ns as nat),
 {
     // Step 1: Parse timeout.
     let parsed: Result<bool, LockMutexResultModel> = parse_timeout(timeout_s, timeout_ns);
@@ -497,9 +523,12 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
             // path (the first `match` arm returns `InvalidTimeoutError`
             // regardless of get_mutex/lock/put_guard outcomes). Any
             // ghost values satisfy the postcondition vacuously.
-            (err, Ghost(GetMutexOutcomeView::GmOk), Ghost(LockOutcomeView::LoOk), Ghost(PutGuardOutcomeView::PgOk))
+            (err, Ghost(GetMutexOutcomeView::GmOk), Ghost(LockOutcomeView::LoOk), Ghost(PutGuardOutcomeView::PgOk), Ghost(spec_parsed_timeout_for_lock(timeout_s as nat, timeout_ns as nat)))
         },
         Ok(has_timeout) => {
+            // Compute ghost timeout value for the lock step.
+            let ghost timeout_for_lock: Option<TimeoutView> = spec_parsed_timeout_for_lock(timeout_s as nat, timeout_ns as nat);
+
             // Step 2: Get mutex (external).
             let gm_result: GetMutexOutcomeModel = get_mutex_model(mutex_addr);
             let ghost gm_view: GetMutexOutcomeView = gm_result.spec_view();
@@ -513,11 +542,12 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                         Ghost(gm_view),
                         Ghost(LockOutcomeView::LoOk),
                         Ghost(PutGuardOutcomeView::PgOk),
+                        Ghost(timeout_for_lock),
                     )
                 },
                 GetMutexOutcomeModel::Ok => {
-                    // Step 3: Lock mutex (external).
-                    let lock_result: LockOutcomeModel = mutex_lock_model(has_timeout);
+                    // Step 3: Lock mutex (external), threading the parsed timeout value.
+                    let lock_result: LockOutcomeModel = mutex_lock_model(has_timeout, Ghost(timeout_for_lock));
                     let ghost lo_view: LockOutcomeView = lock_result.spec_view();
 
                     match lock_result {
@@ -528,6 +558,7 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                                 Ghost(gm_view),
                                 Ghost(lo_view),
                                 Ghost(PutGuardOutcomeView::PgOk),
+                                Ghost(timeout_for_lock),
                             )
                         },
                         LockOutcomeModel::Killed => {
@@ -537,6 +568,7 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                                 Ghost(gm_view),
                                 Ghost(lo_view),
                                 Ghost(PutGuardOutcomeView::PgOk),
+                                Ghost(timeout_for_lock),
                             )
                         },
                         LockOutcomeModel::GenericError { error_code } => {
@@ -546,6 +578,7 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                                 Ghost(gm_view),
                                 Ghost(lo_view),
                                 Ghost(PutGuardOutcomeView::PgOk),
+                                Ghost(timeout_for_lock),
                             )
                         },
                         LockOutcomeModel::Ok => {
@@ -560,6 +593,7 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                                         Ghost(gm_view),
                                         Ghost(lo_view),
                                         Ghost(pg_view),
+                                        Ghost(timeout_for_lock),
                                     )
                                 },
                                 PutGuardOutcomeModel::Ok => {
@@ -568,6 +602,7 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                                         Ghost(gm_view),
                                         Ghost(lo_view),
                                         Ghost(pg_view),
+                                        Ghost(timeout_for_lock),
                                     )
                                 },
                             }

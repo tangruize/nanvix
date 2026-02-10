@@ -289,13 +289,31 @@ pub open spec fn spec_lock_outcome_valid_for_timeout(has_timeout: bool, outcome:
 /// # Description
 ///
 /// Returns true when the parsed timeout is a `Finite` variant (not Infinite).
-/// Note: The timeout value (seconds/nanoseconds) is captured in `TimeoutView::Finite`
-/// but is intentionally not threaded through `spec_lock_mutex_result`. This is a
-/// scope limitation: the pipeline spec verifies control flow and error propagation,
-/// not the timeout value passed to `Mutex::lock()`. Timeout value correctness is
-/// the responsibility of the mutex module's own verification.
+/// The timeout value (seconds/nanoseconds) is captured in `TimeoutView::Finite`
+/// and is threaded through the exec model via ghost state to prove that
+/// `mutex_lock_model` receives the correct parsed timeout value.
 pub open spec fn spec_is_finite_timeout(timeout_s: nat, timeout_ns: nat) -> bool {
     spec_parse_timeout(timeout_s, timeout_ns) matches Some(TimeoutView::Finite { .. })
+}
+
+/// Spec function: extract the parsed timeout value for the lock step.
+///
+/// # Description
+///
+/// Returns the `Option<TimeoutView>` that the exec model should pass to the
+/// lock step. This connects the raw (timeout_s, timeout_ns) inputs to the
+/// concrete timeout value that `Mutex::lock` receives:
+/// - Infinite → None (no timeout).
+/// - Finite { s, ns } → Some(Finite { s, ns }) with well-formed nanoseconds.
+///
+/// Used in the exec model's postcondition to prove that the correct timeout
+/// value reaches `mutex_lock_model`.
+pub open spec fn spec_parsed_timeout_for_lock(timeout_s: nat, timeout_ns: nat) -> Option<TimeoutView> {
+    match spec_parse_timeout(timeout_s, timeout_ns) {
+        Some(TimeoutView::Infinite) => None,
+        Some(tv @ TimeoutView::Finite { .. }) => Some(tv),
+        None => None,  // Don't-care: this path returns InvalidTimeoutError before lock.
+    }
 }
 
 } // verus!

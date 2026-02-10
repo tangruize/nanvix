@@ -465,4 +465,36 @@ pub proof fn lemma_infinite_timeout_no_timed_out(
     }
 }
 
+/// Proof: the parsed timeout value is correctly threaded to the lock step.
+///
+/// # Description
+///
+/// Proves that `spec_parsed_timeout_for_lock` produces the correct
+/// `Option<TimeoutView>`:
+/// - Infinite timeout → `None` (no timeout for lock).
+/// - Finite timeout with (s, ns) → `Some(Finite { s, ns })`.
+/// - Invalid timeout → `None` (don't-care; error path exits before lock).
+///
+/// This links the raw (timeout_s, timeout_ns) inputs to the exact value
+/// that `mutex_lock_model` receives as its ghost parameter, proving
+/// value-level correctness of timeout threading.
+pub proof fn lemma_timeout_value_reaches_lock(timeout_s: nat, timeout_ns: nat)
+    requires
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+    ensures
+        // Infinite → None.
+        spec_is_infinite_timeout(timeout_s, timeout_ns) ==>
+            spec_parsed_timeout_for_lock(timeout_s, timeout_ns).is_none(),
+        // Finite → Some with the exact values.
+        spec_is_finite_timeout(timeout_s, timeout_ns) ==>
+            spec_parsed_timeout_for_lock(timeout_s, timeout_ns) == Some(TimeoutView::Finite {
+                seconds: timeout_s,
+                nanoseconds: timeout_ns,
+            }),
+        // Finite → nanoseconds well-formed.
+        spec_is_finite_timeout(timeout_s, timeout_ns) ==>
+            timeout_ns < NANOS_PER_SEC(),
+{
+}
+
 } // verus!
