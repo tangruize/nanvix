@@ -143,7 +143,7 @@ pub open spec fn spec_compute_alarm(now: SystemTimeView, timeout: DurationView) 
     let carry: nat = if total_nanos >= NANOS_PER_SEC() { 1 } else { 0 };
     SystemTimeView {
         seconds: now.seconds + timeout.seconds + carry,
-        nanoseconds: if total_nanos >= NANOS_PER_SEC() { total_nanos - NANOS_PER_SEC() } else { total_nanos },
+        nanoseconds: if total_nanos >= NANOS_PER_SEC() { (total_nanos - NANOS_PER_SEC()) as nat } else { total_nanos },
     }
 }
 
