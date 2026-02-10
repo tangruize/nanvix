@@ -439,6 +439,37 @@ pub open spec fn spec_is_put_guard_error(result: WaitCondResultView) -> bool {
     matches!(result, WaitCondResultView::PutGuardError { .. })
 }
 
+/// Spec function: whether the result is a "stored result" return.
+///
+/// # Description
+///
+/// A stored-result return occurs when all continuation pipeline steps
+/// (put_cond, get_mutex, lock, put_guard) succeeded, so the stored result
+/// from get_cond+cond.wait is returned. This includes Success, GetCondError,
+/// and all CondWait error variants. In all these cases, the mutex was released
+/// before the wait and reacquired afterward.
+pub open spec fn spec_is_stored_result_return(result: WaitCondResultView) -> bool {
+    matches!(result,
+        WaitCondResultView::Success
+        | WaitCondResultView::GetCondError { .. }
+        | WaitCondResultView::CondWaitTimedOut
+        | WaitCondResultView::CondWaitKilled
+        | WaitCondResultView::CondWaitGenericError { .. })
+}
+
+/// Spec function: whether the result indicates a continuation pipeline error.
+///
+/// # Description
+///
+/// Continuation errors override the stored result and indicate that the
+/// mutex may NOT have been reacquired.
+pub open spec fn spec_is_continuation_error(result: WaitCondResultView) -> bool {
+    spec_is_put_cond_error(result)
+    || spec_is_get_mutex_error(result)
+    || spec_is_lock_error(result)
+    || spec_is_put_guard_error(result)
+}
+
 //==================================================================================================
 // Caller Safety Contract Spec Predicates
 //==================================================================================================

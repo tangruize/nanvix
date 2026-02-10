@@ -586,8 +586,11 @@ pub fn wait_cond_model(
             ret.1@.tmg, ret.1@.gc, ret.1@.cw,
             ret.1@.pc, ret.1@.gm, ret.1@.lo, ret.1@.pg,
         ),
-        // Mutex protocol on success.
-        spec_is_success(ret.0.spec_view()) ==> (
+        // Mutex protocol on stored-result return: whenever the continuation
+        // pipeline completes successfully (returning the stored result), the
+        // mutex was released before the wait and reacquired afterward, and the
+        // condvar reference was released.
+        spec_is_stored_result_return(ret.0.spec_view()) ==> (
             spec_mutex_released(mutex_addr as nat)
             && spec_cond_ref_released(cond_addr as nat)
             && spec_mutex_reacquired(mutex_addr as nat)

@@ -772,7 +772,74 @@ pub proof fn lemma_success_implies_all_predicates_set(
     );
 }
 
-/// Proof: get_mutex error overrides stored get_cond error.
+/// Proof: stored-result returns require all continuation steps to have succeeded.
+///
+/// # Description
+///
+/// When the result is a stored-result variant (Success, GetCondError, CondWait*),
+/// all continuation pipeline steps (put_cond, get_mutex, lock, put_guard) must
+/// have returned Ok, and take_mutex_guard must have succeeded. This is the
+/// structural basis for asserting mutex protocol predicates on stored-result
+/// returns. The predicates themselves are established by external_body
+/// postconditions during exec verification.
+pub proof fn lemma_stored_result_implies_continuation_ok(
+    timeout_s: nat,
+    timeout_ns: nat,
+    take_guard_outcome: TakeMutexGuardOutcomeView,
+    get_cond_outcome: GetCondOutcomeView,
+    cond_wait_outcome: CondWaitOutcomeView,
+    put_cond_outcome: PutCondOutcomeView,
+    get_mutex_outcome: GetMutexOutcomeView,
+    lock_outcome: LockOutcomeView,
+    put_guard_outcome: PutGuardOutcomeView,
+)
+    requires
+        spec_is_stored_result_return(spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            take_guard_outcome, get_cond_outcome, cond_wait_outcome,
+            put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
+        )),
+    ensures
+        matches!(take_guard_outcome, TakeMutexGuardOutcomeView::TmgOk),
+        matches!(put_cond_outcome, PutCondOutcomeView::PcOk),
+        matches!(get_mutex_outcome, GetMutexOutcomeView::GmOk),
+        matches!(lock_outcome, LockOutcomeView::LoOk),
+        matches!(put_guard_outcome, PutGuardOutcomeView::PgOk),
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+{
+    let parsed: Option<TimeoutView> = spec_parse_timeout(timeout_s, timeout_ns);
+    match parsed {
+        None => {},
+        Some(_) => {
+            match take_guard_outcome {
+                TakeMutexGuardOutcomeView::TmgError { .. } => {},
+                TakeMutexGuardOutcomeView::TmgOk => {
+                    match put_cond_outcome {
+                        PutCondOutcomeView::PcError { .. } => {},
+                        PutCondOutcomeView::PcOk => {
+                            match get_mutex_outcome {
+                                GetMutexOutcomeView::GmError { .. } => {},
+                                GetMutexOutcomeView::GmOk => {
+                                    match lock_outcome {
+                                        LockOutcomeView::LoOk => {
+                                            match put_guard_outcome {
+                                                PutGuardOutcomeView::PgOk => {},
+                                                PutGuardOutcomeView::PgError { .. } => {},
+                                            }
+                                        },
+                                        LockOutcomeView::LoTimedOut => {},
+                                        LockOutcomeView::LoKilled => {},
+                                        LockOutcomeView::LoGenericError { .. } => {},
+                                    }
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
 ///
 /// # Description
 ///
