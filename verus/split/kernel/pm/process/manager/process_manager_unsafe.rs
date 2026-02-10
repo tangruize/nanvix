@@ -859,6 +859,73 @@ impl ProcessManagerUnsafeState {
     {
     }
 
+    /// Models `ProcessManager::try_recv()` error path.
+    ///
+    /// The original try_recv() calls `Self::get_mut().try_borrow_mut()?`
+    /// which can fail with Err(ResourceBusy). No state change occurs.
+    pub fn try_recv_error(&self, Ghost(tid): Ghost<int>)
+        requires
+            self.wf(),
+            tid >= 0,
+        ensures
+            self.wf(),
+    {
+    }
+
+    /// Models `ProcessManager::try_recv()` (unsafe.rs:649-659) — unified entry point.
+    ///
+    /// The original returns `Result<Option<Message>, Error>`:
+    /// - `outcome == 0`: Ok(Some(message)) — message received, count decremented.
+    /// - `outcome == 1`: Ok(None) — no message available.
+    /// - `outcome == 2`: Err — try_borrow_mut() or inner operation failed.
+    ///
+    /// Returns `(bool, bool)`:
+    /// - `result.0`: true = Ok, false = Err.
+    /// - `result.1`: true = Some(message found), false = None (only meaningful when result.0).
+    pub fn try_recv(
+        &mut self,
+        Ghost(tid): Ghost<int>,
+        outcome: u8,
+    ) -> (result: (bool, bool))
+        requires
+            old(self).wf(),
+            tid >= 0,
+            outcome <= 2,
+            // Some path requires messages available.
+            outcome == 0 ==> old(self).inner.number_buffered_messages > 0,
+        ensures
+            self.wf(),
+            self.scheduler_freq == old(self).scheduler_freq,
+            self.current_pid == old(self).current_pid,
+            self.current_tid == old(self).current_tid,
+            self.remaining_quantum == old(self).remaining_quantum,
+            // Ok(Some): message received.
+            outcome == 0 ==> (
+                result.0 == true && result.1 == true
+                && self.inner.number_buffered_messages
+                    == old(self).inner.number_buffered_messages - 1
+            ),
+            // Ok(None): no message.
+            outcome == 1 ==> (
+                result.0 == true && result.1 == false
+                && self.inner == old(self).inner
+            ),
+            // Err: no state change.
+            outcome == 2 ==> (
+                result.0 == false
+                && self.inner == old(self).inner
+            ),
+    {
+        if outcome == 0 {
+            self.try_recv_some(Ghost(tid));
+            (true, true)
+        } else if outcome == 1 {
+            (true, false)
+        } else {
+            (false, false)
+        }
+    }
+
     //==============================================================================================
     // Join Thread
     //==============================================================================================
@@ -970,8 +1037,17 @@ impl ProcessManagerUnsafeState {
     /// - `result.1`: on Ok (outcome 0), the harvested thread's exit status (ghost input
     ///   `exit_status`); on Ok (outcome 1), 0 (loop continues); on Err, 0 (unused).
     ///
-    /// The exit_status value is a T3 trust boundary input: its correctness depends on
-    /// the inner module correctly storing the status when the target thread called exit().
+    /// ## Trust Boundary (T15: Exit Status Correctness)
+    ///
+    /// The `exit_status` parameter is a trust-boundary input. In the original code,
+    /// `try_join_thread(tid)` returns `Ok(Some(status))` where `status` is the exit
+    /// code stored by the target thread when it called `exit(status)` or
+    /// `exit_thread(status)`. This value is stored in the inner module's zombie thread
+    /// state and retrieved during harvest. Formally verifying that `exit_status` matches
+    /// the stored value would require: (1) a ghost map from TID to exit status in
+    /// ProcessManagerInner, (2) exit()/exit_thread() populating this map, and
+    /// (3) join_thread requiring `exit_status == zombie_statuses[target_tid]`.
+    /// This is a cross-module concern deferred to a future inner module extension.
     ///
     /// ## Loop Model
     ///
