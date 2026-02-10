@@ -650,20 +650,17 @@ pub proof fn lemma_success_constructor_preserves_value(value: int)
 ///
 /// # Description
 ///
-/// Proves that `do_kcall_dispatch` always produces a success result for
-/// GetPid (1) and GetTid (2). This is because these calls return the
-/// pid/tid values directly without any subsystem call that can fail.
+/// Proves that GetPid (1) and GetTid (2) are classified as LocalImmediate.
+/// Since `do_kcall_dispatch` returns `success(pid)` / `success(tid)` for
+/// these calls (no subsystem call that can fail), dispatch is infallible.
 ///
 /// Consequence: if `do_kcall_context` returns an error for GetPid/GetTid,
 /// the error necessarily came from pid/tid retrieval (ProcessManager
 /// access, trust boundary T1), not from the dispatch logic itself.
 pub proof fn lemma_getpid_gettid_dispatch_infallible()
     ensures
-        forall|pid: i64, tid: i64, args: DispatchArgs|
-            #![trigger spec_classify_kcall(args.number)]
-            pid >= 0 && tid >= 0
-            && (args.number == KCALL_GET_PID() || args.number == KCALL_GET_TID())
-            ==> spec_classify_kcall(args.number) =~= DispatchCategory::LocalImmediate,
+        spec_classify_kcall(KCALL_GET_PID()) =~= DispatchCategory::LocalImmediate,
+        spec_classify_kcall(KCALL_GET_TID()) =~= DispatchCategory::LocalImmediate,
 {
 }
 
