@@ -129,9 +129,8 @@
 //!   fail through internal mechanisms (e.g., `ProcessManager::wakeup()` returning
 //!   an error in `notify_first()`) is a property of the semaphore implementation;
 //!   the original maps such failures via `map_err(SleepError::Generic)`, which is
-//!   propagated through `dispatch()` (modeled by `DispatchOutcome::DownInterrupted`
-//!   for the `handled.down()` path; the `dispatched.up()` error is a T3 trust
-//!   boundary concern).
+//!   now explicitly modeled by `DispatchOutcome::UpFailed` in the `dispatch()`
+//!   wrapper, and by `spec_dispatch_up_failed` at the spec level.
 //! - **T4: Sequential ordering.** The model assumes sequential execution. The
 //!   original relies on mutex + semaphore for thread synchronization.
 //!
@@ -159,19 +158,24 @@
 //!   A full mechanized refinement proof would require a concurrent program logic
 //!   (e.g., Iris or RustBelt) beyond Verus's current capabilities.
 //! - **T5: Error handling.** Error paths are modeled as follows:
-//!   - `lock()` failure: modeled by `try_begin_dispatch()` returning false.
-//!     State preservation proven.
+//!   - `lock()` failure: modeled by `try_begin_dispatch()` returning false and
+//!     `DispatchOutcome::LockFailed`. State preservation proven.
 //!   - `try_down()` failure: modeled by `try_handle()` returning false.
 //!     State preservation proven.
-//!   - `dispatched.up()` failure: proven impossible by
+//!   - `dispatched.up()` failure: value precondition proven impossible by
 //!     `lemma_semaphore_up_dispatched_cannot_fail` (value is 0 in Idle phase).
-//!   - `handled.up()` failure: proven impossible by
+//!     Internal `up()` failure (e.g., `notify_first()`) is modeled by
+//!     `DispatchOutcome::UpFailed` and `spec_dispatch_up_failed`, producing
+//!     a valid Idle state with overwritten args.
+//!   - `handled.up()` failure: value precondition proven impossible by
 //!     `lemma_semaphore_up_handled_cannot_fail` (value is 0 in Dispatched phase).
 //!   - `handled.down()` interruption (`SleepError::Interrupted`): modeled by
-//!     `abandon_dispatch()`. Accepts any active phase (Signaled, Dispatched,
-//!     or Handled), producing a stuck state (active phase + unlocked) that
-//!     violates `wf()`, formally characterizing the liveness failure. Data
-//!     preservation is proven by `lemma_abandon_dispatch_preserves_data`.
+//!     `abandon_dispatch()` and `DispatchOutcome::DownInterrupted`. The
+//!     `dispatch()` wrapper parameterizes `handler_progress` (0–2) to model
+//!     interruption from any active phase (Signaled, Dispatched, or Handled),
+//!     producing a stuck state (active phase + unlocked) that violates `wf()`.
+//!     Per-phase abandon lemmas characterize each case; the unified lemma
+//!     `lemma_abandon_any_active_phase_characterized` proves data preservation.
 //!   - `get_mut()` on uninitialized: modeled by `try_get_board()` returning
 //!     false.
 //!
@@ -254,14 +258,21 @@ pub struct KcallResult {
 ///
 /// # Description
 ///
-/// Captures the three observable outcomes of the original `dispatch()`:
+/// Captures the four observable outcomes of the original `dispatch()`:
 /// - `LockFailed`: `lock()` returned `Err(SleepError::Interrupted)`.
+/// - `UpFailed`: `dispatched.up()` returned `Err(...)`, mapped to
+///   `SleepError::Generic`. Lock was acquired and args were written, but the
+///   handler was not signaled. The mutex guard drops, releasing the lock.
 /// - `DownInterrupted`: `handled.down()` returned `Err(SleepError::Interrupted)`.
+///   The handler may have progressed to any active phase.
 /// - `Success(KcallResult)`: `Ok(self.ret)` with the handler's result.
 #[derive(PartialEq, Eq)]
 pub enum DispatchOutcome {
     /// Lock acquisition failed (models `SleepError::Interrupted` from `lock()`).
     LockFailed,
+    /// `dispatched.up()` failed (models `SleepError::Generic` from `up()`).
+    /// Args written but semaphore not signaled; guard drops.
+    UpFailed,
     /// `handled.down()` was interrupted (models `SleepError::Interrupted` from `down()`).
     DownInterrupted,
     /// Dispatch completed successfully with the handler's result.
@@ -736,41 +747,46 @@ impl ScoreBoard {
     /// # Description
     ///
     /// Composes the split API to model the original `dispatch()` which returns
-    /// `Result<KcallResult, SleepError>`. The method handles three cases:
+    /// `Result<KcallResult, SleepError>`. The method handles four cases
+    /// corresponding to the three `?` operators in the original code:
     ///
     /// 1. **Lock failure** (`lock_acquired == false`): Models `lock()` returning
     ///    `Err(SleepError::Interrupted)`. Returns `DispatchOutcome::LockFailed`.
     ///    State is preserved.
-    /// 2. **Down interrupted** (`down_interrupted == true`): Models `handled.down()`
-    ///    returning `Err(SleepError::Interrupted)`. The interrupt is modeled from
-    ///    the Signaled phase (before the handler runs), which is the earliest
-    ///    possible interrupt point. In the real implementation, `handled.down()`
-    ///    blocks until the handler signals, so the interrupt can occur while the
-    ///    board is in any active phase (Signaled, Dispatched, or Handled).
-    ///    Interruption from other phases is covered by the split API:
-    ///    - `abandon_dispatch()` accepts any non-Idle phase.
-    ///    - Per-phase abandon lemmas (`lemma_abandon_from_signaled`,
-    ///      `lemma_abandon_from_dispatched`, `lemma_abandon_from_handled`)
-    ///      characterize each stuck state.
-    ///    - `lemma_abandon_any_active_phase_characterized` provides a unified
-    ///      proof that data is preserved regardless of interrupt timing.
+    /// 2. **Up failure** (`up_failed == true`): Models `dispatched.up()` returning
+    ///    `Err(...)` mapped to `SleepError::Generic`. The lock was acquired and
+    ///    args were written, but the handler was not signaled. The mutex guard
+    ///    drops (releasing the lock). The board returns to a valid Idle state
+    ///    with the new args but no signal sent.
+    ///    Returns `DispatchOutcome::UpFailed`.
+    /// 3. **Down interrupted** (`down_interrupted == true`): Models `handled.down()`
+    ///    returning `Err(SleepError::Interrupted)`. The handler thread runs
+    ///    concurrently; `handler_progress` indicates how far the handler got
+    ///    before the interrupt arrived:
+    ///    - `0`: Handler hasn't started (Signaled phase).
+    ///    - `1`: Handler consumed dispatched signal (Dispatched phase).
+    ///    - `2`: Handler finished and signaled handled (Handled phase).
+    ///    The mutex guard drops, producing a stuck state.
     ///    Returns `DispatchOutcome::DownInterrupted`.
-    /// 3. **Success**: Lock acquired and `handled.down()` succeeds. Returns
+    /// 4. **Success**: All three operations succeed. Returns
     ///    `DispatchOutcome::Success(result)`, modeling `Ok(self.ret)`.
     ///
-    /// The parameters model nondeterministic environmental choices in a
-    /// sequential verification setting:
-    /// - `lock_acquired`: Whether the OS scheduler granted the lock (environment).
-    /// - `down_interrupted`: Whether the OS interrupted the blocking `down()` call.
-    /// - `ret`: The handler thread's eventual result (determined by the handler,
-    ///   not the dispatcher). Only meaningful on the success path.
+    /// The parameters model nondeterministic environmental choices:
+    /// - `lock_acquired`: Whether the OS scheduler granted the lock.
+    /// - `up_failed`: Whether `dispatched.up()` failed (T3 trust boundary).
+    /// - `down_interrupted`: Whether the OS interrupted `handled.down()`.
+    /// - `handler_progress`: How far the handler thread progressed (0–2).
+    /// - `ret`: The handler's result (environment input; meaningful when
+    ///   handler_progress == 2 or on success path).
     ///
     /// # Parameters
     ///
     /// - `args`: The kernel call arguments to dispatch.
     /// - `ret`: The kernel call result (set by the handler; environment input).
-    /// - `lock_acquired`: Whether the lock was successfully acquired (environment).
-    /// - `down_interrupted`: Whether `handled.down()` was interrupted (environment).
+    /// - `lock_acquired`: Whether the lock was successfully acquired.
+    /// - `up_failed`: Whether `dispatched.up()` failed.
+    /// - `down_interrupted`: Whether `handled.down()` was interrupted.
+    /// - `handler_progress`: Handler progress at interrupt (0=none, 1=consumed, 2=done).
     ///
     /// # Returns
     ///
@@ -780,22 +796,36 @@ impl ScoreBoard {
         args: KcallArgs,
         ret: KcallResult,
         lock_acquired: bool,
+        up_failed: bool,
         down_interrupted: bool,
+        handler_progress: u8,
     ) -> (outcome: DispatchOutcome)
         requires
             old(self).wf(),
             old(self).spec_is_idle(),
             ret.wf(),
+            handler_progress <= 2,
         ensures
-            // Lock failure: state preserved.
+            // Case 1: Lock failure — state preserved.
             !lock_acquired ==> (
                 outcome == DispatchOutcome::LockFailed
                 && self@ == old(self)@
                 && self.wf()
             ),
-            // Down interrupted: stuck state from Signaled phase.
-            // Args are preserved, result unchanged, semaphore state known.
-            (lock_acquired && down_interrupted) ==> (
+            // Case 2: Up failure — args written, no signal, lock released.
+            (lock_acquired && up_failed) ==> (
+                outcome == DispatchOutcome::UpFailed
+                && self.wf()
+                && self.spec_is_idle()
+                && !self.locked
+                && self.args@ == args@
+                && self.result@ == old(self).result@
+                && self.dispatched_value == 0
+                && self.handled_value == 0
+                && self.completed_cycles@ == old(self).completed_cycles@
+            ),
+            // Case 3a: Down interrupted, handler hasn't started (Signaled).
+            (lock_acquired && !up_failed && down_interrupted && handler_progress == 0) ==> (
                 outcome == DispatchOutcome::DownInterrupted
                 && !self.locked
                 && self.phase == ScoreBoardPhase::Signaled
@@ -804,10 +834,31 @@ impl ScoreBoard {
                 && self.dispatched_value == 1
                 && self.handled_value == 0
                 && self.completed_cycles@ == old(self).completed_cycles@
-                && self@ == ScoreBoard::spec_dispatch_interrupted(old(self)@, args@)
             ),
-            // Success: full cycle completed, result returned.
-            (lock_acquired && !down_interrupted) ==> (
+            // Case 3b: Down interrupted, handler consumed signal (Dispatched).
+            (lock_acquired && !up_failed && down_interrupted && handler_progress == 1) ==> (
+                outcome == DispatchOutcome::DownInterrupted
+                && !self.locked
+                && self.phase == ScoreBoardPhase::Dispatched
+                && self.args@ == args@
+                && self.result@ == old(self).result@
+                && self.dispatched_value == 0
+                && self.handled_value == 0
+                && self.completed_cycles@ == old(self).completed_cycles@
+            ),
+            // Case 3c: Down interrupted, handler finished (Handled).
+            (lock_acquired && !up_failed && down_interrupted && handler_progress == 2) ==> (
+                outcome == DispatchOutcome::DownInterrupted
+                && !self.locked
+                && self.phase == ScoreBoardPhase::Handled
+                && self.args@ == args@
+                && self.result@ == ret@
+                && self.dispatched_value == 0
+                && self.handled_value == 1
+                && self.completed_cycles@ == old(self).completed_cycles@
+            ),
+            // Case 4: Success — full cycle completed, result returned.
+            (lock_acquired && !up_failed && !down_interrupted) ==> (
                 outcome == DispatchOutcome::Success(KcallResult { is_success: ret.is_success, value: ret.value })
                 && self.wf()
                 && self.spec_is_idle()
@@ -819,20 +870,39 @@ impl ScoreBoard {
         if !lock_acquired {
             return DispatchOutcome::LockFailed;
         }
-        // Begin dispatch: acquire lock, set args, signal handler.
+        // Lock acquired: set args.
         self.locked = true;
         self.args = args;
+
+        if up_failed {
+            // dispatched.up() failed: guard drops, args written but no signal.
+            self.locked = false;
+            return DispatchOutcome::UpFailed;
+        }
+
+        // dispatched.up() succeeded: signal handler.
         self.dispatched_value = 1;
         self.phase = ScoreBoardPhase::Signaled;
 
         if down_interrupted {
-            // handled.down() interrupted: mutex guard drops from Signaled phase.
-            // The handler has not run yet; args are preserved, result unchanged.
+            // handled.down() interrupted: handler may have progressed.
+            if handler_progress >= 1 {
+                // Handler consumed dispatched signal (try_down succeeded).
+                self.dispatched_value = 0;
+                self.phase = ScoreBoardPhase::Dispatched;
+            }
+            if handler_progress >= 2 {
+                // Handler set result and signaled handled (up succeeded).
+                self.result = ret;
+                self.handled_value = 1;
+                self.phase = ScoreBoardPhase::Handled;
+            }
+            // Guard drops: lock released. Stuck state.
             self.locked = false;
             return DispatchOutcome::DownInterrupted;
         }
 
-        // Handler processes: consume dispatched signal, set result, signal handled.
+        // Handler completes fully: consume dispatched, set result, signal handled.
         self.dispatched_value = 0;
         self.phase = ScoreBoardPhase::Dispatched;
         self.result = ret;

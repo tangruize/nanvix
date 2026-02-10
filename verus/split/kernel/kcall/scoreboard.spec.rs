@@ -432,20 +432,39 @@ impl ScoreBoard {
         Self::spec_full_cycle(view, args, ret)
     }
 
-    /// Spec function: dispatch outcome on down interruption.
+    /// Spec function: dispatch outcome on `dispatched.up()` failure.
     ///
     /// # Description
     ///
-    /// Models the error path where the lock is acquired but `handled.down()`
-    /// is interrupted. The interruption is modeled from the Signaled phase
-    /// (before the handler runs), which is the most conservative: the
-    /// dispatched semaphore has been signaled (value 1) but the handler has
-    /// not consumed it, and the result is unchanged from the prior state.
+    /// Models the error path where the lock is acquired and args are written,
+    /// but `dispatched.up()` fails (mapped to `SleepError::Generic` in the
+    /// original). The guard drops, releasing the lock. The board returns to
+    /// a valid Idle state with the new args but no signal sent.
+    pub open spec fn spec_dispatch_up_failed(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+    ) -> ScoreBoardView {
+        ScoreBoardView {
+            phase: ScoreBoardPhase::Idle,
+            args: args,
+            result: view.result,
+            locked: false,
+            dispatched_value: 0,
+            handled_value: 0,
+            completed_cycles: view.completed_cycles,
+        }
+    }
+
+    /// Spec function: dispatch outcome on down interruption from Signaled phase.
     ///
-    /// In the real implementation, `handled.down()` blocks and the interrupt
-    /// can catch the protocol in any active phase (Signaled, Dispatched, or
-    /// Handled). The `spec_abandon_dispatch` function models abandonment from
-    /// arbitrary active phases for fine-grained reasoning.
+    /// # Description
+    ///
+    /// Models the error path where the lock is acquired, `dispatched.up()`
+    /// succeeds, but `handled.down()` is interrupted before the handler starts.
+    /// The board is left in the Signaled phase with the mutex unlocked.
+    ///
+    /// For interruption from other phases (Dispatched, Handled), compose
+    /// the relevant spec transitions with `spec_abandon_dispatch`.
     pub open spec fn spec_dispatch_interrupted(
         view: ScoreBoardView,
         args: KcallArgsView,

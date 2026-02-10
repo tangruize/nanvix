@@ -788,6 +788,36 @@ impl ScoreBoard {
     {
     }
 
+    /// Lemma: `dispatched.up()` failure produces a valid idle state.
+    ///
+    /// # Description
+    ///
+    /// Proves that when `dispatched.up()` fails, the board returns to a
+    /// valid Idle state: the args were overwritten but the semaphore was
+    /// not signaled, and the guard drops (releasing the lock). The board
+    /// is well-formed and ready for the next dispatch attempt.
+    pub proof fn lemma_dispatch_up_failed(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+    )
+        requires
+            view.phase == ScoreBoardPhase::Idle,
+            !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
+        ensures ({
+            let after: ScoreBoardView = ScoreBoard::spec_dispatch_up_failed(view, args);
+            &&& after.phase == ScoreBoardPhase::Idle
+            &&& !after.locked
+            &&& after.dispatched_value == 0
+            &&& after.handled_value == 0
+            &&& after.args == args
+            &&& after.result == view.result
+            &&& after.completed_cycles == view.completed_cycles
+        }),
+    {
+    }
+
     /// Lemma: The split API composition equals `spec_full_cycle`.
     ///
     /// # Description
