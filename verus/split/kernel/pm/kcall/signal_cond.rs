@@ -352,17 +352,19 @@ pub fn signal_cond_model(
             ret.0.spec_view() == spec_signal_cond_result(gs.gc, gs.notify, gs.pc)
         }),
         // Success only when all steps succeed.
-        spec_is_success(ret.0.spec_view()) ==> (
-            ret.1@.gc == GetCondOutcomeView::GcOk
-            && matches!(ret.1@.notify, NotifyOutcomeView::NOk { .. })
-            && ret.1@.pc == PutCondOutcomeView::PcOk
-        ),
+        spec_is_success(ret.0.spec_view()) ==> ({
+            let gs: SignalCondGhostState = ret.1@;
+            gs.gc == GetCondOutcomeView::GcOk
+            && gs.pc == PutCondOutcomeView::PcOk
+            && gs.notify matches NotifyOutcomeView::NOk { .. }
+        }),
         // Error only when at least one step fails.
-        spec_is_error(ret.0.spec_view()) ==> (
-            !matches!(ret.1@.gc, GetCondOutcomeView::GcOk)
-            || !matches!(ret.1@.notify, NotifyOutcomeView::NOk { .. })
-            || !matches!(ret.1@.pc, PutCondOutcomeView::PcOk)
-        ),
+        spec_is_error(ret.0.spec_view()) ==> ({
+            let gs: SignalCondGhostState = ret.1@;
+            !(gs.gc matches GetCondOutcomeView::GcOk)
+            || !(gs.notify matches NotifyOutcomeView::NOk { .. })
+            || !(gs.pc matches PutCondOutcomeView::PcOk)
+        }),
         // On success, the condvar reference was released (dropped).
         spec_is_success(ret.0.spec_view()) ==>
             spec_cond_ref_released(cond_addr as nat),
