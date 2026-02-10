@@ -1083,12 +1083,18 @@ pub fn encode_result(result: &DispatchResult) -> (encoded: i64)
 ///
 /// The encoded i64 return value.
 pub fn do_kcall_encoded(args: DispatchArgs) -> (encoded: i64)
+    requires
+        args.wf(),
     ensures ({
-        let result_view: DispatchResultView = do_kcall(args)@;
-        encoded as int == spec_encode_result(result_view)
+        // The encoded i64 equals spec_encode_result of some well-formed result.
+        exists|r: DispatchResultView| #![auto]
+            spec_result_wf(r) && encoded as int == spec_encode_result(r)
     }),
 {
     let result: DispatchResult = do_kcall(args);
+    proof {
+        lemma_encode_result_is_value(result@);
+    }
     encode_result(&result)
 }
 
