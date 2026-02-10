@@ -309,6 +309,14 @@ pub open spec fn spec_all_steps_passed(
     && spec_copy_ok(copy_outcome)
 }
 
+/// Extract the exit status from a join outcome (defaults to 0 on non-Ok).
+pub open spec fn spec_join_exit_status(outcome: JoinThreadOutcomeView) -> int {
+    match outcome {
+        JoinThreadOutcomeView::JtOk { exit_status } => exit_status,
+        _ => 0int,
+    }
+}
+
 /// Extract the error code from a TID parse failure.
 pub open spec fn spec_tid_error_code(outcome: TidParseOutcomeView) -> int
     recommends !spec_tid_parsed_ok(outcome),

@@ -416,8 +416,8 @@ pub fn join_thread_model(
         // Success path: the joined thread's exit status is written to user memory.
         // This propagates the T3 postcondition through the pipeline: on success,
         // copy_to_user wrote the exit_status (from the join outcome) to arg1.
-        spec_is_success(ret.0.spec_view()) && ret.2@ matches JoinThreadOutcomeView::JtOk { exit_status }
-            ==> spec_user_mem_written(pid as nat, arg1 as nat, exit_status),
+        spec_is_success(ret.0.spec_view())
+            ==> spec_user_mem_written(pid as nat, arg1 as nat, spec_join_exit_status(ret.2@)),
 {
     // Step 1: Parse ThreadIdentifier from arg0.
     let tid_result: TidParseResultModel = try_from_thread_identifier(arg0);
