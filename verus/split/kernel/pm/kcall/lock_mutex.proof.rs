@@ -254,24 +254,25 @@ pub proof fn lemma_result_exhaustive(
     lock_outcome: LockOutcomeView,
     put_guard_outcome: PutGuardOutcomeView,
 )
-    ensures ({
-        let result: LockMutexResultView = spec_lock_mutex_result(
-            timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome
-        );
-        // Exhaustive: every result falls into exactly one category.
-        spec_is_success(result)
-        || spec_is_timeout_error(result)
-        || spec_is_get_mutex_error(result)
-        || spec_is_lock_error(result)
-        || spec_is_put_guard_error(result)
-    }),
-    ensures ({
-        let result: LockMutexResultView = spec_lock_mutex_result(
-            timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome
-        );
-        // Mutual exclusion: success and error are disjoint.
-        !(spec_is_success(result) && spec_is_error(result))
-    }),
+    ensures
+        ({
+            let result: LockMutexResultView = spec_lock_mutex_result(
+                timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome
+            );
+            // Exhaustive: every result falls into exactly one category.
+            spec_is_success(result)
+            || spec_is_timeout_error(result)
+            || spec_is_get_mutex_error(result)
+            || spec_is_lock_error(result)
+            || spec_is_put_guard_error(result)
+        }),
+        ({
+            let result: LockMutexResultView = spec_lock_mutex_result(
+                timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome
+            );
+            // Mutual exclusion: success and error are disjoint.
+            !(spec_is_success(result) && spec_is_error(result))
+        }),
 {
     let parsed: Option<TimeoutView> = spec_parse_timeout(timeout_s, timeout_ns);
     match parsed {
