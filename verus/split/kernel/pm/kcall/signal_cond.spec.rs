@@ -254,16 +254,29 @@ pub open spec fn spec_signal_cond_safety_preconditions() -> bool {
 ///
 /// # Description
 ///
-/// Models the effect of dropping the Condvar at the end of the block.
-/// In the original code, the Condvar goes out of scope after the notify
-/// call, causing its reference count to decrease.
+/// Abstract postcondition token established by `drop_cond_model` (trust
+/// boundary T3). Models the effect of dropping the Condvar at the end of
+/// the block. In the original code, the Condvar goes out of scope after
+/// the notify call, causing its reference count to decrease.
+///
+/// This predicate is intentionally uninterpreted at the kcall level. Its
+/// concrete semantics (refcount decrement) are the responsibility of the
+/// condvar module behind trust boundary T3. Here it serves as an abstract
+/// token that the pipeline propagates to callers, allowing them to compose
+/// resource-release reasoning across module boundaries.
 pub uninterp spec fn spec_cond_ref_released(cond_addr: nat) -> bool;
 
 /// Spec predicate: the condition variable slot was returned to the PM.
 ///
 /// # Description
 ///
-/// Models the effect of ProcessManager::put_cond succeeding.
+/// Abstract postcondition token established by `put_cond_model` (trust
+/// boundary T4). Models the effect of ProcessManager::put_cond succeeding.
+///
+/// This predicate is intentionally uninterpreted at the kcall level. Its
+/// concrete semantics (slot ownership transfer back to the PM) are the
+/// responsibility of the PM module behind trust boundary T4. Here it
+/// serves as an abstract token that the pipeline propagates to callers.
 pub uninterp spec fn spec_cond_slot_returned(cond_addr: nat) -> bool;
 
 /// Spec predicate: the number of threads waiting on a condvar.

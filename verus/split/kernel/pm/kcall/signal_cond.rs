@@ -71,15 +71,25 @@
 //!   condvar module.
 //! - **ProcessManager correctness**: get_cond / put_cond internals are
 //!   verified in the PM module. Resource-release predicates
-//!   (`spec_cond_ref_released`, `spec_cond_slot_returned`) are uninterpreted
-//!   at this trust boundary — their concrete semantics (e.g., refcount
-//!   decrement, slot ownership transfer) are defined and verified in the
-//!   PM and condvar modules respectively. Introducing PM/condvar state
-//!   invariants here would break the trust boundary separation.
+//!   (`spec_cond_ref_released`, `spec_cond_slot_returned`) are intentionally
+//!   uninterpreted at this trust boundary. Their concrete semantics (e.g.,
+//!   refcount decrement, slot ownership transfer) are the responsibility of
+//!   the PM and condvar modules respectively. At this kcall level, these
+//!   predicates serve as abstract postcondition tokens: the external_body
+//!   functions establish them, and the pipeline's ensures clauses propagate
+//!   them to callers. No claim is made here about their concrete
+//!   interpretation — that is a concern of the modules behind trust
+//!   boundaries T1–T4. Introducing PM/condvar state invariants here would
+//!   break the modular trust boundary separation that allows each module
+//!   to be verified independently.
 //! - **Liveness**: Whether waiting threads actually wake up is a scheduler
-//!   concern, verified separately. This verification assumes that the
-//!   condvar and scheduler modules correctly implement wakeup semantics;
-//!   liveness guarantees flow from those modules, not from this kcall pipeline.
+//!   concern, not provable at the kcall pipeline level. This verification
+//!   assumes (but does not prove) that the condvar and scheduler modules
+//!   correctly implement wakeup semantics. The assumption is: if
+//!   `notify_model` returns `Ok { awakened: n }`, then exactly `n` threads
+//!   have been moved to a runnable state. Liveness guarantees (that these
+//!   threads eventually execute) depend on the scheduler's fairness
+//!   properties, which are outside this module's scope.
 //!
 //! ## Known Limitations
 //!
@@ -88,8 +98,20 @@
 //!   `ProcessManager::put_cond()` is never called. The condvar reference
 //!   IS released (via Condvar::drop at scope exit), but the PM condvar
 //!   slot is not explicitly returned. Whether this constitutes a resource
-//!   leak depends on the PM's cleanup semantics (e.g., process exit cleanup).
-//!   This behavior is intentionally mirrored in the verification model.
+//!   leak depends on the PM's cleanup semantics (e.g., process exit cleanup
+//!   or Condvar::drop internally calling put_cond). This behavior is
+//!   intentionally mirrored in the verification model. Proven explicitly
+//!   by `lemma_notify_error_skips_put_cond`. Resolving this would require
+//!   either changing the original code to call put_cond on notify error,
+//!   or proving a PM-level invariant that condvar slots are eventually
+//!   reclaimed through other mechanisms.
+//! - **Resource-release predicates are abstract tokens**: The predicates
+//!   `spec_cond_ref_released` and `spec_cond_slot_returned` are
+//!   uninterpreted at this kcall level. They serve as composable
+//!   postcondition tokens that callers can use to chain resource-release
+//!   reasoning, but this module does not prove their concrete effects
+//!   (e.g., refcount values, slot availability). Concrete proofs require
+//!   the condvar and PM modules behind trust boundaries T3/T4.
 //!
 //! ## Verification Model
 //!
