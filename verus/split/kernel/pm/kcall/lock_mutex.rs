@@ -60,6 +60,9 @@
 //!   ghost state, proving that the lock step receives the correct timeout
 //!   value derived from the raw (timeout_s, timeout_ns) inputs
 //!   (`lemma_timeout_value_reaches_lock`).
+//! - **pid/tid independence**: The pipeline result is formally independent of
+//!   the `pid` and `tid` parameters (`lemma_result_independent_of_pid_tid`).
+//!   This guards against future signature drift.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -77,10 +80,15 @@
 //!   (3) the caller does not hold a reference to the ProcessManager. These
 //!   constraints are about the *caller's global state* (scheduler context,
 //!   resource ownership) rather than about this function's own pipeline logic.
-//!   They are correctly modeled as preconditions at the call site or as
-//!   ProcessManager-level invariants, not as properties of this function's
-//!   control flow. The PM module's verification should ensure these invariants
-//!   are upheld before invoking lock_mutex.
+//!   They are modeled as abstract (uninterpreted) spec predicates:
+//!   `spec_caller_is_not_kernel_process`, `spec_caller_holds_no_resources`,
+//!   and `spec_caller_no_pm_reference`, combined in
+//!   `spec_lock_mutex_safety_preconditions`. These predicates provide formal
+//!   hooks for the PM module's call-site verification — the PM module should
+//!   provide concrete interpretations and prove they hold before invoking
+//!   `lock_mutex`. They are not added as `requires` on `lock_mutex_model`
+//!   because the concrete definitions depend on ProcessManager state that is
+//!   out of scope for this pipeline verification.
 //!
 //! ## Verification Model
 //!

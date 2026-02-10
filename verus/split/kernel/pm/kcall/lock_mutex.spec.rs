@@ -316,4 +316,71 @@ pub open spec fn spec_parsed_timeout_for_lock(timeout_s: nat, timeout_ns: nat) -
     }
 }
 
+//==================================================================================================
+// Caller Safety Contract Spec Predicates
+//==================================================================================================
+
+/// Spec predicate: the calling process is not the kernel process.
+///
+/// # Description
+///
+/// Encodes the first safety requirement from the original `lock_mutex` function:
+/// "The calling process is not the kernel process."
+///
+/// This is an abstract predicate over the caller's process identity. It cannot
+/// be verified within this module because process identity is global scheduler
+/// state managed by the ProcessManager. The PM module's verification should
+/// establish this predicate before invoking `lock_mutex`.
+///
+/// The `pid` parameter corresponds to the `pid: ProcessIdentifier` from the
+/// original function signature, which is omitted from the exec model because
+/// it only appears in trace logging.
+pub open spec fn spec_caller_is_not_kernel_process(pid: nat) -> bool;
+
+/// Spec predicate: the calling thread holds no resources.
+///
+/// # Description
+///
+/// Encodes the second safety requirement from the original `lock_mutex` function:
+/// "This function is invoked without holding any resources."
+///
+/// This is an abstract predicate over the calling thread's resource ownership
+/// (e.g., other mutex guards, memory locks). It cannot be verified within this
+/// module because resource tracking is global mutable state managed by the
+/// ProcessManager's thread bookkeeping. The PM module's verification should
+/// establish this predicate before invoking `lock_mutex`.
+pub open spec fn spec_caller_holds_no_resources(tid: nat) -> bool;
+
+/// Spec predicate: the caller does not hold a ProcessManager reference.
+///
+/// # Description
+///
+/// Encodes the third safety requirement from the original `lock_mutex` function:
+/// "The calling process does not hold a reference to the process manager."
+///
+/// This prevents re-entrancy issues where `lock_mutex` internally accesses the
+/// ProcessManager (via `get_mutex`/`put_mutex_guard`) while the caller still
+/// holds a mutable reference. This is an abstract predicate over borrow state
+/// that cannot be verified here — Rust's borrow checker enforces it at compile
+/// time for safe code, and the PM module should verify it for unsafe contexts.
+pub open spec fn spec_caller_no_pm_reference() -> bool;
+
+/// Spec predicate: all three caller safety requirements are satisfied.
+///
+/// # Description
+///
+/// Convenience predicate combining the three safety requirements from the
+/// original `lock_mutex` function's `# Safety` documentation. Call sites
+/// (in the PM/kcall dispatch layer) should establish this predicate before
+/// invoking `lock_mutex`.
+///
+/// These predicates are intentionally abstract (uninterpreted) in this module
+/// because the concrete definitions depend on ProcessManager state, which is
+/// out of scope. The PM module should provide concrete interpretations.
+pub open spec fn spec_lock_mutex_safety_preconditions(pid: nat, tid: nat) -> bool {
+    spec_caller_is_not_kernel_process(pid)
+    && spec_caller_holds_no_resources(tid)
+    && spec_caller_no_pm_reference()
+}
+
 } // verus!
