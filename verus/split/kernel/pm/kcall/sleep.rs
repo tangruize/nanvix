@@ -410,6 +410,14 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
         // Overflow path: result is always GenericError.
         !spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
             ==> matches!(result, SleepResultModel::GenericError { .. }),
+        // Success path: result is always a classified PM result (Ok, Killed, or GenericError).
+        // TimedOut has been folded into Ok by the 3-arm match.
+        spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
+            ==> matches!(result, SleepResultModel::Ok | SleepResultModel::Killed
+                    | SleepResultModel::GenericError { .. }),
+        // Success path: TimedOut never appears in the output (folded into Ok).
+        spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
+            ==> !matches!(result, SleepResultModel::TimedOut),
 {
     // Step 1: Construct the timeout Duration.
     let timeout: DurationModel = duration_new(seconds, nanoseconds);
