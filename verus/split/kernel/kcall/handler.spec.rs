@@ -478,4 +478,68 @@ pub open spec fn spec_handler_terminated_correctly(
     &&& spec_loop_invariant(history)
 }
 
+//==================================================================================================
+// Spec Functions: Environment Oracle Model
+//==================================================================================================
+
+/// Spec function: models a single environment harvest outcome at a given iteration.
+///
+/// # Description
+///
+/// An "environment oracle" is a mapping from iteration index to the
+/// `HarvestOutcome` that `harvest_zombies()` would produce at that iteration.
+/// This concept is separate from the recorded history (which only contains
+/// non-terminating outcomes by loop invariant).
+///
+/// The oracle represents the external environment's behavior and is used
+/// to connect the liveness assumption to the exec model: if the oracle
+/// produces a terminating outcome at iteration `k`, the lifecycle step at
+/// iteration `k` will return `terminated = true` and the loop will exit.
+///
+/// Since `harvest_zombies()` is an `external_body` with unconstrained output,
+/// the oracle cannot be mechanically tied to actual execution. The connection
+/// is by assumption: the real system behaves consistently with the oracle.
+pub open spec fn spec_oracle_terminates_at(oracle: Seq<HarvestOutcome>, k: int) -> bool {
+    0 <= k < oracle.len() && spec_should_terminate(oracle[k])
+}
+
+/// Spec function: an oracle contains a terminating outcome within the first
+/// `n` iterations.
+pub open spec fn spec_oracle_has_termination(oracle: Seq<HarvestOutcome>, n: int) -> bool {
+    exists|k: int| 0 <= k < n && k < oracle.len() && spec_should_terminate(#[trigger] oracle[k])
+}
+
+/// Spec function: correctness under liveness assumption.
+///
+/// # Description
+///
+/// States the expected end-to-end property: if the environment oracle
+/// produces a terminating outcome within `fuel` iterations, then the loop
+/// returns `terminated == true` with all correctness properties.
+///
+/// This connects the liveness assumption (INITD eventually terminates)
+/// to the exec model (the loop detects it and exits). The connection
+/// relies on two assumptions:
+/// 1. The oracle faithfully represents `harvest_zombies()` outputs.
+/// 2. The loop runs with sufficient fuel (fuel >= termination iteration + 1).
+///
+/// These assumptions cannot be discharged within the handler module because
+/// `harvest_zombies()` is an external body (T2). The proof is by the
+/// contrapositive: `lemma_loop_termination_completeness` shows that if
+/// `!terminated`, then no INITD was observed in the history. Combined with
+/// the oracle assumption (iteration outcomes match the oracle), INITD in
+/// the oracle implies INITD was observed, yielding a contradiction.
+pub open spec fn spec_handler_correct_under_liveness(
+    terminated: bool,
+    termination_pid: u32,
+    history: Seq<HarvestOutcome>,
+    oracle: Seq<HarvestOutcome>,
+    fuel: nat,
+) -> bool {
+    // If the oracle contains a terminating outcome within fuel iterations,
+    // and the loop ran with that fuel, then:
+    spec_oracle_has_termination(oracle, fuel as int) ==>
+        spec_handler_terminated_correctly(terminated, termination_pid, history)
+}
+
 } // verus!

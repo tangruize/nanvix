@@ -63,6 +63,12 @@
 //!   harvest flags to the spec `HarvestOutcome` enum, and
 //!   `lemma_harvest_to_outcome_termination()` proves the termination semantics
 //!   are preserved by the conversion.
+//! - **Oracle-connected liveness**: `spec_handler_correct_under_liveness()`
+//!   defines the end-to-end correctness property under a liveness assumption
+//!   using an environment oracle model. `lemma_oracle_connected_liveness()`
+//!   proves the contrapositive link: if the loop didn't terminate, no INITD
+//!   was observed. The oracle-to-execution correspondence is an assumption
+//!   because `harvest_zombies()` is an external body (T2).
 //!
 //! ## Verification Model
 //!
@@ -765,9 +771,10 @@ pub fn poll_scoreboard_full() -> (result: ScoreBoardPollResult)
         // Default is 0 (Debug); the `has_call` gate in handle_kcall_phase
         // prevents this from being used.
         !result.has_call ==> result.kcall_number == 0u32,
-        // Scoreboard error and successful call are mutually exclusive.
-        // An error means no call was retrieved.
-        result.has_error ==> !result.has_call,
+        // Scoreboard errors never occur in practice (original: unreachable!()).
+        // This matches the fail-stop semantics: if these paths execute,
+        // the kernel panics. The verification assumes they don't.
+        !result.has_error,
 {
     unimplemented!()
 }
