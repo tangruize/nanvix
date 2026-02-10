@@ -185,6 +185,10 @@
 //! - The dispatcher and handler modules (`dispatcher.rs`, `handler.rs`).
 //! - `impl Debug for KcallArgs` (formatting; no safety implications).
 //! - Module-level `pub fn init()` (logging wrapper around `ScoreBoard::init()`).
+//! - Liveness/progress (e.g., "if no interrupt occurs, dispatch eventually returns").
+//!   The verification proves safety properties (state machine correctness, data
+//!   integrity, error path characterization) but does not prove progress. Stuck
+//!   states from `abandon_dispatch()` are characterized but recovery is not modeled.
 
 use vstd::prelude::*;
 
@@ -739,12 +743,17 @@ impl ScoreBoard {
     ///    State is preserved.
     /// 2. **Down interrupted** (`down_interrupted == true`): Models `handled.down()`
     ///    returning `Err(SleepError::Interrupted)`. The interrupt is modeled from
-    ///    the Signaled phase (before the handler runs), which is the worst case.
-    ///    In the real implementation, `handled.down()` blocks until the handler
-    ///    signals, so the interrupt can occur while the board is in any active
-    ///    phase (Signaled, Dispatched, or Handled). Modeling from Signaled
-    ///    captures the most conservative stuck state. The `abandon_dispatch()`
-    ///    function covers interruption from other active phases separately.
+    ///    the Signaled phase (before the handler runs), which is the earliest
+    ///    possible interrupt point. In the real implementation, `handled.down()`
+    ///    blocks until the handler signals, so the interrupt can occur while the
+    ///    board is in any active phase (Signaled, Dispatched, or Handled).
+    ///    Interruption from other phases is covered by the split API:
+    ///    - `abandon_dispatch()` accepts any non-Idle phase.
+    ///    - Per-phase abandon lemmas (`lemma_abandon_from_signaled`,
+    ///      `lemma_abandon_from_dispatched`, `lemma_abandon_from_handled`)
+    ///      characterize each stuck state.
+    ///    - `lemma_abandon_any_active_phase_characterized` provides a unified
+    ///      proof that data is preserved regardless of interrupt timing.
     ///    Returns `DispatchOutcome::DownInterrupted`.
     /// 3. **Success**: Lock acquired and `handled.down()` succeeds. Returns
     ///    `DispatchOutcome::Success(result)`, modeling `Ok(self.ret)`.

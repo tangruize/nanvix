@@ -910,6 +910,45 @@ impl ScoreBoard {
         }),
     {
     }
+
+    /// Lemma: Abandoning from any well-formed active phase produces a
+    /// characterized stuck state with all data preserved.
+    ///
+    /// # Description
+    ///
+    /// Unifies the per-phase abandon lemmas (`lemma_abandon_from_signaled`,
+    /// `lemma_abandon_from_dispatched`, `lemma_abandon_from_handled`) into a
+    /// single lemma applicable to any well-formed non-Idle board. Proves that
+    /// regardless of which active phase the `handled.down()` interrupt catches,
+    /// the resulting stuck state:
+    /// 1. Has the mutex unlocked (guard dropped).
+    /// 2. Retains the original phase (Signaled, Dispatched, or Handled).
+    /// 3. Preserves all data fields (args, result, cycle counter).
+    /// 4. Preserves semaphore values (consistent with the phase).
+    /// 5. Violates `wf()` (active phase with unlocked mutex).
+    ///
+    /// This covers all possible interrupt timings during `handled.down()` in
+    /// the original `dispatch()`: the handler may not have started (Signaled),
+    /// may be processing (Dispatched), or may have finished (Handled).
+    pub proof fn lemma_abandon_any_active_phase_characterized(view: ScoreBoardView)
+        requires
+            view.phase != ScoreBoardPhase::Idle,
+            view.locked,
+        ensures ({
+            let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
+            // Mutex released, phase retained.
+            &&& !stuck.locked
+            &&& stuck.phase == view.phase
+            &&& stuck.phase != ScoreBoardPhase::Idle
+            // All data preserved.
+            &&& stuck.args == view.args
+            &&& stuck.result == view.result
+            &&& stuck.completed_cycles == view.completed_cycles
+            &&& stuck.dispatched_value == view.dispatched_value
+            &&& stuck.handled_value == view.handled_value
+        }),
+    {
+    }
 }
 
 //==================================================================================================
