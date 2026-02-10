@@ -77,10 +77,6 @@
 //!   slot is not explicitly returned. Whether this constitutes a resource
 //!   leak depends on the PM's cleanup semantics (e.g., process exit cleanup).
 //!   This behavior is intentionally mirrored in the verification model.
-//! - **ProcessManager correctness**: get_cond / put_cond internals are
-//!   verified in the PM module.
-//! - **Liveness**: Whether waiting threads actually wake up is a scheduler
-//!   concern, verified separately.
 //!
 //! ## Verification Model
 //!
@@ -387,13 +383,10 @@ pub fn signal_cond_model(
             || !(gs.notify matches NotifyOutcomeView::NOk { .. })
             || !(gs.pc matches PutCondOutcomeView::PcOk)
         }),
-        // On success, the condvar reference was released (dropped).
-        spec_is_success(ret.0.spec_view()) ==>
-            spec_cond_ref_released(cond_addr as nat),
         // Condvar ref released whenever get_cond succeeded (not just on overall
         // success). The Condvar is dropped at scope exit regardless of whether
         // notify succeeds or fails — callers can rely on resource cleanup even
-        // on NotifyError or PutCondError paths.
+        // on NotifyError or PutCondError paths. This subsumes the success case.
         ({
             let gs: SignalCondGhostState = ret.1@;
             gs.gc == GetCondOutcomeView::GcOk

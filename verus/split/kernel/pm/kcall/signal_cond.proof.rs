@@ -414,6 +414,12 @@ pub proof fn lemma_notify_error_skips_put_cond(
 /// after get_cond succeeds. This holds whether notify succeeds or fails,
 /// and whether put_cond succeeds or fails. Callers can rely on resource
 /// cleanup for the condvar reference on all non-GetCondError paths.
+///
+/// Note: the `spec_cond_ref_released` requires/ensures pair is structurally
+/// a tautology (the predicate is uninterpreted and cannot be invalidated).
+/// It is included to show the predicate "survives" the pipeline — the
+/// primary value is the `!spec_is_get_cond_error` ensures, which proves
+/// that any path where get_cond succeeded cannot produce a GetCondError result.
 pub proof fn lemma_cond_ref_released_on_get_cond_success(
     cond_addr: nat,
     get_cond_outcome: GetCondOutcomeView,
@@ -425,9 +431,8 @@ pub proof fn lemma_cond_ref_released_on_get_cond_success(
         // From drop_cond_model's postcondition (always called when get_cond OK).
         spec_cond_ref_released(cond_addr),
     ensures
-        spec_cond_ref_released(cond_addr),
         // The result may be success, notify error, or put_cond error — but
-        // the condvar ref is released in all these cases.
+        // the condvar ref is released in all these cases (never GetCondError).
         !spec_is_get_cond_error(
             spec_signal_cond_result(get_cond_outcome, notify_outcome, put_cond_outcome)
         ),
