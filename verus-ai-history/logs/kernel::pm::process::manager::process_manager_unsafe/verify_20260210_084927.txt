@@ -1,0 +1,34 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 08:49:27 CST 2026
+Module: kernel::pm::process::manager::process_manager_unsafe
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager_unsafe
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::manager::process_manager_unsafe
+
+error: postcondition not satisfied
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:316:13
+    |
+316 |               self.wf(),
+    |               ^^^^^^^^^ failed this postcondition
+...
+349 | /         if next_tid != self.current_tid {
+350 | |             // Hard context switch.
+351 | |             if next_pid != self.current_pid {
+...   |
+356 | |             self.current_tid = next_tid;
+357 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 37 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 37
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager_unsafe (verified:37, errors:1)
