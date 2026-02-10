@@ -236,6 +236,7 @@ pub struct KcallArgs {
 /// The original `KcallResult` derives `Copy`, so `Ok(self.ret)` in `dispatch()`
 /// returns a copy without moving. This flat struct model inherently has copy
 /// semantics in Verus, matching the original behavior.
+#[derive(PartialEq, Eq)]
 pub struct KcallResult {
     /// Whether this result represents the Success variant.
     pub is_success: bool,
