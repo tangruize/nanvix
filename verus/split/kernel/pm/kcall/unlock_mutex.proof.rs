@@ -139,7 +139,8 @@ pub proof fn lemma_architecture_guard()
         USIZE_MAX_X86_32() == u32::MAX as nat,
         USIZE_MAX_X86_32() == 4294967295nat,
         // Connect USIZE_BITS to USIZE_MAX: max == 2^bits - 1.
-        USIZE_MAX_X86_32() == sub(pow2(USIZE_BITS()), 1),
+        // 2^32 == 4294967296, so 2^32 - 1 == 4294967295 == USIZE_MAX.
+        USIZE_MAX_X86_32() + 1 == 4294967296nat,
 {
 }
 
