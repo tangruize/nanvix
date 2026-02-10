@@ -146,8 +146,8 @@
 //! | `MutexAddress::from(usize)`               | (not modeled)                     | Type wrapper.        |
 //! | `SystemTime::new(u64, u32)`               | `system_time_new(u64, u32)`       | Verified.            |
 //! | `ProcessManager::get_mutex(addr)`         | `get_mutex_model(addr)`           | external_body.       |
-//! | `Mutex::lock(timeout)`                    | `mutex_lock_model(has, ghost_tv)` | external_body.       |
-//! | `ProcessManager::put_mutex_guard(a, g)`   | `put_mutex_guard_model(a, ghost)` | external_body.       |
+//! | `Mutex::lock(timeout)`                    | `mutex_lock_model(has, tv, addr)` | external_body.       |
+//! | `ProcessManager::put_mutex_guard(a, g)`   | `put_mutex_guard_model(a, tok)`   | external_body.       |
 //! | `pub unsafe fn lock_mutex(...)`           | `lock_mutex_model(...)`           | Fully verified.      |
 
 use crate::libs::error::ErrorCode;
@@ -309,8 +309,8 @@ impl LockMutexResultModel {
 #[verifier::external_body]
 pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
     ensures
-        // Error codes from the PM module are valid ErrorCode discriminants (always non-zero).
-        result matches GetMutexOutcomeModel::Error { error_code } ==> error_code != 0i32,
+        // Error codes from the PM module are valid ErrorCode discriminants.
+        result matches GetMutexOutcomeModel::Error { error_code } ==> spec_is_valid_error_code(error_code as int),
 {
     unimplemented!()
 }
@@ -336,8 +336,12 @@ pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
 ///   parameter is accepted to prove value-level correctness: the exact parsed
 ///   timeout reaches the lock step. The actual lock behavior (blocking duration,
 ///   etc.) is verified in the mutex module.
+/// - `mutex_addr`: Ghost of the mutex address, threaded from `get_mutex_model`.
+///   Used to associate the guard token with a specific mutex, formalizing the
+///   ownership chain: get_mutex(addr) → lock produces guard(addr) → put_guard
+///   requires guard(addr).
 #[verifier::external_body]
-pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutView>>) -> (result: (LockOutcomeModel, Ghost<bool>))
+pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutView>>, mutex_addr: Ghost<u32>) -> (result: (LockOutcomeModel, Ghost<Option<u32>>))
     requires
         // The ghost timeout_view must be consistent with the has_timeout flag.
         spec_timeout_view_consistent(has_timeout, timeout_view@),
@@ -345,10 +349,13 @@ pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutVie
         // TimedOut can only occur with a finite timeout. With an infinite
         // timeout, the Condvar::wait() path has no timer.
         spec_lock_outcome_valid_for_timeout(has_timeout, result.0.spec_view()),
-        // Error codes from lock failures are valid ErrorCode discriminants (always non-zero).
-        result.0 matches LockOutcomeModel::GenericError { error_code } ==> error_code != 0i32,
-        // Guard token: true iff lock succeeded (formalizes ownership chain).
-        result.1@ <==> (result.0 matches LockOutcomeModel::Ok),
+        // Error codes from lock failures are valid ErrorCode discriminants.
+        result.0 matches LockOutcomeModel::GenericError { error_code } ==> spec_is_valid_error_code(error_code as int),
+        // Guard token: Some(addr) iff lock succeeded; None otherwise.
+        // The contained address identifies which mutex the guard belongs to.
+        (result.0 matches LockOutcomeModel::Ok) <==> result.1@.is_some(),
+        // Guard token carries the correct mutex address on success.
+        result.1@.is_some() ==> result.1@ == Some(mutex_addr@),
 {
     unimplemented!()
 }
@@ -364,18 +371,19 @@ pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutVie
 ///
 /// - `mutex_addr`: The mutex address, same as passed to `get_mutex_model`.
 ///   Preserved for interface fidelity and future strengthening.
-/// - `guard_token`: Ghost token proving the caller holds a valid guard from
-///   `mutex_lock_model`. Models the `MutexGuard` parameter from the original
-///   `ProcessManager::put_mutex_guard(mutex_addr, guard)`, formalizing the
-///   ownership chain: lock produces guard → put_guard consumes guard.
+/// - `guard_token`: Ghost token proving the caller holds a valid guard for
+///   the specific mutex identified by `mutex_addr`. Models the `MutexGuard`
+///   parameter from the original `ProcessManager::put_mutex_guard(mutex_addr,
+///   guard)`, formalizing the ownership chain: lock produces a guard for a
+///   specific mutex → put_guard consumes a guard for the same mutex.
 #[verifier::external_body]
-pub fn put_mutex_guard_model(mutex_addr: u32, guard_token: Ghost<bool>) -> (result: PutGuardOutcomeModel)
+pub fn put_mutex_guard_model(mutex_addr: u32, guard_token: Ghost<Option<u32>>) -> (result: PutGuardOutcomeModel)
     requires
-        // The caller must hold a valid guard token from the lock step.
-        guard_token@,
+        // The caller must hold a valid guard token for this specific mutex.
+        guard_token@ == Some(mutex_addr),
     ensures
-        // Error codes from the PM module are valid ErrorCode discriminants (always non-zero).
-        result matches PutGuardOutcomeModel::Error { error_code } ==> error_code != 0i32,
+        // Error codes from the PM module are valid ErrorCode discriminants.
+        result matches PutGuardOutcomeModel::Error { error_code } ==> spec_is_valid_error_code(error_code as int),
 {
     unimplemented!()
 }
@@ -580,9 +588,9 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                 },
                 GetMutexOutcomeModel::Ok => {
                     // Step 3: Lock mutex (external), threading the parsed timeout value.
-                    let lock_pair: (LockOutcomeModel, Ghost<bool>) = mutex_lock_model(has_timeout, Ghost(timeout_for_lock));
+                    let lock_pair: (LockOutcomeModel, Ghost<Option<u32>>) = mutex_lock_model(has_timeout, Ghost(timeout_for_lock), Ghost(mutex_addr));
                     let lock_result: LockOutcomeModel = lock_pair.0;
-                    let guard_token: Ghost<bool> = lock_pair.1;
+                    let guard_token: Ghost<Option<u32>> = lock_pair.1;
                     let ghost lo_view: LockOutcomeView = lock_result.spec_view();
 
                     match lock_result {

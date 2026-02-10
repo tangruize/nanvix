@@ -42,6 +42,27 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
     22
 }
 
+/// Spec predicate: whether an error code is a valid `ErrorCode` discriminant.
+///
+/// # Description
+///
+/// The `ErrorCode` enum has five variants with discriminant values:
+/// - `NoSuchEntry` = 2
+/// - `OutOfMemory` = 12
+/// - `BadAddress` = 14
+/// - `ResourceBusy` = 16
+/// - `InvalidArgument` = 22
+///
+/// This predicate constrains error codes to exactly this set, which is
+/// stronger than `!= 0` and prevents unreachable error values in the model.
+pub open spec fn spec_is_valid_error_code(code: int) -> bool {
+    code == 2   // NoSuchEntry
+    || code == 12  // OutOfMemory
+    || code == 14  // BadAddress
+    || code == 16  // ResourceBusy
+    || code == 22  // InvalidArgument
+}
+
 //==================================================================================================
 // View Types
 //==================================================================================================
