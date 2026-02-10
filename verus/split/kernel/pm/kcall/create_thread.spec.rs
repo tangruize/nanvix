@@ -80,6 +80,14 @@ pub struct CreateThreadInputView {
     pub pid: nat,
     /// The raw arg0 value from KcallArgs (ghost-tracked address).
     pub arg0: nat,
+    /// The size argument used for the args region check (size_of::<ThreadCreateArgs>()).
+    pub args_size: nat,
+    /// The user_fn address (ghost-tracked for validation linkage).
+    pub user_fn_addr: nat,
+    /// The user_stack_base address (ghost-tracked for validation linkage).
+    pub user_stack_base_addr: nat,
+    /// The user_tda address (ghost-tracked for validation linkage).
+    pub user_tda_addr: nat,
     /// Whether the thread_create_args pointer lies in user space.
     pub args_addr_valid: bool,
     /// Whether copy_from_user succeeded.
@@ -263,6 +271,17 @@ pub open spec fn spec_is_error_code_value(code: int) -> bool {
     || code == 14   // BadAddress
     || code == 16   // ResourceBusy
     || code == 22   // InvalidArgument
+}
+
+/// Sentinel PM outcome for error paths where PM is never called.
+///
+/// # Description
+///
+/// Used in ghost code on validation-failure early-return paths.
+/// `lemma_short_circuit_on_validation_failure` proves that the PM outcome
+/// is irrelevant when any validation step fails, so this value is safe.
+pub open spec fn IRRELEVANT_PM_OUTCOME() -> CreateThreadOutcomeView {
+    CreateThreadOutcomeView::CtError { error_code: 0 }
 }
 
 } // verus!

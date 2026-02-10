@@ -59,8 +59,11 @@
 //!   to `ErrorCode::InvalidArgument as int` (`lemma_error_code_matches`).
 //! - **Argument identity tracking**: Ghost `pid` parameter is threaded through
 //!   both `copy_from_user` and `pm_create_thread`, ensuring the same PID from
-//!   `KcallArgs` is used in both operations. Ghost `arg0` tracks the source
-//!   address. Success postconditions link the ghost arguments to the input view.
+//!   `KcallArgs` is used in both operations. Ghost address parameters on
+//!   `is_user_region` and `is_user_addr` record `arg0`, `args_size`,
+//!   `user_fn_addr`, `user_stack_base_addr`, and `user_tda_addr` at each
+//!   validation step. All ghost addresses are exposed in the `CreateThreadInputView`
+//!   postcondition for cross-module composition.
 //! - **Copy error validity**: The `copy_from_user` external body guarantees
 //!   that error codes are valid positive values (`spec_is_valid_error_code`).
 //!   The `spec_is_error_code_value` predicate enumerates the subset of ErrorCode
@@ -112,27 +115,32 @@
 //! ### Abstraction Correctness
 //!
 //! The validation oracles (`is_user_region`, `is_user_addr`) are modeled as
-//! boolean identity functions: they take a pre-computed boolean and return it
-//! unchanged. This means the **mapping from concrete types
-//! (`VirtualAddress`, `KcallArgs`, `ThreadCreateArgs`) to boolean inputs is
-//! entirely trusted**. The verification proves the control-flow dispatch logic
-//! is correct given boolean inputs, but does NOT prove that the booleans
-//! faithfully represent the concrete validation results.
+//! boolean identity functions with ghost address parameters. The ghost parameters
+//! record which concrete address/size was validated at each call site, enabling
+//! postconditions to link validation results to specific addresses:
+//! - Step 1: `is_user_region(valid, Ghost(arg0), Ghost(args_size))` — validates
+//!   the `ThreadCreateArgs` pointer region.
+//! - Step 3: `is_user_addr(valid, Ghost(user_fn_addr))` — validates user_fn.
+//! - Step 4: `is_user_region(valid, Ghost(user_stack_base_addr), Ghost(user_stack_size))`
+//!   — validates user_stack region.
+//! - Step 5: `is_user_addr(valid, Ghost(user_tda_addr))` — validates user_tda.
 //!
-//! Specifically, `args_addr_valid` should equal
-//! `Vmem::is_user_region(VirtualAddress::from_raw_value(arg0), size_of::<ThreadCreateArgs>())`
-//! but this mapping is not verified here. The `arg0` field in
-//! `CreateThreadInputView` provides ghost traceability: it records which
-//! address was used, and the same `ghost_pid` is threaded through
-//! `copy_from_user` and `pm_create_thread` to prove the PID is consistent.
-//! However, linking `arg0` to `args_addr_valid` requires composing with
-//! the VMM module's `Vmem::is_user_region` specification.
+//! The `CreateThreadInputView` carries all ghost addresses (`arg0`, `args_size`,
+//! `user_fn_addr`, `user_stack_base_addr`, `user_tda_addr`), so postconditions
+//! can relate validated addresses to the input view.
+//!
+//! The **mapping from concrete types (`VirtualAddress`, `KcallArgs`,
+//! `ThreadCreateArgs`) to boolean inputs remains trusted**. The verification
+//! proves that the control-flow dispatch logic is correct given boolean inputs
+//! AND that the correct addresses are threaded through each validation step.
+//! However, it does NOT prove that the booleans faithfully represent the
+//! concrete `Vmem::is_user_region`/`Vmem::is_user_addr` results.
 //!
 //! This is an intentional design choice matching the project's per-module
 //! verification approach:
 //! - The VMM module verifies `Vmem::is_user_region` and `Vmem::is_user_addr`.
 //! - The PM module verifies `copy_from_user`.
-//! - This kcall module verifies the dispatch pipeline.
+//! - This kcall module verifies the dispatch pipeline and address threading.
 //!
 //! Full end-to-end soundness requires composing these module-level proofs.
 //! A future refinement could add linking lemmas connecting concrete types to
@@ -142,8 +150,8 @@
 //!
 //! | Original API                              | Verified Model                         | Notes           |
 //! |-------------------------------------------|----------------------------------------|-----------------|
-//! | `Vmem::is_user_region(addr, size)`        | `is_user_region(addr_valid)`           | external_body   |
-//! | `Vmem::is_user_addr(addr)`                | `is_user_addr(addr_valid)`             | external_body   |
+//! | `Vmem::is_user_region(addr, size)`        | `is_user_region(valid, Ghost(addr), Ghost(size))` | external_body |
+//! | `Vmem::is_user_addr(addr)`                | `is_user_addr(valid, Ghost(addr))`     | external_body   |
 //! | `thread_create_args.user_stack_size < ..`  | Direct `u32` comparison                | Fully verified  |
 //! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code, ghost_pid)` | external_body |
 //! | `pm.create_thread(mm, pid, args)`         | `pm_create_thread(ghost_pid, ghost_args)` | external_body |
@@ -204,6 +212,19 @@ impl CopyFromUserResultModel {
 ///
 /// After copy_from_user succeeds, the thread_create_args fields are
 /// validated individually. This struct captures the validation results.
+///
+/// ## Omitted Fields
+///
+/// `user_fn_arg0` and `user_fn_arg1` are not modeled because `create_thread`
+/// does not validate them — they are passed through to `pm.create_thread`
+/// unchanged. Argument passthrough verification is out of scope for this
+/// module; it would require PM-level ghost state tracking.
+///
+/// ## Architecture Dependency
+///
+/// `user_stack_size` uses `u32` which matches `usize` on the x86-32 target.
+/// If Nanvix targets a 64-bit architecture, this field and the
+/// `USER_STACK_SIZE()` spec constant must be updated.
 pub struct ThreadCreateArgsModel {
     /// Whether user_fn lies in user address space.
     pub user_fn_valid: bool,
@@ -297,10 +318,14 @@ impl KcallResultModel {
 /// Checks whether a memory region starting at `addr` with given `size`
 /// lies entirely within user address space. The boolean parameter is a
 /// pre-computed result from the concrete `Vmem::is_user_region` call.
-/// See "Abstraction Correctness" in the module documentation for the
-/// trust assumption on this mapping.
+/// Ghost parameters record which address and size were validated,
+/// enabling postconditions to link validation results to concrete values.
 #[verifier::external_body]
-pub fn is_user_region(valid: bool) -> (result: bool)
+pub fn is_user_region(
+    valid: bool,
+    Ghost(ghost_addr): Ghost<nat>,
+    Ghost(ghost_size): Ghost<nat>,
+) -> (result: bool)
     ensures
         result == valid,
 {
@@ -313,9 +338,12 @@ pub fn is_user_region(valid: bool) -> (result: bool)
 ///
 /// Checks whether an address lies within user address space. The boolean
 /// parameter is a pre-computed result from the concrete `Vmem::is_user_addr`
-/// call. See "Abstraction Correctness" in the module documentation.
+/// call. Ghost parameter records which address was validated.
 #[verifier::external_body]
-pub fn is_user_addr(valid: bool) -> (result: bool)
+pub fn is_user_addr(
+    valid: bool,
+    Ghost(ghost_addr): Ghost<nat>,
+) -> (result: bool)
     ensures
         result == valid,
 {
@@ -412,6 +440,10 @@ pub fn pm_create_thread(
 /// - `user_stack_size_min`: The minimum user stack size (USER_STACK_SIZE from config).
 /// - `Ghost(ghost_pid)`: Ghost PID for argument identity tracking.
 /// - `Ghost(ghost_arg0)`: Ghost arg0 (raw address) for argument identity tracking.
+/// - `Ghost(ghost_args_size)`: Ghost size_of::<ThreadCreateArgs>() for address linkage.
+/// - `Ghost(ghost_user_fn_addr)`: Ghost user_fn address for validation linkage.
+/// - `Ghost(ghost_user_stack_base_addr)`: Ghost user_stack_base address for validation linkage.
+/// - `Ghost(ghost_user_tda_addr)`: Ghost user_tda address for validation linkage.
 ///
 /// # Returns
 ///
@@ -427,6 +459,10 @@ pub fn create_thread_model(
     user_stack_size_min: u32,
     Ghost(ghost_pid): Ghost<nat>,
     Ghost(ghost_arg0): Ghost<nat>,
+    Ghost(ghost_args_size): Ghost<nat>,
+    Ghost(ghost_user_fn_addr): Ghost<nat>,
+    Ghost(ghost_user_stack_base_addr): Ghost<nat>,
+    Ghost(ghost_user_tda_addr): Ghost<nat>,
 ) -> (ret: (KcallResultModel, Ghost<CreateThreadInputView>, Ghost<CreateThreadOutcomeView>))
     requires
         // The minimum stack size parameter matches the spec constant.
@@ -438,6 +474,10 @@ pub fn create_thread_model(
         ret.1@ == (CreateThreadInputView {
             pid: ghost_pid,
             arg0: ghost_arg0,
+            args_size: ghost_args_size,
+            user_fn_addr: ghost_user_fn_addr,
+            user_stack_base_addr: ghost_user_stack_base_addr,
+            user_tda_addr: ghost_user_tda_addr,
             args_addr_valid: args_addr_valid,
             copy_succeeded: copy_succeeded,
             copy_error_code: copy_error_code as int,
@@ -468,6 +508,10 @@ pub fn create_thread_model(
     let ghost input_view: CreateThreadInputView = CreateThreadInputView {
         pid: ghost_pid,
         arg0: ghost_arg0,
+        args_size: ghost_args_size,
+        user_fn_addr: ghost_user_fn_addr,
+        user_stack_base_addr: ghost_user_stack_base_addr,
+        user_tda_addr: ghost_user_tda_addr,
         args_addr_valid: args_addr_valid,
         copy_succeeded: copy_succeeded,
         copy_error_code: copy_error_code as int,
@@ -475,16 +519,15 @@ pub fn create_thread_model(
     };
 
     // Step 1: Check if thread_create_args lies in user space.
-    let addr_valid: bool = is_user_region(args_addr_valid);
+    let addr_valid: bool = is_user_region(args_addr_valid, Ghost(ghost_arg0), Ghost(ghost_args_size));
     if !addr_valid {
-        // Dummy PM outcome for the error path.
-        let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
+        let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
         proof {
             lemma_args_addr_invalid_propagates(input_view, pm_view);
             lemma_result_exhaustive(input_view, pm_view);
         }
         return (
-            KcallResultModel::Error { error_code: 22i32 },
+            KcallResultModel::Error { error_code: ErrorCode::InvalidArgument as i32 },
             Ghost(input_view),
             Ghost(pm_view),
         );
@@ -494,7 +537,7 @@ pub fn create_thread_model(
     let copy_result: CopyFromUserResultModel = copy_from_user(copy_succeeded, copy_error_code, Ghost(ghost_pid));
     match copy_result {
         CopyFromUserResultModel::CopyError { error_code } => {
-            let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
+            let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
             proof {
                 lemma_copy_error_propagates(input_view, pm_view);
                 lemma_result_exhaustive(input_view, pm_view);
@@ -511,30 +554,34 @@ pub fn create_thread_model(
     }
 
     // Step 3: Check user_fn lies in user address space.
-    let fn_valid: bool = is_user_addr(thread_args.user_fn_valid);
+    let fn_valid: bool = is_user_addr(thread_args.user_fn_valid, Ghost(ghost_user_fn_addr));
     if !fn_valid {
-        let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
+        let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
         proof {
             lemma_user_fn_invalid_propagates(input_view, pm_view);
             lemma_result_exhaustive(input_view, pm_view);
         }
         return (
-            KcallResultModel::Error { error_code: 22i32 },
+            KcallResultModel::Error { error_code: ErrorCode::InvalidArgument as i32 },
             Ghost(input_view),
             Ghost(pm_view),
         );
     }
 
     // Step 4: Check user_stack lies in user address space.
-    let stack_region_valid: bool = is_user_region(thread_args.user_stack_valid);
+    let stack_region_valid: bool = is_user_region(
+        thread_args.user_stack_valid,
+        Ghost(ghost_user_stack_base_addr),
+        Ghost(thread_args.user_stack_size as nat),
+    );
     if !stack_region_valid {
-        let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
+        let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
         proof {
             lemma_user_stack_invalid_propagates(input_view, pm_view);
             lemma_result_exhaustive(input_view, pm_view);
         }
         return (
-            KcallResultModel::Error { error_code: 22i32 },
+            KcallResultModel::Error { error_code: ErrorCode::InvalidArgument as i32 },
             Ghost(input_view),
             Ghost(pm_view),
         );
@@ -542,13 +589,13 @@ pub fn create_thread_model(
 
     // Step 4b: Check user_stack_size >= USER_STACK_SIZE (concrete numeric comparison).
     if thread_args.user_stack_size < user_stack_size_min {
-        let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
+        let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
         proof {
             lemma_user_stack_invalid_propagates(input_view, pm_view);
             lemma_result_exhaustive(input_view, pm_view);
         }
         return (
-            KcallResultModel::Error { error_code: 22i32 },
+            KcallResultModel::Error { error_code: ErrorCode::InvalidArgument as i32 },
             Ghost(input_view),
             Ghost(pm_view),
         );
@@ -556,15 +603,15 @@ pub fn create_thread_model(
 
     // Step 5: Check user_tda (if present) lies in user address space.
     if thread_args.has_user_tda {
-        let tda_valid: bool = is_user_addr(thread_args.user_tda_valid);
+        let tda_valid: bool = is_user_addr(thread_args.user_tda_valid, Ghost(ghost_user_tda_addr));
         if !tda_valid {
-            let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
+            let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
             proof {
                 lemma_user_tda_invalid_propagates(input_view, pm_view);
                 lemma_result_exhaustive(input_view, pm_view);
             }
             return (
-                KcallResultModel::Error { error_code: 22i32 },
+                KcallResultModel::Error { error_code: ErrorCode::InvalidArgument as i32 },
                 Ghost(input_view),
                 Ghost(pm_view),
             );
