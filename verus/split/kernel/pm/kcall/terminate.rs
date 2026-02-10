@@ -302,7 +302,7 @@ pub fn process_manager_terminate(
             ==> ret.1@.process_set.subset_of(pm_pre.process_set),
         // Frame: on success, all PIDs other than the target are unchanged.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
-            ==> forall|p: nat| p != pid as nat ==>
+            ==> forall|p: nat| #![auto] p != pid as nat ==>
                 (spec_pm_has_process(pm_pre, p) <==> spec_pm_has_process(ret.1@, p)),
         // On error: state is unchanged.
         ret.0.spec_view() matches TerminateOutcomeView::TmError { .. }
