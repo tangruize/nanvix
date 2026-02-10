@@ -96,10 +96,23 @@
 //! boundary is deliberately scoped to state that this module owns or mutates directly.
 //!
 //! **What is verified:**
-//! - All state transitions preserve wf() (32 verified functions, 0 errors).
+//! - All state transitions preserve wf() (40 verified functions, 0 errors).
 //! - switch() correctly models stale-atomic PID comparison and quantum reset.
 //! - giveup() correctly branches on quantum and preserves/updates state.
+//! - Machine-checked divergence: exit/exit_thread set ghost_diverged, invalidating wf().
 //! - No `assume` or `external_body` in this module.
+//!
+//! **Verification scope — global state consistency, not operation semantics:**
+//! This module uses compositional verification: functions accept `new_inner` as a
+//! parameter rather than computing it from operation arguments (e.g., `ExitStatus`).
+//! This means the module verifies that *given any valid inner transition* (any
+//! `new_inner` satisfying `wf()` and `spec_running_pid() == next_pid`), the global
+//! state (atomics, quantum, divergence) is updated correctly. It does NOT verify
+//! that `exit()` actually terminates a process, `sleep()` actually suspends a thread,
+//! etc. — those operation semantics are verified in the inner ProcessManagerInner module
+//! (96 verified functions). The composability contract is `new_inner.wf()`: the inner
+//! module proves each operation produces a wf() state, and this module proves the
+//! global wrapper handles any such state correctly.
 //!
 //! **What is deferred to dependency modules (cross-module concerns):**
 //! - PID↔TID thread membership (T9): ProcessManagerInner tracks PIDs in `Set<int>`
