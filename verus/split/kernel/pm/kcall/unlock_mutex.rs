@@ -38,8 +38,16 @@
 //!   is unlocked. Modeled via a separate `drop_guard_model` step that consumes
 //!   the ghost guard token and establishes `spec_guard_dropped_and_mutex_unlocked`
 //!   (`lemma_guard_dropped_on_success`).
-//! - **No guard leak on error**: On error, no guard exists to leak
-//!   (`lemma_no_guard_leak_on_error`).
+//! - **Ownership on success**: On success, `spec_thread_owns_mutex(pid, tid,
+//!   mutex_addr)` is established, proving the calling thread owned the mutex.
+//!   This property is propagated from the `take_mutex_guard_model` contract
+//!   to the kcall boundary.
+//! - **No guard leak on error**: On error, no guard token is returned to the
+//!   caller (`lemma_no_guard_leak_on_error`).
+//! - **Implicit unlock on error**: On error, the mutex may have been implicitly
+//!   unlocked by PM-internal guard drops. The PM's `take_mutex_guard` can fail
+//!   at `put_mutex` after extracting the guard, causing `MutexGuard::drop()` to
+//!   run inside the PM. This is modeled via `spec_mutex_may_be_unlocked_on_error`.
 //! - **Guard token chain**: The guard token produced by `take_mutex_guard_model`
 //!   is consumed by `drop_guard_model`, formalizing the ownership chain
 //!   (`lemma_guard_token_chain`).
@@ -60,10 +68,13 @@
 //! - **Mutex unlock correctness**: The internal state machine of
 //!   MutexGuard::drop() is verified in the mutex module.
 //! - **ProcessManager correctness**: take_mutex_guard internals are verified
-//!   in the PM module.
+//!   in the PM module, including which error paths trigger implicit guard drops.
 //! - **Ownership validation**: Whether the calling thread actually owns the
 //!   mutex is a PM concern.
 //! - **MutexAddress validation**: Address validity is a PM concern.
+//! - **Liveness / thread notification**: The original code comment notes "The
+//!   mutex guard is dropped, causing threads to be notified." Thread wakeup
+//!   semantics depend on the mutex module and scheduler, verified separately.
 //!
 //! ## Verification Model
 //!
@@ -87,6 +98,8 @@
 //!   the given (pid, tid, mutex_addr). The PM module verifies this function's
 //!   correctness internally. Modeled as `external_body`. Returns a ghost guard
 //!   token `Option<u32>` on success (`Some(mutex_addr)`), `None` on failure.
+//!   On error, the mutex may have been implicitly unlocked by PM-internal
+//!   guard drops (modeled via `spec_mutex_may_be_unlocked_on_error`).
 //! - **T2: `MutexGuard::drop()`**. Unlocks the mutex when the guard goes out
 //!   of scope. Modeled as `drop_guard_model()` `external_body`. Consumes the
 //!   guard token and establishes `spec_guard_dropped_and_mutex_unlocked`.
@@ -186,6 +199,26 @@ impl UnlockMutexResultModel {
 /// `Some(mutex_addr)` on success, `None` on failure. This token is consumed
 /// by `drop_guard_model`, separating the "acquire" and "release" semantics.
 ///
+/// ## PM-Internal Error Path with Implicit Guard Drop
+///
+/// The PM's `take_mutex_guard` implementation has a two-step internal flow:
+/// 1. Extract `MutexGuard` from thread bookkeeping.
+/// 2. Call `put_mutex(mutex_addr)` to return the mutex slot.
+/// If step 2 fails, the function returns `Err`, but the `MutexGuard` was
+/// already extracted in step 1. Rust drops it at scope exit, triggering
+/// `MutexGuard::drop()` which unlocks the mutex. On this error path, the
+/// mutex IS unlocked as a side effect even though the caller sees `Err`.
+///
+/// The model captures this via `spec_mutex_may_be_unlocked_on_error`:
+/// on error, the mutex may or may not have been unlocked depending on
+/// which internal error path was taken. The concrete behavior is a PM
+/// concern — the PM module should prove which error paths trigger
+/// implicit unlocks.
+///
+/// For the kcall caller, the guard token is `None` on error because the
+/// caller did NOT receive a `MutexGuard` (the `Err` variant carries only
+/// the `Error`). The PM-internal implicit drop is invisible to the caller.
+///
 /// # Parameters
 ///
 /// - `mutex_addr`: The mutex address (from `MutexAddress::from(usize)`).
@@ -200,10 +233,17 @@ pub fn take_mutex_guard_model(mutex_addr: u32, pid: Ghost<u32>, tid: Ghost<u32>)
         // Error codes from the PM module are valid ErrorCode discriminants.
         result.0 matches TakeMutexGuardOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),
-        // Guard token: Some(addr) iff take_guard succeeded; None otherwise.
-        (result.0 matches TakeMutexGuardOutcomeModel::Ok) <==> result.1@.is_some(),
-        // Guard token carries the correct mutex address on success.
-        result.1@.is_some() ==> result.1@ == Some(mutex_addr),
+        // On success, a guard token is returned for the correct mutex.
+        (result.0 matches TakeMutexGuardOutcomeModel::Ok) ==> result.1@.is_some(),
+        (result.0 matches TakeMutexGuardOutcomeModel::Ok) ==> result.1@ == Some(mutex_addr),
+        // On error, no guard token is returned to the caller (the caller
+        // receives Err, not Ok(MutexGuard)). Any PM-internal implicit guard
+        // drop is modeled via spec_mutex_may_be_unlocked_on_error.
+        !(result.0 matches TakeMutexGuardOutcomeModel::Ok) ==> result.1@.is_none(),
+        // On error, the mutex may have been implicitly unlocked by the PM's
+        // internal guard drop (if the guard was extracted before the error).
+        result.0 matches TakeMutexGuardOutcomeModel::Error { .. }
+            ==> spec_mutex_may_be_unlocked_on_error(mutex_addr as nat),
         // Ownership: success implies the thread owned the mutex guard.
         // Concrete interpretation provided by the PM module.
         result.0 matches TakeMutexGuardOutcomeModel::Ok
@@ -289,6 +329,12 @@ pub fn unlock_mutex_model(mutex_addr: u32, pid: Ghost<u32>, tid: Ghost<u32>) -> 
         // On success, guard was dropped and mutex was unlocked.
         spec_is_success(ret.0.spec_view()) ==>
             spec_guard_dropped_and_mutex_unlocked(mutex_addr as nat),
+        // On success, the calling thread owned the mutex (from PM contract).
+        spec_is_success(ret.0.spec_view()) ==>
+            spec_thread_owns_mutex(pid@ as nat, tid@ as nat, mutex_addr as nat),
+        // On error, the mutex may have been implicitly unlocked by PM internals.
+        spec_is_error(ret.0.spec_view()) ==>
+            spec_mutex_may_be_unlocked_on_error(mutex_addr as nat),
 {
     // Step 1: Take mutex guard (external), threading ghost pid/tid.
     let tg_pair: (TakeMutexGuardOutcomeModel, Ghost<Option<u32>>) = take_mutex_guard_model(mutex_addr, pid, tid);
