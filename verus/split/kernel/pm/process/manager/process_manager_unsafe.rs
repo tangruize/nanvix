@@ -520,6 +520,20 @@ impl ProcessManagerUnsafeState {
         was_interrupted
     }
 
+    /// Models `ProcessManager::sleep()` error path.
+    ///
+    /// The original sleep() calls `Self::get_mut().try_borrow_mut()?.sleep_running()`
+    /// which can fail with `try_borrow_mut()` returning Err(ResourceBusy) or
+    /// inner sleep operations returning an error. In those cases, no state change
+    /// occurs and the error is propagated to the caller.
+    pub fn sleep_error(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
     //==============================================================================================
     // Exit Process
     //==============================================================================================
@@ -574,6 +588,22 @@ impl ProcessManagerUnsafeState {
         self.ghost_diverged = Ghost(true);
     }
 
+    /// Models `ProcessManager::exit()` error path.
+    ///
+    /// The original exit() calls `Self::get_mut().try_borrow_mut()?.exit(status)`
+    /// which can fail with `try_borrow_mut()` returning Err(ResourceBusy). In that
+    /// case, no state change occurs and the error is returned to the caller.
+    /// The `status: i32` exit code parameter is consumed by the inner exit() call
+    /// and captured in the `new_inner` on the success path; on the error path it
+    /// is irrelevant.
+    pub fn exit_error(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
     //==============================================================================================
     // Exit Thread
     //==============================================================================================
@@ -619,6 +649,17 @@ impl ProcessManagerUnsafeState {
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
         self.ghost_diverged = Ghost(true);
+    }
+
+    /// Models `ProcessManager::exit_thread()` error path.
+    ///
+    /// Same as exit_error(): `try_borrow_mut()` failure returns Err with no state change.
+    pub fn exit_thread_error(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
     }
 
     //==============================================================================================
@@ -845,6 +886,77 @@ impl ProcessManagerUnsafeState {
         ensures
             self.wf(),
     {
+    }
+
+    /// Models `ProcessManager::join_thread()` (unsafe.rs:341-408) — unified entry point.
+    ///
+    /// The original function is a loop:
+    /// ```text
+    /// loop {
+    ///     match try_join_thread(tid) {
+    ///         Ok(Some(status)) => return Ok(status),   // harvest path
+    ///         Ok(None) => join_cond.wait(None)?,        // wait path (sleep)
+    ///         Err(e) => return Err(SleepError::Generic(e)), // error path
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// This unified function models one iteration of the loop:
+    /// - `outcome == 0`: harvest path — target thread is zombie, harvested. No queue change.
+    /// - `outcome == 1`: wait path — target thread not zombie, block on condvar via sleep().
+    /// - `outcome == 2`: error path — try_join_thread failed. No queue change.
+    ///
+    /// Each iteration preserves wf(). The loop terminates when outcome == 0 or 2.
+    /// Liveness (eventual outcome == 0) depends on the target thread eventually
+    /// calling exit_thread() and signaling the join condvar — a trust boundary.
+    ///
+    /// The `new_inner`/`chosen_next_pid`/`chosen_next_tid` parameters are only
+    /// used when outcome == 1 (wait path). When outcome != 1, they are ignored.
+    pub fn join_thread(
+        &mut self,
+        outcome: u8,
+        new_inner: ProcessManagerInner,
+        chosen_next_pid: i32,
+        chosen_next_tid: i32,
+    )
+        requires
+            old(self).wf(),
+            outcome <= 2,
+            // Wait path parameters (used only when outcome == 1).
+            new_inner.wf(),
+            new_inner.spec_running_pid() == chosen_next_pid as int,
+            chosen_next_pid >= 0i32,
+            chosen_next_tid >= 0i32,
+            // Wait path: cannot sleep the kernel.
+            outcome == 1 ==> old(self).current_pid != KERNEL_PID_RAW,
+            // Same thread implies same process.
+            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            // If not wait path, new_inner must match current inner (no mutation).
+            outcome != 1 ==> new_inner == old(self).inner,
+        ensures
+            self.wf(),
+            self.scheduler_freq == old(self).scheduler_freq,
+            // Harvest path: no state change.
+            outcome == 0 ==> (
+                self.inner == old(self).inner
+                && self.current_pid == old(self).current_pid
+                && self.current_tid == old(self).current_tid
+                && self.remaining_quantum == old(self).remaining_quantum
+            ),
+            // Wait path: inner updated via sleep/switch.
+            outcome == 1 ==> self.inner == new_inner,
+            // Error path: no state change.
+            outcome == 2 ==> (
+                self.inner == old(self).inner
+                && self.current_pid == old(self).current_pid
+                && self.current_tid == old(self).current_tid
+                && self.remaining_quantum == old(self).remaining_quantum
+            ),
+    {
+        if outcome == 1 {
+            self.join_thread_wait(new_inner, chosen_next_pid, chosen_next_tid);
+        }
+        // outcome 0 (harvest) and 2 (error): no state change.
     }
 }
 
