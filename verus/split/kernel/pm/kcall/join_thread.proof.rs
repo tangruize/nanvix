@@ -459,6 +459,45 @@ pub proof fn lemma_killed_only_from_join(
     }
 }
 
+/// Proof: on success, the join outcome is JtOk and its exit status is written
+/// to user memory via spec_user_mem_written.
+///
+/// # Description
+///
+/// Establishes that on the success path, spec_join_exit_status correctly
+/// extracts the exit status from JtOk, linking the join outcome to the
+/// copy_to_user postcondition.
+pub proof fn lemma_success_join_exit_status(
+    tid_parse_outcome: TidParseOutcomeView,
+    join_outcome: JoinThreadOutcomeView,
+    copy_outcome: CopyToUserOutcomeView,
+)
+    requires
+        spec_is_success(
+            spec_join_thread_result(tid_parse_outcome, join_outcome, copy_outcome)
+        ),
+    ensures
+        spec_join_ok(join_outcome),
+        join_outcome matches JoinThreadOutcomeView::JtOk { exit_status }
+            ==> spec_join_exit_status(join_outcome) == exit_status,
+{
+    match tid_parse_outcome {
+        TidParseOutcomeView::TidError { .. } => {},
+        TidParseOutcomeView::TidOk { .. } => {
+            match join_outcome {
+                JoinThreadOutcomeView::JtError { .. } => {},
+                JoinThreadOutcomeView::JtInterruptedKilled => {},
+                JoinThreadOutcomeView::JtOk { .. } => {
+                    match copy_outcome {
+                        CopyToUserOutcomeView::CopyError { .. } => {},
+                        CopyToUserOutcomeView::CopyOk => {},
+                    }
+                },
+            }
+        },
+    }
+}
+
 /// Proof: ExitStatus::ok() has value 0.
 ///
 /// # Description
