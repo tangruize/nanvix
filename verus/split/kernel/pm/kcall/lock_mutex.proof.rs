@@ -65,9 +65,9 @@ pub proof fn lemma_invalid_timeout_returns_error(
         !spec_timeout_parsed_ok(timeout_s, timeout_ns),
     ensures
         spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome)
-            == LockMutexResultView::InvalidTimeoutError {
+            == (LockMutexResultView::InvalidTimeoutError {
                 error_code: ERROR_CODE_INVALID_ARGUMENT(),
-            },
+            }),
         spec_is_timeout_error(
             spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome)
         ),

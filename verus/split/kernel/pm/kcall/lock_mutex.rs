@@ -366,9 +366,9 @@ pub fn parse_timeout(timeout_s: u32, timeout_ns: u32) -> (result: Result<bool, L
             ==> result.is_err(),
         // Error case produces correct error code.
         result.is_err() ==> result.unwrap_err().spec_view()
-            == LockMutexResultView::InvalidTimeoutError {
+            == (LockMutexResultView::InvalidTimeoutError {
                 error_code: ERROR_CODE_INVALID_ARGUMENT(),
-            },
+            }),
         // Result matches spec_parse_timeout.
         result.is_ok() <==> spec_timeout_parsed_ok(timeout_s as nat, timeout_ns as nat),
 {
