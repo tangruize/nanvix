@@ -103,6 +103,10 @@ pub enum SleepResultView {
     /// Sleep was interrupted because the process was killed.
     KilledError,
     /// A generic error occurred (e.g., invalid argument, borrow failure).
+    /// Note: the error reason string is intentionally abstracted away.
+    /// The original `Error::new(ErrorCode::InvalidArgument, "invalid sleep time")`
+    /// carries a diagnostic string that does not affect control flow or matching.
+    /// Only the numeric error code is semantically relevant.
     GenericError { error_code: int },
 }
 

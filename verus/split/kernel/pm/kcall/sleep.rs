@@ -79,6 +79,13 @@
 //!   `seconds <= u32::MAX as u64` to match the 32-bit origin. Cast safety is
 //!   at the ABI boundary, not verified here.
 //!
+//! ## Error Reason Abstraction
+//!
+//! The original code constructs `Error::new(ErrorCode::InvalidArgument, "invalid sleep time")`
+//! on overflow. This model abstracts away the reason string, retaining only the numeric
+//! error code (22). The reason string is diagnostic and does not affect control flow or
+//! semantic correctness. Callers match on the error code, not the string.
+//!
 //! ## API Mapping
 //!
 //! | Original API                          | Verified Model                  | Notes                    |
@@ -396,33 +403,37 @@ pub fn classify_pm_result(pm_result: SleepResultModel) -> (result: SleepResultMo
 /// # Returns
 ///
 /// A SleepResultModel indicating the outcome.
-pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (result: SleepResultModel)
+pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (ret: (SleepResultModel, Ghost<PmSleepResultView>))
     requires
         now.spec_wf(),
+        // On Nanvix's x86-32, seconds originates from a 32-bit usize.
+        seconds <= u32::MAX as u64,
         // Duration normalization must not overflow.
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
         // Overflow path: checked_add fails → GenericError(InvalidArgument).
         !spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
-            ==> result.spec_classified_view() == (SleepResultView::GenericError {
+            ==> ret.0.spec_classified_view() == (SleepResultView::GenericError {
                     error_code: ERROR_CODE_INVALID_ARGUMENT()
                 }),
         // Overflow path: result is always GenericError.
         !spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
-            ==> matches!(result, SleepResultModel::GenericError { .. }),
-        // Success path: the 3-arm match classification was correctly applied.
-        // This ties the exec result to the spec classification for whatever PM
-        // result was obtained internally.
+            ==> matches!(ret.0, SleepResultModel::GenericError { .. }),
+        // Non-tautological: the ghost captures the original PM result, and the
+        // classified view equals spec_sleep_result applied to that PM result.
+        // This ties the exec result to the actual PM outcome, not just to the
+        // post-classification spec_pm_view (which would be tautological).
         spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
-            ==> result.spec_classified_view() == spec_classify_pm_result(result.spec_pm_view()),
+            ==> ret.0.spec_classified_view() == spec_sleep_result(
+                    now.spec_view(), seconds as nat, nanoseconds as nat, ret.1@),
         // Success path: result is always a classified PM result (Ok, Killed, or GenericError).
         // TimedOut has been folded into Ok by the 3-arm match.
         spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
-            ==> matches!(result, SleepResultModel::Ok | SleepResultModel::Killed
+            ==> matches!(ret.0, SleepResultModel::Ok | SleepResultModel::Killed
                     | SleepResultModel::GenericError { .. }),
         // Success path: TimedOut never appears in the output (folded into Ok).
         spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
-            ==> !matches!(result, SleepResultModel::TimedOut),
+            ==> !matches!(ret.0, SleepResultModel::TimedOut),
 {
     // Step 1: Construct the timeout Duration.
     let timeout: DurationModel = duration_new(seconds, nanoseconds);
@@ -435,17 +446,22 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
             // Step 3: Call ProcessManager::sleep(Some(alarm)).
             let pm_result: SleepResultModel = process_manager_sleep(&alarm);
 
+            // Capture the original PM result as a ghost before classification.
+            let ghost orig_pm_view: PmSleepResultView = pm_result.spec_pm_view();
+
             // Step 4: Classify the result via the 3-arm match.
             // Original: Ok(()) => Ok(()), Interrupted(TimedOut) => Ok(()),
             //           Err(error) => Err(error)
-            classify_pm_result(pm_result)
+            let classified: SleepResultModel = classify_pm_result(pm_result);
+            (classified, Ghost(orig_pm_view))
         },
         None => {
             // Overflow → InvalidArgument.
             proof {
                 assert(22i32 as int == ERROR_CODE_INVALID_ARGUMENT());
             }
-            SleepResultModel::GenericError { error_code: 22i32 }
+            // Ghost PM value is arbitrary on the overflow path (ensures are vacuously true).
+            (SleepResultModel::GenericError { error_code: 22i32 }, Ghost(PmSleepResultView::PmOk))
         },
     }
 }
@@ -469,14 +485,14 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
 /// # Returns
 ///
 /// A SleepResultModel indicating the outcome.
-pub fn sleep_end_to_end(seconds: u64, nanoseconds: u32) -> (result: SleepResultModel)
+pub fn sleep_end_to_end(seconds: u64, nanoseconds: u32) -> (ret: (SleepResultModel, Ghost<PmSleepResultView>))
     requires
+        // On Nanvix's x86-32, seconds originates from a 32-bit usize.
+        seconds <= u32::MAX as u64,
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
         // TimedOut never appears in the output (core invariant from the 3-arm match).
-        !matches!(result, SleepResultModel::TimedOut),
-        // The classification was correctly applied to the result.
-        result.spec_classified_view() == spec_classify_pm_result(result.spec_pm_view()),
+        !matches!(ret.0, SleepResultModel::TimedOut),
 {
     // Step 1: Get the current time (Trust Boundary T1).
     let now: SystemTimeModel = clock_now();
