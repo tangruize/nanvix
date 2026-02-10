@@ -494,6 +494,7 @@ impl ProcessManagerUnsafeState {
     /// switch (T5). **Caller obligation:** callers must not chain exec code after
     /// a successful exit() — the postconditions describe the system state for the
     /// scheduler's global invariants, not the exiting process's continuation.
+    pub fn exit(
         &mut self,
         new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
