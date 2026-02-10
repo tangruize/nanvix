@@ -1,6 +1,6 @@
 {
   "module_name": "kcall_terminate",
-  "outer_iteration": 1,
+  "outer_iteration": 2,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "b8b19c87-fbfc-4058-b18a-61bdd0fcd3d1",
