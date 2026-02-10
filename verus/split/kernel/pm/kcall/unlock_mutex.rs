@@ -231,7 +231,7 @@ pub fn unlock_mutex_model(mutex_addr: u32) -> (ret: (
             ret.1@ == TakeMutexGuardOutcomeView::TgOk,
         // Error only when take_mutex_guard fails.
         spec_is_error(ret.0.spec_view()) ==>
-            !matches!(ret.1@, TakeMutexGuardOutcomeView::TgOk),
+            !(ret.1@ == TakeMutexGuardOutcomeView::TgOk),
         // On success, guard was dropped and mutex was unlocked.
         spec_is_success(ret.0.spec_view()) ==>
             spec_guard_dropped_and_mutex_unlocked(mutex_addr as nat),
