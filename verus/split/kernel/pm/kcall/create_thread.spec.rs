@@ -48,6 +48,8 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
 ///
 /// Sync point: if `ThreadCreateArgs` fields change, update this value and
 /// `lemma_thread_create_args_size_matches` in the proof file.
+/// Use `assert_thread_create_args_size()` bridge function with
+/// `core::mem::size_of::<ThreadCreateArgs>()` for build-time verification.
 pub open spec fn THREAD_CREATE_ARGS_SIZE() -> nat {
     28
 }
@@ -57,6 +59,8 @@ pub open spec fn THREAD_CREATE_ARGS_SIZE() -> nat {
 ///
 /// Sync point: if the kernel constant changes, update this value and
 /// `lemma_user_stack_size_matches_config` in the proof file.
+/// Use `assert_user_stack_size()` bridge function with
+/// `config::memory_layout::USER_STACK_SIZE` for build-time verification.
 /// CI should verify this via `./verus-ai/scripts/verify.sh kcall_create_thread`.
 pub open spec fn USER_STACK_SIZE() -> nat {
     524288

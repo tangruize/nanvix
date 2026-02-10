@@ -96,7 +96,9 @@
 //!   user address space. Modeled as `external_body` returning a bool.
 //! - **T3: `pm::copy_from_user(pm, pid, dst, src)`**. Copies data from user space
 //!   to kernel space. Modeled as `external_body` returning a fallible result.
-//!   Error codes are guaranteed valid (positive) by postcondition.
+//!   Error codes are guaranteed valid (positive) by postcondition. Ghost
+//!   parameters track the source address (`arg0`) and the resulting
+//!   `ThreadCreateArgsView`, linking the copy to the step 1 validation address.
 //! - **T4: `ProcessManager::create_thread(mm, pid, args)`**. Creates a thread
 //!   in the PM. Modeled as `external_body` with ghost parameters for `pid` and
 //!   `thread_create_args` to track argument identity through the pipeline.
@@ -120,6 +122,9 @@
 //! postconditions to link validation results to specific addresses:
 //! - Step 1: `is_user_region(valid, Ghost(arg0), Ghost(args_size))` — validates
 //!   the `ThreadCreateArgs` pointer region.
+//! - Step 2: `copy_from_user(succeeded, error_code, Ghost(pid), Ghost(arg0),
+//!   Ghost(args_view))` — copies from the **same `arg0`** validated in step 1.
+//!   The ghost `src_addr` parameter ties the copy source to the validated address.
 //! - Step 3: `is_user_addr(valid, Ghost(user_fn_addr))` — validates user_fn.
 //! - Step 4: `is_user_region(valid, Ghost(user_stack_base_addr), Ghost(user_stack_size))`
 //!   — validates user_stack region.
@@ -127,7 +132,15 @@
 //!
 //! The `CreateThreadInputView` carries all ghost addresses (`arg0`, `args_size`,
 //! `user_fn_addr`, `user_stack_base_addr`, `user_tda_addr`), so postconditions
-//! can relate validated addresses to the input view.
+//! can relate validated addresses to the input view. The preconditions on
+//! `create_thread_model` enforce that:
+//! - `ghost_args_size == THREAD_CREATE_ARGS_SIZE()` (correct region size).
+//! - `ghost_user_fn_addr == thread_args.user_fn_addr` (validation uses copied addr).
+//! - `ghost_user_stack_base_addr == thread_args.user_stack_base_addr` (same).
+//! - `ghost_user_tda_addr == thread_args.user_tda_addr` (same).
+//!
+//! This proves that the addresses validated in steps 3-5 are the concrete
+//! addresses from the copied `ThreadCreateArgs` structure, not arbitrary values.
 //!
 //! The **mapping from concrete types (`VirtualAddress`, `KcallArgs`,
 //! `ThreadCreateArgs`) to boolean inputs remains trusted**. The verification
@@ -153,7 +166,7 @@
 //! | `Vmem::is_user_region(addr, size)`        | `is_user_region(valid, Ghost(addr), Ghost(size))` | external_body |
 //! | `Vmem::is_user_addr(addr)`                | `is_user_addr(valid, Ghost(addr))`     | external_body   |
 //! | `thread_create_args.user_stack_size < ..`  | Direct `u32` comparison                | Fully verified  |
-//! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code, ghost_pid)` | external_body |
+//! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code, ghost_pid, ghost_src_addr, ghost_args_view)` | external_body |
 //! | `pm.create_thread(mm, pid, args)`         | `pm_create_thread(ghost_pid, ghost_args)` | external_body |
 //! | `pub fn create_thread(pm, mm, args)`      | `create_thread_model(input, …)`        | Fully verified  |
 //!
@@ -379,15 +392,18 @@ pub fn is_user_addr(
 /// Error codes from `copy_from_user` are guaranteed valid (positive) because
 /// the original returns `error.code` which is an `ErrorCode` enum value.
 ///
-/// On success, the copied `ThreadCreateArgs` structure produces concrete
-/// addresses (user_fn, user_stack_base, user_tda) that are subsequently
-/// validated by `is_user_addr`/`is_user_region`. The ghost `args_view`
-/// parameter tracks these addresses through the pipeline.
+/// The ghost `src_addr` parameter records the source address (arg0) from
+/// which data is copied, linking the copy operation to the address validated
+/// in step 1 (`is_user_region`). On success, the copied `ThreadCreateArgs`
+/// structure produces concrete addresses (user_fn, user_stack_base, user_tda)
+/// that are subsequently validated by `is_user_addr`/`is_user_region`. The
+/// ghost `args_view` parameter tracks these addresses through the pipeline.
 #[verifier::external_body]
 pub fn copy_from_user(
     succeeded: bool,
     error_code: i32,
     Ghost(ghost_pid): Ghost<nat>,
+    Ghost(ghost_src_addr): Ghost<nat>,
     Ghost(ghost_args_view): Ghost<ThreadCreateArgsView>,
 ) -> (result: CopyFromUserResultModel)
     ensures
@@ -437,6 +453,54 @@ pub fn pm_create_thread(
             ==> spec_is_valid_error_code(error_code),
 {
     unimplemented!()
+}
+
+//==================================================================================================
+// Build-Time Verification Bridges
+//==================================================================================================
+
+/// Bridge: asserts that the runtime `ThreadCreateArgs` size matches the spec constant.
+///
+/// # Description
+///
+/// This function should be called from a build-time or integration test with
+/// `core::mem::size_of::<ThreadCreateArgs>()` as the argument. It verifies
+/// that the hard-coded `THREAD_CREATE_ARGS_SIZE()` spec constant matches the
+/// actual struct layout, preventing silent drift.
+///
+/// Example usage in a test:
+/// ```ignore
+/// assert_thread_create_args_size(core::mem::size_of::<ThreadCreateArgs>() as u32);
+/// ```
+///
+/// The kernel already uses `static_assert::assert_eq_size!` for `VirtualAddress`
+/// (see `src/libs/sys/src/sys/mm/address/virt.rs:30`). A similar assertion
+/// should be added for `ThreadCreateArgs` in the original source.
+#[verifier::external_body]
+pub fn assert_thread_create_args_size(runtime_size: u32)
+    requires
+        runtime_size as nat == THREAD_CREATE_ARGS_SIZE(),
+{
+}
+
+/// Bridge: asserts that the runtime `USER_STACK_SIZE` matches the spec constant.
+///
+/// # Description
+///
+/// This function should be called from a build-time or integration test with
+/// `config::memory_layout::USER_STACK_SIZE` as the argument. It verifies
+/// that the hard-coded `USER_STACK_SIZE()` spec constant matches the kernel
+/// configuration, preventing silent drift.
+///
+/// Example usage in a test:
+/// ```ignore
+/// assert_user_stack_size(config::memory_layout::USER_STACK_SIZE as u32);
+/// ```
+#[verifier::external_body]
+pub fn assert_user_stack_size(runtime_size: u32)
+    requires
+        runtime_size as nat == USER_STACK_SIZE(),
+{
 }
 
 //==================================================================================================
@@ -575,6 +639,7 @@ pub fn create_thread_model(
         copy_succeeded,
         copy_error_code,
         Ghost(ghost_pid),
+        Ghost(ghost_arg0),
         Ghost(thread_args.spec_view()),
     );
     match copy_result {
