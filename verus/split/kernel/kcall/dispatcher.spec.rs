@@ -494,6 +494,34 @@ impl FallibleOutcome {
     }
 }
 
+impl ScoreboardDispatchOutcome {
+    /// Spec function: well-formedness predicate.
+    ///
+    /// # Description
+    ///
+    /// A ScoreboardDispatchOutcome is well-formed when:
+    /// - On success with error result: the value fits in i32 range.
+    /// - On failure with Generic: the sleep error code fits in i32 range.
+    /// - Otherwise: always true.
+    pub open spec fn wf(&self) -> bool {
+        if self.succeeded {
+            if self.result_is_success {
+                true
+            } else {
+                self.result_value >= i32::MIN as i64 && self.result_value <= i32::MAX as i64
+            }
+        } else {
+            match self.sleep_error_kind {
+                SleepErrorKind::Generic => {
+                    self.sleep_error_code >= i32::MIN as i64
+                        && self.sleep_error_code <= i32::MAX as i64
+                },
+                _ => true,
+            }
+        }
+    }
+}
+
 //==================================================================================================
 // Spec Functions: KcallResult → i64 Encoding
 //==================================================================================================

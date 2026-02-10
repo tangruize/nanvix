@@ -191,6 +191,26 @@ pub struct FallibleOutcome {
     pub error_code: i32,
 }
 
+/// Model of a scoreboard dispatch outcome.
+///
+/// # Description
+///
+/// Models `scoreboard.dispatch()` which returns `Result<KcallResult, SleepError>`:
+/// - `Ok(KcallResult)` → `succeeded: true`, result fields carry the KcallResult.
+/// - `Err(SleepError)` → `succeeded: false`, sleep error fields carry the error.
+pub struct ScoreboardDispatchOutcome {
+    /// Whether the scoreboard dispatch succeeded.
+    pub succeeded: bool,
+    /// The result success/error flag (meaningful only when `succeeded`).
+    pub result_is_success: bool,
+    /// The result value (meaningful only when `succeeded`).
+    pub result_value: i64,
+    /// The sleep error kind (meaningful only when `!succeeded`).
+    pub sleep_error_kind: SleepErrorKind,
+    /// The sleep error code (meaningful only when `!succeeded` and `Generic`).
+    pub sleep_error_code: i64,
+}
+
 //==================================================================================================
 // Implementation: DispatchResult
 //==================================================================================================
@@ -497,20 +517,20 @@ pub fn handle_sleep_error_killed() -> (result: DispatchResult)
 ///
 /// # Returns
 ///
-/// FallibleOutcome: success with pid value, or error code on failure.
+/// FallibleOutcome: success with pid value (>= 0), or error code on failure.
 #[verifier::external_body]
 fn pm_get_pid() -> (result: FallibleOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value >= 0,
 { unimplemented!() }
 
 /// Retrieves the current thread identifier from the ProcessManager.
 ///
 /// # Returns
 ///
-/// FallibleOutcome: success with tid value, or error code on failure.
+/// FallibleOutcome: success with tid value (>= 0), or error code on failure.
 #[verifier::external_body]
 fn pm_get_tid() -> (result: FallibleOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value >= 0,
 { unimplemented!() }
 
 /// Models ProcessManager::exit (Exit kcall).
@@ -535,15 +555,23 @@ fn pm_exit_thread(arg0: u32) -> (result: DispatchResult)
 { unimplemented!() }
 
 /// Models pm::join_thread (JoinThread kcall).
+///
+/// # Description
+///
+/// On success, returns the exit status as a u32 converted to i64 (>= 0).
 #[verifier::external_body]
 fn pm_join_thread(pid: i64, arg0: u32, arg1: u32) -> (result: SleepableOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value >= 0,
 { unimplemented!() }
 
 /// Models ipc::recv (Recv kcall).
+///
+/// # Description
+///
+/// On success, returns KcallResult::ok() (value 0).
 #[verifier::external_body]
 fn ipc_recv(tid: i64, pid: i64, arg0: u32) -> (result: SleepableOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value == 0,
 { unimplemented!() }
 
 /// Models event::resume (Resume kcall).
@@ -557,21 +585,33 @@ fn event_resume(arg0: u32) -> (result: DispatchResult)
 { unimplemented!() }
 
 /// Models pm::lock_mutex (MutexLock kcall).
+///
+/// # Description
+///
+/// On success, returns KcallResult::ok() (value 0).
 #[verifier::external_body]
 fn pm_lock_mutex(pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32) -> (result: SleepableOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value == 0,
 { unimplemented!() }
 
 /// Models pm::unlock_mutex (MutexUnlock kcall).
+///
+/// # Description
+///
+/// On success, returns KcallResult::ok() (value 0).
 #[verifier::external_body]
 fn pm_unlock_mutex(pid: i64, tid: i64, arg0: u32) -> (result: FallibleOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value == 0,
 { unimplemented!() }
 
 /// Models pm::wait_cond (CondWait kcall).
+///
+/// # Description
+///
+/// On success, returns KcallResult::ok() (value 0).
 #[verifier::external_body]
 fn pm_wait_cond(pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> (result: SleepableOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value == 0,
 { unimplemented!() }
 
 /// Models pm::signal_cond (CondSignal kcall).
@@ -581,38 +621,116 @@ fn pm_signal_cond(pid: i64, tid: i64, arg0: u32, arg1: u32) -> (result: Fallible
 { unimplemented!() }
 
 /// Models ProcessManager::giveup (SchedulerYield kcall).
-#[verifier::external_body]
-fn pm_giveup() -> (result: FallibleOutcome)
-    ensures result.wf(),
-{ unimplemented!() }
-
-/// Models pm::sleep (Sleep kcall).
-#[verifier::external_body]
-fn pm_sleep(arg0: u32, arg1: u32) -> (result: SleepableOutcome)
-    ensures result.wf(),
-{ unimplemented!() }
-
-/// Models the remote scoreboard dispatch path.
 ///
 /// # Description
 ///
-/// Encapsulates `ScoreBoard::get_mut()` + `scoreboard.dispatch()` +
-/// `handle_sleep_error`. The scoreboard module is separately verified.
-/// This external body models the entire remote path including error handling:
-/// - get_mut failure → Error result.
-/// - dispatch `Ok(KcallResult)` → the result directly.
-/// - dispatch `Err(SleepError)` → `handle_sleep_error` (or diverge on Killed).
-///
-/// The `handle_sleep_error` routing for remote dispatch is identical to local
-/// sleepable calls, which are verified in `convert_sleepable`.
+/// On success, returns KcallResult::ok() (value 0).
 #[verifier::external_body]
-fn remote_dispatch(number: u32, pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> (result: DispatchResult)
+fn pm_giveup() -> (result: FallibleOutcome)
+    ensures result.wf(), result.succeeded ==> result.value == 0,
+{ unimplemented!() }
+
+/// Models pm::sleep (Sleep kcall).
+///
+/// # Description
+///
+/// On success, returns KcallResult::ok() (value 0).
+#[verifier::external_body]
+fn pm_sleep(arg0: u32, arg1: u32) -> (result: SleepableOutcome)
+    ensures result.wf(), result.succeeded ==> result.value == 0,
+{ unimplemented!() }
+
+/// Models ScoreBoard::get_mut().
+///
+/// # Description
+///
+/// Acquires mutable access to the scoreboard singleton. Returns a
+/// FallibleOutcome: success means access was granted; error means
+/// the scoreboard is unavailable (value carries the error code).
+/// The scoreboard protocol is separately verified in
+/// `kernel::kcall::scoreboard`.
+#[verifier::external_body]
+fn scoreboard_get_mut() -> (result: FallibleOutcome)
+    ensures result.wf(),
+{ unimplemented!() }
+
+/// Models scoreboard.dispatch().
+///
+/// # Description
+///
+/// Dispatches a kernel call to the scoreboard for remote execution.
+/// Returns `Result<KcallResult, SleepError>` modeled as
+/// ScoreboardDispatchOutcome.
+#[verifier::external_body]
+fn scoreboard_dispatch_call(number: u32, pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> (result: ScoreboardDispatchOutcome)
     ensures result.wf(),
 { unimplemented!() }
 
 //==================================================================================================
 // Verified Dispatch Logic
 //==================================================================================================
+
+/// Verified remote dispatch path.
+///
+/// # Description
+///
+/// Implements the remote scoreboard dispatch path from the original
+/// `do_kcall` wildcard match arm:
+/// 1. `ScoreBoard::get_mut()` — acquire scoreboard access (may fail).
+/// 2. `scoreboard.dispatch()` — dispatch to scoreboard (may return
+///    `Ok(KcallResult)` or `Err(SleepError)`).
+/// 3. On sleep error, routes through `handle_sleep_error` (or diverges
+///    on Killed via `handle_sleep_error_killed`).
+///
+/// Each step is a small external body; the routing logic between them
+/// is fully verified.
+///
+/// # Parameters
+///
+/// - `number`: Kernel call number.
+/// - `pid`: Process identifier.
+/// - `tid`: Thread identifier.
+/// - `arg0`..`arg3`: Kernel call arguments.
+///
+/// # Returns
+///
+/// A well-formed DispatchResult (or diverges on Killed).
+fn remote_dispatch_verified(number: u32, pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> (result: DispatchResult)
+    ensures
+        result.wf(),
+{
+    let sb_outcome: FallibleOutcome = scoreboard_get_mut();
+    if !sb_outcome.succeeded {
+        DispatchResult::error(sb_outcome.error_code)
+    } else {
+        let dispatch_outcome: ScoreboardDispatchOutcome =
+            scoreboard_dispatch_call(number, pid, tid, arg0, arg1, arg2, arg3);
+        if dispatch_outcome.succeeded {
+            DispatchResult {
+                is_success: dispatch_outcome.result_is_success,
+                value: dispatch_outcome.result_value,
+            }
+        } else {
+            match dispatch_outcome.sleep_error_kind {
+                SleepErrorKind::InterruptedKilled => {
+                    handle_sleep_error_killed()
+                },
+                SleepErrorKind::Generic => {
+                    handle_sleep_error(SleepError {
+                        kind: SleepErrorKind::Generic,
+                        error_code: dispatch_outcome.sleep_error_code,
+                    })
+                },
+                SleepErrorKind::InterruptedTimedOut => {
+                    handle_sleep_error(SleepError {
+                        kind: SleepErrorKind::InterruptedTimedOut,
+                        error_code: dispatch_outcome.sleep_error_code,
+                    })
+                },
+            }
+        }
+    }
+}
 
 /// Converts a sleepable subsystem outcome to a dispatch result.
 ///
@@ -636,7 +754,8 @@ fn convert_sleepable(outcome: SleepableOutcome) -> (result: DispatchResult)
         outcome.wf(),
     ensures
         result.wf(),
-        outcome.succeeded ==> result.is_success,
+        outcome.succeeded ==> (result.is_success && result.value == outcome.value),
+        !outcome.succeeded ==> !result.is_success,
 {
     if outcome.succeeded {
         DispatchResult::success(outcome.value)
@@ -681,8 +800,8 @@ fn convert_fallible(outcome: FallibleOutcome) -> (result: DispatchResult)
         outcome.wf(),
     ensures
         result.wf(),
-        outcome.succeeded ==> result.is_success,
-        !outcome.succeeded ==> !result.is_success,
+        outcome.succeeded ==> (result.is_success && result.value == outcome.value),
+        !outcome.succeeded ==> (!result.is_success && result.value == outcome.error_code as i64),
 {
     if outcome.succeeded {
         DispatchResult::success(outcome.value)
@@ -715,6 +834,9 @@ fn convert_fallible(outcome: FallibleOutcome) -> (result: DispatchResult)
 ///
 /// A well-formed DispatchResult.
 fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: DispatchResult)
+    requires
+        pid >= 0,
+        tid >= 0,
     ensures
         result.wf(),
         // GetPid returns the pid value.
@@ -724,6 +846,21 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
         // Terminal calls always return error.
         spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal
             ==> !result.is_success,
+        // ok()-returning sleepable calls: success value is 0.
+        (args.number == 9u32 || args.number == 24u32
+            || args.number == 27u32 || args.number == 29u32)
+            && result.is_success ==> result.value == 0,
+        // JoinThread: success value >= 0 (u32 exit status).
+        args.number == 23u32 && result.is_success ==> result.value >= 0,
+        // ok()-returning fallible calls: success value is 0.
+        (args.number == 25u32 || args.number == 20u32)
+            && result.is_success ==> result.value == 0,
+        // Sleepable/fallible calls on error: result is error.
+        (args.number == 9u32 || args.number == 23u32 || args.number == 24u32
+            || args.number == 27u32 || args.number == 29u32
+            || args.number == 25u32 || args.number == 26u32
+            || args.number == 20u32)
+            && !result.is_success ==> !result.is_success,
 {
     let number: u32 = args.number;
     if number == 1u32 {
@@ -766,8 +903,8 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
         // Sleep: sleepable.
         convert_sleepable(pm_sleep(args.arg0, args.arg1))
     } else {
-        // Remote: dispatched to scoreboard.
-        remote_dispatch(args.number, pid, tid, args.arg0, args.arg1, args.arg2, args.arg3)
+        // Remote: dispatched to scoreboard (verified routing).
+        remote_dispatch_verified(args.number, pid, tid, args.arg0, args.arg1, args.arg2, args.arg3)
     }
 }
 
@@ -795,6 +932,16 @@ pub fn do_kcall_context(args: DispatchArgs) -> (result: DispatchResult)
         // Terminal calls always return error, even if pid/tid retrieval fails.
         spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal
             ==> !result.is_success,
+        // GetPid/GetTid: if success, value is non-negative (pids/tids >= 0).
+        (args.number == 1u32 || args.number == 2u32)
+            && result.is_success ==> result.value >= 0,
+        // ok()-returning calls: success value is 0.
+        (args.number == 9u32 || args.number == 24u32
+            || args.number == 27u32 || args.number == 29u32
+            || args.number == 25u32 || args.number == 20u32)
+            && result.is_success ==> result.value == 0,
+        // JoinThread: success value >= 0 (u32 exit status).
+        args.number == 23u32 && result.is_success ==> result.value >= 0,
 {
     let pid_outcome: FallibleOutcome = pm_get_pid();
     if !pid_outcome.succeeded {
@@ -846,6 +993,16 @@ pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
         spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal ==> !result.is_success,
         // General category constraint.
         spec_dispatch_result_constrained(spec_classify_kcall(args.number), result@),
+        // GetPid/GetTid: if success, value is non-negative.
+        (args.number == 1u32 || args.number == 2u32)
+            && result.is_success ==> result.value >= 0,
+        // ok()-returning calls: success value is 0.
+        (args.number == 9u32 || args.number == 24u32
+            || args.number == 27u32 || args.number == 29u32
+            || args.number == 25u32 || args.number == 20u32)
+            && result.is_success ==> result.value == 0,
+        // JoinThread: success value >= 0.
+        args.number == 23u32 && result.is_success ==> result.value >= 0,
 {
     // Trust boundary: delegates to do_kcall_context in the verified model.
     // External body only for the C ABI representation gap (T5).
