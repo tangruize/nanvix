@@ -335,7 +335,7 @@ pub open spec fn spec_parsed_timeout_for_lock(timeout_s: nat, timeout_ns: nat) -
 /// The `pid` parameter corresponds to the `pid: ProcessIdentifier` from the
 /// original function signature, which is omitted from the exec model because
 /// it only appears in trace logging.
-pub open spec fn spec_caller_is_not_kernel_process(pid: nat) -> bool;
+pub uninterp spec fn spec_caller_is_not_kernel_process(pid: nat) -> bool;
 
 /// Spec predicate: the calling thread holds no resources.
 ///
@@ -349,7 +349,7 @@ pub open spec fn spec_caller_is_not_kernel_process(pid: nat) -> bool;
 /// module because resource tracking is global mutable state managed by the
 /// ProcessManager's thread bookkeeping. The PM module's verification should
 /// establish this predicate before invoking `lock_mutex`.
-pub open spec fn spec_caller_holds_no_resources(tid: nat) -> bool;
+pub uninterp spec fn spec_caller_holds_no_resources(tid: nat) -> bool;
 
 /// Spec predicate: the caller does not hold a ProcessManager reference.
 ///
@@ -363,7 +363,7 @@ pub open spec fn spec_caller_holds_no_resources(tid: nat) -> bool;
 /// holds a mutable reference. This is an abstract predicate over borrow state
 /// that cannot be verified here — Rust's borrow checker enforces it at compile
 /// time for safe code, and the PM module should verify it for unsafe contexts.
-pub open spec fn spec_caller_no_pm_reference() -> bool;
+pub uninterp spec fn spec_caller_no_pm_reference() -> bool;
 
 /// Spec predicate: all three caller safety requirements are satisfied.
 ///
