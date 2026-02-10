@@ -276,33 +276,34 @@ impl ScoreBoard {
     // Proof Lemmas -- Invalid Transition Guards
     //==============================================================================================
 
-    /// Lemma: Cannot begin dispatch when not idle.
+    /// Lemma: Cannot begin dispatch when not idle (on a wf scoreboard).
     ///
     /// # Description
     ///
-    /// Documents that `begin_dispatch` requires `phase == Idle`.
-    /// If the board is in `Dispatched` or `Handled` phase, the mutex
-    /// is held and another dispatch attempt would block on the mutex.
-    pub proof fn lemma_no_dispatch_when_active(view: ScoreBoardView)
+    /// Documents that when a well-formed scoreboard is in `Dispatched` or
+    /// `Handled` phase, the mutex is held. Another dispatch attempt would
+    /// block on the mutex.
+    pub proof fn lemma_no_dispatch_when_active(sb: &ScoreBoard)
         requires
-            view.phase == ScoreBoardPhase::Dispatched || view.phase == ScoreBoardPhase::Handled,
+            sb.wf(),
+            sb.spec_is_dispatched() || sb.spec_is_handled(),
         ensures
-            view.locked,
+            sb.locked,
     {
     }
 
-    /// Lemma: Cannot handle when not dispatched.
+    /// Lemma: A well-formed idle scoreboard has the mutex unlocked.
     ///
     /// # Description
     ///
     /// The handler's `try_down` on the dispatched semaphore will fail
-    /// when no dispatch is pending. In the Idle phase, the dispatched
-    /// semaphore value is 0.
-    pub proof fn lemma_no_handle_when_idle(view: ScoreBoardView)
+    /// when no dispatch is pending. In the Idle phase, the mutex is not held.
+    pub proof fn lemma_no_handle_when_idle(sb: &ScoreBoard)
         requires
-            view.phase == ScoreBoardPhase::Idle,
+            sb.wf(),
+            sb.spec_is_idle(),
         ensures
-            !view.locked,
+            !sb.locked,
     {
     }
 
