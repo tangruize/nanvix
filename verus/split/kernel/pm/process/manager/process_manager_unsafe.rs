@@ -17,8 +17,9 @@
 //!   both decrement and context-switch paths with complete postconditions.
 //! - Sleep preserves wf(): delegates to switch for inner+atomic updates.
 //!   Post-wakeup interrupt-reason check modeled by sleep_post_wakeup().
-//! - Exit/exit_thread preserve wf() with postconditions for PID/TID/quantum.
-//!   Divergence documented as T10 trust boundary.
+//! - Exit/exit_thread preserve wf() through switch, then set ghost_diverged flag.
+//!   Machine-checked divergence: wf() requires !diverged, so no operations
+//!   can be called after exit. Hard-switch precondition made explicit.
 //! - is_kernel_running() correctly reflects current_tid == 0.
 //! - Delegation functions (get_mutex, get_cond, etc.) preserve wf() and model
 //!   Result-like success/failure outcomes.
@@ -38,7 +39,9 @@
 //!
 //! - **T5: Raw pointer context switch.** The actual `ContextInformation::switch(from, to)`
 //!   is a hardware-level operation. We verify the state-level effects (inner mutation,
-//!   PID/TID/quantum updates) but not the raw pointer manipulation.
+//!   PID/TID/quantum updates) but not the raw pointer manipulation. The `user_tda`
+//!   parameter (user-space thread data area virtual address) is also abstracted away;
+//!   it affects address space setup for the next thread but not queue-level state.
 //! - **T6: Atomic ordering.** Atomic loads/stores use `ORDER` (Relaxed/SeqCst).
 //!   Memory ordering correctness is not modeled; Nanvix is single-core cooperative.
 //! - **T7: Singleton exclusive access.** `get_mut()` returns `&mut ProcessManager` from
@@ -59,17 +62,16 @@
 //!   current model verifies all state transitions that THIS module performs (inner
 //!   mutation + atomic updates); the TID↔PID membership is an orthogonal invariant
 //!   maintained by a different subsystem.
-//! - **T10: Divergence (exit/exit_thread non-returning).** exit() and exit_thread()
-//!   return `Result<!, Error>` in the original code: on the success path,
-//!   `Self::switch()` performs a hardware context switch that swaps the stack pointer
-//!   and never returns to the caller. The verified model captures the state transition
-//!   (inner mutation + PID/TID/quantum atomic updates) but not the divergence property.
-//!   Verus does not support `-> !` return types or `ensures false` for non-terminating
-//!   functions. The postconditions describe the system state as seen by the NEXT
-//!   scheduled process, not the exiting process. **Caller obligation:** callers must
-//!   not chain exec code after a successful exit()/exit_thread() — the post-state
-//!   `self` is only meaningful for reasoning about the scheduler's global invariants,
-//!   not for the exiting process's continuation.
+//! - **T10: Divergence (exit/exit_thread non-returning) — Machine-Checked.**
+//!   exit() and exit_thread() return `Result<!, Error>` in the original code: on the
+//!   success path, `Self::switch()` performs a hardware context switch that swaps the
+//!   stack pointer and never returns to the caller. The verified model captures
+//!   divergence via the `ghost_diverged` flag: after exit/exit_thread, the flag is
+//!   set to true, which invalidates wf() (wf requires spec_not_diverged()). Since all
+//!   other operations require wf(), no further operations can be called on a diverged
+//!   state — providing machine-checked divergence prevention. The postconditions of
+//!   exit/exit_thread describe the system state as seen by the NEXT scheduled process
+//!   (for global invariant reasoning), not the exiting process's continuation.
 //! - **T11: Per-thread message delivery.** try_recv_some/try_recv_none model message
 //!   reception as a count decrement. The inner model tracks only
 //!   `number_buffered_messages: usize` (a per-process aggregate count), not per-thread
@@ -108,9 +110,6 @@
 //! - Synchronization object tables (T12): Mutex/condvar state lives inside inner module.
 //!
 //! **What is beyond Verus expressiveness:**
-//! - Divergence/non-returning semantics (T10): Verus does not support `-> !` return types
-//!   or `ensures false` for reachable functions. The model captures state transitions;
-//!   callers must not reason about post-exit continuation (documented as caller obligation).
 //! - Temporal/liveness properties: join_thread loop termination depends on eventual
 //!   notify_all, which requires fair scheduling assumptions outside first-order logic.
 
@@ -161,6 +160,11 @@ pub struct ProcessManagerUnsafeState {
     pub fpu_owner_tid: i32,
     /// Scheduler frequency / quantum size (models SCHEDULER_FREQ constant).
     pub scheduler_freq: usize,
+    /// Ghost flag for machine-checked divergence (T10).
+    /// Set to true by exit()/exit_thread() to prevent post-exit reasoning.
+    /// wf() requires ghost_diverged@ == false, so after exit, no further
+    /// operations can be called on this state.
+    pub ghost_diverged: Ghost<bool>,
 }
 
 //==================================================================================================
@@ -209,6 +213,7 @@ impl ProcessManagerUnsafeState {
             remaining_quantum: scheduler_freq,
             fpu_owner_tid: KERNEL_TID_RAW,
             scheduler_freq: scheduler_freq,
+            ghost_diverged: Ghost(false),
         }
     }
 
@@ -441,6 +446,20 @@ impl ProcessManagerUnsafeState {
         }
     }
 
+    /// Models `ProcessManager::giveup()` error path.
+    ///
+    /// The original giveup() calls `Self::get_mut().try_borrow_mut()?.schedule()?`
+    /// on the context-switch path. Both `try_borrow_mut()` and `schedule()` can
+    /// fail (returning Err), in which case giveup returns early with no state change.
+    /// This function models those error paths.
+    pub fn giveup_error(&self)
+        requires
+            self.wf(),
+        ensures
+            self.wf(),
+    {
+    }
+
     //==============================================================================================
     // Sleep
     //==============================================================================================
@@ -511,16 +530,17 @@ impl ProcessManagerUnsafeState {
     /// (running→zombie, ready→running) are modeled by inner.exit_running()
     /// which is already verified. Then switch() is called.
     ///
-    /// ## Divergence (T10)
+    /// ## Divergence (T10) — Machine-Checked
     ///
     /// The original function returns `Result<!, Error>`: on the success path,
-    /// `Self::switch()` performs a context switch and never returns. The subsequent
-    /// `core::hint::unreachable_unchecked()` is dead code. This model captures the
-    /// state transition but NOT the divergence property. After a successful exit,
-    /// the calling context's stack frame is invalidated by the hardware context
-    /// switch (T5). **Caller obligation:** callers must not chain exec code after
-    /// a successful exit() — the postconditions describe the system state for the
-    /// scheduler's global invariants, not the exiting process's continuation.
+    /// `Self::switch()` performs a context switch and never returns. This model
+    /// captures divergence via the `ghost_diverged` flag: after exit(), the flag
+    /// is set to true, which invalidates wf() (wf requires spec_not_diverged()).
+    /// Since all other operations require wf(), no further operations can be
+    /// called on a diverged state — providing machine-checked divergence prevention.
+    ///
+    /// The postconditions describe the system state as seen by the NEXT scheduled
+    /// process (for global invariant reasoning), not the exiting process.
     pub fn exit(
         &mut self,
         new_inner: ProcessManagerInner,
@@ -535,20 +555,23 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid >= 0i32,
             // Cannot exit the kernel.
             old(self).current_pid != KERNEL_PID_RAW,
-            // Same thread implies same process.
+            // Exit always switches to a different thread (hard switch).
+            chosen_next_tid != old(self).current_tid,
+            // Same thread implies same process (vacuously true given above).
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
-            self.wf(),
+            // Diverged: wf() no longer holds — no further operations possible.
+            self.ghost_diverged@ == true,
+            // System state for global invariant reasoning:
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
-            // PID/TID/quantum postconditions mirror switch().
             self.current_pid == chosen_next_pid,
-            chosen_next_tid != old(self).current_tid ==> self.current_tid == chosen_next_tid,
-            chosen_next_tid == old(self).current_tid ==> self.current_tid == old(self).current_tid,
-            (chosen_next_tid != old(self).current_tid && chosen_next_pid != old(self).current_pid)
+            self.current_tid == chosen_next_tid,
+            (chosen_next_pid != old(self).current_pid)
                 ==> self.remaining_quantum == self.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
+        proof { self.ghost_diverged = Ghost(true); }
     }
 
     //==============================================================================================
@@ -561,11 +584,10 @@ impl ProcessManagerUnsafeState {
     /// remaining threads (modeled by exit_thread_running, exit_thread_to_suspended,
     /// or exit_thread_to_zombie in the inner module). Then switch() is called.
     ///
-    /// ## Divergence (T10)
+    /// ## Divergence (T10) — Machine-Checked
     ///
-    /// Same as exit(): the original returns `Result<!, Error>`. The success path
-    /// performs a context switch and never returns. **Caller obligation:** callers
-    /// must not chain exec code after a successful exit_thread().
+    /// Same as exit(): sets ghost_diverged to true, invalidating wf().
+    /// See exit() documentation for full explanation.
     pub fn exit_thread(
         &mut self,
         new_inner: ProcessManagerInner,
@@ -580,20 +602,23 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid >= 0i32,
             // Cannot exit the kernel thread.
             old(self).current_tid != KERNEL_TID_RAW,
-            // Same thread implies same process.
+            // Exit thread always switches to a different thread (hard switch).
+            chosen_next_tid != old(self).current_tid,
+            // Same thread implies same process (vacuously true given above).
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
-            self.wf(),
+            // Diverged: wf() no longer holds — no further operations possible.
+            self.ghost_diverged@ == true,
+            // System state for global invariant reasoning:
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
-            // PID/TID/quantum postconditions mirror switch().
             self.current_pid == chosen_next_pid,
-            chosen_next_tid != old(self).current_tid ==> self.current_tid == chosen_next_tid,
-            chosen_next_tid == old(self).current_tid ==> self.current_tid == old(self).current_tid,
-            (chosen_next_tid != old(self).current_tid && chosen_next_pid != old(self).current_pid)
+            self.current_tid == chosen_next_tid,
+            (chosen_next_pid != old(self).current_pid)
                 ==> self.remaining_quantum == self.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
+        proof { self.ghost_diverged = Ghost(true); }
     }
 
     //==============================================================================================

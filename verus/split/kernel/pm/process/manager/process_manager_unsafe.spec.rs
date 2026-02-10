@@ -18,8 +18,10 @@
 // - `remaining_quantum: usize` — models the REMAINING_QUANTUM atomic.
 // - `fpu_owner_tid: i32` — models the FPU_OWNER_TID atomic.
 // - `scheduler_freq: usize` — models the SCHEDULER_FREQ build constant.
+// - `ghost_diverged: Ghost<bool>` — ghost flag for machine-checked divergence (T10).
 //
 // The wf() predicate ties the global atomics to the inner state, ensuring:
+// - ghost_diverged == false (state has not diverged via exit/exit_thread).
 // - current_pid matches inner.running_pid.
 // - current_tid >= 0 (valid thread identifier).
 // - remaining_quantum is in [1, scheduler_freq].
@@ -96,6 +98,8 @@ pub struct ProcessManagerUnsafeStateView {
     pub fpu_owner_tid: int,
     /// Scheduler frequency (quantum size).
     pub scheduler_freq: nat,
+    /// Whether an exit/exit_thread has completed (diverged state).
+    pub diverged: bool,
 }
 
 //==================================================================================================
@@ -103,6 +107,15 @@ pub struct ProcessManagerUnsafeStateView {
 //==================================================================================================
 
 impl ProcessManagerUnsafeState {
+    /// Spec: the state has not diverged (no exit/exit_thread completed).
+    ///
+    /// After a successful exit() or exit_thread(), this becomes false.
+    /// Since wf() requires spec_not_diverged(), no further operations
+    /// can be called on a diverged state — machine-checked divergence (T10).
+    pub open spec fn spec_not_diverged(&self) -> bool {
+        self.ghost_diverged@ == false
+    }
+
     /// Spec: the inner process manager is well-formed.
     pub open spec fn spec_inner_wf(&self) -> bool {
         self.inner.wf()
@@ -147,6 +160,7 @@ impl ProcessManagerUnsafeState {
     /// after initialization.
     pub open spec fn wf(&self) -> bool {
         self.initialized
+        && self.spec_not_diverged()
         && self.spec_inner_wf()
         && self.spec_pid_consistent()
         && self.spec_tid_valid()
@@ -192,6 +206,7 @@ impl View for ProcessManagerUnsafeState {
             remaining_quantum: self.remaining_quantum as nat,
             fpu_owner_tid: self.fpu_owner_tid as int,
             scheduler_freq: self.scheduler_freq as nat,
+            diverged: self.ghost_diverged@,
         }
     }
 }

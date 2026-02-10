@@ -59,6 +59,7 @@ impl ProcessManagerUnsafeState {
                     remaining_quantum: scheduler_freq,
                     fpu_owner_tid: 0i32,
                     scheduler_freq: scheduler_freq,
+                    ghost_diverged: Ghost(false),
                 };
                 state.wf()
             }),
