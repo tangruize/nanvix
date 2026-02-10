@@ -188,40 +188,6 @@ pub open spec fn spec_compute_alarm(now: SystemTimeView, timeout: DurationView) 
     }
 }
 
-/// Spec function: admissibility of a PM sleep result relative to the alarm time.
-///
-/// # Description
-///
-/// Constrains the semantic relationship between the alarm and the PM result:
-/// - `PmOk`: The sleep completed normally (alarm reached, thread woke up).
-/// - `PmTimedOut`: The alarm was reached and the thread timed out (equivalent to normal
-///   completion for the sleep kcall).
-/// - `PmKilled`: The thread was killed before the alarm was reached (preemptive
-///   interruption, not time-related).
-/// - `PmGenericError`: An internal PM error occurred.
-///
-/// This function returns true for all variants, encoding that any PM result is
-/// admissible for any alarm. The *timing* relationship (e.g., "TimedOut implies
-/// the system clock >= alarm at the time of return") is a real-time property
-/// that depends on hardware clock monotonicity and scheduler correctness —
-/// both verified in the PM and clock modules respectively, not in this kcall.
-///
-/// The value of this spec function is as a documentation anchor: it explicitly
-/// enumerates the admissible outcomes and provides a single point where
-/// additional timing constraints can be refined in the future.
-pub open spec fn spec_pm_result_admissible(alarm: SystemTimeView, pm_result: PmSleepResultView) -> bool {
-    match pm_result {
-        // Normal completion: the alarm was reached.
-        PmSleepResultView::PmOk => true,
-        // Timed out: the alarm was reached and the thread timed out.
-        PmSleepResultView::PmTimedOut => true,
-        // Killed: the thread was interrupted by a kill signal.
-        PmSleepResultView::PmKilled => true,
-        // Generic error: an internal PM error.
-        PmSleepResultView::PmGenericError { .. } => true,
-    }
-}
-
 /// Spec function: models the sleep kcall's 3-arm match on PM result.
 ///
 /// # Description

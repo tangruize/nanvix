@@ -44,6 +44,19 @@
 //! - **Exec model full correctness**: `sleep_model` implements the 3-arm match
 //!   and its postconditions tie the result to `spec_sleep_result` for ALL paths
 //!   (overflow, success, and error).
+//! - **Error code linkage**: The spec constant `ERROR_CODE_INVALID_ARGUMENT()` is
+//!   proven equal to `ErrorCode::InvalidArgument as int` (`lemma_error_code_matches`).
+//!
+//! ## Properties NOT Proven Here (Out of Scope)
+//!
+//! This module does NOT prove timing or liveness properties:
+//! - "ProcessManager::sleep eventually returns" (liveness / scheduler fairness).
+//! - "TimedOut is returned only after the system clock reaches the alarm" (timing).
+//! - "Ok implies the alarm was reached" (timing).
+//!
+//! These are real-time properties that depend on clock monotonicity and scheduler
+//! correctness, which are verified in the clock and PM modules respectively. This
+//! kcall module's scope is limited to the control-flow classification of PM results.
 //!
 //! ## Verification Model
 //!
@@ -276,23 +289,23 @@ pub fn checked_add_duration(now: &SystemTimeModel, timeout: &DurationModel) -> (
 /// Puts the calling thread to sleep until the alarm time or until interrupted.
 /// Returns one of the four possible outcomes: Ok, TimedOut, Killed, or GenericError.
 ///
-/// ## Timing/Liveness Properties (from PM specification)
+/// ## Scope: Timing/Liveness Properties NOT Proven Here
 ///
-/// The PM module guarantees:
-/// - **Eventual return**: `ProcessManager::sleep` always returns (the thread is
-///   never permanently blocked). This is a liveness property verified in the PM
-///   and scheduler modules.
-/// - **TimedOut semantics**: `PmTimedOut` is returned when the system clock
-///   reaches or exceeds the alarm time. This depends on clock monotonicity
-///   (verified in the clock module) and scheduler fairness (verified in the PM).
-/// - **Ok semantics**: `PmOk` is returned for normal wakeup (which for a timed
-///   sleep also implies the alarm was reached).
-/// - **Killed semantics**: `PmKilled` is returned only when the thread receives
-///   a kill signal, independent of the alarm time.
+/// This kcall module proves only the **result classification** logic (the 3-arm
+/// match that maps PM outcomes to the sleep kcall's return value). It does NOT
+/// prove timing or liveness properties such as:
+/// - "TimedOut is returned only after the system clock reaches the alarm time."
+/// - "ProcessManager::sleep eventually returns (no permanent blocking)."
+/// - "Ok implies the alarm was reached."
 ///
-/// These timing properties are not re-proven here; they are part of the PM's
-/// verified specification. The postcondition `spec_pm_result_admissible` documents
-/// the admissible outcomes and serves as a refinement point.
+/// These are real-time and scheduler-fairness properties that depend on:
+/// - Clock monotonicity (verified in the clock module).
+/// - Scheduler fairness and context-switch correctness (verified in the PM module).
+///
+/// The PM module's own verification establishes these guarantees. This external
+/// body intentionally does not re-state them because they cannot be meaningfully
+/// constrained without importing PM's ghost state (thread scheduling queues,
+/// clock progression model), which is outside this module's dependency scope.
 #[verifier::external_body]
 pub fn process_manager_sleep(alarm: &SystemTimeModel) -> (result: SleepResultModel)
     requires
@@ -301,8 +314,6 @@ pub fn process_manager_sleep(alarm: &SystemTimeModel) -> (result: SleepResultMod
         // The result is always one of the defined variants.
         matches!(result, SleepResultModel::Ok | SleepResultModel::TimedOut
             | SleepResultModel::Killed | SleepResultModel::GenericError { .. }),
-        // The result is admissible for the given alarm time.
-        spec_pm_result_admissible(alarm.spec_view(), result.spec_pm_view()),
 {
     unimplemented!()
 }
