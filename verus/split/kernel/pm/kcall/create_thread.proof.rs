@@ -274,19 +274,19 @@ pub proof fn lemma_validation_error_codes(
     ensures
         // If copy succeeded (or wasn't reached), error is InvalidArgument.
         (spec_args_addr_valid(input) && spec_copy_succeeded(input))
-            ==> spec_create_thread_result(input, pm_outcome)
+            ==> (spec_create_thread_result(input, pm_outcome)
                 matches CreateThreadResultView::Error { error_code }
-                && error_code == ERROR_CODE_INVALID_ARGUMENT(),
+                && error_code == ERROR_CODE_INVALID_ARGUMENT()),
         // If copy failed, error is the copy error code.
         (spec_args_addr_valid(input) && !spec_copy_succeeded(input))
-            ==> spec_create_thread_result(input, pm_outcome)
+            ==> (spec_create_thread_result(input, pm_outcome)
                 matches CreateThreadResultView::Error { error_code }
-                && error_code == input.copy_error_code,
+                && error_code == input.copy_error_code),
         // If args addr invalid, error is InvalidArgument.
         !spec_args_addr_valid(input)
-            ==> spec_create_thread_result(input, pm_outcome)
+            ==> (spec_create_thread_result(input, pm_outcome)
                 matches CreateThreadResultView::Error { error_code }
-                && error_code == ERROR_CODE_INVALID_ARGUMENT(),
+                && error_code == ERROR_CODE_INVALID_ARGUMENT()),
 {
 }
 

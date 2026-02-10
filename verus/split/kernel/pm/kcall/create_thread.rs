@@ -269,8 +269,8 @@ pub fn is_user_addr(valid: bool) -> (result: bool)
 pub fn copy_from_user(succeeded: bool, error_code: i32) -> (result: CopyFromUserResultModel)
     ensures
         succeeded ==> matches!(result, CopyFromUserResultModel::CopyOk),
-        !succeeded ==> result matches CopyFromUserResultModel::CopyError { error_code: ec }
-            && ec == error_code,
+        !succeeded ==> (result matches CopyFromUserResultModel::CopyError { error_code: ec }
+            && ec == error_code),
         result.spec_succeeded() == succeeded,
         !succeeded ==> result.spec_error_code() == error_code as int,
 {
