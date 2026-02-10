@@ -260,6 +260,11 @@ pub fn process_manager_sleep(alarm: &SystemTimeModel) -> (result: SleepResultMod
 ///
 /// A well-formed DurationModel with nanoseconds < 1_000_000_000.
 pub fn duration_new(seconds: u64, nanoseconds: u32) -> (result: DurationModel)
+    requires
+        // The carry from nanosecond normalization won't overflow u64 seconds.
+        // Since nanoseconds is u32, carry <= 4.  The original `seconds` comes from
+        // usize on 32-bit, so this is always satisfied.
+        seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
         result.spec_wf(),
         result.spec_view() == spec_duration_new(seconds as nat, nanoseconds as nat),
@@ -271,30 +276,12 @@ pub fn duration_new(seconds: u64, nanoseconds: u32) -> (result: DurationModel)
 
     proof {
         lemma_duration_new_wf(seconds as nat, nanoseconds as nat);
-        // Show that our computation matches the spec.
         assert(NANOS_PER_SEC() == 1_000_000_000nat);
         assert(remainder as nat == nanoseconds as nat % NANOS_PER_SEC());
         assert(carry as nat == nanoseconds as nat / NANOS_PER_SEC());
     }
 
-    // Note: in practice, nanoseconds is cast from u32, so carry is 0.
-    // But we model the general case for correctness.
-    let total_seconds: u64 = if seconds <= u64::MAX - carry {
-        seconds + carry
-    } else {
-        // Saturate at u64::MAX (overflow case - Duration::new would panic in debug).
-        u64::MAX
-    };
-
-    proof {
-        // In the original code, Duration::new(secs as u64, nanos as u32) is called.
-        // Since nanos is cast from u32 which is at most u32::MAX = 4_294_967_295,
-        // and NANOS_PER_SEC = 1_000_000_000, carry is at most 4.
-        // So seconds + carry won't overflow unless seconds is very close to u64::MAX.
-        // For the spec match, we need:
-        assert(total_seconds as nat == seconds as nat + carry as nat ||
-               total_seconds == u64::MAX);
-    }
+    let total_seconds: u64 = seconds + carry;
 
     DurationModel { seconds: total_seconds, nanoseconds: remainder }
 }
@@ -353,6 +340,8 @@ pub fn classify_sleep_result(pm_result: &SleepResultModel) -> (result: bool)
 pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (result: SleepResultModel)
     requires
         now.spec_wf(),
+        // Duration normalization must not overflow.
+        seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
         // When checked_add fails, result is GenericError with InvalidArgument.
         !spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
@@ -399,6 +388,8 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
 ///
 /// A SleepResultModel indicating the outcome.
 pub fn sleep_end_to_end(seconds: u64, nanoseconds: u32) -> (result: SleepResultModel)
+    requires
+        seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
 {
     // Step 1: Get the current time (Trust Boundary T1).
     let now: SystemTimeModel = clock_now();
