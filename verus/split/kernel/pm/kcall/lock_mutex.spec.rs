@@ -271,4 +271,31 @@ pub open spec fn spec_finite_timeout_wf(seconds: nat, nanoseconds: nat) -> bool 
     nanoseconds < NANOS_PER_SEC()
 }
 
+/// Spec function: whether a lock outcome is valid given the timeout type.
+///
+/// # Description
+///
+/// `Interrupted(TimedOut)` can only occur when a finite timeout is provided
+/// (`timeout.is_some()` in the original). With an infinite timeout (None),
+/// the `Condvar::wait()` path has no timer, so TimedOut is impossible.
+/// This constraint tightens the external_body contract for `Mutex::lock()`.
+pub open spec fn spec_lock_outcome_valid_for_timeout(has_timeout: bool, outcome: LockOutcomeView) -> bool {
+    // TimedOut requires a finite timeout.
+    matches!(outcome, LockOutcomeView::LoTimedOut) ==> has_timeout
+}
+
+/// Spec function: whether a parsed timeout is finite.
+///
+/// # Description
+///
+/// Returns true when the parsed timeout is a `Finite` variant (not Infinite).
+/// Note: The timeout value (seconds/nanoseconds) is captured in `TimeoutView::Finite`
+/// but is intentionally not threaded through `spec_lock_mutex_result`. This is a
+/// scope limitation: the pipeline spec verifies control flow and error propagation,
+/// not the timeout value passed to `Mutex::lock()`. Timeout value correctness is
+/// the responsibility of the mutex module's own verification.
+pub open spec fn spec_is_finite_timeout(timeout_s: nat, timeout_ns: nat) -> bool {
+    spec_parse_timeout(timeout_s, timeout_ns) matches Some(TimeoutView::Finite { .. })
+}
+
 } // verus!

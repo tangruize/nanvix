@@ -18,6 +18,15 @@
 //! 4. Calls `mutex.lock(timeout)` to acquire the lock.
 //! 5. Calls `ProcessManager::put_mutex_guard(mutex_addr, guard)` to store the guard.
 //!
+//! ## Note on Omitted Parameters
+//!
+//! The original `lock_mutex()` takes `pid: ProcessIdentifier` and
+//! `tid: ThreadIdentifier` parameters. These are used only in the `trace!()`
+//! diagnostic macro and do not affect control flow or correctness. They are
+//! intentionally omitted from the verification model. If a future refactoring
+//! uses `pid`/`tid` in the logic (e.g., for ownership checks), the model must
+//! be updated to include them.
+//!
 //! ## Verified Properties
 //!
 //! - **Timeout parsing correctness**: MAX/MAX → infinite; valid ns → finite;
@@ -43,6 +52,9 @@
 //!   (`lemma_error_code_matches`).
 //! - **Exec model correctness**: `lock_mutex_model` matches `spec_lock_mutex_result`
 //!   for all inputs and PM outcomes.
+//! - **TimedOut requires finite timeout**: With an infinite timeout, TimedOut
+//!   is impossible — enforced via `mutex_lock_model` contract and propagated
+//!   to the final result (`lemma_infinite_timeout_no_timed_out`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -93,14 +105,14 @@
 //!
 //! ## API Mapping
 //!
-//! | Original API                              | Verified Model                | Notes               |
-//! |-------------------------------------------|-------------------------------|----------------------|
-//! | `MutexAddress::from(usize)`               | (not modeled)                 | Type wrapper.        |
-//! | `SystemTime::new(u64, u32)`               | `system_time_new(u64, u32)`   | Verified.            |
-//! | `ProcessManager::get_mutex(addr)`         | `get_mutex_model()`           | external_body.       |
-//! | `Mutex::lock(timeout)`                    | `mutex_lock_model()`          | external_body.       |
-//! | `ProcessManager::put_mutex_guard(a, g)`   | `put_mutex_guard_model()`     | external_body.       |
-//! | `pub unsafe fn lock_mutex(...)`           | `lock_mutex_model(...)`       | Fully verified.      |
+//! | Original API                              | Verified Model                    | Notes               |
+//! |-------------------------------------------|-----------------------------------|----------------------|
+//! | `MutexAddress::from(usize)`               | (not modeled)                     | Type wrapper.        |
+//! | `SystemTime::new(u64, u32)`               | `system_time_new(u64, u32)`       | Verified.            |
+//! | `ProcessManager::get_mutex(addr)`         | `get_mutex_model(addr)`           | external_body.       |
+//! | `Mutex::lock(timeout)`                    | `mutex_lock_model(has_timeout)`   | external_body.       |
+//! | `ProcessManager::put_mutex_guard(a, g)`   | `put_mutex_guard_model(addr)`     | external_body.       |
+//! | `pub unsafe fn lock_mutex(...)`           | `lock_mutex_model(...)`           | Fully verified.      |
 
 use crate::libs::error::ErrorCode;
 use vstd::prelude::*;
@@ -252,8 +264,14 @@ impl LockMutexResultModel {
 ///
 /// Returns the mutex associated with the given address.
 /// The PM module verifies this function's correctness internally.
+///
+/// # Parameters
+///
+/// - `mutex_addr`: The mutex address (from `MutexAddress::from(usize)`).
+///   Address validity is a PM concern; this model preserves the interface
+///   shape for future strengthening (e.g., `result is Ok ==> addr_is_valid(addr)`).
 #[verifier::external_body]
-pub fn get_mutex_model() -> (result: GetMutexOutcomeModel)
+pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
     ensures
         matches!(result, GetMutexOutcomeModel::Ok | GetMutexOutcomeModel::Error { .. }),
 {
@@ -266,11 +284,23 @@ pub fn get_mutex_model() -> (result: GetMutexOutcomeModel)
 ///
 /// Acquires the mutex with the given timeout. Returns one of the four possible
 /// outcomes matching SleepError variants.
+///
+/// The postcondition encodes: `Interrupted(TimedOut)` can only occur when a
+/// finite timeout is provided. With an infinite timeout (`None`), the
+/// `Condvar::wait()` path has no timer, so TimedOut is impossible.
+///
+/// # Parameters
+///
+/// - `has_timeout`: Whether a finite timeout was provided (true = `Some(t)`,
+///   false = `None` in the original).
 #[verifier::external_body]
 pub fn mutex_lock_model(has_timeout: bool) -> (result: LockOutcomeModel)
     ensures
         matches!(result, LockOutcomeModel::Ok | LockOutcomeModel::TimedOut
             | LockOutcomeModel::Killed | LockOutcomeModel::GenericError { .. }),
+        // TimedOut can only occur with a finite timeout.
+        !has_timeout ==> !matches!(result, LockOutcomeModel::TimedOut),
+        spec_lock_outcome_valid_for_timeout(has_timeout, result.spec_view()),
 {
     unimplemented!()
 }
@@ -281,8 +311,13 @@ pub fn mutex_lock_model(has_timeout: bool) -> (result: LockOutcomeModel)
 ///
 /// Stores the mutex guard in the calling thread.
 /// The PM module verifies this function's correctness internally.
+///
+/// # Parameters
+///
+/// - `mutex_addr`: The mutex address, same as passed to `get_mutex_model`.
+///   Preserved for interface fidelity and future strengthening.
 #[verifier::external_body]
-pub fn put_mutex_guard_model() -> (result: PutGuardOutcomeModel)
+pub fn put_mutex_guard_model(mutex_addr: u32) -> (result: PutGuardOutcomeModel)
     ensures
         matches!(result, PutGuardOutcomeModel::Ok | PutGuardOutcomeModel::Error { .. }),
 {
@@ -403,8 +438,12 @@ pub fn parse_timeout(timeout_s: u32, timeout_ns: u32) -> (result: Result<bool, L
 /// The postconditions prove that the result matches `spec_lock_mutex_result`
 /// for all inputs and all PM outcomes.
 ///
+/// The original also takes `pid` and `tid` parameters, which are used only
+/// in the `trace!()` diagnostic macro and are omitted from this model.
+///
 /// # Parameters
 ///
+/// - `mutex_addr`: Mutex address (from `MutexAddress::from(usize)`).
 /// - `timeout_s`: Timeout seconds (from usize, 32-bit on x86).
 /// - `timeout_ns`: Timeout nanoseconds (from usize, 32-bit on x86).
 ///
@@ -412,12 +451,16 @@ pub fn parse_timeout(timeout_s: u32, timeout_ns: u32) -> (result: Result<bool, L
 ///
 /// A tuple of (result, ghost get_mutex_outcome, ghost lock_outcome, ghost put_guard_outcome)
 /// where the ghosts capture the PM outcomes for postcondition linking.
-pub fn lock_mutex_model(timeout_s: u32, timeout_ns: u32) -> (ret: (
+pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (ret: (
     LockMutexResultModel,
     Ghost<GetMutexOutcomeView>,
     Ghost<LockOutcomeView>,
     Ghost<PutGuardOutcomeView>,
 ))
+    requires
+        // ABI constraint: inputs originate from 32-bit usize on x86-32.
+        timeout_s as nat <= USIZE_MAX_X86_32(),
+        timeout_ns as nat <= USIZE_MAX_X86_32(),
     ensures
         // The result matches the spec for the captured PM outcomes.
         ret.0.spec_view() == spec_lock_mutex_result(
@@ -437,6 +480,9 @@ pub fn lock_mutex_model(timeout_s: u32, timeout_ns: u32) -> (ret: (
             && ret.2@ == LockOutcomeView::LoOk
             && ret.3@ == PutGuardOutcomeView::PgOk
         ),
+        // TimedOut impossible with infinite timeout (from mutex_lock_model contract).
+        !spec_is_finite_timeout(timeout_s as nat, timeout_ns as nat) ==>
+            !matches!(ret.0, LockMutexResultModel::LockTimedOut),
 {
     // Step 1: Parse timeout.
     let parsed: Result<bool, LockMutexResultModel> = parse_timeout(timeout_s, timeout_ns);
@@ -444,17 +490,22 @@ pub fn lock_mutex_model(timeout_s: u32, timeout_ns: u32) -> (ret: (
     match parsed {
         Err(err) => {
             // Invalid timeout → return error.
-            // Ghost PM outcomes are arbitrary (pipeline short-circuited).
+            // Ghost PM outcomes are don't-care values: the spec
+            // `spec_lock_mutex_result` ignores them on the timeout-error
+            // path (the first `match` arm returns `InvalidTimeoutError`
+            // regardless of get_mutex/lock/put_guard outcomes). Any
+            // ghost values satisfy the postcondition vacuously.
             (err, Ghost(GetMutexOutcomeView::GmOk), Ghost(LockOutcomeView::LoOk), Ghost(PutGuardOutcomeView::PgOk))
         },
         Ok(has_timeout) => {
             // Step 2: Get mutex (external).
-            let gm_result: GetMutexOutcomeModel = get_mutex_model();
+            let gm_result: GetMutexOutcomeModel = get_mutex_model(mutex_addr);
             let ghost gm_view: GetMutexOutcomeView = gm_result.spec_view();
 
             match gm_result {
                 GetMutexOutcomeModel::Error { error_code } => {
                     // get_mutex failed → wrap in SleepError::Generic.
+                    // Ghost lock/put_guard outcomes are don't-cares (pipeline short-circuited).
                     (
                         LockMutexResultModel::GetMutexError { error_code },
                         Ghost(gm_view),
@@ -469,6 +520,7 @@ pub fn lock_mutex_model(timeout_s: u32, timeout_ns: u32) -> (ret: (
 
                     match lock_result {
                         LockOutcomeModel::TimedOut => {
+                            // Ghost put_guard outcome is don't-care (pipeline short-circuited).
                             (
                                 LockMutexResultModel::LockTimedOut,
                                 Ghost(gm_view),
@@ -477,6 +529,7 @@ pub fn lock_mutex_model(timeout_s: u32, timeout_ns: u32) -> (ret: (
                             )
                         },
                         LockOutcomeModel::Killed => {
+                            // Ghost put_guard outcome is don't-care (pipeline short-circuited).
                             (
                                 LockMutexResultModel::LockKilled,
                                 Ghost(gm_view),
@@ -485,6 +538,7 @@ pub fn lock_mutex_model(timeout_s: u32, timeout_ns: u32) -> (ret: (
                             )
                         },
                         LockOutcomeModel::GenericError { error_code } => {
+                            // Ghost put_guard outcome is don't-care (pipeline short-circuited).
                             (
                                 LockMutexResultModel::LockGenericError { error_code },
                                 Ghost(gm_view),
@@ -494,7 +548,7 @@ pub fn lock_mutex_model(timeout_s: u32, timeout_ns: u32) -> (ret: (
                         },
                         LockOutcomeModel::Ok => {
                             // Step 4: Put mutex guard (external).
-                            let pg_result: PutGuardOutcomeModel = put_mutex_guard_model();
+                            let pg_result: PutGuardOutcomeModel = put_mutex_guard_model(mutex_addr);
                             let ghost pg_view: PutGuardOutcomeView = pg_result.spec_view();
 
                             match pg_result {

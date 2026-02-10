@@ -412,4 +412,53 @@ pub proof fn lemma_lock_short_circuit(
     }
 }
 
+/// Proof: with infinite timeout, TimedOut is impossible in the final result.
+///
+/// # Description
+///
+/// When the timeout is infinite (both params are MAX) or infinite (None variant),
+/// `Mutex::lock` is called with `has_timeout == false`. The `mutex_lock_model`
+/// contract guarantees that `TimedOut` cannot occur without a finite timeout.
+/// Therefore, `LockTimedOut` cannot appear in the final result.
+///
+/// This proves the reviewer-identified property: "if the caller passes an
+/// infinite timeout, a TimedOut error is impossible."
+pub proof fn lemma_infinite_timeout_no_timed_out(
+    timeout_s: nat,
+    timeout_ns: nat,
+    get_mutex_outcome: GetMutexOutcomeView,
+    lock_outcome: LockOutcomeView,
+    put_guard_outcome: PutGuardOutcomeView,
+)
+    requires
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+        !spec_is_finite_timeout(timeout_s, timeout_ns),
+        // The lock outcome is valid for the timeout type (from mutex_lock_model contract).
+        spec_lock_outcome_valid_for_timeout(false, lock_outcome),
+    ensures
+        !matches!(
+            spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome),
+            LockMutexResultView::LockTimedOut
+        ),
+{
+    // The lock_outcome cannot be LoTimedOut (from spec_lock_outcome_valid_for_timeout).
+    // Therefore, the pipeline result cannot be LockTimedOut.
+    match get_mutex_outcome {
+        GetMutexOutcomeView::GmError { .. } => {},
+        GetMutexOutcomeView::GmOk => {
+            match lock_outcome {
+                LockOutcomeView::LoTimedOut => {},
+                LockOutcomeView::LoOk => {
+                    match put_guard_outcome {
+                        PutGuardOutcomeView::PgOk => {},
+                        PutGuardOutcomeView::PgError { .. } => {},
+                    }
+                },
+                LockOutcomeView::LoKilled => {},
+                LockOutcomeView::LoGenericError { .. } => {},
+            }
+        },
+    }
+}
+
 } // verus!
