@@ -1,0 +1,6 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 17:15:16 CST 2026
+Module: kernel::pm::kcall::wait_cond
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::wait_cond
+Working dir: /home/ubuntu/nanvix/verus/split
+
