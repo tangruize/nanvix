@@ -373,6 +373,10 @@ pub fn drop_cond_model(cond_addr: u32)
 /// returns Ok(()) without removal. The postcondition `spec_put_cond_completed`
 /// models a successful call, not necessarily full reclamation.
 ///
+/// The precondition `spec_cond_ref_released` enforces the structural ordering
+/// from the original code: the condvar Arc clone must be dropped (via block
+/// scoping) before `put_cond` is called.
+///
 /// # Parameters
 ///
 /// - `cond_addr`: The condition variable address.
@@ -380,6 +384,7 @@ pub fn drop_cond_model(cond_addr: u32)
 pub fn put_cond_model(cond_addr: u32) -> (result: PutCondOutcomeModel)
     requires
         spec_signal_cond_safety_preconditions(),
+        spec_cond_ref_released(cond_addr as nat),
     ensures
         result matches PutCondOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),

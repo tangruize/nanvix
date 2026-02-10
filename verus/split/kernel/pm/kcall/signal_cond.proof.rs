@@ -495,9 +495,11 @@ pub proof fn lemma_notify_first_awakens_at_most_one(
 /// # Description
 ///
 /// When `broadcast` is true, the spec guarantees that the awakened count
-/// is bounded by the number of waiters. The real implementation uses
-/// best-effort wakeup: individual `wakeup(tid)` calls may fail, so the
-/// count may be less than the total number of waiters.
+/// is bounded by the number of waiters. On the success path (`Ok`), if
+/// there were waiters, at least one was awakened (if all wakeups failed,
+/// the real implementation returns `Err`, not `Ok`). The real implementation
+/// uses best-effort wakeup: individual `wakeup(tid)` calls may fail, so
+/// the count may be less than the total number of waiters.
 pub proof fn lemma_notify_all_bounded_by_waiters(
     cond_addr: nat,
     awakened: nat,
@@ -506,6 +508,8 @@ pub proof fn lemma_notify_all_bounded_by_waiters(
         spec_broadcast_semantics(true, cond_addr, awakened),
     ensures
         awakened <= spec_num_waiters(cond_addr),
+        spec_num_waiters(cond_addr) > 0 ==> awakened >= 1,
+        spec_num_waiters(cond_addr) == 0 ==> awakened == 0,
 {
 }
 

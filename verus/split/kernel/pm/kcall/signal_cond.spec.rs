@@ -314,8 +314,11 @@ pub uninterp spec fn spec_num_waiters(cond_addr: nat) -> nat;
 ///
 /// When `broadcast` is true (`notify_all`), the implementation uses best-effort
 /// wakeup: it attempts to wake all waiters but individual `wakeup(tid)` calls
-/// may fail (with a logged warning). The count reflects successfully awakened
-/// threads, which is at most the total number of waiters.
+/// may fail (with a logged warning). On the `Ok` path:
+/// - If there are no waiters: `awakened == 0` (empty queue, no errors).
+/// - If there are waiters: `awakened >= 1` (at least one was woken; if all
+///   wakeups failed, the implementation returns `Err`).
+/// The count is bounded above by `spec_num_waiters`.
 ///
 /// Both cases enforce `awakened <= spec_num_waiters(cond_addr)`: you cannot
 /// awaken more threads than are actually waiting.
@@ -328,7 +331,14 @@ pub open spec fn spec_broadcast_semantics(
     awakened <= spec_num_waiters(cond_addr) && (
         if broadcast {
             // notify_all: best-effort wakeup of all waiters.
-            true
+            // On success with waiters, at least one was awakened (if all
+            // failed, the implementation returns Err).
+            // On success with empty queue, awakened == 0.
+            if spec_num_waiters(cond_addr) > 0 {
+                awakened >= 1
+            } else {
+                awakened == 0
+            }
         } else {
             // notify_first: awakens exactly one waiter if any exist,
             // zero if the queue is empty.
