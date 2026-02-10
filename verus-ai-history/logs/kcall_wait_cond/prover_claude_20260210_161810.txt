@@ -1,0 +1,191 @@
+=== Copilot Session ===
+Timestamp: 2026-02-10T16:20:36.332355
+Model: claude-opus-4.6-fast
+Session: 832bbbb2-7408-4e48-815f-0ab21bdedd4a
+Duration: 145.8s
+Exit code: 0
+
+=== Prompt ===
+Verify src/kernel/src/pm/kcall/wait_cond.rs using Verus.
+
+Target directory: verus/split/kernel/pm/kcall
+
+This is an OS kernel component. Identify and prove the core specifications,
+invariants, and safety/liveness properties that matter for correctness.
+
+== THREE-FILE SPLIT ORGANIZATION ==
+
+You MUST produce three separate files for each module:
+
+1. **verus/split/kernel/pm/kcall/wait_cond.rs** - Implementation (exec) code
+   - Copy the original source here as the starting point
+   - Add `use vstd::prelude::*;` and `include!` for spec/proof files
+   - Keep struct definitions, impl blocks, and exec functions inside a `verus! { }` block
+   - Add requires/ensures contracts for ALL functions (public and private)
+   - Reference lemmas from proof file; do NOT inline proofs in exec code
+
+2. **verus/split/kernel/pm/kcall/wait_cond.spec.rs** - Specification functions
+   - Define View types (e.g., `pub struct WaitCondView`) with `#[verifier::ext_equal]`
+   - Define `impl View for WaitCond` trait
+   - Define `pub open spec fn` for abstract properties (wf, invariants, etc.)
+   - Wrap everything in a `verus! { }` block
+
+3. **verus/split/kernel/pm/kcall/wait_cond.proof.rs** - Proof functions and lemmas
+   - Define `proof fn` lemmas with requires/ensures
+   - Place inside `verus! { }` block
+   - Use `impl WaitCond` blocks to add proof methods
+
+Example file structure:
+```rust
+// wait_cond.rs (exec)
+use vstd::prelude::*;
+include!("wait_cond.spec.rs");
+include!("wait_cond.proof.rs");
+
+verus! {
+    pub struct MyType { ... }
+    impl MyType {
+        pub fn new(...) -> (result: ...) requires ... ensures ... { ... }
+    }
+}
+```
+
+```rust
+// wait_cond.spec.rs (spec)
+use vstd::prelude::*;
+verus! {
+    #[verifier::ext_equal]
+    pub struct MyTypeView { ... }
+    impl View for MyType {
+        type V = MyTypeView;
+        ...
+    }
+}
+```
+
+```rust
+// wait_cond.proof.rs (proof)
+use vstd::prelude::*;
+verus! {
+    impl MyType {
+        pub proof fn lemma_something(&self) requires ... ensures ... { ... }
+    }
+}
+```
+
+== REQUIREMENTS ==
+1. Define View types for abstract state representation
+2. Define invariants that all operations must maintain
+3. Add requires/ensures contracts for all functions (public and private impl fn)
+4. NO `assume` or `external_body` for core module functions
+   (OK for low-level dependencies like raw memory operations or HAL)
+
+== NOTE ON DEPENDENCIES ==
+Dependencies already verified: bitmap, bitmap_lib, capability, clock, condvar, crate-trait-conflicts, dispatcher, error, fence, frame, frame_address, handler, interrupted, kheap, kpage, kpool, kredzone, kstack, lock_mutex, manager, mutex, pid, process_manager, process_manager_unsafe, process_state, raw_array, ready, runnable, running, scoreboard, semaphore, slab, sleep, sleeping, spinlock, state, syntax_attr, syntax_attr2, test_extern, thread_manager, tid, unlock_mutex, upool, ustack, vmem, zombie
+If the module depends on types from other modules, you may use `#[verifier::external_body]`
+ONLY for dependency boundary types that are not part of THIS module's core logic.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh kcall_wait_cond
+  (This script runs verus, logs results, and commits changes automatically)
+
+Iterate until verification passes. Document your work in the module comments.
+
+=== Output ===
+
+
+
+
+● List directory verus/split/kernel/pm/kcall
+  └ 16 files found
+
+● Read src/kernel/src/pm/kcall/wait_cond.rs
+  └ 136 lines read
+
+● View verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh | head -80
+  └ 81 lines...
+
+● Read verus/split/kernel/pm/kcall/sleep.proof.rs
+  └ 301 lines read
+
+● Read verus/split/kernel/pm/kcall/sleep.rs
+  └ 563 lines read
+
+● Read verus/split/kernel/pm/kcall/sleep.spec.rs
+  └ 308 lines read
+
+● View rest of verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh | tail -80
+  └ 81 lines...
+
+Now let me look at the existing lock_mutex and mod.rs examples:
+
+● Read verus/split/kernel/pm/kcall/lock_mutex.rs
+  └ 1 line read
+
+● Read verus/split/kernel/pm/kcall/mod.rs
+  └ 11 lines read
+
+● Read verus/split/kernel/pm/kcall/lock_mutex.proof.rs
+  └ 678 lines read
+
+● Read verus/split/kernel/pm/kcall/lock_mutex.spec.rs
+  └ 498 lines read
+
+Now let me look at the unlock_mutex for additional patterns and the existing lib.rs:
+
+● Read verus/split/kernel/pm/kcall/unlock_mutex.rs
+  └ 427 lines read
+
+● View lib.rs structure
+  $ cat /home/ubuntu/nanvix/verus/split/lib.rs | head -80
+  └ 20 lines...
+
+● View unlock_mutex spec header
+  $ head -30 /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/unlock_mutex.spec.rs
+  └ 31 lines...
+
+● Check ErrorCode definition in verus
+  $ grep -r "ErrorCode" /home/ubuntu/nanvix/verus/split/libs/error/ --include="*.rs" | head -20
+  └ 5 lines...
+
+● Check ErrorCode enum
+  $ head -80 /home/ubuntu/nanvix/verus/split/libs/error/lib.rs
+  └ 79 lines...
+
+Now I have a thorough understanding of the source and the patterns. Let me create the plan and the three files.
+
+● Create ~/.copilot/session-state/832bbbb2-7408-4e48-815f-0ab21bdedd4a/plan.md (+53)
+
+Now let me create all three files and update mod.rs:
+
+● Create verus/split/kernel/pm/kcall/wait_cond.spec.rs (+439)
+
+● Create verus/split/kernel/pm/kcall/wait_cond.proof.rs (+634)
+
+● Create verus/split/kernel/pm/kcall/wait_cond.rs (+617)
+
+Now update mod.rs to include the new module:
+
+● Edit verus/split/kernel/pm/kcall/mod.rs (+1)
+
+Now let's run the verification:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh kcall_wait_cond 2>&1
+  └ 28 lines...
+
+Verification passed: 21 verified, 0 errors.
+
+✓ Task complete
+
+
+Total usage est:        9 Premium requests
+API time spent:         2m 5.08s
+Total session time:     2m 24.521s
+Total code changes:     +1744 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    986.6k in, 23.2k out, 877.1k cached (Est. 9 Premium requests)
+
+=== End ===
