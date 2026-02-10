@@ -26,6 +26,14 @@
 //! Ghost `pid` and `tid` parameters are included in the model for future
 //! enrichment of the PM trust boundary with ownership constraints.
 //!
+//! **Trust assumption**: `pid` and `tid` are modeled as `Ghost<u32>` rather
+//! than concrete `u32` because they only influence PM-internal behavior
+//! (ownership validation), which is behind the T1 trust boundary. The
+//! verified pipeline maps PM outcomes to kcall results identically regardless
+//! of pid/tid values. If a future PM implementation uses pid/tid for
+//! control-flow decisions visible at the kcall boundary, the model should be
+//! updated to make them concrete parameters.
+//!
 //! ## Verified Properties
 //!
 //! - **Error propagation**: take_mutex_guard errors propagate unchanged
@@ -83,6 +91,10 @@
 //!
 //! The original function uses:
 //! - `MutexAddress::from(usize)` → modeled as opaque type construction.
+//!   **Trust assumption**: `MutexAddress::from()` is a lossless identity
+//!   conversion (newtype wrapper) that does not validate, transform, or
+//!   reject the address. On x86-32, `usize == u32`, so the model uses `u32`
+//!   directly.
 //! - `ProcessManager::take_mutex_guard()` → modeled via
 //!   `take_mutex_guard_model()` `external_body`. Returns a ghost guard token
 //!   on success.
@@ -213,6 +225,16 @@ impl UnlockMutexResultModel {
 /// `MutexGuard::drop()` which unlocks the mutex. On this error path, the
 /// mutex IS unlocked as a side effect even though the caller sees `Err`.
 ///
+/// ## Concrete Error Sources Mapped to Two-Category Model
+///
+/// The PM implementation has three distinct error sources:
+/// 1. `try_borrow_mut()` fails (PM borrow check) → `pm_internally_dropped_guard == false`.
+/// 2. Thread doesn't own the mutex guard → `pm_internally_dropped_guard == false`.
+/// 3. `put_mutex()` fails after guard extraction → `pm_internally_dropped_guard == true`.
+/// The model collapses these into a two-category classification (error with
+/// vs. without implicit guard drop) because the kcall boundary only needs
+/// to know whether the mutex was unlocked, not the specific PM failure cause.
+///
 /// The model captures this with a ghost flag `pm_internally_dropped_guard`:
 /// - `true`: the guard was extracted in step 1 but the function failed in
 ///   step 2. Rust dropped the guard at scope exit, unlocking the mutex.
@@ -311,7 +333,9 @@ pub fn drop_guard_model(mutex_addr: u32, guard_token: Ghost<Option<u32>>)
 /// - `pid`: Ghost process identifier for the calling process.
 /// - `tid`: Ghost thread identifier for the calling thread.
 ///
-/// # Returns
+/// Note: Parameter order is `(mutex_addr, pid, tid)` rather than the original
+/// `(pid, tid, mutex_addr)` because `mutex_addr` is the only concrete
+/// parameter; ghost parameters are conventionally placed last.
 ///
 /// A tuple of (result, ghost take_guard_outcome, ghost pm_internally_dropped_guard)
 /// where the ghosts capture the PM outcome and error-path guard drop status.
