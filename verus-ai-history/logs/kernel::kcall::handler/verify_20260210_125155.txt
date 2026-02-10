@@ -1,0 +1,38 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 12:51:55 CST 2026
+Module: kernel::kcall::handler
+Command: verus --crate-type lib lib.rs --verify-module kernel::kcall::handler
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0428]: the name `lemma_invariant_excludes_termination` is defined multiple times
+   --> kernel/kcall/handler.proof.rs:689:1
+    |
+543 | / pub proof fn lemma_invariant_excludes_termination(
+544 | |     history: Seq<HarvestOutcome>,
+545 | |     idx: int,
+...   |
+553 | | }
+    | |_- previous definition of the value `lemma_invariant_excludes_termination` here
+...
+689 | / pub proof fn lemma_invariant_excludes_termination(history: Seq<HarvestOutcome>)
+690 | |     requires
+691 | |         spec_loop_invariant(history),
+692 | |     ensures
+...   |
+698 | | }
+    | |_^ `lemma_invariant_excludes_termination` redefined here
+    |
+    = note: `lemma_invariant_excludes_termination` must be defined only once in the value namespace of this module
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0428`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::kcall::handler (verified:0, errors:0)
