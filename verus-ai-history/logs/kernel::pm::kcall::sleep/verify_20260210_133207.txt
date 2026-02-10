@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 13:32:07 CST 2026
+Module: kernel::pm::kcall::sleep
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::sleep
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: cannot call function `lib::kernel::pm::kcall::sleep::clock_now` with mode exec
+   --> kernel/pm/kcall/sleep.rs:464:39
+    |
+464 |         !spec_sleep_success_condition(clock_now().spec_view(), seconds as nat, nanoseconds as nat)
+    |                                       ^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 5s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::sleep (verified:0, errors:0)
