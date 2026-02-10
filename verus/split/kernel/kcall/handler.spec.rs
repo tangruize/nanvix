@@ -382,4 +382,36 @@ pub open spec fn spec_extend_history(
     history.push(outcome)
 }
 
+//==================================================================================================
+// Spec Functions: Exec-to-Spec Conversion
+//==================================================================================================
+
+/// Spec function: converts exec-level harvest fields to the spec HarvestOutcome enum.
+///
+/// # Description
+///
+/// Bridges the exec-level `ZombieHarvestResult` fields (found, error, pid, is_initd)
+/// to the spec-level `HarvestOutcome` enum. This function is used to derive the ghost
+/// harvest outcome from actual iteration results, linking exec behavior to spec
+/// reasoning about termination and loop invariants.
+///
+/// Mapping:
+/// - `error == true` → `HarvestError` (error implies !found)
+/// - `found == true` → `Harvested { pid, is_initd }`
+/// - otherwise → `NoZombie`
+pub open spec fn spec_harvest_to_outcome(
+    found: bool,
+    error: bool,
+    pid: nat,
+    is_initd: bool,
+) -> HarvestOutcome {
+    if error {
+        HarvestOutcome::HarvestError
+    } else if found {
+        HarvestOutcome::Harvested { pid, is_initd }
+    } else {
+        HarvestOutcome::NoZombie
+    }
+}
+
 } // verus!

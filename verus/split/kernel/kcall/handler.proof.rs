@@ -567,4 +567,30 @@ pub proof fn lemma_iteration_state_reset()
 {
 }
 
+//==================================================================================================
+// Proof Lemmas: Exec-to-Spec Conversion
+//==================================================================================================
+
+/// Lemma: The harvest-to-outcome conversion preserves termination semantics.
+///
+/// # Description
+///
+/// The spec-level termination decision (`spec_should_terminate`) on the
+/// converted outcome is equivalent to the exec-level termination test
+/// (`found && is_initd`). This bridges the gap between exec-level flags
+/// and spec-level enum matching.
+pub proof fn lemma_harvest_to_outcome_termination(
+    found: bool,
+    error: bool,
+    pid: nat,
+    is_initd: bool,
+)
+    requires
+        error ==> !found,
+    ensures
+        spec_should_terminate(spec_harvest_to_outcome(found, error, pid, is_initd))
+            == (found && is_initd),
+{
+}
+
 } // verus!

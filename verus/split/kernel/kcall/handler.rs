@@ -49,9 +49,20 @@
 //!   only set when `notify_process_termination` succeeds for a non-INITD
 //!   zombie. INITD termination breaks the loop before setting the flag;
 //!   notification failures leave the flag false.
+//! - **Feature flag modeling**: The `stdio_enabled` parameter gates IKC message
+//!   polling, matching the original `cfg_if!(feature = "stdio")`. When false,
+//!   `message_received` is always false, preventing phantom message work.
 //! - **Lifecycle model**: `kcall_handler_init()` establishes the loop invariant
 //!   base case; `kcall_handler_lifecycle_step()` preserves the invariant
-//!   inductively and calls `drain_remaining_zombies()` on termination.
+//!   inductively using the REAL harvest outcome from the iteration and calls
+//!   `drain_remaining_zombies()` on termination.
+//! - **Full loop model**: `kcall_handler_loop()` models the complete handler
+//!   lifecycle (init → bounded iteration loop → drain) with a fuel parameter
+//!   for termination, proving the loop invariant is preserved throughout.
+//! - **Exec-to-spec linkage**: `spec_harvest_to_outcome()` converts exec-level
+//!   harvest flags to the spec `HarvestOutcome` enum, and
+//!   `lemma_harvest_to_outcome_termination()` proves the termination semantics
+//!   are preserved by the conversion.
 //!
 //! ## Verification Model
 //!
@@ -70,7 +81,8 @@
 //!
 //! | Original API                       | Verified Model                          | Notes                        |
 //! |------------------------------------|-----------------------------------------|------------------------------|
-//! | `kcall_handler()` lifecycle        | `kcall_handler_init()` + `..._step()`   | Full lifecycle model.        |
+//! | `kcall_handler()` lifecycle        | `kcall_handler_loop()`                  | Full loop model w/ fuel.     |
+//! | `kcall_handler()` step             | `kcall_handler_lifecycle_step()`        | Single lifecycle step.       |
 //! | `kcall_handler()` main loop        | `run_full_iteration()`                  | Full iteration with yield.   |
 //! | `kcall_handler()` single step      | `run_iteration()`                       | Single iteration w/o yield.  |
 //! | `event::init(hal)`                 | `event_init()`                          | External body (T5).          |
@@ -81,7 +93,7 @@
 //! | `pm.harvest_zombies(mm)`           | `harvest_zombies()`                     | External body (T2).          |
 //! | `EventManager::notify_...()`       | `notify_termination()`                  | External body (T2), fallible.|
 //! | `ProcessManager::giveup()`         | `yield_cpu()`                           | External body (T3).          |
-//! | IKC message polling                | `poll_messages()`                       | External body (T4).          |
+//! | IKC message polling                | `poll_messages_gated()`                 | Verified gate (T4).          |
 //! | Post-loop zombie drain             | `drain_remaining_zombies()`             | External body (T2).          |
 //!
 //! ## Trust Boundaries
@@ -107,13 +119,11 @@
 //!   synchronization. The concurrent protocol is verified in the scoreboard module.
 //! - **Liveness**: No liveness properties (eventual progress, starvation freedom)
 //!   are specified. The handler loop may spin indefinitely if no work arrives.
-//! - **Feature flags**: The `stdio` feature flag for IKC message polling is not
-//!   modeled. The model includes a generic `poll_messages()` external body that
-//!   may return true in any build. This is a conservative overapproximation:
-//!   in a non-`stdio` build, `message_received` is always false, which is a
-//!   subset of the modeled behavior. The verified yield property (yield iff
-//!   no work) holds regardless — if messages are never received, the model
-//!   still correctly tracks work.
+//! - **Feature flags**: The `stdio` feature flag for IKC message polling is
+//!   modeled via the `stdio_enabled` parameter to `poll_messages_gated()`.
+//!   When false, `message_received` is always false, matching the original
+//!   `cfg_if!` `else` branch. This prevents phantom message work from
+//!   suppressing yields in non-`stdio` builds.
 //! - **Error recovery**: Scoreboard errors (`unreachable!` in original) and
 //!   harvest errors (`error!` and continue) are modeled via `error` flags on
 //!   result types. Error outcomes guarantee no work was done (`has_call=false`
@@ -245,9 +255,13 @@ pub fn dispatch_to_subsystem(kcall_number: u32) -> (result: HandlerKcallResult)
 /// channel) that is not modeled. The return value is used solely as
 /// a work indicator for the yield decision.
 ///
+/// This function models the actual I/O call and is only invoked when
+/// the `stdio` feature is enabled. See `poll_messages_gated()` for
+/// the feature-gated wrapper.
+///
 /// ## Trust Boundary T4
 #[verifier::external_body]
-pub fn poll_messages() -> (result: bool)
+pub fn poll_messages_raw() -> (result: bool)
 {
     unimplemented!()
 }
@@ -336,6 +350,29 @@ pub struct ScoreBoardPollResult {
 //==================================================================================================
 // Verified Functions
 //==================================================================================================
+
+/// Polls for IKC messages, gated by the stdio feature flag.
+///
+/// # Description
+///
+/// Models the `cfg_if!` block in the original handler that conditionally
+/// polls for IKC messages. When `stdio_enabled` is true, delegates to
+/// `poll_messages_raw()` (external body). When false, returns false
+/// immediately, matching the `else` branch where `message_received = false`.
+///
+/// This function ensures that in non-`stdio` builds, `message_received`
+/// is always false, preventing phantom message work from suppressing
+/// yields.
+pub fn poll_messages_gated(stdio_enabled: bool) -> (result: bool)
+    ensures
+        !stdio_enabled ==> !result,
+{
+    if stdio_enabled {
+        poll_messages_raw()
+    } else {
+        false
+    }
+}
 
 /// Classifies a kcall number and returns whether it produces an InvalidSysCall error.
 ///
@@ -484,8 +521,9 @@ pub fn handle_harvest_phase() -> (result: ZombieHarvestResult)
 /// # Description
 ///
 /// Executes all three phases (kcall dispatch, message polling, zombie harvest)
-/// and determines whether to yield or continue. Returns the work state and
-/// any termination signal.
+/// and determines whether to yield or continue. Returns the work state,
+/// termination signal, and a ghost `HarvestOutcome` linked to the actual
+/// harvest result via `spec_harvest_to_outcome`.
 ///
 /// The `harvested_process` work flag is only set when:
 /// 1. A zombie was found (`harvest.found`),
@@ -494,7 +532,7 @@ pub fn handle_harvest_phase() -> (result: ZombieHarvestResult)
 /// This matches the original code where `harvested_process = true` is only
 /// reached on `Ok(())` from the notification call, and INITD termination
 /// breaks the loop before setting the flag.
-pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
+pub fn run_iteration(poll: &ScoreBoardPollResult, stdio_enabled: bool) -> (result: IterationResult)
     ensures
         // If a kcall was polled, it was handled.
         poll.has_call ==> result.work_state.kcall_handled,
@@ -508,16 +546,27 @@ pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
         result.should_terminate ==> result.initd_pid == 1u32,
         // INITD termination does NOT set harvested_process (loop breaks first).
         result.should_terminate ==> !result.work_state.harvested_process,
+        // Ghost outcome reflects actual harvest and links to spec termination.
+        result.should_terminate == spec_should_terminate(result.harvest_outcome@),
+        // Non-stdio builds never receive messages.
+        !stdio_enabled ==> !result.work_state.message_received,
 {
     // Phase 1: Handle pending kernel call.
     let kcall_phase: HandlerKcallPhaseResult = handle_kcall_phase(poll);
 
-    // Phase 2: Poll for IKC messages.
-    let msg_received: bool = poll_messages();
+    // Phase 2: Poll for IKC messages (gated by stdio feature flag).
+    let msg_received: bool = poll_messages_gated(stdio_enabled);
 
     // Phase 3: Harvest zombie processes.
     let harvest: ZombieHarvestResult = handle_harvest_phase();
     let terminate: bool = is_initd_terminated(&harvest);
+
+    // Derive ghost harvest outcome from exec-level fields.
+    proof {
+        lemma_harvest_to_outcome_termination(
+            harvest.found, harvest.error, harvest.pid as nat, harvest.is_initd,
+        );
+    }
 
     // Notify termination for non-INITD zombies only.
     // In the original, INITD causes `break status` before reaching notify.
@@ -542,6 +591,9 @@ pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
         should_terminate: terminate,
         exit_status: harvest.exit_status,
         initd_pid: harvest.pid,
+        harvest_outcome: Ghost(spec_harvest_to_outcome(
+            harvest.found, harvest.error, harvest.pid as nat, harvest.is_initd,
+        )),
     }
 }
 
@@ -557,6 +609,9 @@ pub struct IterationResult {
     pub exit_status: u32,
     /// The PID that triggered termination (meaningful only when `should_terminate` is true).
     pub initd_pid: u32,
+    /// Ghost harvest outcome linked to the spec-level HarvestOutcome enum.
+    /// Derived from the actual harvest via `spec_harvest_to_outcome`.
+    pub harvest_outcome: Ghost<HarvestOutcome>,
 }
 
 /// Drains remaining zombie processes after the handler loop exits.
@@ -587,7 +642,7 @@ pub fn drain_remaining_zombies()
 /// Composes the complete iteration behavior matching the original loop body:
 /// 1. Polls the scoreboard for a pending kernel call.
 /// 2. Dispatches the kcall if present and signals handled.
-/// 3. Polls for IKC messages.
+/// 3. Polls for IKC messages (gated by `stdio_enabled`).
 /// 4. Harvests zombie processes and notifies termination.
 /// 5. Yields the CPU if no work was done AND the loop is not terminating.
 ///
@@ -599,7 +654,7 @@ pub fn drain_remaining_zombies()
 /// `poll.has_call ==> result.work_state.kcall_handled` are not exposed
 /// since the caller has no access to the poll result. The core loop
 /// properties (yield-iff-idle, termination-implies-INITD) are preserved.
-pub fn run_full_iteration() -> (result: IterationResult)
+pub fn run_full_iteration(stdio_enabled: bool) -> (result: IterationResult)
     ensures
         // Yield iff no work was done.
         result.should_yield == (!result.work_state.kcall_handled
@@ -608,12 +663,16 @@ pub fn run_full_iteration() -> (result: IterationResult)
         result.should_terminate ==> result.initd_pid == 1u32,
         // INITD termination does NOT set harvested_process.
         result.should_terminate ==> !result.work_state.harvested_process,
+        // Ghost outcome reflects actual harvest.
+        result.should_terminate == spec_should_terminate(result.harvest_outcome@),
+        // Non-stdio builds never receive messages.
+        !stdio_enabled ==> !result.work_state.message_received,
 {
     // Phase 1: Poll scoreboard.
     let poll: ScoreBoardPollResult = poll_scoreboard_full();
 
     // Phase 2-4: Run iteration (dispatch, messages, harvest).
-    let result: IterationResult = run_iteration(&poll);
+    let result: IterationResult = run_iteration(&poll, stdio_enabled);
 
     // Phase 5: Yield CPU if no work was done and loop is not terminating.
     // In the original, INITD termination causes `break` before yield check.
@@ -682,28 +741,35 @@ pub fn kcall_handler_init() -> (history: Ghost<Seq<HarvestOutcome>>)
 ///
 /// Given a history trace of past iterations satisfying the loop invariant,
 /// runs one full iteration. If the loop continues (INITD not terminated),
-/// the invariant is preserved with the history extended by one non-terminating
-/// outcome. If the loop terminates (INITD found), `drain_remaining_zombies()`
-/// is called to model the post-loop cleanup.
+/// the invariant is preserved with the history extended by the REAL harvest
+/// outcome from the iteration (derived via `spec_harvest_to_outcome`).
+/// If the loop terminates (INITD found), `drain_remaining_zombies()` is
+/// called to model the post-loop cleanup.
 ///
 /// This function connects:
 /// - **Initialization**: The `requires` clause demands a valid history.
 /// - **Iteration**: `run_full_iteration()` models one loop body.
-/// - **Invariant induction**: On continuation, the history is extended and
-///   the invariant preserved.
+/// - **Real outcome**: The ghost history uses the actual harvest outcome
+///   from the iteration, not a synthetic `NoZombie`.
+/// - **Invariant induction**: On continuation, the real non-terminating
+///   outcome is appended and the invariant preserved.
 /// - **Termination**: On INITD exit, the loop breaks and drain occurs.
 /// - **Post-loop drain**: `drain_remaining_zombies()` is called on exit.
 pub fn kcall_handler_lifecycle_step(
     history: Ghost<Seq<HarvestOutcome>>,
+    stdio_enabled: bool,
 ) -> (result: LifecycleStepResult)
     requires
         spec_loop_invariant(history@),
     ensures
-        // If the loop continues, the invariant is preserved.
-        !result.terminated ==> spec_loop_invariant(result.new_history@),
+        // The invariant is always preserved.
+        spec_loop_invariant(result.new_history@),
+        // On continuation, history grows by one.
         !result.terminated ==> result.new_history@.len() == history@.len() + 1,
+        // On termination, history is unchanged.
+        result.terminated ==> result.new_history@.len() == history@.len(),
 {
-    let iter_result: IterationResult = run_full_iteration();
+    let iter_result: IterationResult = run_full_iteration(stdio_enabled);
 
     if iter_result.should_terminate {
         // INITD terminated: drain remaining zombies and exit.
@@ -714,11 +780,14 @@ pub fn kcall_handler_lifecycle_step(
             new_history: Ghost(history@),
         }
     } else {
-        // Loop continues: extend history with non-terminating outcome.
-        let ghost outcome: HarvestOutcome = HarvestOutcome::NoZombie;
+        // Loop continues: extend history with the REAL harvest outcome.
+        let ghost outcome: HarvestOutcome = iter_result.harvest_outcome@;
         proof {
-            // NoZombie is a non-terminating outcome.
-            assert(!spec_should_terminate(outcome));
+            // The ensures on run_full_iteration gives us:
+            //   iter_result.should_terminate == spec_should_terminate(outcome)
+            // Since !iter_result.should_terminate, we have !spec_should_terminate(outcome),
+            // which is spec_loop_continues(outcome).
+            assert(spec_loop_continues(outcome));
             lemma_loop_invariant_inductive(history@, outcome);
         }
         LifecycleStepResult {
@@ -726,6 +795,77 @@ pub fn kcall_handler_lifecycle_step(
             exit_status: 0u32,
             new_history: Ghost(spec_extend_history(history@, outcome)),
         }
+    }
+}
+
+/// Result of the full handler loop model.
+///
+/// # Description
+///
+/// Encapsulates the outcome of running the handler loop to completion
+/// (or until the fuel limit is reached).
+pub struct LoopResult {
+    /// Whether the handler loop terminated (INITD exited).
+    pub terminated: bool,
+    /// The exit status (meaningful only when `terminated` is true).
+    pub exit_status: u32,
+    /// Ghost history of harvest outcomes for all completed iterations.
+    pub final_history: Ghost<Seq<HarvestOutcome>>,
+}
+
+/// Models the full handler loop from init through iteration until
+/// termination or fuel exhaustion.
+///
+/// # Description
+///
+/// This function models the complete `kcall_handler` lifecycle:
+/// 1. Initializes the event subsystem.
+/// 2. Iterates the handler loop up to `fuel` times.
+/// 3. Each iteration runs `kcall_handler_lifecycle_step()`, which:
+///    - Runs one full iteration (poll, dispatch, messages, harvest, yield).
+///    - On continuation, extends the history with the real harvest outcome.
+///    - On INITD termination, drains remaining zombies and exits.
+/// 4. Returns the final loop state.
+///
+/// The `fuel` parameter models a bounded number of iterations. In the
+/// original code, the loop runs indefinitely until INITD terminates.
+/// For verification, the fuel bound provides a decreasing measure for
+/// termination. The loop invariant is preserved at every step.
+///
+/// If `fuel` is exhausted before INITD terminates, `terminated` is false
+/// and the history reflects all completed iterations.
+pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult)
+    ensures
+        // The loop invariant holds for the final history.
+        spec_loop_invariant(result.final_history@),
+{
+    let mut history: Ghost<Seq<HarvestOutcome>> = kcall_handler_init();
+    let mut i: u32 = 0;
+    let mut terminated: bool = false;
+    let mut exit_status: u32 = 0;
+
+    while i < fuel && !terminated
+        invariant
+            spec_loop_invariant(history@),
+            i <= fuel,
+        decreases fuel - i,
+    {
+        let step: LifecycleStepResult = kcall_handler_lifecycle_step(
+            history, stdio_enabled,
+        );
+        if step.terminated {
+            terminated = true;
+            exit_status = step.exit_status;
+        }
+        // Always update history (unchanged on termination, extended otherwise).
+        history = step.new_history;
+        i = i + 1;
+    }
+
+    LoopResult {
+        terminated,
+        exit_status,
+        final_history: history,
     }
 }
 
