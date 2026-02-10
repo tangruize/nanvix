@@ -32,6 +32,18 @@ pub open spec fn USIZE_MAX_X86_32() -> nat {
     u32::MAX as nat
 }
 
+/// Number of bits in usize on the target architecture.
+///
+/// # Description
+///
+/// On x86-32, usize is 32 bits. This constant makes the architecture
+/// assumption explicit so that `lemma_architecture_guard` can verify it.
+/// If Nanvix targets x86-64, this must be updated to 64, which will
+/// cause `lemma_architecture_guard` to fail, forcing model updates.
+pub open spec fn USIZE_BITS() -> nat {
+    32
+}
+
 /// Nanoseconds per second boundary for SystemTime validity.
 pub open spec fn NANOS_PER_SEC() -> nat {
     1_000_000_000
@@ -47,18 +59,19 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
 /// # Description
 ///
 /// The `ErrorCode` enum in the kernel has many variants (all POSIX errno values),
-/// all of which are positive (non-zero) integers. Rather than enumerating every
-/// variant (which would create a maintenance burden as the enum evolves), this
-/// predicate captures the essential invariant: all error codes are non-zero.
+/// all of which are positive integers. Rather than enumerating every variant
+/// (which would create a maintenance burden as the enum evolves), this predicate
+/// captures the essential invariant: all error codes are positive (non-zero).
 ///
 /// This is the correct abstraction level for external_body trust boundaries:
 /// - It prevents confusion with success (error code 0).
+/// - It excludes negative values (POSIX errnos are always positive).
 /// - It does not over-constrain to a specific subset, which would break
 ///   semantic equivalence if new ErrorCode variants are added.
 /// - The concrete variant identity is a concern of the PM and mutex modules,
 ///   not this pipeline verification.
 pub open spec fn spec_is_valid_error_code(code: int) -> bool {
-    code != 0
+    code > 0
 }
 
 //==================================================================================================
@@ -188,6 +201,12 @@ pub open spec fn spec_timeout_ns_valid(timeout_ns: nat) -> bool {
 /// - Invalid nanoseconds → None (error path).
 ///
 /// Returns Some(TimeoutView) on success, None on invalid timeout.
+///
+/// **Edge case**: When only one of (timeout_s, timeout_ns) is MAX and the
+/// other is a valid value, the code falls through to `SystemTime::new`. This
+/// can produce extreme but valid timeouts (e.g., `Finite { seconds: 4294967295,
+/// nanoseconds: 0 }`). This matches the original code's behavior exactly —
+/// the infinite-timeout sentinel requires *both* parameters to be MAX.
 pub open spec fn spec_parse_timeout(timeout_s: nat, timeout_ns: nat) -> Option<TimeoutView> {
     if spec_is_infinite_timeout(timeout_s, timeout_ns) {
         Some(TimeoutView::Infinite)

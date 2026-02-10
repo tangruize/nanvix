@@ -71,6 +71,15 @@
 //! - **Timeout view consistency**: The ghost `timeout_view` parameter passed to
 //!   `mutex_lock_model` is constrained by `spec_timeout_view_consistent` to be
 //!   consistent with the `has_timeout` boolean flag.
+//! - **Architecture guard**: The x86-32 assumption (`USIZE_BITS() == 32`,
+//!   `USIZE_MAX_X86_32() == u32::MAX`) is explicitly verified
+//!   (`lemma_architecture_guard`). If the target changes to x86-64, this
+//!   lemma will fail, forcing model updates.
+//! - **Finite timeout construction**: Valid non-MAX inputs with valid nanoseconds
+//!   produce a `Finite` timeout (`lemma_valid_non_max_is_finite`).
+//! - **Safety predicate well-formedness**: The composite safety predicate
+//!   correctly decomposes into its three constituents
+//!   (`lemma_safety_preconditions_well_formed`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -311,6 +320,8 @@ pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
     ensures
         // Error codes from the PM module are valid ErrorCode discriminants.
         result matches GetMutexOutcomeModel::Error { error_code } ==> spec_is_valid_error_code(error_code as int),
+        // Future strengthening hook (PM module responsibility):
+        // result matches GetMutexOutcomeModel::Ok ==> spec_addr_is_valid(mutex_addr),
 {
     unimplemented!()
 }

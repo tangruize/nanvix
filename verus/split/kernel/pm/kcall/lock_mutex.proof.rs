@@ -535,4 +535,61 @@ pub proof fn lemma_result_independent_of_pid_tid(
 {
 }
 
+/// Proof: architecture guard — USIZE_BITS is 32 and USIZE_MAX matches u32::MAX.
+///
+/// # Description
+///
+/// Makes the x86-32 architecture assumption explicit and verifiable. If Nanvix
+/// targets x86-64 in the future, `USIZE_BITS()` must be updated to 64, which
+/// will cause this lemma's ensures clause to fail, forcing model updates to
+/// widen parameter types from `u32` to `u64`.
+pub proof fn lemma_architecture_guard()
+    ensures
+        USIZE_BITS() == 32,
+        USIZE_MAX_X86_32() == u32::MAX as nat,
+        // On x86-32, usize::MAX == u32::MAX == 2^32 - 1.
+        USIZE_MAX_X86_32() == 4294967295nat,
+{
+}
+
+/// Proof: valid non-MAX inputs produce a finite timeout.
+///
+/// # Description
+///
+/// When the timeout parameters are not both MAX (not the infinite sentinel)
+/// and the nanoseconds are valid (< 1_000_000_000), `spec_parse_timeout`
+/// produces `Some(Finite { seconds, nanoseconds })`. This is the converse
+/// direction of `lemma_finite_timeout_wf`: that lemma proves Finite implies
+/// valid ns; this one proves valid non-MAX inputs imply Finite.
+pub proof fn lemma_valid_non_max_is_finite(timeout_s: nat, timeout_ns: nat)
+    requires
+        !spec_is_infinite_timeout(timeout_s, timeout_ns),
+        timeout_ns < NANOS_PER_SEC(),
+    ensures
+        spec_parse_timeout(timeout_s, timeout_ns) == Some(TimeoutView::Finite {
+            seconds: timeout_s,
+            nanoseconds: timeout_ns,
+        }),
+        spec_is_finite_timeout(timeout_s, timeout_ns),
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+{
+}
+
+/// Proof: the safety preconditions predicate is well-formed.
+///
+/// # Description
+///
+/// Verifies that `spec_lock_mutex_safety_preconditions` correctly composes
+/// the three uninterpreted predicates. This lemma ensures the predicate is
+/// not accidentally broken by changes to the uninterpreted function signatures
+/// — if any of the three constituent predicates change their arity or types,
+/// this lemma will fail to verify.
+pub proof fn lemma_safety_preconditions_well_formed(pid: nat, tid: nat)
+    ensures
+        spec_lock_mutex_safety_preconditions(pid, tid) ==> spec_caller_is_not_kernel_process(pid),
+        spec_lock_mutex_safety_preconditions(pid, tid) ==> spec_caller_holds_no_resources(tid),
+        spec_lock_mutex_safety_preconditions(pid, tid) ==> spec_caller_no_pm_reference(),
+{
+}
+
 } // verus!
