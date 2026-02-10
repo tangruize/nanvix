@@ -535,6 +535,12 @@ pub fn drain_remaining_zombies()
 ///
 /// This function models the entire loop body, including the yield behavior
 /// that `run_iteration()` only flags.
+///
+/// Note: The ensures clause is intentionally narrower than `run_iteration()`
+/// because the poll result is internal. Properties like
+/// `poll.has_call ==> result.work_state.kcall_handled` are not exposed
+/// since the caller has no access to the poll result. The core loop
+/// properties (yield-iff-idle, termination-implies-INITD) are preserved.
 pub fn run_full_iteration() -> (result: IterationResult)
     ensures
         // Yield iff no work was done.

@@ -338,18 +338,16 @@ pub open spec fn spec_is_initd(pid: nat) -> bool {
 ///
 /// # Description
 ///
-/// The handler loop invariant holds at each iteration boundary:
-/// 1. The loop has not yet seen INITD termination (it would have exited).
-/// 2. Each iteration starts with all work flags cleared.
-/// 3. The exit path is exclusively INITD termination.
+/// The invariant states that in all harvest outcomes observed during
+/// iterations 0..n, none indicated INITD termination. This captures
+/// the fact that the loop is still running precisely because INITD
+/// has not terminated in any prior iteration.
 ///
-/// The `iteration_count` is a ghost nat tracking how many iterations
-/// have completed (for termination/progress reasoning).
-pub open spec fn spec_loop_invariant(iteration_count: nat) -> bool {
-    // The loop invariant is that the loop is still running, meaning
-    // INITD has not yet terminated. This is trivially maintained by
-    // the fact that the loop breaks only on INITD termination.
-    true
+/// `history` is a sequence of harvest outcomes, one per completed iteration.
+/// The invariant holds when every entry in the history is a non-terminating
+/// outcome.
+pub open spec fn spec_loop_invariant(history: Seq<HarvestOutcome>) -> bool {
+    forall|i: int| 0 <= i < history.len() ==> !spec_should_terminate(#[trigger] history[i])
 }
 
 /// Spec function: models the loop exit condition.
@@ -357,12 +355,8 @@ pub open spec fn spec_loop_invariant(iteration_count: nat) -> bool {
 /// # Description
 ///
 /// The loop exits iff a harvest outcome indicates INITD termination.
-/// The returned exit status is the status from the INITD zombie harvest.
-pub open spec fn spec_loop_exits_with(outcome: HarvestOutcome, exit_status: nat) -> bool {
-    match outcome {
-        HarvestOutcome::Harvested { pid, is_initd } => is_initd,
-        _ => false,
-    }
+pub open spec fn spec_loop_exits(outcome: HarvestOutcome) -> bool {
+    spec_should_terminate(outcome)
 }
 
 /// Spec function: models the loop continuation condition.
@@ -375,19 +369,17 @@ pub open spec fn spec_loop_continues(outcome: HarvestOutcome) -> bool {
     !spec_should_terminate(outcome)
 }
 
-/// Spec function: models a complete iteration's effect.
+/// Spec function: extends the loop history with a new non-terminating outcome.
 ///
 /// # Description
 ///
-/// A complete iteration transitions from iteration n to n+1, with
-/// work flags reset. The only observable effect that persists across
-/// iterations is the potential INITD termination signal.
-pub open spec fn spec_iteration_transition(
-    iteration_before: nat,
-    terminated: bool,
-) -> nat {
-    if terminated { iteration_before }
-    else { iteration_before + 1 }
+/// When the loop continues (INITD not terminated), the outcome is appended
+/// to the history trace.
+pub open spec fn spec_extend_history(
+    history: Seq<HarvestOutcome>,
+    outcome: HarvestOutcome,
+) -> Seq<HarvestOutcome> {
+    history.push(outcome)
 }
 
 } // verus!

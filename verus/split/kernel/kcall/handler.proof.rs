@@ -456,38 +456,56 @@ pub proof fn lemma_initd_termination_independent_of_work(state: LoopIterationSta
 // Proof Lemmas: Loop Invariant / Inductive Reasoning
 //==================================================================================================
 
-/// Lemma: The loop invariant holds at initialization (base case).
+/// Lemma: The loop invariant holds for an empty history (base case).
 ///
 /// # Description
 ///
-/// Before the first iteration, the loop invariant holds trivially.
+/// Before the first iteration, no outcomes have been observed, so the
+/// invariant holds vacuously (no element violates the condition).
 pub proof fn lemma_loop_invariant_base()
     ensures
-        spec_loop_invariant(0),
+        spec_loop_invariant(Seq::<HarvestOutcome>::empty()),
 {
 }
 
-/// Lemma: The loop invariant is preserved across iterations (inductive step).
+/// Lemma: The loop invariant is preserved when appending a non-terminating outcome.
 ///
 /// # Description
 ///
-/// If the loop invariant holds at iteration n and the loop continues
-/// (INITD did not terminate), then the invariant holds at iteration n+1.
-pub proof fn lemma_loop_invariant_inductive(n: nat, outcome: HarvestOutcome)
+/// If the invariant holds for history h, and the current outcome does not
+/// terminate the loop (INITD not harvested), then the invariant holds for
+/// h ++ [outcome]. This is the inductive step for loop continuation.
+pub proof fn lemma_loop_invariant_inductive(
+    history: Seq<HarvestOutcome>,
+    outcome: HarvestOutcome,
+)
     requires
-        spec_loop_invariant(n),
+        spec_loop_invariant(history),
         spec_loop_continues(outcome),
     ensures
-        spec_loop_invariant(n + 1),
+        spec_loop_invariant(spec_extend_history(history, outcome)),
 {
+    let new_history: Seq<HarvestOutcome> = spec_extend_history(history, outcome);
+    assert forall|i: int| 0 <= i < new_history.len()
+        implies !spec_should_terminate(#[trigger] new_history[i])
+    by {
+        if i < history.len() as int {
+            assert(!spec_should_terminate(history[i]));
+            assert(new_history[i] == history[i]);
+        } else {
+            assert(i == history.len() as int);
+            assert(new_history[i] == outcome);
+            assert(spec_loop_continues(outcome));
+        }
+    }
 }
 
-/// Lemma: The loop exits only via INITD termination.
+/// Lemma: If the loop exits, INITD must have terminated.
 ///
 /// # Description
 ///
-/// If the loop exits (does not continue), it must be because INITD
-/// terminated. This is the contrapositive of the continuation condition.
+/// The contrapositive of continuation: if an outcome causes the loop to
+/// not continue, then it must be an INITD termination.
 pub proof fn lemma_loop_exit_requires_initd(outcome: HarvestOutcome)
     requires
         !spec_loop_continues(outcome),
@@ -496,34 +514,38 @@ pub proof fn lemma_loop_exit_requires_initd(outcome: HarvestOutcome)
 {
 }
 
-/// Lemma: The exit status originates from an INITD harvest.
+/// Lemma: The history length equals the number of completed iterations.
 ///
 /// # Description
 ///
-/// When the loop exits, the exit status comes from a Harvested outcome
-/// where is_initd is true. This links the termination to the INITD process.
-pub proof fn lemma_exit_status_from_initd(outcome: HarvestOutcome, exit_status: nat)
-    requires
-        spec_should_terminate(outcome),
-        spec_loop_exits_with(outcome, exit_status),
+/// After n iterations, the history contains exactly n outcomes.
+/// Combined with the invariant, this proves that INITD was not
+/// terminated in any of those n iterations.
+pub proof fn lemma_history_length_after_extension(
+    history: Seq<HarvestOutcome>,
+    outcome: HarvestOutcome,
+)
     ensures
-        match outcome {
-            HarvestOutcome::Harvested { pid, is_initd } => is_initd,
-            _ => false,
-        },
+        spec_extend_history(history, outcome).len() == history.len() + 1,
 {
 }
 
-/// Lemma: Iteration counter increases on continuation.
+/// Lemma: A terminating outcome cannot be in a valid history.
 ///
 /// # Description
 ///
-/// When the loop continues (INITD not terminated), the iteration counter
-/// advances by one. When terminating, it stays at the current value.
-pub proof fn lemma_iteration_counter_advances(n: nat)
+/// If the invariant holds for a history, then no element in that history
+/// is a terminating outcome. This means the loop never "missed" an INITD
+/// termination — if the loop is still running, INITD was never seen.
+pub proof fn lemma_invariant_excludes_termination(
+    history: Seq<HarvestOutcome>,
+    idx: int,
+)
+    requires
+        spec_loop_invariant(history),
+        0 <= idx < history.len(),
     ensures
-        spec_iteration_transition(n, false) == n + 1,
-        spec_iteration_transition(n, true) == n,
+        !spec_should_terminate(history[idx]),
 {
 }
 
