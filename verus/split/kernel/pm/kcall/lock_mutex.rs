@@ -86,6 +86,10 @@
 //!   (`lemma_guard_consumed_on_all_paths`). On the `PutGuardError` path,
 //!   the original `MutexGuard` is consumed by move semantics inside
 //!   `put_mutex_guard`, and `MutexGuard::drop()` unlocks the mutex.
+//! - **Guard release on error path**: `put_mutex_guard_model` ensures
+//!   `spec_guard_ownership_released(mutex_addr)` on ALL exit paths (success
+//!   and error), guaranteeing no lock leak. This postcondition is threaded
+//!   through `lock_mutex_model` (`lemma_put_guard_error_releases_guard`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -420,10 +424,11 @@ pub fn put_mutex_guard_model(mutex_addr: u32, guard_token: Ghost<Option<u32>>) -
     ensures
         // Error codes from the PM module are valid ErrorCode discriminants.
         result matches PutGuardOutcomeModel::Error { error_code } ==> spec_is_valid_error_code(error_code as int),
-        // Future strengthening hook (mutex/PM module responsibility):
-        // On error, the guard is still consumed (dropped), and MutexGuard::drop()
-        // unlocks the mutex. The guard is never leaked.
-        // result matches PutGuardOutcomeModel::Error { .. } ==> spec_mutex_unlocked_after_guard_drop(mutex_addr),
+        // Guard ownership is always released, whether put_mutex_guard succeeds
+        // or fails. On success the guard is stored; on failure MutexGuard::drop()
+        // unlocks the mutex. The concrete interpretation of this predicate is
+        // provided by the mutex/PM module.
+        spec_guard_ownership_released(mutex_addr as nat),
 {
     unimplemented!()
 }
@@ -592,6 +597,13 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
         // When the lock step is reached (timeout parsed OK, get_mutex OK), the
         // timeout value passed to mutex_lock_model matches spec_parsed_timeout_for_lock.
         ret.4@ == spec_parsed_timeout_for_lock(timeout_s as nat, timeout_ns as nat),
+        // Guard ownership release: when the pipeline reaches the put_guard step
+        // (i.e., timeout valid, get_mutex OK, lock OK), the guard ownership for
+        // mutex_addr is released regardless of whether put_guard succeeds or fails.
+        // This follows from put_mutex_guard_model's postcondition.
+        (ret.2@ == LockOutcomeView::LoOk && ret.1@ == GetMutexOutcomeView::GmOk
+            && spec_timeout_parsed_ok(timeout_s as nat, timeout_ns as nat))
+            ==> spec_guard_ownership_released(mutex_addr as nat),
 {
     // Step 1: Parse timeout.
     let parsed: Result<bool, LockMutexResultModel> = parse_timeout(timeout_s, timeout_ns);

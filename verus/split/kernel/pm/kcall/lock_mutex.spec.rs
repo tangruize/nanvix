@@ -472,4 +472,22 @@ pub open spec fn spec_timeout_view_consistent(has_timeout: bool, timeout_view: O
     &&& (!has_timeout ==> timeout_view.is_none())
 }
 
+/// Spec predicate: the guard ownership for the given mutex has been released.
+///
+/// # Description
+///
+/// Models the outcome of `MutexGuard::drop()` — the guard for `mutex_addr`
+/// has been consumed and the mutex lock released. In the original code,
+/// `put_mutex_guard` takes `MutexGuard` by value (move semantics):
+/// - On success, the guard is stored in the thread's bookkeeping.
+/// - On failure, the guard is dropped at scope exit, and `MutexGuard::drop()`
+///   unlocks the mutex.
+///
+/// Either way, the guard ownership is transferred out of the caller. This
+/// predicate is abstract (uninterpreted) because the concrete unlock
+/// semantics are defined in the mutex module, not in this pipeline.
+/// The mutex module should provide a concrete interpretation and prove
+/// that `MutexGuard::drop()` always releases the lock.
+pub uninterp spec fn spec_guard_ownership_released(mutex_addr: nat) -> bool;
+
 } // verus!
