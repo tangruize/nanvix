@@ -326,6 +326,11 @@ impl ProcessManagerUnsafeState {
             (next_tid != old(self).current_tid && next_pid != old(self).current_pid)
                 ==> (self.current_pid == next_pid && self.remaining_quantum == self.scheduler_freq),
             // Hard switch, same PID: PID unchanged, quantum unchanged.
+            // Design note: same-PID hard switches (thread switch within same process)
+            // intentionally inherit the previous thread's remaining quantum. This matches
+            // the original code where REMAINING_QUANTUM is only reset on PID changes
+            // (unsafe.rs:775-777). The scheduler treats quantum as per-process, not
+            // per-thread: threads within the same process share the process's time slice.
             (next_tid != old(self).current_tid && next_pid == old(self).current_pid)
                 ==> (self.current_pid == old(self).current_pid
                      && self.remaining_quantum == old(self).remaining_quantum),
@@ -470,8 +475,17 @@ impl ProcessManagerUnsafeState {
     /// (running→suspended or running stays ready if other threads exist)
     /// are modeled by inner.sleep_running() or inner.sleep_thread_running(),
     /// which are already verified. Then switch() is called.
+    ///
+    /// The `alarm` ghost parameter models the original `alarm: Option<SystemTime>`:
+    /// - `alarm@ < 0`: None (indefinite sleep, wakeup only via explicit signal).
+    /// - `alarm@ >= 0`: Some(time) (timed sleep, wakeup on timeout or signal).
+    /// The alarm affects whether the inner module places the thread on a timed-sleep
+    /// queue vs. indefinite-sleep queue. This is captured in `new_inner` (the post-
+    /// mutation inner state); the ghost parameter enables callers to reason about
+    /// which sleep variant was used.
     pub fn sleep(
         &mut self,
+        Ghost(alarm): Ghost<int>,
         new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
         chosen_next_tid: i32,
@@ -567,8 +581,14 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            // Cannot exit the kernel.
+            // Cannot exit the kernel process or from the kernel thread.
+            // The original doc says "calling thread is not a kernel thread" (TID check).
+            // We also check PID because exiting a process exits all its threads, and the
+            // kernel process (PID 0) must never be exited. Both checks are needed:
+            // - PID check: prevents exiting the kernel process (structural invariant).
+            // - TID check: matches the original safety contract (no kernel thread exit).
             old(self).current_pid != KERNEL_PID_RAW,
+            old(self).current_tid != KERNEL_TID_RAW,
             // Exit always switches to a different thread (hard switch).
             chosen_next_tid != old(self).current_tid,
             // Same thread implies same process (vacuously true given above).
@@ -679,9 +699,12 @@ impl ProcessManagerUnsafeState {
     ///
     /// Parameter `succeeds` models whether the operation succeeds (true) or
     /// fails with an error (false). The queue-level state is unchanged in both cases.
-    pub fn get_mutex(&self, succeeds: bool) -> (result: bool)
+    /// The `addr` ghost parameter identifies which mutex is being accessed,
+    /// enabling callers to distinguish between different get_mutex calls.
+    pub fn get_mutex(&self, Ghost(addr): Ghost<int>, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
+            addr >= 0,
         ensures
             self.wf(),
             result == succeeds,
@@ -693,9 +716,10 @@ impl ProcessManagerUnsafeState {
     ///
     /// Delegates to inner.put_mutex_guard(). Returns Ok(()) or Err(Error).
     /// No queue-level state change.
-    pub fn put_mutex_guard(&self, succeeds: bool) -> (result: bool)
+    pub fn put_mutex_guard(&self, Ghost(addr): Ghost<int>, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
+            addr >= 0,
         ensures
             self.wf(),
             result == succeeds,
@@ -707,9 +731,10 @@ impl ProcessManagerUnsafeState {
     ///
     /// Delegates to inner.get_cond(). Returns Ok(Condvar) or Err(Error).
     /// No queue-level state change.
-    pub fn get_cond(&self, succeeds: bool) -> (result: bool)
+    pub fn get_cond(&self, Ghost(addr): Ghost<int>, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
+            addr >= 0,
         ensures
             self.wf(),
             result == succeeds,
@@ -721,9 +746,10 @@ impl ProcessManagerUnsafeState {
     ///
     /// Delegates to inner.put_cond(). Returns Ok(()) or Err(Error).
     /// No queue-level state change.
-    pub fn put_cond(&self, succeeds: bool) -> (result: bool)
+    pub fn put_cond(&self, Ghost(addr): Ghost<int>, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
+            addr >= 0,
         ensures
             self.wf(),
             result == succeeds,
@@ -733,14 +759,20 @@ impl ProcessManagerUnsafeState {
 
     /// Models `ProcessManager::wakeup()` (unsafe.rs:678-681).
     ///
-    /// Delegates to inner.wakeup(). Queue-level effects (suspended→ready)
+    /// Delegates to inner.wakeup(tid). Queue-level effects (suspended→ready)
     /// are verified in the inner module. The running PID does not change
     /// (wakeup does not perform a context switch).
-    pub fn wakeup(&mut self, new_inner: ProcessManagerInner)
+    ///
+    /// The `woken_tid` ghost parameter models the original `tid: ThreadIdentifier`:
+    /// the specific thread being woken. The inner wakeup moves this thread from
+    /// the suspended queue to the ready queue. The ghost parameter enables callers
+    /// to reason about which thread was woken (e.g., in join_thread condvar signaling).
+    pub fn wakeup(&mut self, Ghost(woken_tid): Ghost<int>, new_inner: ProcessManagerInner)
         requires
             old(self).wf(),
             new_inner.wf(),
             new_inner.spec_running_pid() == old(self).inner.spec_running_pid(),
+            woken_tid >= 0,
         ensures
             self.wf(),
             self.inner == new_inner,
@@ -756,9 +788,10 @@ impl ProcessManagerUnsafeState {
     ///
     /// Delegates to inner.take_mutex_guard(). Returns Ok(MutexGuard) or Err(Error).
     /// No queue-level state change.
-    pub fn take_mutex_guard(&self, succeeds: bool) -> (result: bool)
+    pub fn take_mutex_guard(&self, Ghost(addr): Ghost<int>, succeeds: bool) -> (result: bool)
         requires
             self.wf(),
+            addr >= 0,
         ensures
             self.wf(),
             result == succeeds,
@@ -830,6 +863,16 @@ impl ProcessManagerUnsafeState {
     /// When the target thread is already a zombie, harvest it. The harvesting
     /// involves unmapping user stack pages (memory management, external to the
     /// queue model). No queue-level state change occurs.
+    ///
+    /// ## Trust Boundary (T14: Harvest Re-borrow)
+    ///
+    /// The original harvest loop re-borrows the process manager
+    /// (`Self::get_mut().try_borrow_mut()?`) within the page-unmapping loop to
+    /// access the process's vmem. This re-borrow can theoretically fail with
+    /// Err(ResourceBusy). The error is logged with `warn!` but the harvest
+    /// continues (best-effort page unmapping). Since this failure only affects
+    /// memory cleanup (not queue-level state) and the queue model does not track
+    /// page mappings, we model the harvest as a no-op.
     pub fn join_thread_harvest(&self)
         requires
             self.wf(),
@@ -874,7 +917,8 @@ impl ProcessManagerUnsafeState {
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
     {
-        self.sleep(new_inner, chosen_next_pid, chosen_next_tid);
+        // join_cond.wait(None) passes alarm=None (indefinite sleep, modeled as -1).
+        self.sleep(Ghost(-1int), new_inner, chosen_next_pid, chosen_next_tid);
     }
 
     /// Models `ProcessManager::join_thread()` error path.
