@@ -235,6 +235,13 @@ pub open spec fn spec_is_success(result: LockMutexResultView) -> bool {
 }
 
 /// Spec function: whether the result is any kind of error.
+///
+/// # Description
+///
+/// Defined as the complement of `spec_is_success`. This is correct because
+/// `lemma_result_exhaustive` proves the result enum is exhaustive: every
+/// result is either `Success` or one of the error variants — there is no
+/// "unknown" category.
 pub open spec fn spec_is_error(result: LockMutexResultView) -> bool {
     !spec_is_success(result)
 }
@@ -381,6 +388,50 @@ pub open spec fn spec_lock_mutex_safety_preconditions(pid: nat, tid: nat) -> boo
     spec_caller_is_not_kernel_process(pid)
     && spec_caller_holds_no_resources(tid)
     && spec_caller_no_pm_reference()
+}
+
+/// Spec function: pipeline result parameterized by caller context (pid/tid).
+///
+/// # Description
+///
+/// Wraps `spec_lock_mutex_result` to include `pid` and `tid` in the signature,
+/// matching the original `lock_mutex(pid, tid, mutex_addr, timeout_s, timeout_ns)`
+/// function. The implementation delegates entirely to `spec_lock_mutex_result`,
+/// ignoring pid/tid — reflecting the fact that the original uses them only in
+/// `trace!()` logging.
+///
+/// This wrapper exists to give `lemma_result_independent_of_pid_tid` a
+/// non-trivial proof obligation: it proves that two calls with different
+/// (pid, tid) values yield identical results. If a future refactoring makes
+/// the pipeline depend on pid/tid, this function's body must change, and the
+/// lemma will require a new proof (or fail to verify).
+pub open spec fn spec_lock_mutex_result_with_context(
+    pid: nat,
+    tid: nat,
+    timeout_s: nat,
+    timeout_ns: nat,
+    get_mutex_outcome: GetMutexOutcomeView,
+    lock_outcome: LockOutcomeView,
+    put_guard_outcome: PutGuardOutcomeView,
+) -> LockMutexResultView {
+    // pid and tid are intentionally unused — they affect only trace logging.
+    spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome)
+}
+
+/// Spec function: whether a timeout_view ghost is consistent with has_timeout.
+///
+/// # Description
+///
+/// Encodes the consistency invariant between the boolean `has_timeout` flag
+/// and the ghost `Option<TimeoutView>` value passed to `mutex_lock_model`:
+/// - `has_timeout == true` iff the ghost is `Some(Finite { .. })`.
+/// - `has_timeout == false` iff the ghost is `None`.
+///
+/// This constraint ensures that `mutex_lock_model`'s external_body contract
+/// is self-consistent: the boolean flag and the ghost value agree.
+pub open spec fn spec_timeout_view_consistent(has_timeout: bool, timeout_view: Option<TimeoutView>) -> bool {
+    &&& (has_timeout <==> timeout_view matches Some(TimeoutView::Finite { .. }))
+    &&& (!has_timeout ==> timeout_view.is_none())
 }
 
 } // verus!

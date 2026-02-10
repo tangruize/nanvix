@@ -61,8 +61,16 @@
 //!   value derived from the raw (timeout_s, timeout_ns) inputs
 //!   (`lemma_timeout_value_reaches_lock`).
 //! - **pid/tid independence**: The pipeline result is formally independent of
-//!   the `pid` and `tid` parameters (`lemma_result_independent_of_pid_tid`).
-//!   This guards against future signature drift.
+//!   the `pid` and `tid` parameters, proven via `spec_lock_mutex_result_with_context`
+//!   which takes pid/tid in its signature but delegates to the core spec
+//!   (`lemma_result_independent_of_pid_tid`). Guards against future signature drift.
+//! - **Guard ownership chain**: The lock step produces a ghost guard token on
+//!   success, which the put_guard step requires as a precondition. This
+//!   formalizes the ownership chain: `Mutex::lock` produces `MutexGuard` →
+//!   `ProcessManager::put_mutex_guard` consumes it.
+//! - **Timeout view consistency**: The ghost `timeout_view` parameter passed to
+//!   `mutex_lock_model` is constrained by `spec_timeout_view_consistent` to be
+//!   consistent with the `has_timeout` boolean flag.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -118,6 +126,11 @@
 //! - **T5: `usize` to `u64`/`u32` cast**. On x86-32, usize is 32 bits. The
 //!   `timeout_s as u64` is a widening cast (safe). The `timeout_ns as u32` is
 //!   identity (safe). Modeled via `USIZE_MAX_X86_32()` precondition.
+//!   **Architecture note**: The model uses `u32` for `mutex_addr`, `timeout_s`,
+//!   and `timeout_ns` (which are `usize` in the original). This is correct for
+//!   x86-32 — the only currently supported target. If the kernel targets x86-64
+//!   in the future, `USIZE_MAX_X86_32()` must be updated to `USIZE_MAX_X86_64()`
+//!   and the parameter types widened to `u64`.
 //!
 //! ## Error Reason Abstraction
 //!
@@ -134,7 +147,7 @@
 //! | `SystemTime::new(u64, u32)`               | `system_time_new(u64, u32)`       | Verified.            |
 //! | `ProcessManager::get_mutex(addr)`         | `get_mutex_model(addr)`           | external_body.       |
 //! | `Mutex::lock(timeout)`                    | `mutex_lock_model(has, ghost_tv)` | external_body.       |
-//! | `ProcessManager::put_mutex_guard(a, g)`   | `put_mutex_guard_model(addr)`     | external_body.       |
+//! | `ProcessManager::put_mutex_guard(a, g)`   | `put_mutex_guard_model(a, ghost)` | external_body.       |
 //! | `pub unsafe fn lock_mutex(...)`           | `lock_mutex_model(...)`           | Fully verified.      |
 
 use crate::libs::error::ErrorCode;
@@ -324,13 +337,18 @@ pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
 ///   timeout reaches the lock step. The actual lock behavior (blocking duration,
 ///   etc.) is verified in the mutex module.
 #[verifier::external_body]
-pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutView>>) -> (result: LockOutcomeModel)
+pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutView>>) -> (result: (LockOutcomeModel, Ghost<bool>))
+    requires
+        // The ghost timeout_view must be consistent with the has_timeout flag.
+        spec_timeout_view_consistent(has_timeout, timeout_view@),
     ensures
         // TimedOut can only occur with a finite timeout. With an infinite
         // timeout, the Condvar::wait() path has no timer.
-        spec_lock_outcome_valid_for_timeout(has_timeout, result.spec_view()),
+        spec_lock_outcome_valid_for_timeout(has_timeout, result.0.spec_view()),
         // Error codes from lock failures are valid ErrorCode discriminants (always non-zero).
-        result matches LockOutcomeModel::GenericError { error_code } ==> error_code != 0i32,
+        result.0 matches LockOutcomeModel::GenericError { error_code } ==> error_code != 0i32,
+        // Guard token: true iff lock succeeded (formalizes ownership chain).
+        result.1@ <==> (result.0 matches LockOutcomeModel::Ok),
 {
     unimplemented!()
 }
@@ -346,8 +364,15 @@ pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutVie
 ///
 /// - `mutex_addr`: The mutex address, same as passed to `get_mutex_model`.
 ///   Preserved for interface fidelity and future strengthening.
+/// - `guard_token`: Ghost token proving the caller holds a valid guard from
+///   `mutex_lock_model`. Models the `MutexGuard` parameter from the original
+///   `ProcessManager::put_mutex_guard(mutex_addr, guard)`, formalizing the
+///   ownership chain: lock produces guard → put_guard consumes guard.
 #[verifier::external_body]
-pub fn put_mutex_guard_model(mutex_addr: u32) -> (result: PutGuardOutcomeModel)
+pub fn put_mutex_guard_model(mutex_addr: u32, guard_token: Ghost<bool>) -> (result: PutGuardOutcomeModel)
+    requires
+        // The caller must hold a valid guard token from the lock step.
+        guard_token@,
     ensures
         // Error codes from the PM module are valid ErrorCode discriminants (always non-zero).
         result matches PutGuardOutcomeModel::Error { error_code } ==> error_code != 0i32,
@@ -555,7 +580,9 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                 },
                 GetMutexOutcomeModel::Ok => {
                     // Step 3: Lock mutex (external), threading the parsed timeout value.
-                    let lock_result: LockOutcomeModel = mutex_lock_model(has_timeout, Ghost(timeout_for_lock));
+                    let lock_pair: (LockOutcomeModel, Ghost<bool>) = mutex_lock_model(has_timeout, Ghost(timeout_for_lock));
+                    let lock_result: LockOutcomeModel = lock_pair.0;
+                    let guard_token: Ghost<bool> = lock_pair.1;
                     let ghost lo_view: LockOutcomeView = lock_result.spec_view();
 
                     match lock_result {
@@ -590,8 +617,8 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
                             )
                         },
                         LockOutcomeModel::Ok => {
-                            // Step 4: Put mutex guard (external).
-                            let pg_result: PutGuardOutcomeModel = put_mutex_guard_model(mutex_addr);
+                            // Step 4: Put mutex guard (external), passing the guard token.
+                            let pg_result: PutGuardOutcomeModel = put_mutex_guard_model(mutex_addr, guard_token);
                             let ghost pg_view: PutGuardOutcomeView = pg_result.spec_view();
 
                             match pg_result {

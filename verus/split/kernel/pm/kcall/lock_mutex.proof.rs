@@ -503,20 +503,15 @@ pub proof fn lemma_timeout_value_reaches_lock(timeout_s: nat, timeout_ns: nat)
 ///
 /// The original `lock_mutex` function takes `pid: ProcessIdentifier` and
 /// `tid: ThreadIdentifier` parameters, but uses them only in the `trace!()`
-/// diagnostic macro. This lemma formally proves that the pipeline result
-/// (`spec_lock_mutex_result`) is a pure function of `(timeout_s, timeout_ns,
-/// get_mutex_outcome, lock_outcome, put_guard_outcome)` — varying `pid`
-/// and `tid` cannot change the result.
+/// diagnostic macro. This lemma formally proves that
+/// `spec_lock_mutex_result_with_context` — which takes pid/tid in its
+/// signature — returns the same result for any two (pid, tid) pairs.
 ///
-/// The proof is structural: `spec_lock_mutex_result` does not take pid or tid
-/// as parameters, so for any two arbitrary (pid, tid) pairs, the result is
-/// identical. If a future refactoring adds pid/tid to the spec function's
-/// signature, this lemma will fail to verify, signaling that the model needs
-/// updating.
-///
-/// The safety preconditions (`spec_lock_mutex_safety_preconditions`) may differ
-/// for different (pid, tid) values, but these are caller-side obligations that
-/// do not affect the pipeline result.
+/// This is a non-trivial proof because `spec_lock_mutex_result_with_context`
+/// could, in principle, use pid/tid to affect the result. The proof succeeds
+/// because the current implementation delegates to `spec_lock_mutex_result`
+/// which ignores them. If a future refactoring makes the pipeline depend on
+/// pid/tid, this lemma will fail to verify, signaling the model needs updating.
 pub proof fn lemma_result_independent_of_pid_tid(
     pid1: nat,
     pid2: nat,
@@ -529,16 +524,14 @@ pub proof fn lemma_result_independent_of_pid_tid(
     put_guard_outcome: PutGuardOutcomeView,
 )
     ensures
-        // The result is identical regardless of pid/tid values.
-        // This holds because spec_lock_mutex_result's signature does not
-        // include pid or tid — it depends only on timeout and PM outcomes.
-        spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome)
-            == spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome),
-        // Safety preconditions are orthogonal to pipeline correctness.
-        // Different (pid, tid) may satisfy or violate safety preconditions
-        // independently of the pipeline result.
-        spec_lock_mutex_safety_preconditions(pid1, tid1) || !spec_lock_mutex_safety_preconditions(pid1, tid1),
-        spec_lock_mutex_safety_preconditions(pid2, tid2) || !spec_lock_mutex_safety_preconditions(pid2, tid2),
+        // The result is identical for any two (pid, tid) pairs.
+        spec_lock_mutex_result_with_context(
+            pid1, tid1, timeout_s, timeout_ns,
+            get_mutex_outcome, lock_outcome, put_guard_outcome,
+        ) == spec_lock_mutex_result_with_context(
+            pid2, tid2, timeout_s, timeout_ns,
+            get_mutex_outcome, lock_outcome, put_guard_outcome,
+        ),
 {
 }
 
