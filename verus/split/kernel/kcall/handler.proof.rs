@@ -340,21 +340,6 @@ pub proof fn lemma_initd_pid_value()
 // Proof Lemmas: Scoreboard Poll
 //==================================================================================================
 
-/// Lemma: NoPending poll outcome means no kcall was handled.
-///
-/// # Description
-///
-/// When the scoreboard returns TryAgain (NoPending), the kcall_handled
-/// flag remains false.
-pub proof fn lemma_no_pending_no_kcall(state: LoopIterationState)
-    requires !state.kcall_handled,
-    ensures ({
-        // No update is applied when there's no pending kcall.
-        !state.kcall_handled
-    }),
-{
-}
-
 /// Lemma: GotCall poll outcome leads to kcall handled.
 ///
 /// # Description
@@ -463,6 +448,99 @@ pub proof fn lemma_initd_termination_independent_of_work(state: LoopIterationSta
     ensures ({
         let outcome: HarvestOutcome = HarvestOutcome::Harvested { pid: SPEC_INITD_PID(), is_initd: true };
         spec_should_terminate(outcome)
+    }),
+{
+}
+
+//==================================================================================================
+// Proof Lemmas: Loop Invariant / Inductive Reasoning
+//==================================================================================================
+
+/// Lemma: The loop invariant holds at initialization (base case).
+///
+/// # Description
+///
+/// Before the first iteration, the loop invariant holds trivially.
+pub proof fn lemma_loop_invariant_base()
+    ensures
+        spec_loop_invariant(0),
+{
+}
+
+/// Lemma: The loop invariant is preserved across iterations (inductive step).
+///
+/// # Description
+///
+/// If the loop invariant holds at iteration n and the loop continues
+/// (INITD did not terminate), then the invariant holds at iteration n+1.
+pub proof fn lemma_loop_invariant_inductive(n: nat, outcome: HarvestOutcome)
+    requires
+        spec_loop_invariant(n),
+        spec_loop_continues(outcome),
+    ensures
+        spec_loop_invariant(n + 1),
+{
+}
+
+/// Lemma: The loop exits only via INITD termination.
+///
+/// # Description
+///
+/// If the loop exits (does not continue), it must be because INITD
+/// terminated. This is the contrapositive of the continuation condition.
+pub proof fn lemma_loop_exit_requires_initd(outcome: HarvestOutcome)
+    requires
+        !spec_loop_continues(outcome),
+    ensures
+        spec_should_terminate(outcome),
+{
+}
+
+/// Lemma: The exit status originates from an INITD harvest.
+///
+/// # Description
+///
+/// When the loop exits, the exit status comes from a Harvested outcome
+/// where is_initd is true. This links the termination to the INITD process.
+pub proof fn lemma_exit_status_from_initd(outcome: HarvestOutcome, exit_status: nat)
+    requires
+        spec_should_terminate(outcome),
+        spec_loop_exits_with(outcome, exit_status),
+    ensures
+        match outcome {
+            HarvestOutcome::Harvested { pid, is_initd } => is_initd,
+            _ => false,
+        },
+{
+}
+
+/// Lemma: Iteration counter increases on continuation.
+///
+/// # Description
+///
+/// When the loop continues (INITD not terminated), the iteration counter
+/// advances by one. When terminating, it stays at the current value.
+pub proof fn lemma_iteration_counter_advances(n: nat)
+    ensures
+        spec_iteration_transition(n, false) == n + 1,
+        spec_iteration_transition(n, true) == n,
+{
+}
+
+/// Lemma: Work flags reset between iterations.
+///
+/// # Description
+///
+/// Each new iteration starts from spec_initial_iteration(), which has all
+/// work flags cleared. This proves that state does not leak between
+/// iterations.
+pub proof fn lemma_iteration_state_reset()
+    ensures ({
+        let fresh: LoopIterationState = spec_initial_iteration();
+        &&& !fresh.kcall_handled
+        &&& !fresh.message_received
+        &&& !fresh.harvested_process
+        &&& spec_should_yield(fresh)
     }),
 {
 }

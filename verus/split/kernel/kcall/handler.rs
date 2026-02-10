@@ -58,17 +58,18 @@
 //!
 //! | Original API                       | Verified Model                    | Notes                        |
 //! |------------------------------------|-----------------------------------|------------------------------|
-//! | `kcall_handler()` main loop        | `run_iteration()`                 | Single iteration model.      |
-//! | `ScoreBoard::get_mut()`            | `poll_scoreboard()`               | External body (T1).          |
-//! | `scoreboard.handle()`              | Part of `poll_scoreboard()`       | External body (T1).          |
+//! | `kcall_handler()` main loop        | `run_full_iteration()`            | Full iteration with yield.   |
+//! | `kcall_handler()` single step      | `run_iteration()`                 | Single iteration w/o yield.  |
+//! | `ScoreBoard::get_mut()`            | `poll_scoreboard_full()`          | External body (T1).          |
+//! | `scoreboard.handle()`              | Part of `poll_scoreboard_full()`  | External body (T1).          |
 //! | `scoreboard.handled(ret)`          | `signal_handled()`                | External body (T1).          |
-//! | Match on `KcallNumber::from(...)`  | `classify_and_dispatch()`         | Verified routing.            |
+//! | Match on `KcallNumber::from(...)`  | `classify_and_check_invalid()`    | Verified routing.            |
 //! | `pm.harvest_zombies(mm)`           | `harvest_zombies()`               | External body (T2).          |
 //! | `ProcessManager::giveup()`         | `yield_cpu()`                     | External body (T3).          |
 //! | `event::init(hal)`                 | *(not modeled)*                   | Init-time, out of scope.     |
 //! | IKC message polling                | `poll_messages()`                 | External body (T4).          |
-//! | `EventManager::notify_...()`       | Part of `harvest_and_notify()`    | External body (T2).          |
-//! | Post-loop zombie drain             | `drain_zombies()`                 | Verified control flow.       |
+//! | `EventManager::notify_...()`       | `notify_termination()`            | External body (T2).          |
+//! | Post-loop zombie drain             | `drain_remaining_zombies()`       | External body (T2).          |
 //!
 //! ## Trust Boundaries
 //!
@@ -94,9 +95,13 @@
 //!   are specified. The handler loop may spin indefinitely if no work arrives.
 //! - **Feature flags**: The `stdio` feature flag for IKC message polling is not
 //!   modeled. The model includes a generic `poll_messages()` external body.
-//! - **Error recovery**: Error paths (failed harvest, failed handled signal) are
-//!   modeled as continuing the loop, matching the original's warn/error-and-continue
-//!   behavior.
+//! - **Error recovery**: Error paths in the original code are modeled as
+//!   always-succeeding in the verification model. Specifically:
+//!   `scoreboard.handled(ret)` can fail (warn and continue),
+//!   `harvest_zombies` can fail (error and continue), and
+//!   `ProcessManager::giveup()` can fail (error and continue). These
+//!   error-and-continue paths do not affect the core control flow properties
+//!   being verified (dispatch routing, yield correctness, termination).
 
 use vstd::prelude::*;
 
@@ -165,24 +170,6 @@ pub struct ZombieHarvestResult {
 // External Body Functions (Dependency Boundaries)
 //==================================================================================================
 
-/// External body: polls the scoreboard for a pending kernel call.
-///
-/// # Description
-///
-/// Models `ScoreBoard::get_mut()` + `scoreboard.handle()`. Returns the
-/// kcall number if a call is pending, or signals no pending call.
-///
-/// ## Trust Boundary T1
-///
-/// The scoreboard protocol is separately verified in `kernel::kcall::scoreboard`.
-#[verifier::external_body]
-pub fn poll_scoreboard(poll_result: &ScoreBoardPollResult) -> (result: bool)
-    ensures
-        result == poll_result.has_call,
-{
-    unimplemented!()
-}
-
 /// External body: signals that a kcall has been handled.
 ///
 /// # Description
@@ -202,13 +189,18 @@ pub fn signal_handled(result: &HandlerKcallResult)
 /// # Description
 ///
 /// Models the actual subsystem call (debug, capctl, terminate, etc.).
-/// Returns the result of the subsystem operation.
+/// Returns the result of the subsystem operation. This function is only
+/// called for kcall numbers that are not GetPid, GetTid, or Invalid
+/// (those are handled inline by `make_invalid_syscall_error()`).
 ///
 /// ## Trust Boundary T2
+///
+/// No postcondition is specified because the subsystem call results depend
+/// on kernel state that is not modeled in this module. The correctness of
+/// individual subsystem calls is the responsibility of each subsystem's
+/// verification.
 #[verifier::external_body]
 pub fn dispatch_to_subsystem(kcall_number: u32) -> (result: HandlerKcallResult)
-    ensures
-        kcall_number == 1 || kcall_number == 2 ==> result.is_error && result.error_code == SPEC_ERROR_INVALID_SYSCALL() as i32,
 {
     unimplemented!()
 }
@@ -218,7 +210,15 @@ pub fn dispatch_to_subsystem(kcall_number: u32) -> (result: HandlerKcallResult)
 /// # Description
 ///
 /// Models the IKC message polling loop. Returns true if at least one
-/// message was received and processed.
+/// message was received and processed. The original implementation:
+/// - Iterates up to `IKC_POLL_BATCH_SIZE` times.
+/// - Checks `number_buffered_messages < MAX_IKC_MESSAGES` before reading.
+/// - Calls `stdio::read()` and `EventManager::post_message()`.
+///
+/// No postcondition constrains the return value because message
+/// availability depends on external I/O state (host communication
+/// channel) that is not modeled. The return value is used solely as
+/// a work indicator for the yield decision.
 ///
 /// ## Trust Boundary T4
 #[verifier::external_body]
@@ -232,11 +232,15 @@ pub fn poll_messages() -> (result: bool)
 /// # Description
 ///
 /// Models `pm.harvest_zombies(mm)`. Returns information about a harvested
-/// zombie, if any.
+/// zombie, if any. The `is_initd` flag is tied to the PID value: it is
+/// true iff the pid equals the INITD process identifier (1).
 ///
 /// ## Trust Boundary T2
 #[verifier::external_body]
 pub fn harvest_zombies() -> (result: ZombieHarvestResult)
+    ensures
+        result.is_initd ==> (result.found && result.pid == 1u32),
+        (result.found && result.pid == 1u32) ==> result.is_initd,
 {
     unimplemented!()
 }
@@ -382,8 +386,10 @@ pub fn make_invalid_syscall_error() -> (result: HandlerKcallResult)
 pub fn handle_kcall_phase(poll: &ScoreBoardPollResult) -> (result: HandlerKcallPhaseResult)
     ensures
         result.kcall_handled == poll.has_call,
-        poll.has_call && (poll.kcall_number == 1 || poll.kcall_number == 2) ==>
+        poll.has_call && spec_returns_invalid_syscall(poll.kcall_number) ==>
             result.was_invalid_syscall,
+        poll.has_call && !spec_returns_invalid_syscall(poll.kcall_number) ==>
+            !result.was_invalid_syscall,
 {
     if poll.has_call {
         let is_invalid: bool = classify_and_check_invalid(poll.kcall_number);
@@ -441,6 +447,9 @@ pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
         // Yield iff no work was done.
         result.should_yield == (!result.work_state.kcall_handled
             && !result.work_state.message_received && !result.work_state.harvested_process),
+        // Termination implies INITD zombie was harvested (pid == 1).
+        result.should_terminate ==> result.work_state.harvested_process,
+        result.should_terminate ==> result.initd_pid == 1u32,
 {
     // Phase 1: Handle pending kernel call.
     let kcall_phase: HandlerKcallPhaseResult = handle_kcall_phase(poll);
@@ -471,6 +480,7 @@ pub fn run_iteration(poll: &ScoreBoardPollResult) -> (result: IterationResult)
         should_yield: do_yield,
         should_terminate: terminate,
         exit_status: harvest.exit_status,
+        initd_pid: harvest.pid,
     }
 }
 
@@ -484,6 +494,8 @@ pub struct IterationResult {
     pub should_terminate: bool,
     /// The exit status (meaningful only when `should_terminate` is true).
     pub exit_status: u32,
+    /// The PID that triggered termination (meaningful only when `should_terminate` is true).
+    pub initd_pid: u32,
 }
 
 /// Drains remaining zombie processes after the handler loop exits.
@@ -493,8 +505,67 @@ pub struct IterationResult {
 /// After the handler loop exits (INITD terminated), this function continues
 /// to harvest zombie processes until none remain, ensuring clean shutdown.
 /// This models the post-loop `while let` in the original code.
+///
+/// The postcondition documents that this function completes (does not diverge).
+/// The actual property that "no zombies remain" depends on ProcessManager
+/// state that is outside the verification model's scope.
+///
+/// ## Trust Boundary T2
 #[verifier::external_body]
 pub fn drain_remaining_zombies()
+    ensures true,  // Terminates; zombie-freeness depends on PM state (T2).
+{
+    unimplemented!()
+}
+
+/// Runs a full iteration of the handler loop including polling, dispatch,
+/// and yield.
+///
+/// # Description
+///
+/// Composes the complete iteration behavior matching the original loop body:
+/// 1. Polls the scoreboard for a pending kernel call.
+/// 2. Dispatches the kcall if present and signals handled.
+/// 3. Polls for IKC messages.
+/// 4. Harvests zombie processes and notifies termination.
+/// 5. Yields the CPU if no work was done.
+///
+/// This function models the entire loop body, including the yield behavior
+/// that `run_iteration()` only flags.
+pub fn run_full_iteration() -> (result: IterationResult)
+    ensures
+        // Yield iff no work was done.
+        result.should_yield == (!result.work_state.kcall_handled
+            && !result.work_state.message_received && !result.work_state.harvested_process),
+        // Termination implies INITD zombie was harvested.
+        result.should_terminate ==> result.work_state.harvested_process,
+        result.should_terminate ==> result.initd_pid == 1u32,
+{
+    // Phase 1: Poll scoreboard.
+    let poll: ScoreBoardPollResult = poll_scoreboard_full();
+
+    // Phase 2-4: Run iteration (dispatch, messages, harvest).
+    let result: IterationResult = run_iteration(&poll);
+
+    // Phase 5: Yield CPU if no work was done.
+    if result.should_yield {
+        yield_cpu();
+    }
+
+    result
+}
+
+/// External body: polls the scoreboard and returns a structured result.
+///
+/// # Description
+///
+/// Models `ScoreBoard::get_mut()` + `scoreboard.handle()`. Returns a
+/// `ScoreBoardPollResult` indicating whether a kcall is pending and
+/// what number it has.
+///
+/// ## Trust Boundary T1
+#[verifier::external_body]
+pub fn poll_scoreboard_full() -> (result: ScoreBoardPollResult)
 {
     unimplemented!()
 }
