@@ -250,6 +250,16 @@ pub open spec fn spec_signal_cond_safety_preconditions() -> bool {
     spec_caller_no_pm_reference()
 }
 
+/// Spec predicate: a valid Condvar reference has been acquired for cond_addr.
+///
+/// # Description
+///
+/// Models the fact that `get_cond` has previously succeeded for this
+/// address, meaning a valid Condvar reference exists. Used as a
+/// precondition on `notify_model` and `drop_cond_model` to document
+/// the dependency on a prior successful `get_cond` call.
+pub uninterp spec fn spec_condvar_acquired(cond_addr: nat) -> bool;
+
 /// Spec predicate: the condition variable reference count was decremented.
 ///
 /// # Description
@@ -266,18 +276,20 @@ pub open spec fn spec_signal_cond_safety_preconditions() -> bool {
 /// resource-release reasoning across module boundaries.
 pub uninterp spec fn spec_cond_ref_released(cond_addr: nat) -> bool;
 
-/// Spec predicate: the condition variable slot was returned to the PM.
+/// Spec predicate: put_cond completed successfully.
 ///
 /// # Description
 ///
 /// Abstract postcondition token established by `put_cond_model` (trust
-/// boundary T4). Models the effect of ProcessManager::put_cond succeeding.
-///
-/// This predicate is intentionally uninterpreted at the kcall level. Its
-/// concrete semantics (slot ownership transfer back to the PM) are the
-/// responsibility of the PM module behind trust boundary T4. Here it
-/// serves as an abstract token that the pipeline propagates to callers.
-pub uninterp spec fn spec_cond_slot_returned(cond_addr: nat) -> bool;
+/// boundary T4). Models the effect of ProcessManager::put_cond returning
+/// Ok(()). Note: "completed" means the put_cond call returned successfully,
+/// NOT that the condvar entry was necessarily removed from the PM's map.
+/// The real `put_cond` only removes the entry if `reference_count() <= 1`;
+/// otherwise it returns Ok(()) without removal. The concrete reclamation
+/// semantics are the responsibility of the PM module behind trust boundary
+/// T4. Here it serves as an abstract token that the pipeline propagates
+/// to callers.
+pub uninterp spec fn spec_put_cond_completed(cond_addr: nat) -> bool;
 
 /// Spec predicate: the number of threads waiting on a condvar.
 ///
@@ -295,17 +307,20 @@ pub uninterp spec fn spec_num_waiters(cond_addr: nat) -> nat;
 /// # Description
 ///
 /// When `broadcast` is false (`notify_first`), at most one thread is awakened.
-/// When `broadcast` is true (`notify_all`), all waiting threads are awakened.
-/// This captures the fundamental semantic difference between the two notify
-/// variants.
+/// When `broadcast` is true (`notify_all`), the implementation uses best-effort
+/// wakeup: it attempts to wake all waiters but individual `wakeup(tid)` calls
+/// may fail. The count reflects successfully awakened threads, which is at most
+/// the total number of waiters. The real implementation returns `Ok(count)`
+/// as long as at least one thread was awakened (or there were no waiters).
 pub open spec fn spec_broadcast_semantics(
     broadcast: bool,
     cond_addr: nat,
     awakened: nat,
 ) -> bool {
     if broadcast {
-        // notify_all: awakens all waiters.
-        awakened == spec_num_waiters(cond_addr)
+        // notify_all: best-effort wakeup of all waiters.
+        // Awakened count is bounded by the number of waiters.
+        awakened <= spec_num_waiters(cond_addr)
     } else {
         // notify_first: awakens at most one waiter.
         awakened <= 1

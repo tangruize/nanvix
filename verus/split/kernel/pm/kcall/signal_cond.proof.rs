@@ -483,20 +483,22 @@ pub proof fn lemma_notify_first_awakens_at_most_one(
 {
 }
 
-/// Proof: notify_all (broadcast) awakens all waiters.
+/// Proof: notify_all (broadcast) awakens at most all waiters (best-effort).
 ///
 /// # Description
 ///
-/// When `broadcast` is true, the spec guarantees that all waiting threads
-/// are awakened. This is a direct consequence of `spec_broadcast_semantics`.
-pub proof fn lemma_notify_all_awakens_all_waiters(
+/// When `broadcast` is true, the spec guarantees that the awakened count
+/// is bounded by the number of waiters. The real implementation uses
+/// best-effort wakeup: individual `wakeup(tid)` calls may fail, so the
+/// count may be less than the total number of waiters.
+pub proof fn lemma_notify_all_bounded_by_waiters(
     cond_addr: nat,
     awakened: nat,
 )
     requires
         spec_broadcast_semantics(true, cond_addr, awakened),
     ensures
-        awakened == spec_num_waiters(cond_addr),
+        awakened <= spec_num_waiters(cond_addr),
 {
 }
 

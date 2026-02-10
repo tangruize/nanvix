@@ -44,8 +44,9 @@
 //! - **Broadcast semantics**: On success, the awakened count respects the
 //!   `broadcast` flag: `notify_first` (`!broadcast`) awakens at most 1 thread
 //!   (`lemma_notify_first_awakens_at_most_one`); `notify_all` (`broadcast`)
-//!   awakens all waiters (`lemma_notify_all_awakens_all_waiters`). This is
-//!   propagated from the T2 trust boundary to the pipeline result
+//!   uses best-effort wakeup bounded by the number of waiters
+//!   (`lemma_notify_all_bounded_by_waiters`). This is propagated from the
+//!   T2 trust boundary to the pipeline result
 //!   (`lemma_broadcast_semantics_preserved`).
 //! - **Condvar drop on get_cond success**: When get_cond succeeds, the condvar
 //!   reference is always released (dropped at scope exit), regardless of
@@ -71,7 +72,7 @@
 //!   condvar module.
 //! - **ProcessManager correctness**: get_cond / put_cond internals are
 //!   verified in the PM module. Resource-release predicates
-//!   (`spec_cond_ref_released`, `spec_cond_slot_returned`) are intentionally
+//!   (`spec_cond_ref_released`, `spec_put_cond_completed`) are intentionally
 //!   uninterpreted at this trust boundary. Their concrete semantics (e.g.,
 //!   refcount decrement, slot ownership transfer) are the responsibility of
 //!   the PM and condvar modules respectively. At this kcall level, these
@@ -106,7 +107,7 @@
 //!   or proving a PM-level invariant that condvar slots are eventually
 //!   reclaimed through other mechanisms.
 //! - **Resource-release predicates are abstract tokens**: The predicates
-//!   `spec_cond_ref_released` and `spec_cond_slot_returned` are
+//!   `spec_cond_ref_released` and `spec_put_cond_completed` are
 //!   uninterpreted at this kcall level. They serve as composable
 //!   postcondition tokens that callers can use to chain resource-release
 //!   reasoning, but this module does not prove their concrete effects
@@ -291,6 +292,9 @@ pub fn get_cond_model(cond_addr: u32) -> (result: GetCondOutcomeModel)
     ensures
         result matches GetCondOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),
+        // On success, a valid Condvar reference has been acquired.
+        result matches GetCondOutcomeModel::Ok
+            ==> spec_condvar_acquired(cond_addr as nat),
 {
     unimplemented!()
 }
@@ -300,13 +304,13 @@ pub fn get_cond_model(cond_addr: u32) -> (result: GetCondOutcomeModel)
 /// # Description
 ///
 /// Notifies threads waiting on the condition variable. If `broadcast` is true,
-/// models `cond.notify_all()` (awakens all waiters); otherwise models
-/// `cond.notify_first()` (awakens at most one waiter).
+/// models `cond.notify_all()` (best-effort wakeup of all waiters); otherwise
+/// models `cond.notify_first()` (awakens at most one waiter).
 /// Returns the number of awakened threads on success, or an error.
 ///
-/// The broadcast-dependent postcondition captures the fundamental semantic
-/// difference: `notify_first` awakens at most 1 thread, while `notify_all`
-/// awakens all waiters (modeled via `spec_num_waiters`).
+/// The broadcast-dependent postcondition captures the semantic difference:
+/// `notify_first` awakens at most 1 thread, while `notify_all` uses
+/// best-effort wakeup bounded by the number of waiters.
 ///
 /// # Parameters
 ///
@@ -314,11 +318,15 @@ pub fn get_cond_model(cond_addr: u32) -> (result: GetCondOutcomeModel)
 /// - `broadcast`: Whether to wake all waiting threads.
 #[verifier::external_body]
 pub fn notify_model(cond_addr: u32, broadcast: bool) -> (result: NotifyOutcomeModel)
+    requires
+        // A valid Condvar reference must have been acquired via get_cond.
+        spec_condvar_acquired(cond_addr as nat),
     ensures
         result matches NotifyOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),
         // Broadcast semantics: on success, the awakened count respects the
-        // broadcast flag. notify_first awakens at most 1; notify_all awakens all.
+        // broadcast flag. notify_first awakens at most 1; notify_all is
+        // bounded by the number of waiters (best-effort).
         result matches NotifyOutcomeModel::Ok { awakened }
             ==> spec_broadcast_semantics(broadcast, cond_addr as nat, awakened as nat),
 {
@@ -332,11 +340,23 @@ pub fn notify_model(cond_addr: u32, broadcast: bool) -> (result: NotifyOutcomeMo
 /// The Condvar goes out of scope, causing its reference count to decrease.
 /// This always succeeds (Rust drop cannot fail).
 ///
+/// **Safety note on CondvarInner::drop panic**: The real `CondvarInner::drop`
+/// implementation panics if threads are still sleeping on the condition
+/// variable. However, the `Condvar` type is an `Arc<CondvarInner>` clone
+/// obtained from `get_cond`. Dropping this clone decrements the Arc
+/// reference count but does NOT invoke `CondvarInner::drop` unless this
+/// is the last Arc clone — which it cannot be, since the PM retains its
+/// own reference (returned via `put_cond`). Therefore, the inner drop
+/// panic path is unreachable at this call site.
+///
 /// # Parameters
 ///
 /// - `cond_addr`: The condition variable address whose ref is being released.
 #[verifier::external_body]
 pub fn drop_cond_model(cond_addr: u32)
+    requires
+        // A valid Condvar reference must have been acquired via get_cond.
+        spec_condvar_acquired(cond_addr as nat),
     ensures
         spec_cond_ref_released(cond_addr as nat),
 {
@@ -347,8 +367,11 @@ pub fn drop_cond_model(cond_addr: u32)
 ///
 /// # Description
 ///
-/// Returns the condition variable slot to the PM. This is called after the
-/// Condvar has been dropped.
+/// Signals completion of the caller's use of the condition variable. The
+/// real `put_cond` only removes the condvar entry from the PM's map if
+/// `reference_count() <= 1` (i.e., this is the last user); otherwise it
+/// returns Ok(()) without removal. The postcondition `spec_put_cond_completed`
+/// models a successful call, not necessarily full reclamation.
 ///
 /// # Parameters
 ///
@@ -361,7 +384,7 @@ pub fn put_cond_model(cond_addr: u32) -> (result: PutCondOutcomeModel)
         result matches PutCondOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),
         result matches PutCondOutcomeModel::Ok
-            ==> spec_cond_slot_returned(cond_addr as nat),
+            ==> spec_put_cond_completed(cond_addr as nat),
 {
     unimplemented!()
 }
@@ -435,9 +458,9 @@ pub fn signal_cond_model(
             let gs: SignalCondGhostState = ret.1@;
             gs.gc == GetCondOutcomeView::GcOk
         }) ==> spec_cond_ref_released(cond_addr as nat),
-        // On success, the condvar slot was returned.
+        // On success, put_cond completed successfully.
         spec_is_success(ret.0.spec_view()) ==>
-            spec_cond_slot_returned(cond_addr as nat),
+            spec_put_cond_completed(cond_addr as nat),
         // On success, broadcast semantics are satisfied: the awakened count
         // respects the broadcast flag (at most 1 for signal, all waiters for broadcast).
         // Uses ghost state to access the notify outcome's awakened count.
