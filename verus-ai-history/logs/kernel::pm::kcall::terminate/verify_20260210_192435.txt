@@ -1,0 +1,62 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 19:24:35 CST 2026
+Module: kernel::pm::kcall::terminate
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::terminate
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::kcall::terminate
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/kcall/terminate.proof.rs:425:1
+    |
+425 | / pub proof fn lemma_success_requires_terminatable(
+426 | |     result: TerminateResultView,
+427 | |     pid_parse_outcome: PidParseOutcomeView,
+428 | |     terminate_outcome: TerminateOutcomeView,
+429 | |     pm_pre: ProcessManagerStateView,
+430 | |     pid: nat,
+431 | | )
+    | |_^
+
+error: postcondition not satisfied
+   --> kernel/pm/kcall/terminate.proof.rs:445:9
+    |
+425 | / pub proof fn lemma_success_requires_terminatable(
+426 | |     result: TerminateResultView,
+427 | |     pid_parse_outcome: PidParseOutcomeView,
+428 | |     terminate_outcome: TerminateOutcomeView,
+429 | |     pm_pre: ProcessManagerStateView,
+430 | |     pid: nat,
+431 | | )
+    | |_- at the end of the function body
+...
+445 |           spec_terminate_possible(pm_pre, pid),
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/kcall/terminate.proof.rs:446:9
+    |
+425 | / pub proof fn lemma_success_requires_terminatable(
+426 | |     result: TerminateResultView,
+427 | |     pid_parse_outcome: PidParseOutcomeView,
+428 | |     terminate_outcome: TerminateOutcomeView,
+429 | |     pm_pre: ProcessManagerStateView,
+430 | |     pid: nat,
+431 | | )
+    | |_- at the end of the function body
+...
+446 |           pid != KERNEL_PID(),
+    |           ^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 18 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 18
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::terminate (verified:18, errors:1)
