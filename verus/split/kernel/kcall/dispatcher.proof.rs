@@ -12,11 +12,14 @@
 // 4. handle_sleep_error produces well-formed results for well-formed inputs.
 // 5. handle_sleep_error preserves error codes for Generic errors.
 // 6. GetPid/GetTid are classified as LocalImmediate.
-// 7. Sleepable calls are a subset of locally-handled calls.
-// 8. All defined kcalls (0..31) map to a non-Remote category or Remote.
-// 9. Result constructors produce well-formed results.
-// 10. Encoding injectivity: error values always fit in i32 range.
-// 11. Divergent Killed path is properly separated from non-divergent error handling.
+// 7. Exit/ExitThread are classified as LocalTerminal.
+// 8. Sleepable calls are a subset of locally-handled calls.
+// 9. All defined kcalls (0..31) map to a non-Remote category or Remote.
+// 10. Result constructors produce well-formed results.
+// 11. Error encodings always fit in i32 range (non-trivial for encoding model).
+// 12. Large success values (outside i32 range) are distinguishable from errors.
+// 13. Divergent Killed path is properly separated from non-divergent error handling.
+// 14. spec_dispatch_result_constrained correctly constrains per-category behavior.
 
 use vstd::prelude::*;
 
@@ -399,44 +402,39 @@ impl DispatchResult {
 // Proof Lemmas: KcallResult → i64 Encoding
 //==================================================================================================
 
-/// Lemma: encoding preserves the value for both success and error results.
-///
-/// # Description
-///
-/// Proves that spec_encode_result simply extracts the value, which is the
-/// same behavior as the original `Into<i64>` implementation.
-pub proof fn lemma_encode_preserves_value(r: DispatchResultView)
-    ensures
-        spec_encode_result(r) == r.value,
-{
-}
-
 /// Lemma: well-formed error results encode to values in i32 range.
 ///
 /// # Description
 ///
 /// Proves that any well-formed error result's encoded value fits in i32,
-/// which is a necessary condition for the encoding to be distinguishable
-/// from large success values.
+/// which is a necessary condition for error values originating from
+/// `KcallError(i32)` through the `Into<i64>` conversion.
 pub proof fn lemma_error_encoding_fits_i32(r: DispatchResultView)
     requires
         spec_result_wf(r),
         !r.is_success,
     ensures
-        spec_could_be_error(spec_encode_result(r)),
+        spec_in_error_range(spec_encode_result(r)),
 {
 }
 
-/// Lemma: encoding two different well-formed results preserves distinction.
+/// Lemma: success values outside i32 range cannot be errors.
 ///
 /// # Description
 ///
-/// Proves that if two results have different abstract views, they encode
-/// to the same value only if they have the same payload. Combined with
-/// the success/error flag, the full result is distinguishable.
-pub proof fn lemma_encode_injective_on_value(r1: DispatchResultView, r2: DispatchResultView)
+/// Proves that if a success result has a value outside the i32 range, the
+/// encoded i64 is distinguishable from any error value. This is the key
+/// property for the encoding: large success values are unambiguously
+/// not errors.
+pub proof fn lemma_large_success_not_error(r: DispatchResultView)
+    requires
+        r.is_success,
+        !spec_in_error_range(r.value),
     ensures
-        spec_encode_result(r1) == spec_encode_result(r2) ==> r1.value == r2.value,
+        // A well-formed error result cannot encode to this value.
+        forall|e: DispatchResultView|
+            (spec_result_wf(e) && !e.is_success)
+                ==> spec_encode_result(e) != spec_encode_result(r),
 {
 }
 
@@ -489,23 +487,53 @@ pub proof fn lemma_immediate_is_getpid_gettid(number: u32)
 {
 }
 
-/// Lemma: The result category spec correctly reflects the classification.
+/// Lemma: LocalTerminal calls are exactly Exit and ExitThread.
 ///
 /// # Description
 ///
-/// Proves that `spec_do_kcall_result_category` is consistent with
-/// `spec_classify_kcall` for any valid DispatchArgs.
-pub proof fn lemma_result_category_consistent(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32)
-    ensures ({
-        let args: DispatchArgsView = DispatchArgsView {
-            number: number as nat,
-            arg0: arg0 as nat,
-            arg1: arg1 as nat,
-            arg2: arg2 as nat,
-            arg3: arg3 as nat,
-        };
-        spec_do_kcall_result_category(args) =~= spec_classify_kcall(number)
-    }),
+/// Proves that the only two kcall numbers classified as LocalTerminal
+/// are Exit (3) and ExitThread (22).
+pub proof fn lemma_terminal_is_exit_exitthread(number: u32)
+    ensures
+        spec_classify_kcall(number) =~= DispatchCategory::LocalTerminal
+            <==> (number == KCALL_EXIT() || number == KCALL_EXIT_THREAD()),
+{
+}
+
+/// Lemma: spec_dispatch_result_constrained implies specific behavior per category.
+///
+/// # Description
+///
+/// Proves that the constraint function correctly requires:
+/// - LocalImmediate: result must be success.
+/// - LocalTerminal: result must be error.
+/// - All others: no additional constraint.
+pub proof fn lemma_dispatch_constraint_immediate()
+    ensures
+        forall|r: DispatchResultView|
+            spec_dispatch_result_constrained(DispatchCategory::LocalImmediate, r) == r.is_success,
+{
+}
+
+/// Lemma: dispatch constraint for terminal calls requires error.
+pub proof fn lemma_dispatch_constraint_terminal()
+    ensures
+        forall|r: DispatchResultView|
+            spec_dispatch_result_constrained(DispatchCategory::LocalTerminal, r) == !r.is_success,
+{
+}
+
+/// Lemma: dispatch constraint is trivially true for non-immediate, non-terminal categories.
+pub proof fn lemma_dispatch_constraint_other()
+    ensures
+        forall|r: DispatchResultView|
+            spec_dispatch_result_constrained(DispatchCategory::LocalSleepable, r),
+        forall|r: DispatchResultView|
+            spec_dispatch_result_constrained(DispatchCategory::LocalFallible, r),
+        forall|r: DispatchResultView|
+            spec_dispatch_result_constrained(DispatchCategory::LocalDirect, r),
+        forall|r: DispatchResultView|
+            spec_dispatch_result_constrained(DispatchCategory::Remote, r),
 {
 }
 

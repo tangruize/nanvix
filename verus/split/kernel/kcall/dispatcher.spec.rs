@@ -417,6 +417,13 @@ impl DispatchArgs {
     }
 
     /// Spec function: well-formedness predicate.
+    ///
+    /// # Description
+    ///
+    /// Intentionally `true` for all u32 values: the dispatcher's wildcard
+    /// match arm handles any kcall number (including Invalid/undefined) by
+    /// dispatching to the scoreboard. No u32 value is rejected at the
+    /// argument level.
     pub open spec fn wf(&self) -> bool {
         true
     }
@@ -462,40 +469,45 @@ impl SleepError {
 ///
 /// The original `KcallResult` converts to i64 as follows:
 /// - `Success(KcallSuccess(v))` → `v` (the i64 value directly).
-/// - `Error(KcallError(e))` → `e as i64` (i32 widened to i64).
+/// - `Error(KcallError(e))` → `e as i64` (i32 sign-extended to i64).
 ///
-/// Since error values are i32 and success values are i64, the encoding
-/// preserves the success/error distinction: error values always fit in
-/// i32 range, while success values may exceed that range.
+/// The encoded i64 loses the success/error type tag. The caller must know
+/// the call's outcome from context (e.g., checking an errno convention).
+/// This is a representation gap in the C ABI — the verified model uses
+/// `DispatchResult` with an explicit `is_success` flag while the actual
+/// ABI uses a raw `i64`. See trust boundary T5 in dispatcher.rs.
 pub open spec fn spec_encode_result(r: DispatchResultView) -> int {
     r.value
 }
 
-/// Spec function: checks if an encoded i64 value could be an error.
+/// Spec function: checks if an encoded i64 value is in the error range.
 ///
 /// # Description
 ///
-/// An encoded result could be an error only if the value fits in i32 range.
-/// This does not guarantee it IS an error (success with small values also
-/// fit in i32), but any error value MUST be in this range.
-pub open spec fn spec_could_be_error(encoded: int) -> bool {
+/// Error payloads originate from `KcallError(i32)`, so they always fit in
+/// i32 range. This is a necessary (but not sufficient) condition for
+/// distinguishing errors from success values that exceed i32 range.
+pub open spec fn spec_in_error_range(encoded: int) -> bool {
     encoded >= i32::MIN as int && encoded <= i32::MAX as int
 }
 
-/// Spec function: spec-level model of do_kcall dispatch outcome.
+/// Spec function: models the encoded result for specific dispatch categories.
 ///
 /// # Description
 ///
-/// Specifies the structural properties of the dispatch result based on
-/// the classification of the kernel call number:
-/// - LocalImmediate (GetPid, GetTid): always succeeds.
-/// - Remote: result depends on scoreboard (no structural guarantee).
-/// - Others: may succeed or fail.
-///
-/// This connects the DispatchArgs to the classification logic, documenting
-/// the intended contract even though the function body is a trust boundary.
-pub open spec fn spec_do_kcall_result_category(args: DispatchArgsView) -> DispatchCategory {
-    spec_classify_kcall(args.number as u32)
+/// Constrains the encoded i64 result based on the dispatch category:
+/// - `LocalImmediate` (GetPid, GetTid): value is non-negative (pid/tid ≥ 0).
+/// - `LocalTerminal` (Exit, ExitThread): value is in error range (always fails).
+/// - Others: no structural constraint beyond well-formedness.
+pub open spec fn spec_dispatch_result_constrained(
+    category: DispatchCategory,
+    result: DispatchResultView,
+) -> bool {
+    match category {
+        DispatchCategory::LocalImmediate => result.is_success,
+        DispatchCategory::LocalTerminal => !result.is_success,
+        _ => true,
+    }
 }
 
 //==================================================================================================

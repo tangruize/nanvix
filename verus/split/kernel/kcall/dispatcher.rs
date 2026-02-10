@@ -71,6 +71,11 @@
 //!   `ProcessManager::exit()` is called and the thread terminates. The original
 //!   code panics if exit fails. This divergent path is modeled but not verified
 //!   (it should never return).
+//! - **T5: ABI representation gap.** The original `do_kcall` uses the C ABI
+//!   `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified model uses
+//!   `DispatchArgs`/`DispatchResult` types for richer postconditions. The
+//!   `is_success` flag in `DispatchResult` is a modeling abstraction not present
+//!   in the raw i64 return value.
 
 use vstd::prelude::*;
 
@@ -458,20 +463,33 @@ pub fn handle_sleep_error_killed() -> (result: DispatchResult)
 /// verified; the actual subsystem operations are dependency boundary calls.
 ///
 /// The postconditions document the intended contract:
+/// - The result is always well-formed (error values fit in i32).
 /// - LocalImmediate calls (GetPid, GetTid) always produce a success result.
-/// - The result is always well-formed.
-/// - The classification of the kcall number determines the dispatch path.
+/// - LocalTerminal calls (Exit, ExitThread) always produce an error result
+///   (the process/thread terminates, so exit() returns `Err` to the caller).
+/// - The result satisfies `spec_dispatch_result_constrained` for its category.
+///
+/// **T5: ABI representation gap.** The original `do_kcall` has the C ABI
+/// signature `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified
+/// model uses `DispatchArgs` and `DispatchResult` for richer postconditions.
+/// The `DispatchResult.is_success` flag does not exist in the actual i64
+/// return value — it is a modeling abstraction. The i64 encoding conflates
+/// success and error values into a single integer. The trust assumption is
+/// that the caller correctly interprets the result based on the kcall
+/// semantics (e.g., negative values indicate errors for some calls).
 #[verifier::external_body]
 pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
     ensures
         result.wf(),
         // LocalImmediate calls (GetPid, GetTid) always succeed.
         spec_classify_kcall(args.number) =~= DispatchCategory::LocalImmediate ==> result.is_success,
-        // The dispatch category is determined by the kcall number.
-        spec_do_kcall_result_category(args@) =~= spec_classify_kcall(args.number),
+        // LocalTerminal calls (Exit, ExitThread) always produce error results.
+        spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal ==> !result.is_success,
+        // General category constraint.
+        spec_dispatch_result_constrained(spec_classify_kcall(args.number), result@),
 {
     // Boundary: actual implementation accesses ProcessManager and ScoreBoard
-    // via unsafe global state. See trust boundaries T1-T4.
+    // via unsafe global state. See trust boundaries T1-T5.
     unimplemented!()
 }
 
