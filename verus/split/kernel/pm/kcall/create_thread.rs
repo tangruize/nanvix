@@ -122,9 +122,11 @@
 //!
 //! - **T1: `Vmem::is_user_region(addr, size)`**. Checks whether a memory region
 //!   lies within user address space. Modeled as `external_body` returning a bool.
-//!   The VMM module verifies this implementation.
+//!   The VMM module verifies this implementation
+//!   (see `verus/split/kernel/mm/` for VMM verification).
 //! - **T2: `Vmem::is_user_addr(addr)`**. Checks whether an address lies within
 //!   user address space. Modeled as `external_body` returning a bool.
+//!   Verified in the VMM module (see `verus/split/kernel/mm/`).
 //! - **T3: `pm::copy_from_user(pm, pid, dst, src)`**. Copies data from user space
 //!   to kernel space. Modeled as `external_body` returning a fallible result.
 //!   Error codes are guaranteed valid (positive) by postcondition. Ghost

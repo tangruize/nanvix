@@ -179,9 +179,19 @@ pub open spec fn spec_user_fn_valid(input: CreateThreadInputView) -> bool {
     input.thread_args.user_fn_valid
 }
 
-/// Whether the user stack region is valid (in user space and large enough).
+/// Whether the user stack region lies in user address space.
+pub open spec fn spec_user_stack_region_valid(input: CreateThreadInputView) -> bool {
+    input.thread_args.user_stack_valid
+}
+
+/// Whether the user stack size meets the minimum requirement.
+pub open spec fn spec_user_stack_size_sufficient(input: CreateThreadInputView) -> bool {
+    input.thread_args.user_stack_size >= USER_STACK_SIZE()
+}
+
+/// Whether the user stack is fully valid (in user space and large enough).
 pub open spec fn spec_user_stack_valid(input: CreateThreadInputView) -> bool {
-    input.thread_args.user_stack_valid && input.thread_args.user_stack_size >= USER_STACK_SIZE()
+    spec_user_stack_region_valid(input) && spec_user_stack_size_sufficient(input)
 }
 
 /// Whether the user TDA is valid (either absent or in user space).
@@ -197,17 +207,19 @@ pub open spec fn spec_user_tda_valid(input: CreateThreadInputView) -> bool {
 ///
 /// # Description
 ///
-/// All six validation steps must pass before the PM create_thread call:
+/// All validation steps must pass before the PM create_thread call:
 /// 1. Args address in user space.
 /// 2. Copy from user succeeded.
 /// 3. User function in user address space.
-/// 4. User stack in user address space with sufficient size.
+/// 4. User stack region in user address space.
+/// 4b. User stack size meets minimum requirement.
 /// 5. User TDA (if present) in user address space.
 pub open spec fn spec_all_validations_passed(input: CreateThreadInputView) -> bool {
     spec_args_addr_valid(input)
     && spec_copy_succeeded(input)
     && spec_user_fn_valid(input)
-    && spec_user_stack_valid(input)
+    && spec_user_stack_region_valid(input)
+    && spec_user_stack_size_sufficient(input)
     && spec_user_tda_valid(input)
 }
 
@@ -296,6 +308,7 @@ pub open spec fn spec_is_valid_error_code(code: int) -> bool {
 /// `spec_is_valid_error_code(code > 0)` to avoid unsound over-constraint.
 /// Module-level proofs can strengthen to this predicate when the specific
 /// error codes returned by a call site are known.
+/// See `src/libs/error/src/lib.rs` for the complete `ErrorCode` definition.
 pub open spec fn spec_is_error_code_value(code: int) -> bool {
     code == 2    // NoSuchEntry
     || code == 3    // NoSuchProcess
@@ -311,9 +324,11 @@ pub open spec fn spec_is_error_code_value(code: int) -> bool {
 ///
 /// Used in ghost code on validation-failure early-return paths.
 /// `lemma_short_circuit_on_validation_failure` proves that the PM outcome
-/// is irrelevant when any validation step fails, so this value is safe.
+/// is irrelevant when any validation step fails, so any value is safe.
+/// Uses `CtOk { tid: 0 }` rather than `CtError` to avoid confusion with
+/// a real error code (error codes must be positive per `spec_is_valid_error_code`).
 pub open spec fn IRRELEVANT_PM_OUTCOME() -> CreateThreadOutcomeView {
-    CreateThreadOutcomeView::CtError { error_code: 0 }
+    CreateThreadOutcomeView::CtOk { tid: 0 }
 }
 
 } // verus!

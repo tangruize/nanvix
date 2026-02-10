@@ -74,12 +74,59 @@ pub proof fn lemma_user_fn_invalid_propagates(
 {
 }
 
-/// Proof: when user_stack is invalid, the result is InvalidArgument.
+/// Proof: when user_stack region is out of user space, the result is InvalidArgument.
+///
+/// # Description
+///
+/// If prior validations pass but the user_stack region does not lie in user
+/// address space, the function returns InvalidArgument (Step 4).
+pub proof fn lemma_user_stack_region_invalid_propagates(
+    input: CreateThreadInputView,
+    pm_outcome: CreateThreadOutcomeView,
+)
+    requires
+        spec_args_addr_valid(input),
+        spec_copy_succeeded(input),
+        spec_user_fn_valid(input),
+        !spec_user_stack_region_valid(input),
+    ensures
+        spec_create_thread_result(input, pm_outcome) ==
+            (CreateThreadResultView::Error { error_code: ERROR_CODE_INVALID_ARGUMENT() }),
+        spec_is_error(spec_create_thread_result(input, pm_outcome)),
+{
+}
+
+/// Proof: when user_stack size is insufficient, the result is InvalidArgument.
+///
+/// # Description
+///
+/// If prior validations pass and the user_stack region is valid but the
+/// stack size is below `USER_STACK_SIZE`, the function returns
+/// InvalidArgument (Step 4b).
+pub proof fn lemma_user_stack_size_insufficient_propagates(
+    input: CreateThreadInputView,
+    pm_outcome: CreateThreadOutcomeView,
+)
+    requires
+        spec_args_addr_valid(input),
+        spec_copy_succeeded(input),
+        spec_user_fn_valid(input),
+        spec_user_stack_region_valid(input),
+        !spec_user_stack_size_sufficient(input),
+    ensures
+        spec_create_thread_result(input, pm_outcome) ==
+            (CreateThreadResultView::Error { error_code: ERROR_CODE_INVALID_ARGUMENT() }),
+        spec_is_error(spec_create_thread_result(input, pm_outcome)),
+{
+}
+
+/// Proof: when user_stack is invalid (either reason), the result is InvalidArgument.
 ///
 /// # Description
 ///
 /// If prior validations pass but user_stack validation fails (either
 /// out of user space or too small), the function returns InvalidArgument.
+/// This is the combined lemma covering both Step 4 and Step 4b.
 pub proof fn lemma_user_stack_invalid_propagates(
     input: CreateThreadInputView,
     pm_outcome: CreateThreadOutcomeView,
@@ -407,31 +454,20 @@ pub proof fn lemma_thread_create_args_size_matches()
 {
 }
 
-/// Proof: the copy source address equals the step 1 validated address.
-///
-/// # Description
-///
-/// In the original `create_thread` function:
-/// - Step 1 validates `is_user_region(VirtualAddress::from(args.arg0), size_of::<...>())`
-/// - Step 2 calls `copy_from_user(pm, pid, &mut thread_create_args, args.arg0 as usize)`
-/// Both use `args.arg0` as the address. In the model, `ghost_arg0` is passed
-/// to both `is_user_region` (step 1) and `copy_from_user` (step 2).
-///
-/// This lemma proves that when the input view's `arg0` matches the step 1
-/// validation address, the copy source address is the same as the validated
-/// address. Combined with the `is_user_region` check, this means the copy
-/// only proceeds from a validated user-space address.
-pub proof fn lemma_copy_source_matches_validated_address(
-    input: CreateThreadInputView,
-)
-    requires
-        spec_args_addr_valid(input),
-    ensures
-        // The arg0 used for validation is the same arg0 used for copy.
-        // In the model, both are input.arg0 by construction.
-        input.arg0 == input.arg0,
-{
-}
+// NOTE: Copy source address linkage (arg0 → copy_from_user)
+//
+// In the original `create_thread` function:
+// - Step 1 validates `is_user_region(VirtualAddress::from(args.arg0), size_of::<...>())`
+// - Step 2 calls `copy_from_user(pm, pid, &mut thread_create_args, args.arg0 as usize)`
+// Both use `args.arg0` as the address.
+//
+// In the model, `ghost_arg0` is passed to both `is_user_region` (step 1) and
+// `copy_from_user` (step 2) in the exec code. This linkage is established
+// structurally by using the same ghost variable at both call sites, not by a
+// proof lemma. The `copy_from_user` external body accepts `Ghost(ghost_src_addr)`
+// which receives the same `ghost_arg0` value as `is_user_region`.
+//
+// See the Abstraction Correctness section in create_thread.rs for details.
 
 //==================================================================================================
 // Proof Functions — Argument Passthrough
