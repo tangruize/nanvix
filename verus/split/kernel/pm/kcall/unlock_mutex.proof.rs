@@ -83,14 +83,13 @@ pub proof fn lemma_result_exhaustive(
 ///
 /// # Description
 ///
-/// When `take_mutex_guard` succeeds, the returned `MutexGuard` is immediately
-/// dropped at the semicolon in the original code. The guard's `Drop`
-/// implementation unlocks the mutex.
-///
-/// This lemma connects the pipeline result to the guard-drop guarantee:
-/// when the result is `Success` and the `spec_guard_dropped_and_mutex_unlocked`
-/// predicate holds (established by `drop_guard_model`'s postcondition),
-/// both the pipeline success and the mutex unlock are guaranteed.
+/// **Connecting lemma**: bridges trust boundary T2's postcondition
+/// (`spec_guard_dropped_and_mutex_unlocked`, established by `drop_guard_model`)
+/// to the kcall-level pipeline result (`spec_is_success`). The guard-drop
+/// postcondition is forwarded from requires to ensures; the lemma's
+/// primary contribution is proving that `TgOk` maps to `Success` under
+/// this context, connecting the two trust boundaries into a single
+/// end-to-end guarantee.
 pub proof fn lemma_guard_dropped_on_success(
     take_guard_outcome: TakeMutexGuardOutcomeView,
     mutex_addr: nat,
@@ -132,11 +131,15 @@ pub proof fn lemma_result_mapping_independent_of_pid_tid(
 /// # Description
 ///
 /// Makes the x86-32 architecture assumption explicit and verifiable.
+/// Connects `USIZE_BITS` to `USIZE_MAX_X86_32` via the power-of-two
+/// relationship: USIZE_MAX == 2^USIZE_BITS - 1.
 pub proof fn lemma_architecture_guard()
     ensures
         USIZE_BITS() == 32,
         USIZE_MAX_X86_32() == u32::MAX as nat,
         USIZE_MAX_X86_32() == 4294967295nat,
+        // Connect USIZE_BITS to USIZE_MAX: max == 2^bits - 1.
+        USIZE_MAX_X86_32() == sub(pow2(USIZE_BITS()), 1),
 {
 }
 

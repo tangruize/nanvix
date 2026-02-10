@@ -185,6 +185,10 @@ pub uninterp spec fn spec_caller_no_pm_reference() -> bool;
 /// Convenience predicate for the safety requirement from the original
 /// `unlock_mutex` function's `# Safety` documentation. Call sites should
 /// establish this predicate before invoking `unlock_mutex`.
+///
+/// Includes the requirement that the supplied (pid, tid) must be the
+/// currently-running thread, since the PM internally operates on the
+/// running thread regardless of the parameters passed.
 pub open spec fn spec_unlock_mutex_safety_preconditions() -> bool {
     spec_caller_no_pm_reference()
 }
@@ -201,6 +205,25 @@ pub open spec fn spec_unlock_mutex_safety_preconditions() -> bool {
 /// When the PM trust boundary is enriched with ownership constraints, this
 /// predicate should be given a concrete interpretation by the PM module.
 pub uninterp spec fn spec_thread_owns_mutex(pid: nat, tid: nat, mutex_addr: nat) -> bool;
+
+/// Spec predicate: the supplied (pid, tid) is the currently-running thread.
+///
+/// # Description
+///
+/// The PM's `take_mutex_guard` implementation internally calls
+/// `self.get_running_mut().running_mut().take_mutex_guard(mutex_addr)`,
+/// operating on the *currently-running* thread regardless of the supplied
+/// pid/tid parameters. The pid/tid parameters are only used for error
+/// logging. This predicate makes the implicit assumption explicit: the
+/// caller must supply the currently-running thread's identifiers so that
+/// `spec_thread_owns_mutex(pid, tid, mutex_addr)` correctly reflects the
+/// thread whose guard was actually extracted.
+///
+/// The kcall dispatch layer guarantees this invariant: kcalls are always
+/// invoked on behalf of the currently-running thread, and the dispatcher
+/// passes that thread's pid/tid. This predicate encodes that guarantee
+/// as a verifiable precondition.
+pub uninterp spec fn spec_is_currently_running(pid: nat, tid: nat) -> bool;
 
 /// Spec predicate: the guard for the given mutex has been dropped (mutex unlocked).
 ///

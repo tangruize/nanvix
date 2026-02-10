@@ -49,7 +49,8 @@
 //! - **Ownership on success**: On success, `spec_thread_owns_mutex(pid, tid,
 //!   mutex_addr)` is established, proving the calling thread owned the mutex.
 //!   This property is propagated from the `take_mutex_guard_model` contract
-//!   to the kcall boundary.
+//!   to the kcall boundary. The precondition `spec_is_currently_running(pid, tid)`
+//!   ensures the supplied identifiers match the thread the PM actually operates on.
 //! - **No guard leak on error**: On error, no guard token is returned to the
 //!   caller (`lemma_no_guard_leak_on_error`).
 //! - **Structured error-path modeling**: On error, a ghost flag
@@ -243,6 +244,13 @@ impl UnlockMutexResultModel {
 ///   thread doesn't own the mutex). No guard was extracted, so the mutex
 ///   state is unchanged.
 ///
+/// **Trust assumption**: The `put_mutex()` / `MutexGuard::drop()` ordering
+/// interaction (where `put_mutex` may remove the mutex from process state
+/// via `extract_if` before the guard is dropped) is verified in the PM
+/// module, not here. This model assumes `MutexGuard::drop()` correctly
+/// unlocks the mutex regardless of the process state mutations performed
+/// by `put_mutex`.
+///
 /// For the kcall caller, the guard token is `None` on error because the
 /// caller did NOT receive a `MutexGuard` (the `Err` variant carries only
 /// the `Error`). The PM-internal implicit drop is invisible to the caller.
@@ -257,6 +265,10 @@ pub fn take_mutex_guard_model(mutex_addr: u32, pid: Ghost<u32>, tid: Ghost<u32>)
     requires
         // Safety: the caller must not hold a PM reference.
         spec_unlock_mutex_safety_preconditions(),
+        // The supplied pid/tid must be the currently-running thread.
+        // The PM operates on the running thread internally; this ensures
+        // the spec_thread_owns_mutex postcondition is semantically correct.
+        spec_is_currently_running(pid@ as nat, tid@ as nat),
     ensures
         // Error codes from the PM module are valid ErrorCode discriminants.
         result.0 matches TakeMutexGuardOutcomeModel::Error { error_code }
@@ -347,6 +359,9 @@ pub fn unlock_mutex_model(mutex_addr: u32, pid: Ghost<u32>, tid: Ghost<u32>) -> 
     requires
         // Safety: the caller must not hold a PM reference.
         spec_unlock_mutex_safety_preconditions(),
+        // The supplied pid/tid must be the currently-running thread.
+        // Guaranteed by the kcall dispatch layer.
+        spec_is_currently_running(pid@ as nat, tid@ as nat),
         // ABI constraint: mutex_addr originates from 32-bit usize on x86-32.
         // This is always true for u32 values (documentation-only constraint
         // making the architecture assumption explicit).
