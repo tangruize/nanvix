@@ -211,7 +211,16 @@ impl CopyFromUserResultModel {
 /// # Description
 ///
 /// After copy_from_user succeeds, the thread_create_args fields are
-/// validated individually. This struct captures the validation results.
+/// validated individually. This struct captures the validation results
+/// along with the concrete addresses from the copied structure.
+///
+/// ## Concrete Address Fields
+///
+/// `user_fn_addr`, `user_stack_base_addr`, and `user_tda_addr` are
+/// the concrete addresses extracted from the copied `ThreadCreateArgs`.
+/// These link the validation booleans to the actual data from user space,
+/// enabling postconditions to verify that the addresses validated by
+/// `is_user_addr`/`is_user_region` are the same as those in the copied args.
 ///
 /// ## Omitted Fields
 ///
@@ -226,14 +235,20 @@ impl CopyFromUserResultModel {
 /// If Nanvix targets a 64-bit architecture, this field and the
 /// `USER_STACK_SIZE()` spec constant must be updated.
 pub struct ThreadCreateArgsModel {
+    /// The user_fn address (concrete value from copied args).
+    pub user_fn_addr: u32,
     /// Whether user_fn lies in user address space.
     pub user_fn_valid: bool,
+    /// The user_stack_base address (concrete value from copied args).
+    pub user_stack_base_addr: u32,
     /// Whether user_stack region lies in user address space.
     pub user_stack_valid: bool,
     /// The user stack size in bytes.
     pub user_stack_size: u32,
     /// Whether user_tda is present.
     pub has_user_tda: bool,
+    /// The user_tda address (concrete value from copied args; 0 if absent).
+    pub user_tda_addr: u32,
     /// Whether user_tda (if present) lies in user address space.
     pub user_tda_valid: bool,
 }
@@ -242,10 +257,13 @@ impl ThreadCreateArgsModel {
     /// Spec function: converts to the abstract ThreadCreateArgsView.
     pub open spec fn spec_view(&self) -> ThreadCreateArgsView {
         ThreadCreateArgsView {
+            user_fn_addr: self.user_fn_addr as nat,
             user_fn_valid: self.user_fn_valid,
+            user_stack_base_addr: self.user_stack_base_addr as nat,
             user_stack_valid: self.user_stack_valid,
             user_stack_size: self.user_stack_size as nat,
             has_user_tda: self.has_user_tda,
+            user_tda_addr: self.user_tda_addr as nat,
             user_tda_valid: self.user_tda_valid,
         }
     }
@@ -360,11 +378,17 @@ pub fn is_user_addr(
 ///
 /// Error codes from `copy_from_user` are guaranteed valid (positive) because
 /// the original returns `error.code` which is an `ErrorCode` enum value.
+///
+/// On success, the copied `ThreadCreateArgs` structure produces concrete
+/// addresses (user_fn, user_stack_base, user_tda) that are subsequently
+/// validated by `is_user_addr`/`is_user_region`. The ghost `args_view`
+/// parameter tracks these addresses through the pipeline.
 #[verifier::external_body]
 pub fn copy_from_user(
     succeeded: bool,
     error_code: i32,
     Ghost(ghost_pid): Ghost<nat>,
+    Ghost(ghost_args_view): Ghost<ThreadCreateArgsView>,
 ) -> (result: CopyFromUserResultModel)
     ensures
         succeeded ==> matches!(result, CopyFromUserResultModel::CopyOk),
@@ -469,6 +493,13 @@ pub fn create_thread_model(
         user_stack_size_min as nat == USER_STACK_SIZE(),
         // Copy error code must be valid when copy fails.
         !copy_succeeded ==> spec_is_valid_error_code(copy_error_code as int),
+        // The args_size parameter matches the ThreadCreateArgs struct size.
+        ghost_args_size == THREAD_CREATE_ARGS_SIZE(),
+        // Ghost addresses must match the concrete addresses in thread_args.
+        // This ensures validation booleans correspond to the copied args.
+        ghost_user_fn_addr == thread_args.user_fn_addr as nat,
+        ghost_user_stack_base_addr == thread_args.user_stack_base_addr as nat,
+        ghost_user_tda_addr == thread_args.user_tda_addr as nat,
     ensures
         // Build the ghost input from parameters.
         ret.1@ == (CreateThreadInputView {
@@ -503,6 +534,12 @@ pub fn create_thread_model(
         spec_is_success(ret.0.spec_view()) || spec_is_error(ret.0.spec_view()),
         // Success and Error are mutually exclusive.
         !(spec_is_success(ret.0.spec_view()) && spec_is_error(ret.0.spec_view())),
+        // Ghost addresses match thread_args concrete addresses (data-flow linkage).
+        ret.1@.user_fn_addr == ret.1@.thread_args.user_fn_addr,
+        ret.1@.user_stack_base_addr == ret.1@.thread_args.user_stack_base_addr,
+        ret.1@.user_tda_addr == ret.1@.thread_args.user_tda_addr,
+        // Args size matches the spec constant.
+        ret.1@.args_size == THREAD_CREATE_ARGS_SIZE(),
 {
     // Build the ghost input view.
     let ghost input_view: CreateThreadInputView = CreateThreadInputView {
@@ -534,7 +571,12 @@ pub fn create_thread_model(
     }
 
     // Step 2: Copy thread_create_args from user space.
-    let copy_result: CopyFromUserResultModel = copy_from_user(copy_succeeded, copy_error_code, Ghost(ghost_pid));
+    let copy_result: CopyFromUserResultModel = copy_from_user(
+        copy_succeeded,
+        copy_error_code,
+        Ghost(ghost_pid),
+        Ghost(thread_args.spec_view()),
+    );
     match copy_result {
         CopyFromUserResultModel::CopyError { error_code } => {
             let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();

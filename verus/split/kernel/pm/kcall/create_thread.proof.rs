@@ -386,4 +386,21 @@ pub proof fn lemma_user_stack_size_matches_config()
 {
 }
 
+/// Proof: the THREAD_CREATE_ARGS_SIZE spec constant matches ThreadCreateArgs layout.
+///
+/// # Description
+///
+/// Documents that `THREAD_CREATE_ARGS_SIZE() == 28` bytes on x86-32.
+/// Layout: VirtualAddress(usize=4) + usize(4) + usize(4)
+///       + VirtualAddress(4) + usize(4) + Option<VirtualAddress>(8)
+///       = 28 bytes.
+///
+/// Source: `src/libs/sys/src/sys/pm/thread_create_args.rs`.
+/// If `ThreadCreateArgs` fields change, this lemma will need updating.
+pub proof fn lemma_thread_create_args_size_matches()
+    ensures
+        THREAD_CREATE_ARGS_SIZE() == 28nat,
+{
+}
+
 } // verus!

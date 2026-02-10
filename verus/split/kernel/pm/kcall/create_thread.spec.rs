@@ -34,6 +34,24 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
     22
 }
 
+/// The size of ThreadCreateArgs in bytes on x86-32.
+/// Corresponds to `core::mem::size_of::<ThreadCreateArgs>()`.
+///
+/// Layout on x86-32 (usize = 4 bytes):
+///   user_fn: VirtualAddress(usize)       = 4 bytes
+///   user_fn_arg0: usize                  = 4 bytes
+///   user_fn_arg1: usize                  = 4 bytes
+///   user_stack_base: VirtualAddress(usize)= 4 bytes
+///   user_stack_size: usize               = 4 bytes
+///   user_tda: Option<VirtualAddress>     = 8 bytes (discriminant + value)
+///   Total                                = 28 bytes
+///
+/// Sync point: if `ThreadCreateArgs` fields change, update this value and
+/// `lemma_thread_create_args_size_matches` in the proof file.
+pub open spec fn THREAD_CREATE_ARGS_SIZE() -> nat {
+    28
+}
+
 /// The minimum user stack size in bytes (512 KiB = 524288).
 /// Corresponds to `config::memory_layout::USER_STACK_SIZE`.
 ///
@@ -56,14 +74,20 @@ pub open spec fn USER_STACK_SIZE() -> nat {
 /// user space. Contains the validated fields needed for thread creation.
 #[verifier::ext_equal]
 pub struct ThreadCreateArgsView {
+    /// The user_fn address (concrete value from copied args).
+    pub user_fn_addr: nat,
     /// Whether user_fn address is in user address space.
     pub user_fn_valid: bool,
+    /// The user_stack_base address (concrete value from copied args).
+    pub user_stack_base_addr: nat,
     /// Whether user_stack region is in user address space.
     pub user_stack_valid: bool,
     /// The user stack size in bytes.
     pub user_stack_size: nat,
     /// Whether user_tda is present (Some).
     pub has_user_tda: bool,
+    /// The user_tda address (concrete value from copied args; 0 if absent).
+    pub user_tda_addr: nat,
     /// Whether user_tda address (if present) is in user address space.
     pub user_tda_valid: bool,
 }
