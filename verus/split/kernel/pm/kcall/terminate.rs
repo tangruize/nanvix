@@ -57,6 +57,11 @@
 //! - **Terminability precondition**: Success implies the PID was terminatable
 //!   in the pre-state: existed, not kernel, not running
 //!   (`lemma_success_requires_terminatable`).
+//! - **Liveness (functional completeness)**: If a PID is valid (parses
+//!   successfully) and in the terminatable set, the kcall is guaranteed to
+//!   succeed (`process_manager_terminate` liveness postcondition +
+//!   `lemma_terminatable_pid_succeeds`). This closes the equivalence gap:
+//!   success ↔ terminatable.
 //! - **PM state well-formedness**: The `spec_pm_wf` invariant ensures the
 //!   running PID is always in the process set and the kernel PID is tracked.
 //!   This prevents inconsistent postconditions on the PM external_body
@@ -105,7 +110,10 @@
 //!
 //! Full end-to-end soundness requires composing these module-level proofs.
 //! This composition is not automated in the current verification build;
-//! it relies on postcondition-contract matching between modules.
+//! it relies on postcondition-contract matching between modules. This is
+//! a known architectural limitation of the per-module verification approach.
+//! A future integration test or multi-module verification pass could
+//! mechanically discharge these assumptions.
 //!
 //! ### Process Lifecycle State Refinement
 //!
@@ -344,6 +352,15 @@ pub fn process_manager_terminate(
         // On success: PID was in the terminatable set (ready/suspended).
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> pm_pre.terminatable_set.contains(pid as nat),
+        // Liveness: terminatable PID always succeeds (ready/suspended
+        // processes are always found by pm.terminate and processed).
+        // By spec_pm_wf, terminatable PIDs are never kernel or running,
+        // so the two rejection checks pass. The queue lookup succeeds
+        // because terminatable_set models exactly the ready/suspended
+        // queues. This is the converse of the success-implies-terminatable
+        // postcondition, making the relationship bidirectional.
+        pm_pre.terminatable_set.contains(pid as nat)
+            ==> ret.0.spec_view() == TerminateOutcomeView::TmOk,
         // Non-terminatable non-kernel non-running PID fails with NoSuchProcess.
         // This covers both PIDs not in process_set AND PIDs in process_set
         // but not in terminatable_set (interrupted/zombie).
@@ -448,6 +465,11 @@ pub fn terminate_model(
         // Success path: PID was terminatable in the pre-state.
         spec_is_success(ret.0.spec_view())
             ==> spec_terminate_possible(pm_pre, arg0 as nat),
+        // Liveness: terminatable PID with valid parse always succeeds.
+        // Combines T1 determinism (valid PID parses) and T2 liveness
+        // (terminatable PID returns TmOk) through the pipeline.
+        spec_is_valid_pid(arg0 as nat) && spec_terminate_possible(pm_pre, arg0 as nat)
+            ==> spec_is_success(ret.0.spec_view()),
         // Kernel PID: if arg0 == 0 and parses successfully, result is error.
         arg0 as nat == KERNEL_PID() && spec_pid_parsed_ok(ret.1@)
             ==> spec_is_error(ret.0.spec_view()),

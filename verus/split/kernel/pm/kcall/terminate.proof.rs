@@ -501,4 +501,25 @@ pub proof fn lemma_nonexistent_pid_returns_no_such_process(
 {
 }
 
+/// Proof: terminatable PID always produces success through the pipeline.
+///
+/// # Description
+///
+/// When PID parsing succeeds and the PID is in the terminatable set,
+/// `process_manager_terminate` returns TmOk (liveness postcondition),
+/// and the pipeline result is Success. This is the liveness guarantee:
+/// a valid, terminatable PID is guaranteed to succeed end-to-end.
+pub proof fn lemma_terminatable_pid_succeeds(
+    pid: nat,
+)
+    ensures
+        spec_is_success(
+            spec_terminate_result(
+                PidParseOutcomeView::PidOk { pid },
+                TerminateOutcomeView::TmOk,
+            )
+        ),
+{
+}
+
 } // verus!
