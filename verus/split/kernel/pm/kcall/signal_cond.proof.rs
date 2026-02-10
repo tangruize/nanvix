@@ -471,7 +471,8 @@ pub proof fn lemma_broadcast_semantics_preserved(
 /// # Description
 ///
 /// When `broadcast` is false, the spec guarantees that at most one thread
-/// is awakened. This is a direct consequence of `spec_broadcast_semantics`.
+/// is awakened, and that the count does not exceed the number of waiters
+/// (i.e., `awakened == 0` when there are no waiters).
 pub proof fn lemma_notify_first_awakens_at_most_one(
     cond_addr: nat,
     awakened: nat,
@@ -480,6 +481,7 @@ pub proof fn lemma_notify_first_awakens_at_most_one(
         spec_broadcast_semantics(false, cond_addr, awakened),
     ensures
         awakened <= 1,
+        awakened <= spec_num_waiters(cond_addr),
 {
 }
 
