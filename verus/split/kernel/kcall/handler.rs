@@ -72,9 +72,20 @@
 //!
 //! ## Verification Model
 //!
-//! The original `kcall_handler` accesses global state (`ScoreBoard::get_mut()`,
-//! `ProcessManager`, `EventManager`), uses OS primitives (`Mutex`, `Semaphore`),
-//! and performs complex I/O. For verification, we model:
+//! This is a **shadow model** verification. The original `kcall_handler`
+//! (`src/kernel/src/kcall/handler.rs`) accesses global state
+//! (`ScoreBoard::get_mut()`, `ProcessManager`, `EventManager`), uses OS
+//! primitives (`Mutex`, `Semaphore`), and takes `&mut Hal` / `&mut
+//! VirtMemoryManager` / `&mut ProcessManager` parameters that cannot be
+//! compiled by Verus. Direct verification of the source is infeasible.
+//! This shadow-model approach is the standard methodology used across all
+//! verified modules in the Nanvix project.
+//!
+//! **Drift mitigation**: Source baseline (commit ff5c49cc, SHA-256 prefix
+//! 38c3e49732afc4ed, 200 lines), regression lemmas for constants and
+//! dispatch coverage, and source file/line citations in spec comments.
+//!
+//! For verification, we model:
 //! - The loop's control flow as spec functions over abstract state.
 //! - Work tracking via `LoopIterationState` with three boolean flags.
 //! - Dispatch routing via `HandlerDispatchCategory` enum.
