@@ -40,10 +40,14 @@
 //! - **Continuation errors override stored result**: When get_cond fails but a
 //!   continuation step also fails, the continuation error takes priority.
 //! - **Error code linkage**: Spec constant matches `ErrorCode::InvalidArgument`.
-//! - **Architecture guard**: x86-32 assumption verified.
 //! - **Safety precondition composition**: Three safety requirements compose correctly.
 //! - **Mutex protocol on success**: On success, `spec_mutex_released`,
 //!   `spec_cond_ref_released`, and `spec_mutex_reacquired` all hold.
+//! - **Resource release independence**: `spec_mutex_released` holds whenever
+//!   `take_mutex_guard` succeeds (TmgOk), `spec_cond_ref_released` whenever
+//!   `put_cond` succeeds (PcOk), and `spec_mutex_reacquired` whenever `lock`
+//!   succeeds (LoOk) — independent of later continuation errors.
+//! - **Architecture guard**: Explicit `USIZE_BITS() == 32` precondition.
 //! - **Exec-spec equivalence**: `wait_cond_model` result matches
 //!   `spec_wait_cond_result` applied to the ghost step outcomes.
 //!
@@ -612,6 +616,7 @@ pub fn wait_cond_model(
     tid: Ghost<u32>,
 ) -> (ret: (WaitCondResultModel, Ghost<WaitCondGhostState>))
     requires
+        USIZE_BITS() == 32,
         spec_wait_cond_safety_preconditions(pid@ as nat, tid@ as nat),
         spec_is_currently_running(pid@ as nat, tid@ as nat),
     ensures
@@ -630,6 +635,18 @@ pub fn wait_cond_model(
             && spec_cond_ref_released(cond_addr as nat)
             && spec_mutex_reacquired(mutex_addr as nat)
         ),
+        // Resource release: mutex was released whenever take_mutex_guard succeeded,
+        // independent of later continuation errors.
+        ret.1@.tmg matches TakeMutexGuardOutcomeView::TmgOk
+            ==> spec_mutex_released(mutex_addr as nat),
+        // Resource release: condvar reference was released whenever put_cond
+        // succeeded, independent of later continuation errors.
+        ret.1@.pc matches PutCondOutcomeView::PcOk
+            ==> spec_cond_ref_released(cond_addr as nat),
+        // Resource release: mutex was reacquired whenever lock succeeded,
+        // independent of later put_guard errors.
+        ret.1@.lo matches LockOutcomeView::LoOk
+            ==> spec_mutex_reacquired(mutex_addr as nat),
 {
     // Step 1: Parse timeout.
     let parse_result: (bool, bool) = parse_timeout_model(timeout_s, timeout_ns);
