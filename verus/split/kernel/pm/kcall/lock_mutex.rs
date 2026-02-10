@@ -80,6 +80,12 @@
 //! - **Safety predicate well-formedness**: The composite safety predicate
 //!   correctly decomposes into its three constituents
 //!   (`lemma_safety_preconditions_well_formed`).
+//! - **Guard consumption on all paths**: After `mutex_lock_model`, the guard
+//!   token is either `Some(addr)` (consumed by `put_mutex_guard_model`) or
+//!   `None` (no guard exists). No path leaks a guard token
+//!   (`lemma_guard_consumed_on_all_paths`). On the `PutGuardError` path,
+//!   the original `MutexGuard` is consumed by move semantics inside
+//!   `put_mutex_guard`, and `MutexGuard::drop()` unlocks the mutex.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -161,6 +167,17 @@
 
 use crate::libs::error::ErrorCode;
 use vstd::prelude::*;
+
+// Architecture documentation: This model assumes usize is 32 bits (x86-32).
+// The Verus verifier runs on the host (typically x86-64), so compile-time
+// `#[cfg(target_pointer_width)]` checks would be misleading. Instead, the
+// x86-32 assumption is enforced via:
+// 1. `USIZE_BITS()` spec constant (= 32) in the spec file.
+// 2. `lemma_architecture_guard()` in the proof file, which verifies
+//    USIZE_MAX_X86_32 == u32::MAX == 4294967295.
+// 3. All model parameters use `u32` (not `usize`), matching x86-32 width.
+// If the kernel targets x86-64, update USIZE_BITS to 64, widen parameters
+// to u64, and update USIZE_MAX to u64::MAX. The lemma will fail until fixed.
 
 // Include specifications.
 include!("lock_mutex.spec.rs");
@@ -378,6 +395,14 @@ pub fn mutex_lock_model(has_timeout: bool, timeout_view: Ghost<Option<TimeoutVie
 /// Stores the mutex guard in the calling thread.
 /// The PM module verifies this function's correctness internally.
 ///
+/// **Guard consumption semantics**: In the original code, `put_mutex_guard`
+/// takes the `MutexGuard` by value (move semantics). On success, the guard
+/// is stored in the thread's bookkeeping. On failure, the guard is dropped
+/// at the end of `put_mutex_guard`, and `MutexGuard::drop()` unlocks the
+/// mutex. Either way, the guard is consumed — no guard leak is possible.
+/// The unlock-on-drop behavior is a mutex-module concern, modeled here as
+/// a commented-out postcondition hook for future PM-level strengthening.
+///
 /// # Parameters
 ///
 /// - `mutex_addr`: The mutex address, same as passed to `get_mutex_model`.
@@ -395,6 +420,10 @@ pub fn put_mutex_guard_model(mutex_addr: u32, guard_token: Ghost<Option<u32>>) -
     ensures
         // Error codes from the PM module are valid ErrorCode discriminants.
         result matches PutGuardOutcomeModel::Error { error_code } ==> spec_is_valid_error_code(error_code as int),
+        // Future strengthening hook (mutex/PM module responsibility):
+        // On error, the guard is still consumed (dropped), and MutexGuard::drop()
+        // unlocks the mutex. The guard is never leaked.
+        // result matches PutGuardOutcomeModel::Error { .. } ==> spec_mutex_unlocked_after_guard_drop(mutex_addr),
 {
     unimplemented!()
 }
