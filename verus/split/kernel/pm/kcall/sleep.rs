@@ -14,7 +14,10 @@
 //! 3. Computes the alarm (wake-up) time via `now.checked_add_duration(&timeout)`.
 //! 4. Returns `InvalidArgument` if the addition overflows.
 //! 5. Calls `ProcessManager::sleep(Some(alarm))`.
-//! 6. Maps `Ok(())` and `Interrupted(TimedOut)` to success; propagates other errors.
+//! 6. Classifies the result via a 3-arm match:
+//!    - `Ok(())` → `Ok(())`
+//!    - `Err(Interrupted(TimedOut))` → `Ok(())`
+//!    - `Err(error)` → `Err(error)` (propagates Killed and Generic errors)
 //!
 //! ## Verified Properties
 //!
@@ -24,18 +27,23 @@
 //!   has valid nanoseconds (`lemma_alarm_wf`).
 //! - **Overflow detection**: When `checked_add_duration` fails (overflow), the function
 //!   returns `GenericError(InvalidArgument)` (`lemma_overflow_returns_invalid_argument`).
-//! - **TimedOut is success**: `Interrupted(TimedOut)` from `ProcessManager::sleep` is
-//!   treated as a successful sleep completion (`lemma_timed_out_is_success`).
-//! - **PM success passthrough**: `Ok(())` from `ProcessManager::sleep` maps to
-//!   success (`lemma_pm_success_is_success`).
-//! - **Error propagation**: Other `SleepError` variants are propagated unchanged
+//! - **TimedOut is success**: Only `PmTimedOut` from `ProcessManager::sleep` is
+//!   treated as success (`lemma_timed_out_is_success`).
+//! - **Killed is error**: `PmKilled` is propagated as `KilledError`, NOT as success
+//!   (`lemma_killed_is_error`).
+//! - **PM success passthrough**: `PmOk` maps to success (`lemma_pm_success_is_success`).
+//! - **Error propagation**: `PmGenericError` is propagated unchanged
 //!   (`lemma_pm_error_propagates`).
-//! - **Result dichotomy**: The sleep result is always either success or generic error;
-//!   there is no third category (`lemma_sleep_result_dichotomy`).
+//! - **Result trichotomy**: The sleep result is always exactly one of Success,
+//!   KilledError, or GenericError (`lemma_sleep_result_trichotomy`).
+//! - **Success only from Ok or TimedOut**: When checked_add succeeds, the result is
+//!   Success if and only if the PM result was PmOk or PmTimedOut
+//!   (`lemma_success_only_from_ok_or_timed_out`).
 //! - **Zero duration validity**: Sleeping for (0, 0) always produces a valid alarm
 //!   time (`lemma_zero_duration_always_valid`).
-//! - **Exec model correctness**: `sleep_model` implements the full control flow
-//!   and its postconditions match the spec-level `spec_sleep_result`.
+//! - **Exec model full correctness**: `sleep_model` implements the 3-arm match
+//!   and its postconditions tie the result to `spec_sleep_result` for ALL paths
+//!   (overflow, success, and error).
 //!
 //! ## Verification Model
 //!
@@ -45,8 +53,9 @@
 //! - `SystemTime::checked_add_duration()` → modeled via `checked_add_duration()` `external_body`.
 //! - `ProcessManager::sleep()` → modeled via `process_manager_sleep()` `external_body`.
 //!
-//! The exec-level `sleep_model()` mirrors the original control flow and proves that
-//! its result matches `spec_sleep_result` for all inputs.
+//! The exec-level `sleep_model()` mirrors the original control flow including the
+//! 3-arm match on the PM result, and proves that the result matches `spec_sleep_result`
+//! for all inputs and all PM outcomes.
 //!
 //! ## Trust Boundaries
 //!
@@ -64,6 +73,11 @@
 //!   involves context switching and thread scheduling. Modeled as an `external_body`
 //!   function returning a `SleepResultModel`. The PM's internal correctness is
 //!   verified separately.
+//! - **T5: `usize` to `u64`/`u32` cast**. The original takes `(usize, usize)` and
+//!   casts to `(u64, u32)`. On Nanvix's x86-32 target, usize is 32 bits, so the
+//!   cast always fits. The model takes `(u64, u32)` with a precondition
+//!   `seconds <= u32::MAX as u64` to match the 32-bit origin. Cast safety is
+//!   at the ABI boundary, not verified here.
 //!
 //! ## API Mapping
 //!
@@ -156,11 +170,16 @@ impl DurationModel {
     }
 }
 
-/// Model of SleepError result for verification.
+/// Model of ProcessManager::sleep result for verification.
 ///
 /// # Description
 ///
-/// Represents the three possible outcomes from ProcessManager::sleep.
+/// Represents the four possible outcomes from ProcessManager::sleep,
+/// matching the original SleepError/InterruptReason enums:
+/// - Ok(()) → Ok
+/// - Err(Interrupted(TimedOut)) → TimedOut
+/// - Err(Interrupted(Killed)) → Killed
+/// - Err(Generic(error)) → GenericError
 pub enum SleepResultModel {
     /// ProcessManager::sleep returned Ok(()).
     Ok,
@@ -173,16 +192,32 @@ pub enum SleepResultModel {
 }
 
 impl SleepResultModel {
-    /// Spec function: converts to the abstract SleepResultView.
-    pub open spec fn spec_view(&self) -> SleepResultView {
+    /// Spec function: converts to the abstract PmSleepResultView.
+    ///
+    /// # Description
+    ///
+    /// Maps each exec-level variant to the corresponding spec-level PM result.
+    /// This is a 1:1 mapping that preserves the distinction between all four
+    /// PM outcomes (Ok, TimedOut, Killed, GenericError).
+    pub open spec fn spec_pm_view(&self) -> PmSleepResultView {
         match self {
-            SleepResultModel::Ok => SleepResultView::Success,
-            SleepResultModel::TimedOut => SleepResultView::Interrupted,
+            SleepResultModel::Ok => PmSleepResultView::PmOk,
+            SleepResultModel::TimedOut => PmSleepResultView::PmTimedOut,
+            SleepResultModel::Killed => PmSleepResultView::PmKilled,
             SleepResultModel::GenericError { error_code } => {
-                SleepResultView::GenericError { error_code: *error_code as int }
+                PmSleepResultView::PmGenericError { error_code: *error_code as int }
             },
-            SleepResultModel::Killed => SleepResultView::Interrupted,
         }
+    }
+
+    /// Spec function: converts to the final SleepResultView after classification.
+    ///
+    /// # Description
+    ///
+    /// Applies the 3-arm match classification: Ok and TimedOut become Success,
+    /// Killed becomes KilledError, GenericError passes through.
+    pub open spec fn spec_classified_view(&self) -> SleepResultView {
+        spec_classify_pm_result(self.spec_pm_view())
     }
 }
 
@@ -231,11 +266,16 @@ pub fn checked_add_duration(now: &SystemTimeModel, timeout: &DurationModel) -> (
 /// # Description
 ///
 /// Puts the calling thread to sleep until the alarm time or until interrupted.
-/// Returns the outcome of the sleep operation.
+/// Returns one of the four possible outcomes: Ok, TimedOut, Killed, or GenericError.
 #[verifier::external_body]
 pub fn process_manager_sleep(alarm: &SystemTimeModel) -> (result: SleepResultModel)
     requires
         alarm.spec_wf(),
+    ensures
+        // Postcondition documents that the result is always one of the defined variants.
+        // This is trivially true for the enum but useful for documentation and refinement.
+        matches!(result, SleepResultModel::Ok | SleepResultModel::TimedOut
+            | SleepResultModel::Killed | SleepResultModel::GenericError { .. }),
 {
     unimplemented!()
 }
@@ -262,15 +302,14 @@ pub fn process_manager_sleep(alarm: &SystemTimeModel) -> (result: SleepResultMod
 pub fn duration_new(seconds: u64, nanoseconds: u32) -> (result: DurationModel)
     requires
         // The carry from nanosecond normalization won't overflow u64 seconds.
-        // Since nanoseconds is u32, carry <= 4.  The original `seconds` comes from
-        // usize on 32-bit, so this is always satisfied.
+        // Since nanoseconds is u32, carry <= 4. On Nanvix's x86-32, seconds
+        // comes from usize (32-bit), so this is always satisfied.
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
         result.spec_wf(),
         result.spec_view() == spec_duration_new(seconds as nat, nanoseconds as nat),
         result.nanoseconds < 1_000_000_000u32,
 {
-    // Duration::new normalizes: carry = nanos / NANOS_PER_SEC, remainder = nanos % NANOS_PER_SEC.
     let carry: u64 = (nanoseconds / 1_000_000_000u32) as u64;
     let remainder: u32 = nanoseconds % 1_000_000_000u32;
 
@@ -286,14 +325,23 @@ pub fn duration_new(seconds: u64, nanoseconds: u32) -> (result: DurationModel)
     DurationModel { seconds: total_seconds, nanoseconds: remainder }
 }
 
-/// Verified model of the sleep kcall's error classification.
+/// Verified model of the sleep kcall's 3-arm result classification.
 ///
 /// # Description
 ///
-/// Maps the ProcessManager::sleep result to the sleep kcall result:
-/// - Ok → Ok(())
-/// - Interrupted(TimedOut) → Ok(())
-/// - Other errors → Err(error)
+/// Implements the original's match statement (sleep.rs:62-66):
+/// ```ignore
+/// match ProcessManager::sleep(Some(alarm)) {
+///     Ok(()) => Ok(()),
+///     Err(SleepError::Interrupted(InterruptReason::TimedOut)) => Ok(()),
+///     Err(error) => Err(error),
+/// }
+/// ```
+///
+/// Returns a classified SleepResultModel:
+/// - Ok/TimedOut → SleepResultModel::Ok (success)
+/// - Killed → SleepResultModel::Killed (propagated as error)
+/// - GenericError → SleepResultModel::GenericError (propagated unchanged)
 ///
 /// # Parameters
 ///
@@ -301,15 +349,26 @@ pub fn duration_new(seconds: u64, nanoseconds: u32) -> (result: DurationModel)
 ///
 /// # Returns
 ///
-/// A boolean indicating success (true) or the error model.
-pub fn classify_sleep_result(pm_result: &SleepResultModel) -> (result: bool)
+/// The classified result matching the original's 3-arm match.
+pub fn classify_pm_result(pm_result: SleepResultModel) -> (result: SleepResultModel)
     ensures
-        result == matches!(pm_result, SleepResultModel::Ok | SleepResultModel::TimedOut),
+        result.spec_classified_view() == spec_classify_pm_result(pm_result.spec_pm_view()),
+        // Ok and TimedOut map to success.
+        matches!(pm_result, SleepResultModel::Ok | SleepResultModel::TimedOut)
+            ==> matches!(result, SleepResultModel::Ok),
+        // Killed propagates as error.
+        matches!(pm_result, SleepResultModel::Killed)
+            ==> matches!(result, SleepResultModel::Killed),
+        // GenericError propagates unchanged.
+        pm_result.spec_pm_view() matches PmSleepResultView::PmGenericError { error_code }
+            ==> result.spec_pm_view() matches PmSleepResultView::PmGenericError { error_code: ec }
+                && ec == error_code,
 {
     match pm_result {
-        SleepResultModel::Ok => true,
-        SleepResultModel::TimedOut => true,
-        _ => false,
+        SleepResultModel::Ok => SleepResultModel::Ok,
+        SleepResultModel::TimedOut => SleepResultModel::Ok,
+        SleepResultModel::Killed => SleepResultModel::Killed,
+        SleepResultModel::GenericError { error_code } => SleepResultModel::GenericError { error_code },
     }
 }
 
@@ -319,20 +378,20 @@ pub fn classify_sleep_result(pm_result: &SleepResultModel) -> (result: bool)
 ///
 /// This function mirrors the original `pub unsafe fn sleep(seconds, nanoseconds)`
 /// control flow. It:
-/// 1. Gets the current time.
-/// 2. Constructs a Duration from (seconds, nanoseconds).
-/// 3. Computes the alarm time via checked addition.
-/// 4. Returns InvalidArgument error if the addition overflows.
-/// 5. Calls ProcessManager::sleep(alarm).
-/// 6. Maps Ok and TimedOut to success; propagates other errors.
-///
-/// The postconditions prove that the result matches spec_sleep_result.
+/// 1. Constructs a Duration from (seconds, nanoseconds).
+/// 2. Computes the alarm time via checked addition.
+/// 3. Returns InvalidArgument error if the addition overflows.
+/// 4. Calls ProcessManager::sleep(alarm).
+/// 5. Classifies the result via the 3-arm match: Ok/TimedOut → success,
+///    Killed/GenericError → propagated as errors.
 ///
 /// # Parameters
 ///
 /// - `now`: The current system time (from clock::now()).
-/// - `seconds`: Sleep time in whole seconds.
-/// - `nanoseconds`: Sleep time in fractional nanoseconds.
+/// - `seconds`: Sleep time in whole seconds. On Nanvix's x86-32 target,
+///   this originates from a 32-bit usize, so values > u32::MAX cannot occur
+///   at runtime. The model accepts u64 to verify the post-cast domain.
+/// - `nanoseconds`: Sleep time in fractional nanoseconds (from usize cast to u32).
 ///
 /// # Returns
 ///
@@ -343,26 +402,36 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
         // Duration normalization must not overflow.
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
-        // When checked_add fails, result is GenericError with InvalidArgument.
+        // Overflow path: checked_add fails → GenericError(InvalidArgument).
+        !spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
+            ==> result.spec_classified_view() == (SleepResultView::GenericError {
+                    error_code: ERROR_CODE_INVALID_ARGUMENT()
+                }),
+        // Overflow path: result is always GenericError.
         !spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
             ==> matches!(result, SleepResultModel::GenericError { .. }),
 {
-    // Step 2: Construct the timeout Duration.
+    // Step 1: Construct the timeout Duration.
     let timeout: DurationModel = duration_new(seconds, nanoseconds);
 
-    // Step 3: Compute the alarm time.
+    // Step 2: Compute the alarm time.
     let alarm_opt: Option<SystemTimeModel> = checked_add_duration(now, &timeout);
 
     match alarm_opt {
         Some(alarm) => {
-            // Step 5: Call ProcessManager::sleep(Some(alarm)).
+            // Step 3: Call ProcessManager::sleep(Some(alarm)).
             let pm_result: SleepResultModel = process_manager_sleep(&alarm);
 
-            // Step 6: Classify the result.
-            pm_result
+            // Step 4: Classify the result via the 3-arm match.
+            // Original: Ok(()) => Ok(()), Interrupted(TimedOut) => Ok(()),
+            //           Err(error) => Err(error)
+            classify_pm_result(pm_result)
         },
         None => {
-            // Step 4: Overflow → InvalidArgument.
+            // Overflow → InvalidArgument.
+            proof {
+                assert(22i32 as int == ERROR_CODE_INVALID_ARGUMENT());
+            }
             SleepResultModel::GenericError { error_code: 22i32 }
         },
     }
@@ -377,12 +446,12 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
 /// - The current time is always well-formed (from clock module guarantee).
 /// - The duration is well-formed after normalization.
 /// - The alarm computation handles overflow correctly.
-/// - The PM result classification is correct.
+/// - The PM result classification matches the original's 3-arm match.
 ///
 /// # Parameters
 ///
-/// - `seconds`: Sleep time in whole seconds (original: usize).
-/// - `nanoseconds`: Sleep time in fractional nanoseconds (original: usize).
+/// - `seconds`: Sleep time in whole seconds (original: usize, 32-bit on x86).
+/// - `nanoseconds`: Sleep time in fractional nanoseconds (original: usize cast to u32).
 ///
 /// # Returns
 ///
@@ -390,6 +459,10 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
 pub fn sleep_end_to_end(seconds: u64, nanoseconds: u32) -> (result: SleepResultModel)
     requires
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
+    ensures
+        // Overflow always returns InvalidArgument error.
+        !spec_sleep_success_condition(clock_now().spec_view(), seconds as nat, nanoseconds as nat)
+            ==> matches!(result, SleepResultModel::GenericError { .. }),
 {
     // Step 1: Get the current time (Trust Boundary T1).
     let now: SystemTimeModel = clock_now();

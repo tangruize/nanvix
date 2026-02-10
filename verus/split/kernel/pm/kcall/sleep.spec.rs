@@ -12,7 +12,8 @@
 // then calls ProcessManager::sleep(). This spec models:
 // - SystemTime and Duration as abstract types at the verification boundary.
 // - The timeout computation as a checked addition.
-// - The sleep result classification (Ok, TimedOut, Error).
+// - The sleep result classification matching the original's 3-arm match:
+//   Ok(()) | Interrupted(TimedOut) → Ok(()), Err(other) → Err(other).
 
 use vstd::prelude::*;
 
@@ -27,7 +28,7 @@ pub open spec fn NANOS_PER_SEC() -> nat {
     1_000_000_000
 }
 
-/// The ErrorCode value for InvalidArgument.
+/// The ErrorCode value for InvalidArgument (matches ErrorCode::InvalidArgument = 22).
 pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
     22
 }
@@ -63,17 +64,44 @@ pub struct DurationView {
     pub nanoseconds: nat,
 }
 
-/// Abstract view of the SleepError result.
+/// Abstract view of the ProcessManager::sleep result.
 ///
 /// # Description
 ///
-/// Models the three possible outcomes of the sleep kcall.
+/// Models the four possible outcomes from ProcessManager::sleep,
+/// matching the original SleepError/InterruptReason enums:
+/// - Ok(()) → PmOk
+/// - Err(SleepError::Interrupted(InterruptReason::TimedOut)) → PmTimedOut
+/// - Err(SleepError::Interrupted(InterruptReason::Killed)) → PmKilled
+/// - Err(SleepError::Generic(error)) → PmGenericError
+///
+/// The sleep kcall's 3-arm match then classifies these into the final result.
+#[verifier::ext_equal]
+pub enum PmSleepResultView {
+    /// ProcessManager::sleep returned Ok(()).
+    PmOk,
+    /// ProcessManager::sleep returned Err(Interrupted(TimedOut)).
+    PmTimedOut,
+    /// ProcessManager::sleep returned Err(Interrupted(Killed)).
+    PmKilled,
+    /// ProcessManager::sleep returned Err(Generic(error)).
+    PmGenericError { error_code: int },
+}
+
+/// Abstract view of the sleep kcall's final result.
+///
+/// # Description
+///
+/// After the 3-arm match in the original sleep function, the result is either:
+/// - Success: Ok(()) or Interrupted(TimedOut) mapped to Ok(())
+/// - KilledError: Interrupted(Killed) propagated as Err(SleepError::Interrupted(Killed))
+/// - GenericError: Generic error propagated unchanged
 #[verifier::ext_equal]
 pub enum SleepResultView {
-    /// Sleep completed successfully (includes TimedOut which is also success).
+    /// Sleep completed successfully (Ok(()) or TimedOut treated as success).
     Success,
-    /// Sleep was interrupted for a non-timeout reason.
-    Interrupted,
+    /// Sleep was interrupted because the process was killed.
+    KilledError,
     /// A generic error occurred (e.g., invalid argument, borrow failure).
     GenericError { error_code: int },
 }
@@ -106,8 +134,7 @@ pub open spec fn spec_duration_wf(d: DurationView) -> bool {
 ///
 /// Creates a DurationView from the user-provided seconds and nanoseconds.
 /// In the original code, `Duration::new(secs as u64, nanos as u32)` handles
-/// nanoseconds >= 1_000_000_000 by carrying into seconds. For Verus modeling,
-/// we assume the standard library semantics.
+/// nanoseconds >= 1_000_000_000 by carrying into seconds.
 pub open spec fn spec_duration_new(seconds: nat, nanoseconds: nat) -> DurationView {
     DurationView {
         seconds: seconds + nanoseconds / NANOS_PER_SEC(),
@@ -120,14 +147,11 @@ pub open spec fn spec_duration_new(seconds: nat, nanoseconds: nat) -> DurationVi
 /// # Description
 ///
 /// Models `SystemTime::checked_add_duration()`. Returns true if the addition
-/// does not overflow. The exact overflow condition depends on the SystemTime
-/// internal representation.
+/// does not overflow.
 pub open spec fn spec_checked_add_succeeds(now: SystemTimeView, timeout: DurationView) -> bool {
-    // The addition succeeds if the total nanoseconds and seconds don't overflow u64/u32 limits.
     let total_nanos: nat = now.nanoseconds + timeout.nanoseconds;
     let carry: nat = if total_nanos >= NANOS_PER_SEC() { 1 } else { 0 };
     let new_seconds: nat = now.seconds + timeout.seconds + carry;
-    // Must fit in u64 for seconds and the resulting nanoseconds must be valid.
     new_seconds <= u64::MAX as nat
 }
 
@@ -147,6 +171,32 @@ pub open spec fn spec_compute_alarm(now: SystemTimeView, timeout: DurationView) 
     }
 }
 
+/// Spec function: models the sleep kcall's 3-arm match on PM result.
+///
+/// # Description
+///
+/// Maps the ProcessManager::sleep result to the sleep kcall final result,
+/// matching the original code (sleep.rs:62-66):
+/// ```ignore
+/// match ProcessManager::sleep(Some(alarm)) {
+///     Ok(()) => Ok(()),
+///     Err(SleepError::Interrupted(InterruptReason::TimedOut)) => Ok(()),
+///     Err(error) => Err(error),
+/// }
+/// ```
+/// - PmOk → Success
+/// - PmTimedOut → Success (TimedOut treated as normal completion)
+/// - PmKilled → KilledError (propagated as error)
+/// - PmGenericError → GenericError (propagated unchanged)
+pub open spec fn spec_classify_pm_result(pm_result: PmSleepResultView) -> SleepResultView {
+    match pm_result {
+        PmSleepResultView::PmOk => SleepResultView::Success,
+        PmSleepResultView::PmTimedOut => SleepResultView::Success,
+        PmSleepResultView::PmKilled => SleepResultView::KilledError,
+        PmSleepResultView::PmGenericError { error_code } => SleepResultView::GenericError { error_code },
+    }
+}
+
 /// Spec function: models the overall sleep kcall logic.
 ///
 /// # Description
@@ -156,33 +206,22 @@ pub open spec fn spec_compute_alarm(now: SystemTimeView, timeout: DurationView) 
 /// 2. Computes timeout Duration from (seconds, nanoseconds).
 /// 3. Checks if now + timeout overflows → InvalidArgument error.
 /// 4. Calls ProcessManager::sleep(Some(alarm)).
-/// 5. Returns Ok(()) on success or TimedOut, propagates other errors.
-///
-/// This spec models the high-level control flow.
+/// 5. Classifies the PM result via the 3-arm match.
 pub open spec fn spec_sleep_result(
     now: SystemTimeView,
     seconds: nat,
     nanoseconds: nat,
-    pm_result: SleepResultView,
+    pm_result: PmSleepResultView,
 ) -> SleepResultView {
     let timeout: DurationView = spec_duration_new(seconds, nanoseconds);
     if !spec_checked_add_succeeds(now, timeout) {
         SleepResultView::GenericError { error_code: ERROR_CODE_INVALID_ARGUMENT() }
     } else {
-        match pm_result {
-            SleepResultView::Success => SleepResultView::Success,
-            SleepResultView::Interrupted => SleepResultView::Success,  // TimedOut → Ok(())
-            SleepResultView::GenericError { error_code } => SleepResultView::GenericError { error_code },
-        }
+        spec_classify_pm_result(pm_result)
     }
 }
 
-/// Spec function: the sleep function returns Ok for valid inputs when PM succeeds.
-///
-/// # Description
-///
-/// If the timeout addition succeeds and ProcessManager::sleep returns Ok or TimedOut,
-/// the sleep kcall returns success.
+/// Spec function: whether the checked_add for the alarm time succeeds.
 pub open spec fn spec_sleep_success_condition(
     now: SystemTimeView,
     seconds: nat,
@@ -192,31 +231,27 @@ pub open spec fn spec_sleep_success_condition(
     spec_checked_add_succeeds(now, timeout)
 }
 
-/// Spec function: classifies the sleep result.
-///
-/// # Description
-///
-/// Returns true if the result represents a successful sleep (either direct
-/// Ok or TimedOut interruption treated as success).
+/// Spec function: whether a sleep result is success.
 pub open spec fn spec_is_success(result: SleepResultView) -> bool {
     matches!(result, SleepResultView::Success)
 }
 
-/// Spec function: classifies the sleep result as error.
-///
-/// # Description
-///
-/// Returns true if the result represents an error condition.
-pub open spec fn spec_is_error(result: SleepResultView) -> bool {
+/// Spec function: whether a sleep result is a killed error.
+pub open spec fn spec_is_killed(result: SleepResultView) -> bool {
+    matches!(result, SleepResultView::KilledError)
+}
+
+/// Spec function: whether a sleep result is a generic error.
+pub open spec fn spec_is_generic_error(result: SleepResultView) -> bool {
     matches!(result, SleepResultView::GenericError { .. })
 }
 
+/// Spec function: whether a sleep result is any kind of error (killed or generic).
+pub open spec fn spec_is_error(result: SleepResultView) -> bool {
+    spec_is_killed(result) || spec_is_generic_error(result)
+}
+
 /// Spec function: Duration::new normalizes nanoseconds.
-///
-/// # Description
-///
-/// The Duration::new function carries nanoseconds >= 1_000_000_000 into seconds.
-/// The resulting nanoseconds are always < 1_000_000_000.
 pub open spec fn spec_duration_new_wf(seconds: nat, nanoseconds: nat) -> bool {
     spec_duration_wf(spec_duration_new(seconds, nanoseconds))
 }

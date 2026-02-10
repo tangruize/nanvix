@@ -23,7 +23,6 @@ pub proof fn lemma_duration_new_wf(seconds: nat, nanoseconds: nat)
         spec_duration_wf(spec_duration_new(seconds, nanoseconds)),
         spec_duration_new_wf(seconds, nanoseconds),
 {
-    // The nanoseconds field is `nanoseconds % NANOS_PER_SEC()`, which is < NANOS_PER_SEC().
     assert(NANOS_PER_SEC() > 0);
     assert(nanoseconds % NANOS_PER_SEC() < NANOS_PER_SEC());
 }
@@ -45,17 +44,12 @@ pub proof fn lemma_alarm_wf(now: SystemTimeView, timeout: DurationView)
         spec_system_time_wf(spec_compute_alarm(now, timeout)),
 {
     let total_nanos: nat = now.nanoseconds + timeout.nanoseconds;
-    // Case split on whether nanoseconds overflow.
     if total_nanos >= NANOS_PER_SEC() {
-        // Carry case: new_nanos = total_nanos - NANOS_PER_SEC().
-        // Since now.nanoseconds < NANOS_PER_SEC() and timeout.nanoseconds < NANOS_PER_SEC(),
-        // total_nanos < 2 * NANOS_PER_SEC(), so new_nanos < NANOS_PER_SEC().
         assert(now.nanoseconds < NANOS_PER_SEC());
         assert(timeout.nanoseconds < NANOS_PER_SEC());
         assert(total_nanos < 2 * NANOS_PER_SEC());
         assert(total_nanos - NANOS_PER_SEC() < NANOS_PER_SEC());
     } else {
-        // No carry: new_nanos = total_nanos < NANOS_PER_SEC().
         assert(total_nanos < NANOS_PER_SEC());
     }
 }
@@ -65,13 +59,13 @@ pub proof fn lemma_alarm_wf(now: SystemTimeView, timeout: DurationView)
 /// # Description
 ///
 /// When the timeout addition overflows, the sleep function returns
-/// GenericError with InvalidArgument error code. This is independent
+/// GenericError with InvalidArgument error code (22). This is independent
 /// of the ProcessManager result.
 pub proof fn lemma_overflow_returns_invalid_argument(
     now: SystemTimeView,
     seconds: nat,
     nanoseconds: nat,
-    pm_result: SleepResultView,
+    pm_result: PmSleepResultView,
 )
     requires
         !spec_sleep_success_condition(now, seconds, nanoseconds),
@@ -79,8 +73,6 @@ pub proof fn lemma_overflow_returns_invalid_argument(
         spec_sleep_result(now, seconds, nanoseconds, pm_result) ==
             (SleepResultView::GenericError { error_code: ERROR_CODE_INVALID_ARGUMENT() }),
 {
-    // Follows directly from the spec_sleep_result definition:
-    // when !spec_checked_add_succeeds, the result is GenericError.
 }
 
 /// Proof: TimedOut interruption is treated as success.
@@ -88,7 +80,8 @@ pub proof fn lemma_overflow_returns_invalid_argument(
 /// # Description
 ///
 /// When the timeout addition succeeds and ProcessManager::sleep returns
-/// Interrupted (TimedOut), the sleep kcall treats it as success (Ok(())).
+/// PmTimedOut, the sleep kcall treats it as success (Ok(())).
+/// This matches the original: `Err(SleepError::Interrupted(InterruptReason::TimedOut)) => Ok(())`.
 pub proof fn lemma_timed_out_is_success(
     now: SystemTimeView,
     seconds: nat,
@@ -98,10 +91,36 @@ pub proof fn lemma_timed_out_is_success(
         spec_sleep_success_condition(now, seconds, nanoseconds),
     ensures
         spec_is_success(
-            spec_sleep_result(now, seconds, nanoseconds, SleepResultView::Interrupted)
+            spec_sleep_result(now, seconds, nanoseconds, PmSleepResultView::PmTimedOut)
         ),
 {
-    // Follows from spec_sleep_result: Interrupted maps to Success.
+}
+
+/// Proof: Killed interruption is propagated as an error.
+///
+/// # Description
+///
+/// When the timeout addition succeeds and ProcessManager::sleep returns
+/// PmKilled, the sleep kcall propagates it as KilledError.
+/// This matches the original: `Err(error) => Err(error)` catching Interrupted(Killed).
+pub proof fn lemma_killed_is_error(
+    now: SystemTimeView,
+    seconds: nat,
+    nanoseconds: nat,
+)
+    requires
+        spec_sleep_success_condition(now, seconds, nanoseconds),
+    ensures
+        spec_is_killed(
+            spec_sleep_result(now, seconds, nanoseconds, PmSleepResultView::PmKilled)
+        ),
+        spec_is_error(
+            spec_sleep_result(now, seconds, nanoseconds, PmSleepResultView::PmKilled)
+        ),
+        !spec_is_success(
+            spec_sleep_result(now, seconds, nanoseconds, PmSleepResultView::PmKilled)
+        ),
+{
 }
 
 /// Proof: PM success maps to sleep success.
@@ -119,18 +138,17 @@ pub proof fn lemma_pm_success_is_success(
         spec_sleep_success_condition(now, seconds, nanoseconds),
     ensures
         spec_is_success(
-            spec_sleep_result(now, seconds, nanoseconds, SleepResultView::Success)
+            spec_sleep_result(now, seconds, nanoseconds, PmSleepResultView::PmOk)
         ),
 {
-    // Follows from spec_sleep_result: Success maps to Success.
 }
 
-/// Proof: PM generic error propagates through.
+/// Proof: PM generic error propagates through unchanged.
 ///
 /// # Description
 ///
 /// When ProcessManager::sleep returns a generic error, it is propagated
-/// through the sleep kcall unchanged.
+/// through the sleep kcall with the same error code.
 pub proof fn lemma_pm_error_propagates(
     now: SystemTimeView,
     seconds: nat,
@@ -140,24 +158,25 @@ pub proof fn lemma_pm_error_propagates(
     requires
         spec_sleep_success_condition(now, seconds, nanoseconds),
     ensures
-        spec_sleep_result(now, seconds, nanoseconds, SleepResultView::GenericError { error_code }) ==
+        spec_sleep_result(now, seconds, nanoseconds, PmSleepResultView::PmGenericError { error_code }) ==
             (SleepResultView::GenericError { error_code }),
+        spec_is_generic_error(
+            spec_sleep_result(now, seconds, nanoseconds, PmSleepResultView::PmGenericError { error_code })
+        ),
 {
-    // Follows from spec_sleep_result: GenericError passes through.
 }
 
-/// Proof: the sleep result is always either success or error.
+/// Proof: the sleep result is always either success or error (trichotomy).
 ///
 /// # Description
 ///
-/// The result of spec_sleep_result is always one of the two categories:
-/// success or generic error. There is no third possibility because
-/// the Interrupted case from PM is folded into Success.
-pub proof fn lemma_sleep_result_dichotomy(
+/// The result of spec_sleep_result is always exactly one of three categories:
+/// Success, KilledError, or GenericError. There is no unclassified result.
+pub proof fn lemma_sleep_result_trichotomy(
     now: SystemTimeView,
     seconds: nat,
     nanoseconds: nat,
-    pm_result: SleepResultView,
+    pm_result: PmSleepResultView,
 )
     ensures
         spec_is_success(spec_sleep_result(now, seconds, nanoseconds, pm_result))
@@ -165,19 +184,20 @@ pub proof fn lemma_sleep_result_dichotomy(
 {
     let timeout: DurationView = spec_duration_new(seconds, nanoseconds);
     if !spec_checked_add_succeeds(now, timeout) {
-        // Overflow case: always GenericError.
-        assert(spec_is_error(spec_sleep_result(now, seconds, nanoseconds, pm_result)));
+        assert(spec_is_generic_error(spec_sleep_result(now, seconds, nanoseconds, pm_result)));
     } else {
-        // Non-overflow case: depends on pm_result.
         match pm_result {
-            SleepResultView::Success => {
+            PmSleepResultView::PmOk => {
                 assert(spec_is_success(spec_sleep_result(now, seconds, nanoseconds, pm_result)));
             },
-            SleepResultView::Interrupted => {
+            PmSleepResultView::PmTimedOut => {
                 assert(spec_is_success(spec_sleep_result(now, seconds, nanoseconds, pm_result)));
             },
-            SleepResultView::GenericError { .. } => {
-                assert(spec_is_error(spec_sleep_result(now, seconds, nanoseconds, pm_result)));
+            PmSleepResultView::PmKilled => {
+                assert(spec_is_killed(spec_sleep_result(now, seconds, nanoseconds, pm_result)));
+            },
+            PmSleepResultView::PmGenericError { .. } => {
+                assert(spec_is_generic_error(spec_sleep_result(now, seconds, nanoseconds, pm_result)));
             },
         }
     }
@@ -199,9 +219,28 @@ pub proof fn lemma_zero_duration_always_valid(now: SystemTimeView)
     let timeout: DurationView = spec_duration_new(0, 0);
     assert(timeout.seconds == 0nat);
     assert(timeout.nanoseconds == 0nat);
-    // checked_add: total_nanos = now.nanoseconds + 0 = now.nanoseconds < NANOS_PER_SEC().
-    // carry = 0, new_seconds = now.seconds + 0 + 0 = now.seconds <= u64::MAX.
     assert(spec_checked_add_succeeds(now, timeout));
+}
+
+/// Proof: TimedOut and Ok are the only PM results that produce success.
+///
+/// # Description
+///
+/// When checked_add succeeds, only PmOk and PmTimedOut produce Success.
+/// PmKilled produces KilledError, PmGenericError produces GenericError.
+/// This proves the result classification is exact.
+pub proof fn lemma_success_only_from_ok_or_timed_out(
+    now: SystemTimeView,
+    seconds: nat,
+    nanoseconds: nat,
+    pm_result: PmSleepResultView,
+)
+    requires
+        spec_sleep_success_condition(now, seconds, nanoseconds),
+    ensures
+        spec_is_success(spec_sleep_result(now, seconds, nanoseconds, pm_result))
+            <==> matches!(pm_result, PmSleepResultView::PmOk | PmSleepResultView::PmTimedOut),
+{
 }
 
 } // verus!
