@@ -15,6 +15,7 @@
 // - PID parsing as a fallible conversion with two outcomes (Ok or Error).
 // - The terminate operation as a fallible call with two outcomes (Ok or Error).
 // - The overall result as a sequential composition with short-circuit on error.
+// - ProcessManager state transitions via ghost state threading.
 
 use vstd::prelude::*;
 
@@ -30,9 +31,19 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
     22
 }
 
-/// Maximum value for usize on x86-32 (used for ABI boundary reasoning).
-pub open spec fn USIZE_MAX_X86_32() -> nat {
-    u32::MAX as nat
+/// The kernel process PID (always 0).
+///
+/// # Description
+///
+/// The kernel process cannot be terminated. Any attempt to terminate PID 0
+/// must return an error.
+pub open spec fn KERNEL_PID() -> nat {
+    0
+}
+
+/// The ErrorCode value for NoSuchProcess (repr(i32) = 3, ESRCH).
+pub open spec fn ERROR_CODE_NO_SUCH_PROCESS() -> int {
+    3
 }
 
 //==================================================================================================
@@ -83,6 +94,44 @@ pub enum TerminateResultView {
     /// An error occurred (either PID parse error or terminate error).
     Error { error_code: int },
 }
+
+/// Abstract view of the ProcessManager state.
+///
+/// # Description
+///
+/// Models the ProcessManager's process table state at the verification
+/// boundary. The internal representation is opaque (no fields) — all
+/// reasoning is done via the uninterpreted `spec_pm_has_process` predicate.
+/// This enables proving state transition properties (PID removal on
+/// success, state preservation on error) without importing PM internals.
+#[verifier::ext_equal]
+pub struct ProcessManagerStateView {}
+
+//==================================================================================================
+// Uninterpreted Spec Predicates
+//==================================================================================================
+
+/// Whether the process manager state contains a process with the given PID.
+///
+/// # Description
+///
+/// Abstract predicate over PM state. The ProcessManager module provides the
+/// concrete interpretation. This module uses it to specify state transitions:
+/// - Success requires the PID to exist in the pre-state.
+/// - Success removes the PID from the post-state.
+/// - Error preserves the state unchanged.
+pub uninterp spec fn spec_pm_has_process(state: ProcessManagerStateView, pid: nat) -> bool;
+
+/// Whether a raw u32 value is a valid ProcessIdentifier.
+///
+/// # Description
+///
+/// Abstract predicate that characterizes which raw values pass
+/// `ProcessIdentifier::try_from`. The pid module provides the concrete
+/// interpretation. This module uses it to make the try_from external_body
+/// deterministic: for a given input, the parse result is determined by
+/// this predicate.
+pub uninterp spec fn spec_is_valid_pid(raw: nat) -> bool;
 
 //==================================================================================================
 // Spec Functions
@@ -167,6 +216,17 @@ pub open spec fn spec_terminate_error_code(outcome: TerminateOutcomeView) -> int
 /// the essential invariant for error codes returned by kernel functions.
 pub open spec fn spec_is_valid_error_code(code: int) -> bool {
     code > 0
+}
+
+/// Spec predicate: whether a terminate operation can succeed on a given state and PID.
+///
+/// # Description
+///
+/// A terminate can succeed only if:
+/// 1. The PID exists in the process manager state.
+/// 2. The PID is not the kernel process (PID 0).
+pub open spec fn spec_terminate_possible(state: ProcessManagerStateView, pid: nat) -> bool {
+    spec_pm_has_process(state, pid) && pid != KERNEL_PID()
 }
 
 } // verus!
