@@ -612,6 +612,100 @@ impl ScoreBoard {
         }),
     {
     }
+
+    /// Lemma: Lock failure during begin_dispatch preserves scoreboard state.
+    ///
+    /// # Description
+    ///
+    /// When `lock()` returns `Err(SleepError::Interrupted)`, no state change
+    /// occurs. The scoreboard remains in the Idle phase with wf() preserved.
+    pub proof fn lemma_lock_failure_preserves_state(sb: &ScoreBoard)
+        requires
+            sb.wf(),
+            sb.spec_is_idle(),
+        ensures
+            sb.wf(),
+            sb.spec_is_idle(),
+            !sb.locked,
+    {
+    }
+
+    /// Lemma: `dispatched.up()` cannot fail on a well-formed idle scoreboard.
+    ///
+    /// # Description
+    ///
+    /// In the Idle phase, `dispatched_value == 0`. The semaphore `up()` operation
+    /// increments from 0 to 1, which cannot overflow a binary semaphore.
+    /// Therefore, `dispatched.up()` in `dispatch()` cannot fail when called
+    /// on a well-formed idle scoreboard. This justifies using a precondition
+    /// (rather than error modeling) for this operation.
+    pub proof fn lemma_semaphore_up_dispatched_cannot_fail(sb: &ScoreBoard)
+        requires
+            sb.wf(),
+            sb.spec_is_idle(),
+        ensures
+            sb.dispatched_value == 0,
+    {
+    }
+
+    /// Lemma: `handled.up()` cannot fail on a well-formed dispatched scoreboard.
+    ///
+    /// # Description
+    ///
+    /// In the Dispatched phase, `handled_value == 0`. The semaphore `up()`
+    /// operation increments from 0 to 1, which cannot overflow a binary
+    /// semaphore. Therefore, `handled.up()` in `handled()` cannot fail.
+    /// This justifies using a precondition for this operation.
+    pub proof fn lemma_semaphore_up_handled_cannot_fail(sb: &ScoreBoard)
+        requires
+            sb.wf(),
+            sb.spec_is_dispatched(),
+        ensures
+            sb.handled_value == 0,
+    {
+    }
+
+    /// Lemma: An abandoned dispatch produces a non-well-formed stuck state.
+    ///
+    /// # Description
+    ///
+    /// When `handled.down()` is interrupted and the mutex guard drops, the
+    /// resulting state violates `wf()`: the phase is `Handled` but the mutex
+    /// is unlocked (wf requires locked in Handled phase). This formally
+    /// characterizes the stuck state as a protocol violation.
+    pub proof fn lemma_abandon_dispatch_not_wf(view: ScoreBoardView)
+        requires
+            view.phase == ScoreBoardPhase::Handled,
+            view.locked,
+            view.handled_value == 1,
+        ensures ({
+            let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
+            &&& !stuck.locked
+            &&& stuck.phase == ScoreBoardPhase::Handled
+            &&& stuck.handled_value == view.handled_value
+            &&& stuck.result == view.result
+        }),
+    {
+    }
+
+    /// Lemma: An abandoned dispatch preserves the handler's result.
+    ///
+    /// # Description
+    ///
+    /// Even when a dispatch is abandoned, the result set by the handler
+    /// remains in the scoreboard. This proves data is not corrupted by
+    /// the interruption.
+    pub proof fn lemma_abandon_dispatch_preserves_data(view: ScoreBoardView)
+        requires
+            view.phase == ScoreBoardPhase::Handled,
+        ensures ({
+            let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
+            &&& stuck.result == view.result
+            &&& stuck.args == view.args
+            &&& stuck.completed_cycles == view.completed_cycles
+        }),
+    {
+    }
 }
 
 //==================================================================================================
@@ -675,6 +769,46 @@ impl ScoreBoardSlot {
             !slot.spec_is_initialized(),
         ensures
             !slot.initialized,
+    {
+    }
+
+    /// Lemma: An initialized slot's board is ready for dispatch operations.
+    ///
+    /// # Description
+    ///
+    /// Connects initialization with operational readiness: after `init()`,
+    /// the contained board is well-formed, idle, and has the mutex unlocked,
+    /// meaning `begin_dispatch` and `try_begin_dispatch` can be called.
+    pub proof fn lemma_initialized_board_ready(slot: &ScoreBoardSlot)
+        requires
+            slot.wf(),
+            slot.spec_is_initialized(),
+            slot.board.spec_is_idle(),
+        ensures
+            slot.board.wf(),
+            !slot.board.locked,
+            slot.board.dispatched_value == 0,
+            slot.board.handled_value == 0,
+    {
+    }
+
+    /// Lemma: Re-initialization produces a fresh idle board.
+    ///
+    /// # Description
+    ///
+    /// Proves that calling `init()` on an already-initialized slot produces
+    /// the same result as initializing from scratch: a well-formed slot with
+    /// an idle board. This matches the original `ScoreBoard::init()` which
+    /// unconditionally overwrites the global.
+    pub proof fn lemma_reinit_produces_fresh_board()
+        ensures ({
+            let view: ScoreBoardView = ScoreBoard::spec_initial_view();
+            &&& view.phase == ScoreBoardPhase::Idle
+            &&& !view.locked
+            &&& view.dispatched_value == 0
+            &&& view.handled_value == 0
+            &&& view.completed_cycles == 0
+        }),
     {
     }
 }

@@ -394,6 +394,28 @@ impl ScoreBoard {
         }
     }
 
+    /// Spec function: state transition for an abandoned dispatch.
+    ///
+    /// # Description
+    ///
+    /// Models the error path when `handled.down()` is interrupted: the mutex
+    /// guard drops (releasing the lock) but the protocol is not completed.
+    /// The board is left in a stuck Handled state with mutex unlocked.
+    ///
+    /// This state violates `wf()` (phase is Handled but locked is false),
+    /// reflecting a genuine stuck state that requires external recovery.
+    pub open spec fn spec_abandon_dispatch(view: ScoreBoardView) -> ScoreBoardView {
+        ScoreBoardView {
+            phase: ScoreBoardPhase::Handled,
+            args: view.args,
+            result: view.result,
+            locked: false,
+            dispatched_value: view.dispatched_value,
+            handled_value: view.handled_value,
+            completed_cycles: view.completed_cycles,
+        }
+    }
+
     /// Spec function: a full dispatch-handle-handled cycle.
     ///
     /// # Description
