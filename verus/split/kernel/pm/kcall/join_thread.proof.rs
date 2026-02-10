@@ -470,4 +470,50 @@ pub proof fn lemma_exit_status_ok_is_zero()
 {
 }
 
+//==================================================================================================
+// Proof Functions — TID Validity
+//==================================================================================================
+
+/// Axiom: spec_is_valid_tid(raw) <==> raw <= i32::MAX.
+///
+/// # Description
+///
+/// The actual `ThreadIdentifier` wraps an `i32` internally. `try_from(u32)`
+/// succeeds iff the u32 value fits in a non-negative i32, i.e.,
+/// `raw <= 2147483647` (i32::MAX). This axiom is discharged by the TID
+/// module's verification. Used here to make the `spec_is_valid_tid`
+/// predicate concrete enough for downstream reasoning.
+#[verifier::external_body]
+pub proof fn axiom_valid_tid_range(raw: nat)
+    ensures
+        spec_is_valid_tid(raw) <==> raw <= 2147483647nat,
+{
+}
+
+//==================================================================================================
+// Proof Functions — Error Code Domain
+//==================================================================================================
+
+/// Proof: known error codes are valid positive error codes.
+///
+/// # Description
+///
+/// Links `spec_is_known_error_code` (the verified ErrorCode subset) to
+/// `spec_is_valid_error_code` (code > 0). All ErrorCode values in the
+/// subset (2, 3, 12, 14, 16, 22) are positive.
+pub proof fn lemma_known_error_code_implies_valid(code: int)
+    requires
+        spec_is_known_error_code(code),
+    ensures
+        spec_is_valid_error_code(code),
+{
+}
+
+/// Proof: InvalidArgument is a known error code.
+pub proof fn lemma_invalid_argument_is_known()
+    ensures
+        spec_is_known_error_code(ERROR_CODE_INVALID_ARGUMENT()),
+{
+}
+
 } // verus!

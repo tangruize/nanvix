@@ -123,10 +123,27 @@ pub enum JoinThreadResultView {
 /// # Description
 ///
 /// Abstract predicate that characterizes which raw values pass
-/// `ThreadIdentifier::try_from`. The tid module provides the concrete
+/// `ThreadIdentifier::try_from(u32)`. The tid module provides the concrete
 /// interpretation. This module uses it to make the try_from external_body
 /// deterministic.
+///
+/// The actual `ThreadIdentifier` wraps an `i32` internally, so `try_from(u32)`
+/// succeeds iff the u32 value fits in a non-negative i32 (i.e., `raw <= i32::MAX`).
+/// The axiom `axiom_valid_tid_range` in the proof file establishes this bound.
+/// TID representation is modeled at the kcall interface level (u32) rather than
+/// the internal representation (i32), since the kcall only sees the u32 form.
 pub uninterp spec fn spec_is_valid_tid(raw: nat) -> bool;
+
+/// Uninterpreted predicate: whether user memory at the given address for
+/// the given process has been written with the specified value.
+///
+/// # Description
+///
+/// Models the abstract postcondition of `copy_to_user`: on success, the
+/// user-space memory at `retval_addr` for process `pid` contains `value`.
+/// The concrete memory model is outside this module's scope; this predicate
+/// establishes the proof obligation for the memory management module.
+pub uninterp spec fn spec_user_mem_written(pid: nat, retval_addr: nat, value: int) -> bool;
 
 /// Whether the TID was parsed successfully.
 pub open spec fn spec_tid_parsed_ok(outcome: TidParseOutcomeView) -> bool {
@@ -167,6 +184,53 @@ pub open spec fn spec_is_error(result: JoinThreadResultView) -> bool {
 pub open spec fn spec_is_valid_error_code(code: int) -> bool {
     code > 0
 }
+
+/// Spec predicate: whether an error code matches a known ErrorCode variant.
+///
+/// # Description
+///
+/// Enumerates the discriminant values of the `ErrorCode` variants present
+/// in the Verus verification model (`verus/split/libs/error/lib.rs`):
+/// NoSuchEntry=2, NoSuchProcess=3, OutOfMemory=12, BadAddress=14,
+/// ResourceBusy=16, InvalidArgument=22.
+///
+/// NOTE: The full kernel `ErrorCode` enum defines additional variants.
+/// This predicate covers the subset used in the Verus model. External body
+/// postconditions use the broader `spec_is_valid_error_code(code > 0)` to
+/// avoid unsound over-constraint.
+pub open spec fn spec_is_known_error_code(code: int) -> bool {
+    code == 2     // NoSuchEntry
+    || code == 3  // NoSuchProcess
+    || code == 12 // OutOfMemory
+    || code == 14 // BadAddress
+    || code == 16 // ResourceBusy
+    || code == 22 // InvalidArgument
+}
+
+/// Spec predicate: whether the calling process is a user process (not kernel).
+///
+/// # Description
+///
+/// Safety precondition: the original function documents that this function
+/// panics if the kernel process tries to sleep. The calling process must
+/// not be the kernel process (PID 0).
+pub uninterp spec fn spec_is_user_process(pid: nat) -> bool;
+
+/// Spec predicate: whether the process manager is initialized.
+///
+/// # Description
+///
+/// Safety precondition: the original function requires that the process
+/// manager is initialized and access is synchronized before calling.
+pub uninterp spec fn spec_pm_initialized() -> bool;
+
+/// Spec predicate: whether the memory manager is initialized.
+///
+/// # Description
+///
+/// Safety precondition: the original function requires that the memory
+/// manager is initialized and access is synchronized before calling.
+pub uninterp spec fn spec_mm_initialized() -> bool;
 
 //==================================================================================================
 // Spec Functions

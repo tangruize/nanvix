@@ -55,6 +55,15 @@
 //!   (`lemma_any_failure_is_error`).
 //! - **TID identity**: On successful parse, the parsed TID equals the input
 //!   argument (`try_from_thread_identifier` postcondition).
+//! - **TID validity range**: `spec_is_valid_tid(raw)` iff `raw <= i32::MAX`
+//!   (`axiom_valid_tid_range`).
+//! - **Known error code validity**: All known ErrorCode values (2, 3, 12, 14,
+//!   16, 22) are valid positive error codes (`lemma_known_error_code_implies_valid`,
+//!   `lemma_invalid_argument_is_known`).
+//! - **Copy value written**: On success, `copy_to_user` writes the exit status
+//!   to user memory (`spec_user_mem_written` postcondition on T3).
+//! - **Safety preconditions**: `join_thread_model` requires the caller to be a
+//!   user process, PM initialized, and MM initialized.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -71,9 +80,13 @@
 //! - **T2: `ProcessManager::join_thread(pid, tid)`**. Blocks until the target
 //!   thread exits and returns its ExitStatus. Modeled as `external_body`.
 //!   Can return Ok(ExitStatus), Err(Interrupted(Killed)), or Err(Generic(error)).
+//!   **ASSUMPTION**: `Interrupted(TimedOut)` is excluded because the implementation
+//!   calls `join_cond.wait(None)` — the `None` alarm means no timeout is set,
+//!   so `TimedOut` cannot occur. See `unsafe.rs:402`.
 //! - **T3: `pm::copy_to_user(pm, pid, retval, &status)`**. Copies the
 //!   ExitStatus to user space. Modeled as `external_body`. Can return
-//!   Ok(()) or Err(error).
+//!   Ok(()) or Err(error). On success, the postcondition guarantees that the
+//!   value is written to user memory via `spec_user_mem_written`.
 //!
 //! ## Logging
 //!
@@ -87,7 +100,7 @@
 //! | `ThreadIdentifier::try_from(arg0)`                   | `try_from_thread_identifier(arg0)`      | external_body  |
 //! | `ProcessManager::join_thread(pid, tid)`               | `process_manager_join_thread(pid, tid)` | external_body  |
 //! | `pm::copy_to_user(pm, pid, retval, &status)`         | `copy_to_user_exit_status(…)`           | external_body  |
-//! | `pub unsafe fn join_thread(pid, arg0, arg1)`         | `join_thread_model(arg0, …)`            | Fully verified  |
+//! | `pub unsafe fn join_thread(pid, arg0, arg1)`         | `join_thread_model(arg0, …)`            | Verified (modulo T1–T3) |
 
 use crate::libs::error::ErrorCode;
 use vstd::prelude::*;
@@ -269,6 +282,16 @@ pub fn try_from_thread_identifier(arg0: u32) -> (result: TidParseResultModel)
 /// - Fail with SleepError::Interrupted(Killed) if the joining thread is killed.
 /// - Fail with SleepError::Generic(error) for other errors (e.g., no such thread).
 ///
+/// ## TimedOut Exclusion (ASSUMPTION)
+///
+/// The `SleepError::Interrupted` variant carries an `InterruptReason` enum with
+/// two variants: `Killed` and `TimedOut`. This model excludes `TimedOut` because
+/// the actual `ProcessManager::join_thread` implementation calls
+/// `join_cond.wait(None)?` (see `src/kernel/src/pm/process/manager/unsafe.rs:402`).
+/// The `None` alarm argument means no timeout is set, so `Condvar::wait` can only
+/// be interrupted by `Killed`, never by `TimedOut`. If the PM implementation were
+/// changed to pass `Some(alarm)` to `wait`, this assumption would need revisiting.
+///
 /// This kcall module does NOT verify:
 /// - That join_thread eventually returns (liveness).
 /// - That the exit status is correct (PM internal invariant).
@@ -277,6 +300,8 @@ pub fn try_from_thread_identifier(arg0: u32) -> (result: TidParseResultModel)
 pub fn process_manager_join_thread(pid: u32, tid: u32) -> (result: JoinThreadResultModel)
     ensures
         // The result is always one of the defined variants.
+        // ASSUMPTION: TimedOut is excluded because join_cond.wait(None)
+        // never returns Interrupted(TimedOut) — no alarm is set.
         matches!(result, JoinThreadResultModel::JtOk { .. }
             | JoinThreadResultModel::JtInterruptedKilled
             | JoinThreadResultModel::JtError { .. }),
@@ -304,6 +329,9 @@ pub fn copy_to_user_exit_status(pid: u32, retval_addr: u32, exit_status: u32) ->
         // On error, the error code is a valid positive value.
         result.spec_view() matches CopyToUserOutcomeView::CopyError { error_code }
             ==> spec_is_valid_error_code(error_code),
+        // On success, user memory at retval_addr contains the exit_status value.
+        result.spec_view() matches CopyToUserOutcomeView::CopyOk
+            ==> spec_user_mem_written(pid as nat, retval_addr as nat, exit_status as int),
 {
     unimplemented!()
 }
@@ -340,6 +368,14 @@ pub fn join_thread_model(
     arg0: u32,
     arg1: u32,
 ) -> (ret: (JoinThreadKcallResultModel, Ghost<TidParseOutcomeView>, Ghost<JoinThreadOutcomeView>, Ghost<CopyToUserOutcomeView>))
+    requires
+        // Safety preconditions from the original `unsafe fn join_thread`.
+        // The calling process must be a user process (not the kernel process).
+        spec_is_user_process(pid as nat),
+        // The process manager must be initialized and synchronized.
+        spec_pm_initialized(),
+        // The memory manager must be initialized and synchronized.
+        spec_mm_initialized(),
     ensures
         // The result matches the spec pipeline.
         ret.0.spec_view() == spec_join_thread_result(ret.1@, ret.2@, ret.3@),
