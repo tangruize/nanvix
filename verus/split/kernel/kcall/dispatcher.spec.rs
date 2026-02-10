@@ -559,9 +559,18 @@ pub open spec fn spec_in_error_range(encoded: int) -> bool {
 /// # Description
 ///
 /// Constrains the encoded i64 result based on the dispatch category:
-/// - `LocalImmediate` (GetPid, GetTid): value is non-negative (pid/tid ≥ 0).
-/// - `LocalTerminal` (Exit, ExitThread): value is in error range (always fails).
-/// - Others: no structural constraint beyond well-formedness.
+/// - `LocalTerminal` (Exit, ExitThread): result is always an error.
+/// - All others (including `LocalImmediate`): no structural constraint
+///   beyond well-formedness.
+///
+/// **Note on LocalImmediate**: GetPid/GetTid *do* always succeed at the
+/// match level (`do_kcall_dispatch` verifies `result.is_success` for these),
+/// but the overall `do_kcall` entry point can fail *before* reaching the
+/// match if `ProcessManager::get_pid()` or `get_tid()` fails. Therefore,
+/// the classification-level spec cannot guarantee success unconditionally.
+/// The stronger per-call guarantees (success implies non-negative value,
+/// value equals pid/tid) are captured directly in `do_kcall_dispatch` and
+/// propagated conditionally through `do_kcall_context` and `do_kcall`.
 pub open spec fn spec_dispatch_result_constrained(
     category: DispatchCategory,
     result: DispatchResultView,

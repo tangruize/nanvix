@@ -63,7 +63,9 @@
 //!   are modeled as small `external_body` boundary functions.
 //! - The dispatch match structure is fully verified in `do_kcall_dispatch`.
 //! - The pid/tid retrieval + dispatch flow is verified in `do_kcall_context`.
-//! - The `do_kcall` C ABI entry point is `external_body` (ABI representation gap).
+//! - The `do_kcall` entry point delegates to `do_kcall_context` and is fully
+//!   verified. Only the ABI representation gap (C `u32`/`i64` ↔ Verus
+//!   `DispatchArgs`/`DispatchResult`) remains as a trust boundary (T5).
 //!
 //! ## API Mapping
 //!
@@ -75,7 +77,7 @@
 //! | *(Killed path diverges)*        | `handle_sleep_error_killed()`| Divergent trust boundary|
 //! | `do_kcall()` match structure    | `do_kcall_dispatch()`        | Verified dispatch logic |
 //! | `do_kcall()` pid/tid + dispatch | `do_kcall_context()`         | Verified entry wrapper  |
-//! | `do_kcall()` C ABI             | `do_kcall()`                 | External body (ABI gap) |
+//! | `do_kcall()` C ABI             | `do_kcall()`                 | Verified (delegates)      |
 //! | `KcallResult::ok()`             | `DispatchResult::ok()`       | Verified constructor      |
 //! | `KcallResult::Success(v)`       | `DispatchResult::success(v)` | Verified constructor      |
 //! | `KcallResult::Error(e)`         | `DispatchResult::error(e)`   | Verified constructor      |
@@ -504,15 +506,19 @@ pub fn handle_sleep_error(sleep_error: SleepError) -> (result: DispatchResult)
 /// process is terminated and this function never returns.
 ///
 /// This is an `external_body` trust boundary because:
-/// 1. The divergence cannot be modeled in Verus (no `!` return type support).
+/// 1. Verus does not support the `!` (never) return type. The `ensures false`
+///    postcondition is the standard Verus idiom for modeling divergence —
+///    it states that the function never returns normally, so any code after
+///    a call to this function is unreachable.
 /// 2. The function calls unsafe global state (`ProcessManager::exit()`).
 ///
-/// The postcondition `ensures false` documents that this function diverges.
-/// As an `external_body`, this is a trusted assertion.
+/// **Trust assumption**: This function never returns. The `panic!()` in the
+/// body guarantees divergence at runtime. The `ensures false` contract
+/// allows the verifier to soundly treat post-call code as dead code.
 #[verifier::external_body]
 pub fn handle_sleep_error_killed() -> (result: DispatchResult)
     ensures
-        false,
+        false, // This function diverges (never returns).
 {
     // Trust boundary: original calls ProcessManager::exit() then panic!().
     // This function never returns.
@@ -971,16 +977,16 @@ pub fn do_kcall_context(args: DispatchArgs) -> (result: DispatchResult)
 }
 
 //==================================================================================================
-// Standalone Functions: Entry Point (External Body)
+// Standalone Functions: Entry Point
 //==================================================================================================
 
 /// High-level kernel call dispatcher entry point.
 ///
 /// # Description
 ///
-/// Models the original `do_kcall` extern "C" function. This is an external body
-/// only for the C ABI representation gap — the dispatch logic itself is fully
-/// verified in `do_kcall_context` and `do_kcall_dispatch`.
+/// Models the original `do_kcall` extern "C" function. Delegates directly to
+/// the fully verified `do_kcall_context`, which handles pid/tid retrieval and
+/// dispatch routing. All postconditions are mechanically verified.
 ///
 /// # Parameters
 ///
@@ -990,16 +996,16 @@ pub fn do_kcall_context(args: DispatchArgs) -> (result: DispatchResult)
 ///
 /// The kernel call result as a DispatchResult.
 ///
-/// # Trust Boundary
+/// # Note on ABI Representation (Trust Boundary T5)
 ///
-/// **T5: ABI representation gap.** The original `do_kcall` has the C ABI
-/// signature `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified
-/// model uses `DispatchArgs` and `DispatchResult` for richer postconditions.
-/// The `DispatchResult.is_success` flag does not exist in the actual i64
-/// return value — it is a modeling abstraction. The postconditions below
-/// are verified through `do_kcall_context` and trusted only for the ABI
-/// mapping.
-#[verifier::external_body]
+/// The original `do_kcall` has the C ABI signature
+/// `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified model uses
+/// `DispatchArgs` and `DispatchResult` for richer postconditions. The
+/// `DispatchResult.is_success` flag does not exist in the actual i64 return
+/// value — it is a modeling abstraction. The ABI-level mapping between
+/// `DispatchArgs`/`DispatchResult` and the C `u32`/`i64` parameters is not
+/// modeled; the trust assumption is that the caller correctly constructs
+/// `DispatchArgs` from the C arguments and interprets the `DispatchResult`.
 pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
     ensures
         result.wf(),
@@ -1018,9 +1024,7 @@ pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
         // JoinThread: success value >= 0.
         args.number == 23u32 && result.is_success ==> result.value >= 0,
 {
-    // Trust boundary: delegates to do_kcall_context in the verified model.
-    // External body only for the C ABI representation gap (T5).
-    unimplemented!()
+    do_kcall_context(args)
 }
 
 } // verus!
