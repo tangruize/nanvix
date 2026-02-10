@@ -1,0 +1,501 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 12:01:24 CST 2026
+Module: kernel::kcall::handler
+Command: verus --crate-type lib lib.rs --verify-module kernel::kcall::handler
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:71:46
+    |
+ 71 |         matches!(spec_classify_handler_kcall(0), HandlerDispatchCategory::Debug),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:72:46
+    |
+ 72 |         matches!(spec_classify_handler_kcall(1), HandlerDispatchCategory::GetPid),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:73:46
+    |
+ 73 |         matches!(spec_classify_handler_kcall(2), HandlerDispatchCategory::GetTid),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:74:46
+    |
+ 74 |         matches!(spec_classify_handler_kcall(4), HandlerDispatchCategory::CapCtl),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:75:46
+    |
+ 75 |         matches!(spec_classify_handler_kcall(6), HandlerDispatchCategory::Terminate),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:76:46
+    |
+ 76 |         matches!(spec_classify_handler_kcall(7), HandlerDispatchCategory::EventCtrl),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:77:46
+    |
+ 77 |         matches!(spec_classify_handler_kcall(8), HandlerDispatchCategory::Send),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:78:46
+    |
+ 78 |         matches!(spec_classify_handler_kcall(10), HandlerDispatchCategory::MemoryMap),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:79:46
+    |
+ 79 |         matches!(spec_classify_handler_kcall(11), HandlerDispatchCategory::MemoryUnmap),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:80:46
+    |
+ 80 |         matches!(spec_classify_handler_kcall(12), HandlerDispatchCategory::MemoryCtrl),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:81:46
+    |
+ 81 |         matches!(spec_classify_handler_kcall(13), HandlerDispatchCategory::MemoryCopy),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:82:46
+    |
+ 82 |         matches!(spec_classify_handler_kcall(14), HandlerDispatchCategory::AllocMmio),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:83:46
+    |
+ 83 |         matches!(spec_classify_handler_kcall(15), HandlerDispatchCategory::FreeMmio),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:84:46
+    |
+ 84 |         matches!(spec_classify_handler_kcall(16), HandlerDispatchCategory::AllocPmio),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:85:46
+    |
+ 85 |         matches!(spec_classify_handler_kcall(17), HandlerDispatchCategory::FreePmio),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:86:46
+    |
+ 86 |         matches!(spec_classify_handler_kcall(18), HandlerDispatchCategory::ReadPmio),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:87:46
+    |
+ 87 |         matches!(spec_classify_handler_kcall(19), HandlerDispatchCategory::WritePmio),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:88:46
+    |
+ 88 |         matches!(spec_classify_handler_kcall(21), HandlerDispatchCategory::CreateThread),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:89:46
+    |
+ 89 |         matches!(spec_classify_handler_kcall(28), HandlerDispatchCategory::GetTime),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:90:46
+    |
+ 90 |         matches!(spec_classify_handler_kcall(30), HandlerDispatchCategory::SetThreadDataArea),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:91:46
+    |
+ 91 |         matches!(spec_classify_handler_kcall(31), HandlerDispatchCategory::GetThreadDataArea),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:105:46
+    |
+105 |         matches!(spec_classify_handler_kcall(3), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:106:46
+    |
+106 |         matches!(spec_classify_handler_kcall(5), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:107:46
+    |
+107 |         matches!(spec_classify_handler_kcall(9), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:108:46
+    |
+108 |         matches!(spec_classify_handler_kcall(20), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:109:46
+    |
+109 |         matches!(spec_classify_handler_kcall(22), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:110:46
+    |
+110 |         matches!(spec_classify_handler_kcall(23), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:111:46
+    |
+111 |         matches!(spec_classify_handler_kcall(24), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:112:46
+    |
+112 |         matches!(spec_classify_handler_kcall(25), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:113:46
+    |
+113 |         matches!(spec_classify_handler_kcall(26), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:114:46
+    |
+114 |         matches!(spec_classify_handler_kcall(27), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:115:46
+    |
+115 |         matches!(spec_classify_handler_kcall(29), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:116:46
+    |
+116 |         matches!(spec_classify_handler_kcall(32), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/kcall/handler.proof.rs:117:46
+    |
+117 |         matches!(spec_classify_handler_kcall(100), HandlerDispatchCategory::Invalid),
+    |                  --------------------------- ^^^ expected `nat`, found integer
+    |                  |
+    |                  arguments to this function are incorrect
+    |
+note: function defined here
+   --> kernel/kcall/handler.spec.rs:185:18
+    |
+185 | pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0605]: non-primitive cast: `u32` as `vstd::prelude::nat`
+   --> kernel/kcall/handler.proof.rs:118:46
+    |
+118 |         matches!(spec_classify_handler_kcall(u32::MAX as nat), HandlerDispatchCategory::Invalid),
+    |                                              ^^^^^^^^^^^^^^^ an `as` expression can only be used to convert between primitive types or to coerce to a specific trait object
+
+error: aborting due to 35 previous errors
+
+Some errors have detailed explanations: E0308, E0605.
+For more information about an error, try `rustc --explain E0308`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::kcall::handler (verified:0, errors:0)
