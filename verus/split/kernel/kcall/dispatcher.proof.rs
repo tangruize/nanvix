@@ -20,6 +20,10 @@
 // 12. Large success values (outside i32 range) are distinguishable from errors.
 // 13. Divergent Killed path is properly separated from non-divergent error handling.
 // 14. spec_dispatch_result_constrained correctly constrains per-category behavior.
+// 15. Kcall spec constants match the original #[repr(u32)] enum values.
+// 16. do_kcall_dispatch correctly routes each kcall to its subsystem handler.
+// 17. do_kcall_context handles pid/tid retrieval failure gracefully.
+// 18. convert_sleepable routes sleep errors through handle_sleep_error.
 
 use vstd::prelude::*;
 
