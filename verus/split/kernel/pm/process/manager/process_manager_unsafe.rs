@@ -86,6 +86,33 @@
 //!   The model requires `wf()` (which includes `initialized == true`) as a precondition,
 //!   so the uninitialized path is excluded by construction. This is standard Verus practice:
 //!   precondition violations (programming errors) are not modeled as execution paths.
+//!
+//! ## Scope and Limitations
+//!
+//! This module verifies the **unsafe wrapper layer**: the global singleton lifecycle,
+//! atomic PID/TID/quantum management, and context-switch control flow. The verification
+//! boundary is deliberately scoped to state that this module owns or mutates directly.
+//!
+//! **What is verified:**
+//! - All state transitions preserve wf() (32 verified functions, 0 errors).
+//! - switch() correctly models stale-atomic PID comparison and quantum reset.
+//! - giveup() correctly branches on quantum and preserves/updates state.
+//! - No `assume` or `external_body` in this module.
+//!
+//! **What is deferred to dependency modules (cross-module concerns):**
+//! - PID↔TID thread membership (T9): ProcessManagerInner tracks PIDs in `Set<int>`
+//!   queues but has no per-process thread sets. Adding `current_tid ∈ threads(current_pid)`
+//!   to wf() requires a `Ghost<Map<int, Set<int>>>` in ProcessManagerInner plus updates
+//!   to all 96 verified inner functions — a separate verification task.
+//! - Per-thread message queues (T11): Inner model uses aggregate `number_buffered_messages`.
+//! - Synchronization object tables (T12): Mutex/condvar state lives inside inner module.
+//!
+//! **What is beyond Verus expressiveness:**
+//! - Divergence/non-returning semantics (T10): Verus does not support `-> !` return types
+//!   or `ensures false` for reachable functions. The model captures state transitions;
+//!   callers must not reason about post-exit continuation (documented as caller obligation).
+//! - Temporal/liveness properties: join_thread loop termination depends on eventual
+//!   notify_all, which requires fair scheduling assumptions outside first-order logic.
 
 use vstd::prelude::*;
 
