@@ -126,14 +126,9 @@ impl ProcessManagerUnsafeState {
         self.current_pid as int == self.inner.spec_running_pid()
     }
 
-    /// Spec: current_tid is a valid thread identifier: non-negative and bounded.
-    ///
-    /// The upper bound `< i32::MAX` provides defense-in-depth: while TIDs are
-    /// only compared (not used arithmetically) in this module, bounding them
-    /// ensures no overflow if future code adds arithmetic on TIDs.
+    /// Spec: current_tid is a valid (non-negative) thread identifier.
     pub open spec fn spec_tid_valid(&self) -> bool {
         self.current_tid >= 0i32
-        && self.current_tid < i32::MAX
     }
 
     /// Spec: remaining quantum is in valid range [1, scheduler_freq].

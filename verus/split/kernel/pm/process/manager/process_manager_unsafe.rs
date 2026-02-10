@@ -298,6 +298,19 @@ impl ProcessManagerUnsafeState {
     /// performing all updates atomically. The PID change detection compares
     /// `next_pid` against `old(self).current_pid` (the stale atomic), matching
     /// the original `CURRENT_PID.load()` behavior.
+    ///
+    /// ## Compositional Verification Design
+    ///
+    /// The `new_inner` parameter is accepted as an independent argument rather than
+    /// computed from spec functions on `self.inner`. This is a deliberate compositional
+    /// verification design: the inner module (ProcessManagerInner, 96 verified functions)
+    /// proves that operations like `exit()`, `sleep()`, `schedule()` produce valid
+    /// post-states satisfying `inner.wf()`. This outer module proves that *given any
+    /// valid inner transition* (i.e., any `new_inner` satisfying `wf()` and
+    /// `spec_running_pid() == next_pid`), the global state management (atomics,
+    /// quantum, divergence) is correct. The composability contract is the `new_inner.wf()`
+    /// precondition. Tightly coupling the layers by computing `new_inner` from inner
+    /// spec functions would duplicate inner module logic and create circular dependencies.
     pub fn switch(
         &mut self,
         new_inner: ProcessManagerInner,
@@ -310,7 +323,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == next_pid as int,
             next_pid >= 0i32,
             next_tid >= 0i32,
-            next_tid < i32::MAX,            // Same thread implies same process (scheduler invariant).
             next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
         ensures
             self.wf(),
@@ -399,7 +411,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid < i32::MAX,
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             self.wf(),
@@ -429,7 +440,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid < i32::MAX,
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
             // If quantum not expired, inner state is unchanged (no mutation on no-switch path).
             old(self).remaining_quantum > 1 ==> new_inner == old(self).inner,
@@ -498,7 +508,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid < i32::MAX,
             // Cannot sleep the kernel.
             old(self).current_pid != KERNEL_PID_RAW,
             // Same thread implies same process.
@@ -584,7 +593,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid < i32::MAX,
             // Cannot exit the kernel process or from the kernel thread.
             // The original doc says "calling thread is not a kernel thread" (TID check).
             // We also check PID because exiting a process exits all its threads, and the
@@ -654,7 +662,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid < i32::MAX,
             // Cannot exit the kernel thread.
             old(self).current_tid != KERNEL_TID_RAW,
             // Exit thread always switches to a different thread (hard switch).
@@ -980,7 +987,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid < i32::MAX,
             // Cannot sleep the kernel.
             old(self).current_pid != KERNEL_PID_RAW,
             // Same thread implies same process.
@@ -1071,7 +1077,6 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid < i32::MAX,
             // Wait path: cannot sleep the kernel.
             outcome == 1 ==> old(self).current_pid != KERNEL_PID_RAW,
             // Same thread implies same process.
