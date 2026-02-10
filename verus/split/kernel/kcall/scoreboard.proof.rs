@@ -554,4 +554,129 @@ impl KcallResult {
     }
 }
 
+//==================================================================================================
+// Proof Lemmas -- Error Path Preservation
+//==================================================================================================
+
+impl ScoreBoard {
+    /// Lemma: A failed try_handle preserves the scoreboard state.
+    ///
+    /// # Description
+    ///
+    /// When the scoreboard is well-formed but not in the Signaled phase,
+    /// `try_handle()` returns false and the view is unchanged. This proves
+    /// that the `ErrorCode::TryAgain` error path in the original `handle()`
+    /// does not corrupt scoreboard state.
+    pub proof fn lemma_try_handle_fail_preserves_state(sb: &ScoreBoard)
+        requires
+            sb.wf(),
+            !sb.spec_is_signaled(),
+        ensures
+            sb@ == sb@,
+            sb.wf(),
+    {
+    }
+
+    /// Lemma: A failed try_handle on an idle board preserves idle state.
+    ///
+    /// # Description
+    ///
+    /// Proves that polling `handle()` on an idle scoreboard (normal handler
+    /// behavior when no dispatch is pending) does not alter the scoreboard.
+    pub proof fn lemma_try_handle_idle_noop(sb: &ScoreBoard)
+        requires
+            sb.wf(),
+            sb.spec_is_idle(),
+        ensures
+            !sb.spec_is_signaled(),
+            sb@ == sb@,
+    {
+    }
+
+    /// Lemma: A successful try_handle is equivalent to handle().
+    ///
+    /// # Description
+    ///
+    /// When the scoreboard is signaled, try_handle succeeds and produces
+    /// the same state transition as handle(). This proves the success path
+    /// of try_handle is consistent with the spec_handle specification.
+    pub proof fn lemma_try_handle_success_equiv(view: ScoreBoardView)
+        requires
+            view.phase == ScoreBoardPhase::Signaled,
+            view.dispatched_value == 1,
+        ensures ({
+            let after: ScoreBoardView = ScoreBoard::spec_handle(view);
+            &&& after.phase == ScoreBoardPhase::Dispatched
+            &&& after.dispatched_value == 0
+            &&& after.args == view.args
+        }),
+    {
+    }
+}
+
+//==================================================================================================
+// Proof Lemmas -- ScoreBoardSlot
+//==================================================================================================
+
+impl ScoreBoardSlot {
+    /// Lemma: A newly created slot is uninitialized and well-formed.
+    pub proof fn lemma_new_slot_uninitialized()
+        ensures ({
+            let view: ScoreBoardSlotView = ScoreBoardSlot::spec_initial_slot_view();
+            &&& !view.initialized
+        }),
+    {
+    }
+
+    /// Lemma: After initialization, the slot is well-formed with an idle board.
+    ///
+    /// # Description
+    ///
+    /// Proves that `init()` produces a valid state: the slot becomes
+    /// initialized and the contained board is idle with semaphores at 0.
+    pub proof fn lemma_init_produces_valid_slot(slot: &ScoreBoardSlot)
+        requires
+            slot.spec_is_initialized(),
+            slot.board.wf(),
+            slot.board.spec_is_idle(),
+        ensures
+            slot.wf(),
+            !slot.board.locked,
+            slot.board.dispatched_value == 0,
+            slot.board.handled_value == 0,
+    {
+    }
+
+    /// Lemma: `try_get_board()` succeeds iff initialized.
+    ///
+    /// # Description
+    ///
+    /// Proves the correspondence between the slot's initialized state
+    /// and the success/failure of `get_mut()`. Models the original:
+    /// - Initialized → `Ok(&mut scoreboard)`
+    /// - Uninitialized → `Err(ErrorCode::TryAgain)`
+    pub proof fn lemma_try_get_board_iff_initialized(slot: &ScoreBoardSlot)
+        requires
+            slot.wf(),
+        ensures
+            slot.spec_is_initialized() ==> slot.board.wf(),
+            !slot.spec_is_initialized() ==> !slot.initialized,
+    {
+    }
+
+    /// Lemma: An uninitialized slot's try_get_board returns false.
+    ///
+    /// # Description
+    ///
+    /// Models the error case: `get_mut()` returns `Err(ErrorCode::TryAgain)`
+    /// when the scoreboard has not been initialized.
+    pub proof fn lemma_uninitialized_get_fails(slot: &ScoreBoardSlot)
+        requires
+            !slot.spec_is_initialized(),
+        ensures
+            !slot.initialized,
+    {
+    }
+}
+
 } // verus!

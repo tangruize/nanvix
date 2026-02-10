@@ -56,14 +56,15 @@
 //!
 //! | Original API              | Verified Model          | Notes                            |
 //! |---------------------------|-------------------------|----------------------------------|
-//! | `ScoreBoard::init()`      | `new()`                 | Returns struct instead of global.|
-//! | `ScoreBoard::get_mut()`   | *(not modeled)*         | Global access; see Trust T1.     |
+//! | `ScoreBoard::init()`      | `ScoreBoardSlot::init()`| Models init of global singleton. |
+//! | `ScoreBoard::get_mut()`   | `try_get_board()`       | Models TryAgain error on uninit. |
 //! | `ScoreBoard::dispatch()`  | `begin_dispatch()` +    | Split into four phases for       |
 //! |                           | `complete_dispatch()`   | handler interleaving.            |
-//! | `ScoreBoard::handle()`    | `handle()`              | `&mut self`; consumes signal.    |
+//! | `ScoreBoard::handle()`    | `handle()`/`try_handle()`| With and without error path.    |
 //! | `ScoreBoard::handled()`   | `handled()`             | Direct mapping.                  |
 //! | *(no original)*           | `get_args()`            | Reference access after handle(). |
-//! | *(no original)*           | `completed_cycles`      | Verification-only ghost counter. |
+//! | *(no original)*           | `completed_cycles`      | Ghost<nat> verification counter. |
+//! | `impl Debug for KcallArgs`| *(not modeled)*         | Formatting; out of scope.        |
 //!
 //! ## API Divergence
 //!
@@ -71,47 +72,53 @@
 //!   Returns `Ghost<KcallArgsView>` (original returns `Result<&KcallArgs, Error>`).
 //!   The `&mut self` is required to model the dispatched signal consumption.
 //!   A separate `get_args(&self)` provides reference access after the transition.
+//! - `try_handle()` models the error path: returns `false` when no dispatch is
+//!   pending (matching `ErrorCode::TryAgain`), proving state preservation on failure.
 //! - `KcallResult` uses `is_success: bool` + `value: i64` (original uses an enum
 //!   with `Success(KcallSuccess(i64))` / `Error(KcallError(i32))`).
-//! - `completed_cycles: u64` is verification-only state. The original has no
-//!   cycle counter. This field tracks protocol progress for inductive proofs.
-//!   It has a `u64::MAX` overflow guard in `complete_dispatch()` that does not
-//!   correspond to original behavior.
+//! - `completed_cycles: Ghost<nat>` is verification-only ghost state. The original
+//!   has no cycle counter. This field tracks protocol progress for inductive proofs.
+//!   As a ghost field, it is erased at runtime and introduces no semantic divergence.
+//! - `ScoreBoardSlot` models the `Option<ScoreBoard>` global pattern as a regular
+//!   struct with an `initialized` flag, avoiding `static mut` and `unsafe`.
 //!
 //! ## Trust Boundaries
 //!
-//! - **T1: Global singleton.** The original uses `static mut SCOREBOARD: Option<ScoreBoard>`
-//!   with `unsafe` access. The verified model uses a regular struct. The safety of
-//!   the global mutable state is not verified. The `get_mut()` function that returns
-//!   `Err(ErrorCode::TryAgain)` when uninitialized is not modeled; the `new()`
-//!   constructor guarantees a valid initial state.
+//! - **T1: Global singleton.** The `ScoreBoardSlot` models the initialization/access
+//!   pattern (`init()` / `get_mut()`). The `try_get_board()` function models the
+//!   `ErrorCode::TryAgain` error when uninitialized. The `static mut` memory safety
+//!   and lifetime guarantees remain unverified (Verus cannot reason about `static mut`).
 //! - **T2: Mutex correctness.** The model assumes the mutex provides mutual exclusion.
 //!   The mutex is separately verified in `kernel::pm::sync::mutex`.
 //! - **T3: Semaphore correctness.** The model assumes the semaphores correctly
 //!   implement counting and blocking. The semaphore is separately verified in
 //!   `kernel::pm::sync::semaphore`.
 //! - **T4: Sequential ordering.** The model assumes sequential execution. The
-//!   original relies on mutex + semaphore for thread synchronization.
-//! - **T5: Error handling.** The original returns `Result` types with various
-//!   error codes. The verified model uses preconditions to guarantee success.
-//!   Error conditions by criticality:
+//!   original relies on mutex + semaphore for thread synchronization. The sequential
+//!   model is a sound abstraction when Mutex and Semaphore are correct (separately
+//!   verified), as they enforce the same ordering constraints in concurrent execution.
+//!   Native concurrent verification is outside Verus's current capabilities.
+//! - **T5: Error handling.** The `try_handle()` function models the handle error path
+//!   (try_down failure → TryAgain), proving state preservation on error. Remaining
+//!   error paths use preconditions to guarantee success. Error conditions by criticality:
 //!   - *Safety-critical*: None. All error paths in the original lead to error
 //!     propagation, not undefined behavior.
 //!   - *Liveness-critical*: `SleepError::Interrupted` from `handled.down()` in
 //!     `dispatch()` could leave the scoreboard in a stuck state (mutex held, no
-//!     handler response). `Error` from `handled.up()` in `handled()` could leave
-//!     the dispatcher waiting indefinitely.
+//!     handler response). This depends on OS interrupt handling, not the scoreboard
+//!     protocol, and is out of scope.
 //!   - *Non-critical*: `ErrorCode::TryAgain` from `handle()` when no dispatch is
-//!     pending (normal polling behavior).
+//!     pending (normal polling behavior). **Modeled by `try_handle()`.**
 //!
 //! ## Verification Scope
 //!
 //! This verification proves **sequential state machine correctness** of the
 //! scoreboard dispatch protocol. The following are explicitly **out of scope**:
-//! - Concurrency and thread scheduling.
-//! - The global singleton pattern (`static mut` safety).
-//! - Error propagation paths (`SleepError`, `Error`).
+//! - Concurrency and thread scheduling (Verus limitation; see T4).
+//! - The `static mut` memory safety (see T1; init/access pattern is modeled).
+//! - `SleepError::Interrupted` from blocking `down()` (OS-level; see T5).
 //! - The dispatcher and handler modules (`dispatcher.rs`, `handler.rs`).
+//! - `impl Debug for KcallArgs` (formatting; no safety implications).
 
 use vstd::prelude::*;
 
@@ -194,9 +201,9 @@ pub struct ScoreBoard {
     /// Current protocol phase.
     pub phase: ScoreBoardPhase,
     /// Count of completed cycles (verification-only; no original counterpart).
-    /// Uses `u64` rather than `Ghost<nat>` because Verus Ghost fields inside exec
-    /// structs complicate View trait derivation and pattern matching.
-    pub completed_cycles: u64,
+    /// Ghost field: exists only at the spec level, erased at runtime.
+    /// Uses `Ghost<nat>` so no overflow guard is needed (nat is unbounded).
+    pub completed_cycles: Ghost<nat>,
 }
 
 //==================================================================================================
@@ -324,7 +331,7 @@ impl ScoreBoard {
             !result.locked,
             result.dispatched_value == 0,
             result.handled_value == 0,
-            result.completed_cycles == 0,
+            result.completed_cycles@ == 0nat,
             result@ == ScoreBoard::spec_initial_view(),
     {
         ScoreBoard {
@@ -342,7 +349,7 @@ impl ScoreBoard {
             },
             result: KcallResult::ok(),
             phase: ScoreBoardPhase::Idle,
-            completed_cycles: 0,
+            completed_cycles: Ghost(0nat),
         }
     }
 
@@ -421,6 +428,45 @@ impl ScoreBoard {
         Ghost(self.args@)
     }
 
+    /// Attempts to handle a dispatched kernel call; models try_down success/failure.
+    ///
+    /// # Description
+    ///
+    /// Models the original `handle()` with its `try_down()` error path:
+    /// - If the phase is `Signaled` (dispatched semaphore > 0), the signal is
+    ///   consumed and the phase transitions to `Dispatched`. Returns `true`.
+    /// - If the phase is not `Signaled` (dispatched semaphore == 0), no state
+    ///   change occurs. Returns `false` (models `ErrorCode::TryAgain`).
+    ///
+    /// This proves that the error path preserves the well-formedness invariant
+    /// and does not corrupt scoreboard state.
+    ///
+    /// # Returns
+    ///
+    /// `true` if a dispatch was pending and consumed; `false` otherwise.
+    pub fn try_handle(&mut self) -> (success: bool)
+        requires
+            old(self).wf(),
+        ensures
+            success == old(self).spec_is_signaled(),
+            success ==> (
+                self.wf()
+                && self.spec_is_dispatched()
+                && self.dispatched_value == 0
+                && self.args@ == old(self).args@
+                && self@ == ScoreBoard::spec_handle(old(self)@)
+            ),
+            !success ==> self@ == old(self)@,
+    {
+        if matches!(self.phase, ScoreBoardPhase::Signaled) {
+            self.dispatched_value = 0;
+            self.phase = ScoreBoardPhase::Dispatched;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Returns a reference to the current kernel call arguments.
     ///
     /// # Description
@@ -493,7 +539,6 @@ impl ScoreBoard {
         requires
             old(self).wf(),
             old(self).spec_is_handled(),
-            old(self).completed_cycles < u64::MAX,
         ensures
             self.wf(),
             self.spec_is_idle(),
@@ -503,12 +548,12 @@ impl ScoreBoard {
             self.result@ == old(self).result@,
             result@ == old(self).result@,
             self@ == ScoreBoard::spec_complete_dispatch(old(self)@),
-            self.completed_cycles == old(self).completed_cycles + 1,
+            self.completed_cycles@ == old(self).completed_cycles@ + 1,
     {
         let ret: Ghost<KcallResultView> = Ghost(self.result@);
         self.handled_value = 0;
         self.locked = false;
-        self.completed_cycles = self.completed_cycles + 1;
+        self.completed_cycles = Ghost(self.completed_cycles@ + 1);
         self.phase = ScoreBoardPhase::Idle;
         ret
     }
@@ -567,6 +612,110 @@ impl ScoreBoard {
             result == self.spec_is_handled(),
     {
         matches!(self.phase, ScoreBoardPhase::Handled)
+    }
+}
+
+//==================================================================================================
+// ScoreBoardSlot
+//==================================================================================================
+
+/// Models the global `static mut SCOREBOARD: Option<ScoreBoard>` pattern.
+///
+/// # Description
+///
+/// The original kernel uses a `static mut Option<ScoreBoard>` with unsafe access.
+/// `ScoreBoardSlot` models this initialization/access pattern:
+/// - Before `init()`: the slot is uninitialized, and `try_get_board()` returns false
+///   (modeling `get_mut()` returning `Err(ErrorCode::TryAgain)`).
+/// - After `init()`: the slot is initialized with a well-formed idle scoreboard,
+///   and `try_get_board()` returns true (modeling `get_mut()` returning `Ok(&mut sb)`).
+pub struct ScoreBoardSlot {
+    /// Whether the scoreboard has been initialized.
+    pub initialized: bool,
+    /// The scoreboard (only meaningful when `initialized` is true).
+    pub board: ScoreBoard,
+}
+
+impl ScoreBoardSlot {
+    /// Creates a new uninitialized scoreboard slot.
+    ///
+    /// # Description
+    ///
+    /// Models the initial state of `static mut SCOREBOARD: Option<ScoreBoard> = None`.
+    ///
+    /// # Returns
+    ///
+    /// An uninitialized `ScoreBoardSlot`.
+    pub fn new() -> (result: Self)
+        ensures
+            !result.spec_is_initialized(),
+            result.wf(),
+            result@ == ScoreBoardSlot::spec_initial_slot_view(),
+    {
+        ScoreBoardSlot {
+            initialized: false,
+            board: ScoreBoard::new(),
+        }
+    }
+
+    /// Initializes the scoreboard slot.
+    ///
+    /// # Description
+    ///
+    /// Models `ScoreBoard::init()` which sets `SCOREBOARD = Some(ScoreBoard { ... })`.
+    /// Can only be called on an uninitialized slot (single initialization).
+    pub fn init(&mut self)
+        requires
+            !old(self).spec_is_initialized(),
+        ensures
+            self.spec_is_initialized(),
+            self.wf(),
+            self.board.wf(),
+            self.board.spec_is_idle(),
+            !self.board.locked,
+            self.board.completed_cycles@ == 0nat,
+    {
+        self.board = ScoreBoard::new();
+        self.initialized = true;
+    }
+
+    /// Checks whether the scoreboard has been initialized.
+    ///
+    /// # Description
+    ///
+    /// Models the `SCOREBOARD.as_mut()` check in `get_mut()`.
+    ///
+    /// # Returns
+    ///
+    /// `true` if initialized (modeling `Some`), `false` otherwise (`None`).
+    pub fn is_initialized(&self) -> (result: bool)
+        ensures
+            result == self.spec_is_initialized(),
+    {
+        self.initialized
+    }
+
+    /// Attempts to access the scoreboard; models `get_mut()` error behavior.
+    ///
+    /// # Description
+    ///
+    /// Models `ScoreBoard::get_mut()`:
+    /// - Returns `true` if initialized (modeling `Ok(&mut sb)`).
+    /// - Returns `false` if uninitialized (modeling `Err(ErrorCode::TryAgain)`).
+    ///
+    /// When returning `true`, the board is guaranteed well-formed.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the scoreboard is accessible; `false` with TryAgain semantics.
+    pub fn try_get_board(&self) -> (result: bool)
+        requires
+            self.wf(),
+        ensures
+            result == self.spec_is_initialized(),
+            result ==> self.board.wf(),
+    {
+        self.initialized
     }
 }
 

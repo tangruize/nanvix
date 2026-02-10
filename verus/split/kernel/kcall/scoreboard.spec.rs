@@ -97,6 +97,20 @@ pub struct ScoreBoardView {
     pub completed_cycles: nat,
 }
 
+/// Abstract view of the scoreboard slot (global singleton model).
+///
+/// # Description
+///
+/// Models the `Option<ScoreBoard>` global state. When `initialized` is false,
+/// the slot corresponds to `None`; when true, it corresponds to `Some(ScoreBoard)`.
+#[verifier::ext_equal]
+pub struct ScoreBoardSlotView {
+    /// Whether the scoreboard has been initialized.
+    pub initialized: bool,
+    /// Abstract view of the contained scoreboard.
+    pub board: ScoreBoardView,
+}
+
 //==================================================================================================
 // View Implementations
 //==================================================================================================
@@ -136,7 +150,18 @@ impl View for ScoreBoard {
             locked: self.locked,
             dispatched_value: self.dispatched_value as nat,
             handled_value: self.handled_value as nat,
-            completed_cycles: self.completed_cycles as nat,
+            completed_cycles: self.completed_cycles@,
+        }
+    }
+}
+
+impl View for ScoreBoardSlot {
+    type V = ScoreBoardSlotView;
+
+    open spec fn view(&self) -> ScoreBoardSlotView {
+        ScoreBoardSlotView {
+            initialized: self.initialized,
+            board: self.board@,
         }
     }
 }
@@ -406,6 +431,31 @@ impl ScoreBoard {
         } else {
             let after_one: ScoreBoardView = Self::spec_full_cycle(view, args, ret);
             Self::spec_n_identical_cycles(after_one, args, ret, (n - 1) as nat)
+        }
+    }
+}
+
+impl ScoreBoardSlot {
+    /// Spec function: well-formedness of the scoreboard slot.
+    ///
+    /// # Description
+    ///
+    /// The slot is well-formed when: if initialized, the contained board
+    /// is well-formed. An uninitialized slot is trivially well-formed.
+    pub open spec fn wf(&self) -> bool {
+        self.initialized ==> self.board.wf()
+    }
+
+    /// Spec function: whether the slot has been initialized.
+    pub open spec fn spec_is_initialized(&self) -> bool {
+        self.initialized
+    }
+
+    /// Spec function: the initial (uninitialized) slot view.
+    pub open spec fn spec_initial_slot_view() -> ScoreBoardSlotView {
+        ScoreBoardSlotView {
+            initialized: false,
+            board: ScoreBoard::spec_initial_view(),
         }
     }
 }
