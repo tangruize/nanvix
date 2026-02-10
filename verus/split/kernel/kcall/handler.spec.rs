@@ -414,4 +414,24 @@ pub open spec fn spec_harvest_to_outcome(
     }
 }
 
+//==================================================================================================
+// Spec Functions: Liveness Assumption
+//==================================================================================================
+
+/// Spec function: models the liveness assumption that INITD eventually terminates.
+///
+/// # Description
+///
+/// This predicate expresses the assumption that within a sequence of harvest
+/// outcomes, at least one is a terminating outcome (INITD exited). This is
+/// a fairness/liveness assumption about the external environment — the init
+/// daemon will eventually exit, causing the handler loop to terminate.
+///
+/// This assumption cannot be proved within the handler's verification model
+/// because it depends on the behavior of the process manager and the init
+/// daemon, which are external to the handler loop.
+pub open spec fn spec_initd_terminates_within(outcomes: Seq<HarvestOutcome>) -> bool {
+    exists|i: int| 0 <= i < outcomes.len() && spec_should_terminate(#[trigger] outcomes[i])
+}
+
 } // verus!

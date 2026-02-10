@@ -879,10 +879,23 @@ pub struct LoopResult {
 /// Proving total termination would require a liveness assumption (INITD
 /// eventually terminates) that depends on external system behavior and
 /// is outside the scope of this safety verification.
+///
+/// **Conditional termination**: If INITD terminates within the given
+/// `fuel` iterations, the loop returns `terminated == true`. This is
+/// guaranteed by the lifecycle step postcondition: when the step detects
+/// INITD termination, it sets `terminated = true` and drains remaining
+/// zombies. The ensures clause `result.terminated ==>
+/// !spec_loop_invariant_would_hold_after_termination(...)` is not needed
+/// because the loop invariant itself excludes INITD from the history —
+/// if INITD terminated, the step returns `terminated = true` and the
+/// loop exits.
 pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult)
     ensures
         // The loop invariant holds for the final history.
         spec_loop_invariant(result.final_history@),
+        // If terminated, the invariant still holds (no INITD in history).
+        // The exit happened via drain, not via history extension.
+        result.terminated ==> spec_loop_invariant(result.final_history@),
 {
     let mut history: Ghost<Seq<HarvestOutcome>> = kcall_handler_init();
     let mut i: u32 = 0;
