@@ -1,0 +1,51 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 19:41:53 CST 2026
+Module: kernel::pm::kcall::create_thread
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::create_thread
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)
+   --> kernel/pm/kcall/create_thread.proof.rs:276:9
+    |
+276 | /         (spec_args_addr_valid(input) && spec_copy_succeeded(input))
+277 | |             ==> spec_create_thread_result(input, pm_outcome)
+278 | |                 matches CreateThreadResultView::Error { error_code }
+279 | |                 && error_code == ERROR_CODE_INVALID_ARGUMENT(),
+    | |______________________________________________________________^
+
+error: matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)
+   --> kernel/pm/kcall/create_thread.proof.rs:281:9
+    |
+281 | /         (spec_args_addr_valid(input) && !spec_copy_succeeded(input))
+282 | |             ==> spec_create_thread_result(input, pm_outcome)
+283 | |                 matches CreateThreadResultView::Error { error_code }
+284 | |                 && error_code == input.copy_error_code,
+    | |______________________________________________________^
+
+error: matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)
+   --> kernel/pm/kcall/create_thread.proof.rs:286:9
+    |
+286 | /         !spec_args_addr_valid(input)
+287 | |             ==> spec_create_thread_result(input, pm_outcome)
+288 | |                 matches CreateThreadResultView::Error { error_code }
+289 | |                 && error_code == ERROR_CODE_INVALID_ARGUMENT(),
+    | |______________________________________________________________^
+
+error: matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)
+   --> kernel/pm/kcall/create_thread.rs:272:9
+    |
+272 | /         !succeeded ==> result matches CopyFromUserResultModel::CopyError { error_code: ec }
+273 | |             && ec == error_code,
+    | |_______________________________^
+
+error: aborting due to 4 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::create_thread (verified:0, errors:0)
