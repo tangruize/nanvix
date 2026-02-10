@@ -1,0 +1,35 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 12:07:28 CST 2026
+Module: kernel::kcall::handler
+Command: verus --crate-type lib lib.rs --verify-module kernel::kcall::handler
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::kcall::handler
+
+error: postcondition not satisfied
+   --> kernel/kcall/handler.rs:452:9
+    |
+452 |           result.should_terminate ==> result.initd_pid == 1u32,
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+478 | /     IterationResult {
+479 | |         work_state,
+480 | |         should_yield: do_yield,
+481 | |         should_terminate: terminate,
+482 | |         exit_status: harvest.exit_status,
+483 | |         initd_pid: harvest.pid,
+484 | |     }
+    | |_____- at the end of the function body
+
+verification results:: 36 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 36
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::kcall::handler (verified:36, errors:1)
