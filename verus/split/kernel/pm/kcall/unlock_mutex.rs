@@ -204,6 +204,10 @@ pub fn take_mutex_guard_model(mutex_addr: u32, pid: Ghost<u32>, tid: Ghost<u32>)
         (result.0 matches TakeMutexGuardOutcomeModel::Ok) <==> result.1@.is_some(),
         // Guard token carries the correct mutex address on success.
         result.1@.is_some() ==> result.1@ == Some(mutex_addr),
+        // Ownership: success implies the thread owned the mutex guard.
+        // Concrete interpretation provided by the PM module.
+        result.0 matches TakeMutexGuardOutcomeModel::Ok
+            ==> spec_thread_owns_mutex(pid@ as nat, tid@ as nat, mutex_addr as nat),
 {
     unimplemented!()
 }

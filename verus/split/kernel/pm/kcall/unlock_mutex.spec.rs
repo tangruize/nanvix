@@ -189,6 +189,19 @@ pub open spec fn spec_unlock_mutex_safety_preconditions() -> bool {
     spec_caller_no_pm_reference()
 }
 
+/// Spec predicate: the specified thread owns the mutex guard for the given address.
+///
+/// # Description
+///
+/// Models the ownership relationship between a (pid, tid) pair and a mutex.
+/// In the original code, `take_mutex_guard` succeeds only when the specified
+/// thread owns the mutex guard. This predicate is abstract because the
+/// concrete ownership tracking is a PM concern, verified in the PM module.
+///
+/// When the PM trust boundary is enriched with ownership constraints, this
+/// predicate should be given a concrete interpretation by the PM module.
+pub uninterp spec fn spec_thread_owns_mutex(pid: nat, tid: nat, mutex_addr: nat) -> bool;
+
 /// Spec predicate: the guard for the given mutex has been dropped (mutex unlocked).
 ///
 /// # Description
