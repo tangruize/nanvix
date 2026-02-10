@@ -350,8 +350,18 @@ pub fn yield_cpu()
 /// code would never enter the handler loop.
 ///
 /// ## Trust Boundary T5
+///
+/// ## Assumption
+///
+/// Initialization always succeeds. In the original code, failure causes
+/// `panic!("failed to initialize event manager")` which aborts the kernel.
+/// The panic path is not modeled; if initialization fails, the handler
+/// loop never starts.
 #[verifier::external_body]
 pub fn event_init()
+    ensures
+        // ASSUMPTION: initialization succeeds (panic on failure = kernel abort).
+        true,
 {
     unimplemented!()
 }
@@ -880,22 +890,24 @@ pub struct LoopResult {
 /// eventually terminates) that depends on external system behavior and
 /// is outside the scope of this safety verification.
 ///
-/// **Conditional termination**: If INITD terminates within the given
-/// `fuel` iterations, the loop returns `terminated == true`. This is
-/// guaranteed by the lifecycle step postcondition: when the step detects
-/// INITD termination, it sets `terminated = true` and drains remaining
-/// zombies. The ensures clause `result.terminated ==>
-/// !spec_loop_invariant_would_hold_after_termination(...)` is not needed
-/// because the loop invariant itself excludes INITD from the history —
-/// if INITD terminated, the step returns `terminated = true` and the
-/// loop exits.
+/// **Conditional termination**: The postconditions establish a tight
+/// bound between termination status and history length. When the loop
+/// exits without termination (`!result.terminated`), exactly `fuel`
+/// iterations ran and the invariant guarantees none of them observed
+/// INITD termination (via `lemma_invariant_excludes_termination`).
+/// When termination occurs (`result.terminated`), it happened before
+/// fuel was exhausted (`final_history.len() < fuel`). Together with
+/// `lemma_loop_termination_completeness`, this proves the contrapositive:
+/// if INITD terminates within `fuel` iterations, the loop MUST return
+/// `terminated == true`.
 pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult)
     ensures
         // The loop invariant holds for the final history.
         spec_loop_invariant(result.final_history@),
-        // If terminated, the invariant still holds (no INITD in history).
-        // The exit happened via drain, not via history extension.
-        result.terminated ==> spec_loop_invariant(result.final_history@),
+        // Fuel exhaustion: all iterations ran, none triggered termination.
+        !result.terminated ==> result.final_history@.len() == fuel as int,
+        // Early exit: termination occurred before fuel ran out.
+        result.terminated ==> result.final_history@.len() < fuel as int,
 {
     let mut history: Ghost<Seq<HarvestOutcome>> = kcall_handler_init();
     let mut i: u32 = 0;
@@ -906,6 +918,10 @@ pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult
         invariant
             spec_loop_invariant(history@),
             i <= fuel,
+            // History tracks iteration count when the loop is still running.
+            !terminated ==> history@.len() == i as int,
+            // Termination happened before fuel was exhausted.
+            terminated ==> history@.len() < fuel as int,
         decreases fuel - i,
     {
         let step: LifecycleStepResult = kcall_handler_lifecycle_step(
