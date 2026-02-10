@@ -85,27 +85,41 @@
 //! - **T2: `ProcessManager::terminate(pid)`**. Terminates the process. Modeled
 //!   as `external_body` taking ghost PM pre-state and returning ghost post-state.
 //!   Postconditions guarantee: kernel PID (0) rejection, running PID rejection,
-//!   non-existent PID rejection (NoSuchProcess), PID existence requirement for
-//!   success, and state preservation on error. PID removal is NOT claimed (the
-//!   real PM may resume the process). Trusted postconditions are modeled from
-//!   the PM implementation (mod.rs:1036-1078); the PM module's own verification
-//!   covers the implementation side.
+//!   non-terminatable PID rejection (NoSuchProcess), terminatable-set membership
+//!   for success, and state preservation on error. PID removal is NOT claimed
+//!   (the real PM may resume the process). Trusted postconditions are modeled
+//!   from the PM implementation (mod.rs:1036-1078); the PM module's own
+//!   verification covers the implementation side.
+//! - **A1: `axiom_kernel_pid_is_valid`**. Trusted axiom that PID 0 always
+//!   parses successfully. Discharged by the pid module's verification. Used
+//!   here to prove unconditional kernel PID failure without a parse guard.
 //!
-//! ### Abstraction Gap: Process Lifecycle States
+//! ### Cross-Module Trust Chain
 //!
-//! `ProcessManagerStateView` uses a flat `process_set: Set<nat>` that does not
-//! distinguish process lifecycle states (ready, suspended, interrupted, zombie).
-//! The real PM's `terminate` only searches the `ready` and `suspended` queues;
-//! interrupted and zombie processes fall through to `NoSuchProcess`. This means
-//! a PID can be in `process_set` (as interrupted/zombie) yet the real PM would
-//! reject it. The model is an over-approximation: it cannot express that
-//! interrupted/zombie PIDs are rejected. This is acceptable because:
-//! 1. The `external_body` postconditions never claim success for such PIDs
-//!    (they only assert success implies `spec_pm_has_process`, not the reverse).
-//! 2. Per-state sets would require modeling the full process lifecycle, which
-//!    belongs in the PM module's verification, not this kcall dispatch layer.
-//! 3. The PM module's own verification (process_manager module) covers the
-//!    per-state transition correctness.
+//! The `external_body` and axiom pattern is the standard approach for
+//! cross-module boundaries in this project (per COPILOT.md guidelines).
+//! Each trust boundary is discharged by verification in the owning module:
+//! - T1 postconditions ← verified in `sys::pid` module.
+//! - T2 postconditions ← verified in `pm::process::manager` module.
+//! - A1 axiom ← verified in `sys::pid` module.
+//!
+//! Full end-to-end soundness requires composing these module-level proofs.
+//! This composition is not automated in the current verification build;
+//! it relies on postcondition-contract matching between modules.
+//!
+//! ### Process Lifecycle State Refinement
+//!
+//! `ProcessManagerStateView` uses a `terminatable_set` to distinguish PIDs
+//! that `pm.terminate` can accept (ready/suspended) from PIDs that it
+//! rejects (interrupted/zombie). The `terminatable_set ⊆ process_set`
+//! invariant ensures structural consistency. This refinement closes the
+//! over-approximation gap where the flat `process_set` alone could not
+//! distinguish between terminatable and non-terminatable lifecycle states.
+//!
+//! Remaining abstraction: the model does not specify which PIDs are in
+//! `terminatable_set` — that mapping (ready/suspended → terminatable) is
+//! the PM module's responsibility. This kcall module only requires that
+//! the PM maintains the `spec_pm_wf` invariant.
 //!
 //! ## Logging
 //!
@@ -327,6 +341,16 @@ pub fn process_manager_terminate(
         // On success: PID is not the running process (contrapositive of running rejection).
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> !spec_is_running_process(pm_pre, pid as nat),
+        // On success: PID was in the terminatable set (ready/suspended).
+        ret.0.spec_view() == TerminateOutcomeView::TmOk
+            ==> pm_pre.terminatable_set.contains(pid as nat),
+        // Non-terminatable non-kernel non-running PID fails with NoSuchProcess.
+        // This covers both PIDs not in process_set AND PIDs in process_set
+        // but not in terminatable_set (interrupted/zombie).
+        pid as nat != KERNEL_PID() && !spec_is_running_process(pm_pre, pid as nat)
+            && !pm_pre.terminatable_set.contains(pid as nat)
+            ==> (ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
+                && error_code == ERROR_CODE_NO_SUCH_PROCESS()),
         // Frame: on success, no new PIDs are created (subset).
         // Note: the real PM may preserve the target PID (resume case with
         // runnable threads), so the frame is conservatively weak — it does
@@ -334,6 +358,9 @@ pub fn process_manager_terminate(
         // Tightening would require per-state process modeling.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> ret.1@.process_set.subset_of(pm_pre.process_set),
+        // Frame: on success, no new terminatable PIDs are added.
+        ret.0.spec_view() == TerminateOutcomeView::TmOk
+            ==> ret.1@.terminatable_set.subset_of(pm_pre.terminatable_set),
         // Frame: on success, all PIDs other than the target are unchanged.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> forall|p: nat| #![auto] p != pid as nat ==>

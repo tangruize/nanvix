@@ -349,7 +349,8 @@ pub proof fn lemma_wf_running_implies_exists(
 /// # Description
 ///
 /// For a well-formed PM state, the `running PID` condition and the
-/// `non-existent non-kernel PID` condition are mutually exclusive.
+/// `non-existent PID` condition are mutually exclusive. Also, the
+/// running PID and terminatable_set membership are mutually exclusive.
 /// This proves the `process_manager_terminate` postconditions are
 /// consistent (never simultaneously triggered).
 pub proof fn lemma_wf_prevents_inconsistency(
@@ -361,6 +362,10 @@ pub proof fn lemma_wf_prevents_inconsistency(
     ensures
         // Running PID and non-existent PID are mutually exclusive.
         !(spec_is_running_process(state, pid) && !spec_pm_has_process(state, pid)),
+        // Running PID is never in the terminatable set.
+        !(spec_is_running_process(state, pid) && state.terminatable_set.contains(pid)),
+        // Kernel PID is never in the terminatable set.
+        !(pid == KERNEL_PID() && state.terminatable_set.contains(pid)),
 {
 }
 
@@ -418,9 +423,10 @@ pub proof fn lemma_state_unchanged_on_error(
 ///
 /// Given the postconditions of `process_manager_terminate` (in implication
 /// form), this lemma derives `spec_terminate_possible` by applying modus
-/// ponens to the contrapositive of each rejection postcondition. This is a
-/// genuine composition proof: it takes the operational postconditions and
-/// assembles the abstract spec predicate.
+/// ponens. With the refined `terminatable_set` model, success requires the
+/// PID to be in the terminatable set — this directly gives us
+/// `spec_terminate_possible`. The lemma also derives the implied facts
+/// (not kernel, not running) from the wf invariant.
 pub proof fn lemma_success_requires_terminatable(
     pm_pre: ProcessManagerStateView,
     pid: nat,
@@ -429,20 +435,19 @@ pub proof fn lemma_success_requires_terminatable(
     requires
         spec_pm_wf(pm_pre),
         terminate_outcome == TerminateOutcomeView::TmOk,
-        // From process_manager_terminate postconditions (contrapositive form):
+        // From process_manager_terminate postconditions:
         terminate_outcome == TerminateOutcomeView::TmOk ==> pid != KERNEL_PID(),
         terminate_outcome == TerminateOutcomeView::TmOk ==> !spec_is_running_process(pm_pre, pid),
         terminate_outcome == TerminateOutcomeView::TmOk ==> spec_pm_has_process(pm_pre, pid),
+        terminate_outcome == TerminateOutcomeView::TmOk ==> pm_pre.terminatable_set.contains(pid),
     ensures
         spec_terminate_possible(pm_pre, pid),
         pid != KERNEL_PID(),
         !spec_is_running_process(pm_pre, pid),
 {
-    // Modus ponens on each implication with TmOk:
-    //   TmOk + (TmOk ==> pid != KERNEL_PID())     → pid != KERNEL_PID()
-    //   TmOk + (TmOk ==> !running)                 → !running
-    //   TmOk + (TmOk ==> has_process)              → has_process
-    // The three derived facts compose into spec_terminate_possible.
+    // Modus ponens on each implication with TmOk gives:
+    //   terminatable_set.contains(pid) — which IS spec_terminate_possible.
+    //   pid != KERNEL_PID() and !running — from wf + terminatable_set membership.
 }
 
 /// Proof: running PID terminate produces InvalidArgument error in the pipeline.

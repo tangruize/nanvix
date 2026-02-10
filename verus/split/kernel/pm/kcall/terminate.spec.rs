@@ -99,20 +99,28 @@ pub enum TerminateResultView {
 ///
 /// # Description
 ///
-/// Models the ProcessManager's process table as a set of tracked PIDs and
-/// the currently running process (if any). This concrete representation
-/// (vs. an empty struct) ensures that pre-state and post-state can be
-/// genuinely distinct, making state-transition postconditions satisfiable
-/// and non-vacuous.
+/// Models the ProcessManager's process table as a set of tracked PIDs,
+/// a terminatable subset, and the currently running process (if any).
+/// This concrete representation (vs. an empty struct) ensures that
+/// pre-state and post-state can be genuinely distinct, making
+/// state-transition postconditions satisfiable and non-vacuous.
 ///
-/// The `process_set` represents PIDs known to the PM (ready, suspended,
-/// interrupted, zombie, or running). The `running_pid` tracks which
-/// process is currently executing on the CPU (if any). The PM rejects
-/// terminate requests for the running process.
+/// - `process_set`: All PIDs known to the PM (ready, suspended,
+///   interrupted, zombie, or running).
+/// - `terminatable_set`: The subset of PIDs that `pm.terminate` will
+///   accept (ready or suspended processes). Interrupted and zombie
+///   PIDs are in `process_set` but NOT in `terminatable_set`; the
+///   real PM returns `NoSuchProcess` for them because they are not
+///   found in the ready/suspended queues.
+/// - `running_pid`: The currently executing process (if any). The PM
+///   rejects terminate requests for the running process even though
+///   it is conceptually "ready".
 #[verifier::ext_equal]
 pub struct ProcessManagerStateView {
     /// The set of process identifiers tracked by the process manager.
     pub process_set: Set<nat>,
+    /// The subset of PIDs for which `pm.terminate` will accept (ready/suspended).
+    pub terminatable_set: Set<nat>,
     /// The PID of the currently running process, if any.
     pub running_pid: Option<nat>,
 }
@@ -151,17 +159,24 @@ pub open spec fn spec_is_running_process(state: ProcessManagerStateView, pid: na
 /// Ensures structural consistency of the PM state:
 /// - If a running process exists, its PID must be in the process set.
 /// - The kernel PID (0) is always in the process set (it is never removed).
+/// - The terminatable set is a subset of the process set.
+/// - The kernel PID is never terminatable (it is rejected before queue lookup).
+/// - The running PID is never terminatable (it is rejected before queue lookup).
 ///
-/// This invariant prevents inconsistent postconditions in
-/// `process_manager_terminate`. Without it, a state where
-/// `running_pid == Some(pid)` but `!process_set.contains(pid)` would
-/// trigger both `InvalidArgument` (running) and `NoSuchProcess`
-/// (non-existent) postconditions simultaneously.
+/// These invariants prevent inconsistent postconditions in
+/// `process_manager_terminate`. Without them, postconditions for different
+/// rejection reasons could fire simultaneously.
 pub open spec fn spec_pm_wf(state: ProcessManagerStateView) -> bool {
     // Running process must be in the process set.
     (state.running_pid matches Some(pid) ==> state.process_set.contains(pid))
     // Kernel PID is always tracked.
     && state.process_set.contains(KERNEL_PID())
+    // Terminatable set is a subset of the process set.
+    && state.terminatable_set.subset_of(state.process_set)
+    // Kernel PID is never terminatable.
+    && !state.terminatable_set.contains(KERNEL_PID())
+    // Running PID is never in the terminatable set.
+    && (state.running_pid matches Some(pid) ==> !state.terminatable_set.contains(pid))
 }
 
 /// Whether a raw u32 value is a valid ProcessIdentifier.
@@ -264,15 +279,16 @@ pub open spec fn spec_is_valid_error_code(code: int) -> bool {
 ///
 /// # Description
 ///
-/// A terminate can succeed only if:
-/// 1. The PID exists in the process manager state.
-/// 2. The PID is not the kernel process (PID 0).
-/// 3. The PID is not the currently running process.
+/// A terminate can succeed only if the PID is in the terminatable set
+/// (ready or suspended processes). Under `spec_pm_wf`, this implies:
+/// 1. The PID exists in the process set (`terminatable_set ⊆ process_set`).
+/// 2. The PID is not the kernel process (`KERNEL_PID ∉ terminatable_set`).
+/// 3. The PID is not the running process (`running ∉ terminatable_set`).
 ///
-/// This models the three rejection checks in `ProcessManager::terminate`:
-/// kernel PID check, running PID check, and existence check.
+/// This models the three rejection checks in `ProcessManager::terminate`
+/// plus the queue-lookup requirement (only ready/suspended are found).
 pub open spec fn spec_terminate_possible(state: ProcessManagerStateView, pid: nat) -> bool {
-    spec_pm_has_process(state, pid) && pid != KERNEL_PID() && !spec_is_running_process(state, pid)
+    state.terminatable_set.contains(pid)
 }
 
 } // verus!
