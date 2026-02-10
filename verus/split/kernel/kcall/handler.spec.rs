@@ -184,35 +184,30 @@ pub enum HandlerDispatchCategory {
 /// by the dispatcher) map to `Invalid`.
 ///
 /// Source: `src/kernel/src/kcall/handler.rs` lines 62-97.
-/// Constants from `src/libs/sys/src/sys/number.rs`:
-///   NR_Debug=0, NR_GetPid=1, NR_GetTid=2, NR_CapCtl=4, NR_Terminate=6,
-///   NR_EventCtrl=7, NR_Send=8, NR_MemoryMap=10, NR_MemoryUnmap=11,
-///   NR_MemoryCtrl=12, NR_MemoryCopy=13, NR_AllocMmio=14, NR_FreeMmio=15,
-///   NR_AllocPmio=16, NR_FreePmio=17, NR_ReadPmio=18, NR_WritePmio=19,
-///   NR_CreateThread=21, NR_GetTime=28, NR_SetThreadDataArea=30,
-///   NR_GetThreadDataArea=31.
+/// Constants imported from the dispatcher module's spec, which mirrors
+/// `src/libs/sys/src/sys/number.rs` `KcallNumber` enum values.
 pub open spec fn spec_classify_handler_kcall(number: u32) -> HandlerDispatchCategory {
-    if number == 0 { HandlerDispatchCategory::Debug }
-    else if number == 1 { HandlerDispatchCategory::GetPid }
-    else if number == 2 { HandlerDispatchCategory::GetTid }
-    else if number == 4 { HandlerDispatchCategory::CapCtl }
-    else if number == 6 { HandlerDispatchCategory::Terminate }
-    else if number == 7 { HandlerDispatchCategory::EventCtrl }
-    else if number == 10 { HandlerDispatchCategory::MemoryMap }
-    else if number == 11 { HandlerDispatchCategory::MemoryUnmap }
-    else if number == 12 { HandlerDispatchCategory::MemoryCtrl }
-    else if number == 13 { HandlerDispatchCategory::MemoryCopy }
-    else if number == 8 { HandlerDispatchCategory::Send }
-    else if number == 14 { HandlerDispatchCategory::AllocMmio }
-    else if number == 15 { HandlerDispatchCategory::FreeMmio }
-    else if number == 16 { HandlerDispatchCategory::AllocPmio }
-    else if number == 17 { HandlerDispatchCategory::FreePmio }
-    else if number == 18 { HandlerDispatchCategory::ReadPmio }
-    else if number == 19 { HandlerDispatchCategory::WritePmio }
-    else if number == 28 { HandlerDispatchCategory::GetTime }
-    else if number == 21 { HandlerDispatchCategory::CreateThread }
-    else if number == 30 { HandlerDispatchCategory::SetThreadDataArea }
-    else if number == 31 { HandlerDispatchCategory::GetThreadDataArea }
+    if number == super::dispatcher::KCALL_DEBUG() { HandlerDispatchCategory::Debug }
+    else if number == super::dispatcher::KCALL_GET_PID() { HandlerDispatchCategory::GetPid }
+    else if number == super::dispatcher::KCALL_GET_TID() { HandlerDispatchCategory::GetTid }
+    else if number == super::dispatcher::KCALL_CAP_CTL() { HandlerDispatchCategory::CapCtl }
+    else if number == super::dispatcher::KCALL_TERMINATE() { HandlerDispatchCategory::Terminate }
+    else if number == super::dispatcher::KCALL_EVENT_CTRL() { HandlerDispatchCategory::EventCtrl }
+    else if number == super::dispatcher::KCALL_MEMORY_MAP() { HandlerDispatchCategory::MemoryMap }
+    else if number == super::dispatcher::KCALL_MEMORY_UNMAP() { HandlerDispatchCategory::MemoryUnmap }
+    else if number == super::dispatcher::KCALL_MEMORY_CTRL() { HandlerDispatchCategory::MemoryCtrl }
+    else if number == super::dispatcher::KCALL_MEMORY_COPY() { HandlerDispatchCategory::MemoryCopy }
+    else if number == super::dispatcher::KCALL_SEND() { HandlerDispatchCategory::Send }
+    else if number == super::dispatcher::KCALL_ALLOC_MMIO() { HandlerDispatchCategory::AllocMmio }
+    else if number == super::dispatcher::KCALL_FREE_MMIO() { HandlerDispatchCategory::FreeMmio }
+    else if number == super::dispatcher::KCALL_ALLOC_PMIO() { HandlerDispatchCategory::AllocPmio }
+    else if number == super::dispatcher::KCALL_FREE_PMIO() { HandlerDispatchCategory::FreePmio }
+    else if number == super::dispatcher::KCALL_READ_PMIO() { HandlerDispatchCategory::ReadPmio }
+    else if number == super::dispatcher::KCALL_WRITE_PMIO() { HandlerDispatchCategory::WritePmio }
+    else if number == super::dispatcher::KCALL_GET_TIME() { HandlerDispatchCategory::GetTime }
+    else if number == super::dispatcher::KCALL_CREATE_THREAD() { HandlerDispatchCategory::CreateThread }
+    else if number == super::dispatcher::KCALL_SET_TDA() { HandlerDispatchCategory::SetThreadDataArea }
+    else if number == super::dispatcher::KCALL_GET_TDA() { HandlerDispatchCategory::GetThreadDataArea }
     else { HandlerDispatchCategory::Invalid }
 }
 
