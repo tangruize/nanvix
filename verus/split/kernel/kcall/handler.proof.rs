@@ -674,7 +674,7 @@ pub proof fn lemma_dispatch_coverage_matches_source()
 // Proof: Conditional Termination (Liveness)
 //==================================================================================================
 
-/// Lemma: The loop invariant excludes INITD termination from the history.
+/// Lemma: The loop invariant excludes ALL INITD termination from the history.
 ///
 /// # Description
 ///
@@ -686,15 +686,21 @@ pub proof fn lemma_dispatch_coverage_matches_source()
 ///
 /// This is the key bridge between the invariant and liveness: if the
 /// invariant holds, INITD has NOT terminated in any recorded iteration.
-pub proof fn lemma_invariant_excludes_termination(history: Seq<HarvestOutcome>)
+/// Uses the per-element `lemma_invariant_excludes_termination` to discharge
+/// any witness that the exists quantifier might provide.
+pub proof fn lemma_invariant_excludes_all_termination(history: Seq<HarvestOutcome>)
     requires
         spec_loop_invariant(history),
     ensures
         !spec_initd_terminates_within(history),
 {
-    // The invariant gives: ∀i. 0 ≤ i < len → ¬should_terminate(history[i]).
-    // spec_initd_terminates_within requires: ∃i. 0 ≤ i < len ∧ should_terminate(history[i]).
-    // These are contradictory by De Morgan / quantifier duality.
+    // The per-element lemma gives us: for any valid index, the element
+    // is non-terminating. This contradicts the existential in
+    // spec_initd_terminates_within.
+    assert forall|i: int| 0 <= i < history.len() implies
+        !spec_should_terminate(#[trigger] history[i]) by {
+        lemma_invariant_excludes_termination(history, i);
+    }
 }
 
 /// Lemma: When the loop exits without termination, INITD was never observed.
@@ -711,7 +717,7 @@ pub proof fn lemma_invariant_excludes_termination(history: Seq<HarvestOutcome>)
 /// loop MUST have returned `terminated == true`. This follows because:
 /// 1. If `!terminated`, then `spec_loop_invariant(history)` holds (loop ensures).
 /// 2. `spec_loop_invariant(history) ==> !spec_initd_terminates_within(history)`
-///    (by `lemma_invariant_excludes_termination`).
+///    (by `lemma_invariant_excludes_all_termination`).
 /// 3. So INITD did NOT terminate in the observed iterations.
 /// 4. Contrapositive: if INITD DID terminate, then `terminated == true`.
 pub proof fn lemma_loop_termination_completeness(
@@ -729,7 +735,7 @@ pub proof fn lemma_loop_termination_completeness(
         // The invariant always excludes INITD from history.
         !spec_initd_terminates_within(history),
 {
-    lemma_invariant_excludes_termination(history);
+    lemma_invariant_excludes_all_termination(history);
 }
 
 } // verus!
