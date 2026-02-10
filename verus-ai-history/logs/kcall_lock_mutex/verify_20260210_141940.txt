@@ -1,0 +1,60 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 14:19:40 CST 2026
+Module: kcall_lock_mutex
+Command: verus --crate-type lib lib.rs --verify-module kcall_lock_mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0277]: `kernel::pm::kcall::lock_mutex::LockMutexResultModel` doesn't implement `std::fmt::Debug`
+    --> kernel/pm/kcall/lock_mutex.rs:358:42
+     |
+ 358 |             ==> result.is_ok() && result.unwrap() == false,
+     |                                          ^^^^^^ the trait `std::fmt::Debug` is not implemented for `kernel::pm::kcall::lock_mutex::LockMutexResultModel`
+     |
+     = note: add `#[derive(Debug)]` to `kernel::pm::kcall::lock_mutex::LockMutexResultModel` or manually `impl std::fmt::Debug for kernel::pm::kcall::lock_mutex::LockMutexResultModel`
+note: required by a bound in `std::result::Result::<T, E>::unwrap`
+    --> /home/ubuntu/.rustup/toolchains/1.91.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:1222:12
+     |
+1220 |     pub fn unwrap(self) -> T
+     |            ------ required by a bound in this associated function
+1221 |     where
+1222 |         E: fmt::Debug,
+     |            ^^^^^^^^^^ required by this bound in `Result::<T, E>::unwrap`
+help: consider annotating `kernel::pm::kcall::lock_mutex::LockMutexResultModel` with `#[derive(Debug)]`
+     |
+ 205 + #[derive(Debug)]
+ 206 | pub enum LockMutexResultModel {
+     |
+
+error[E0277]: `kernel::pm::kcall::lock_mutex::LockMutexResultModel` doesn't implement `std::fmt::Debug`
+    --> kernel/pm/kcall/lock_mutex.rs:362:42
+     |
+ 362 |             ==> result.is_ok() && result.unwrap() == true,
+     |                                          ^^^^^^ the trait `std::fmt::Debug` is not implemented for `kernel::pm::kcall::lock_mutex::LockMutexResultModel`
+     |
+     = note: add `#[derive(Debug)]` to `kernel::pm::kcall::lock_mutex::LockMutexResultModel` or manually `impl std::fmt::Debug for kernel::pm::kcall::lock_mutex::LockMutexResultModel`
+note: required by a bound in `std::result::Result::<T, E>::unwrap`
+    --> /home/ubuntu/.rustup/toolchains/1.91.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:1222:12
+     |
+1220 |     pub fn unwrap(self) -> T
+     |            ------ required by a bound in this associated function
+1221 |     where
+1222 |         E: fmt::Debug,
+     |            ^^^^^^^^^^ required by this bound in `Result::<T, E>::unwrap`
+help: consider annotating `kernel::pm::kcall::lock_mutex::LockMutexResultModel` with `#[derive(Debug)]`
+     |
+ 205 + #[derive(Debug)]
+ 206 | pub enum LockMutexResultModel {
+     |
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0277`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kcall_lock_mutex (verified:0, errors:0)
