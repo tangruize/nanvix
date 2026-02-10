@@ -85,7 +85,10 @@
 //!   Can return Ok(ExitStatus), Err(Interrupted(Killed)), or Err(Generic(error)).
 //!   **ASSUMPTION**: `Interrupted(TimedOut)` is excluded because the implementation
 //!   calls `join_cond.wait(None)` — the `None` alarm means no timeout is set,
-//!   so `TimedOut` cannot occur. See `unsafe.rs:402`.
+//!   so `TimedOut` cannot occur. See `unsafe.rs:402`. This is formalized via:
+//!   - `spec_join_wait_excludes_timeout()` predicate in the spec file.
+//!   - `axiom_join_wait_excludes_timeout()` axiom in the proof file.
+//!   - `requires spec_join_wait_excludes_timeout()` precondition on T2.
 //! - **T3: `pm::copy_to_user(pm, pid, retval, &status)`**. Copies the
 //!   ExitStatus to user space. Modeled as `external_body`. Can return
 //!   Ok(()) or Err(error). On success, the postcondition guarantees that the
@@ -301,10 +304,14 @@ pub fn try_from_thread_identifier(arg0: u32) -> (result: TidParseResultModel)
 /// - That the thread exists (PM validates this).
 #[verifier::external_body]
 pub fn process_manager_join_thread(pid: u32, tid: u32) -> (result: JoinThreadResultModel)
+    requires
+        // The join implementation uses wait(None), so TimedOut cannot occur.
+        // Justified by axiom_join_wait_excludes_timeout in the proof file.
+        spec_join_wait_excludes_timeout(),
     ensures
         // The result is always one of the defined variants.
-        // ASSUMPTION: TimedOut is excluded because join_cond.wait(None)
-        // never returns Interrupted(TimedOut) — no alarm is set.
+        // TimedOut is excluded because spec_join_wait_excludes_timeout()
+        // guarantees wait(None) — no alarm is set.
         matches!(result, JoinThreadResultModel::JtOk { .. }
             | JoinThreadResultModel::JtInterruptedKilled
             | JoinThreadResultModel::JtError { .. }),
@@ -438,6 +445,9 @@ pub fn join_thread_model(
             (JoinThreadKcallResultModel::GenericError { error_code }, Ghost(tid_view), Ghost(jt_view), Ghost(cp_view))
         },
         TidParseResultModel::TidOk { tid } => {
+            // Discharge the TimedOut exclusion axiom before calling T2.
+            proof { axiom_join_wait_excludes_timeout(); }
+
             // Step 2: Call ProcessManager::join_thread(pid, tid).
             let jt_result: JoinThreadResultModel = process_manager_join_thread(pid, tid);
 

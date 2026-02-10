@@ -234,6 +234,21 @@ pub uninterp spec fn spec_pm_initialized() -> bool;
 /// This subsumes both initialization and synchronization requirements.
 pub uninterp spec fn spec_mm_initialized() -> bool;
 
+/// Spec predicate: whether `ProcessManager::join_thread` uses a condvar wait
+/// with no alarm (i.e., `wait(None)`), which excludes `TimedOut` interrupts.
+///
+/// # Description
+///
+/// The `Condvar::wait` call in `ProcessManager::join_thread` takes an
+/// `Option<Alarm>` parameter. When `None` is passed, no timeout is set
+/// and the wait can only be interrupted by `Killed`, never by `TimedOut`.
+/// This predicate captures that property so the TimedOut exclusion in T2
+/// is formally justified by a precondition rather than an inline assumption.
+///
+/// Discharged by `axiom_join_wait_excludes_timeout` in the proof file,
+/// referencing `src/kernel/src/pm/process/manager/unsafe.rs:402`.
+pub uninterp spec fn spec_join_wait_excludes_timeout() -> bool;
+
 /// Spec predicate: whether the caller holds no resources.
 ///
 /// # Description

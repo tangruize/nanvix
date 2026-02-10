@@ -539,6 +539,33 @@ pub proof fn axiom_valid_tid_range(raw: nat)
 }
 
 //==================================================================================================
+// Proof Functions — TimedOut Exclusion
+//==================================================================================================
+
+/// Axiom: `ProcessManager::join_thread` uses `wait(None)`, excluding TimedOut.
+///
+/// # Description
+///
+/// The `ProcessManager::join_thread` implementation calls
+/// `join_cond.wait(None)?` (see `src/kernel/src/pm/process/manager/unsafe.rs:402`).
+/// The `None` alarm argument means no timeout is set, so `Condvar::wait` can
+/// only be interrupted by `Killed`, never by `TimedOut`.
+///
+/// ## Trust Boundary (Deliberate)
+///
+/// This axiom is an `external_body` assumption that serves as a trust boundary
+/// with the PM module. It should be discharged by verification of the
+/// `ProcessManager::join_thread` implementation confirming it passes `None`
+/// to `Condvar::wait`. If the PM implementation were changed to pass
+/// `Some(alarm)` to `wait`, this axiom would become invalid and need removal.
+#[verifier::external_body]
+pub proof fn axiom_join_wait_excludes_timeout()
+    ensures
+        spec_join_wait_excludes_timeout(),
+{
+}
+
+//==================================================================================================
 // Proof Functions — Error Code Domain
 //==================================================================================================
 
