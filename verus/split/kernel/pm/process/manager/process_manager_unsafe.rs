@@ -571,7 +571,7 @@ impl ProcessManagerUnsafeState {
                 ==> self.remaining_quantum == self.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
-        proof { self.ghost_diverged = Ghost(true); }
+        self.ghost_diverged = Ghost(true);
     }
 
     //==============================================================================================
@@ -618,7 +618,7 @@ impl ProcessManagerUnsafeState {
                 ==> self.remaining_quantum == self.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
-        proof { self.ghost_diverged = Ghost(true); }
+        self.ghost_diverged = Ghost(true);
     }
 
     //==============================================================================================
