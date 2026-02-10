@@ -398,15 +398,16 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Models the error path when `handled.down()` is interrupted: the mutex
-    /// guard drops (releasing the lock) but the protocol is not completed.
-    /// The board is left in a stuck Handled state with mutex unlocked.
+    /// Models the error path when `handled.down()` is interrupted (or when
+    /// any active-phase operation fails): the mutex guard drops (releasing
+    /// the lock) but the protocol is not completed. The board is left in
+    /// its current phase with mutex unlocked.
     ///
-    /// This state violates `wf()` (phase is Handled but locked is false),
-    /// reflecting a genuine stuck state that requires external recovery.
+    /// The resulting state violates `wf()` (phase is non-Idle but locked is
+    /// false), reflecting a genuine stuck state that requires external recovery.
     pub open spec fn spec_abandon_dispatch(view: ScoreBoardView) -> ScoreBoardView {
         ScoreBoardView {
-            phase: ScoreBoardPhase::Handled,
+            phase: view.phase,
             args: view.args,
             result: view.result,
             locked: false,

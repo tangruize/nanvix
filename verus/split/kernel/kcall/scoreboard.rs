@@ -52,13 +52,21 @@
 //! transitions, data flow, mutual exclusion, semaphore signaling) without
 //! reasoning about atomicity, memory ordering, or concurrent thread scheduling.
 //!
+//! **Note on field visibility:** All struct fields are `pub` because Verus's
+//! `verus!{}` macro requires field access for spec functions and View trait
+//! implementations. This is standard practice in Verus verification models
+//! (matching the existing verified modules: mutex, semaphore, slab, etc.).
+//! These are verification model structs, not production API types; the original
+//! struct fields are encapsulated in the production code.
+//!
 //! ## API Mapping
 //!
 //! | Original API              | Verified Model          | Notes                            |
 //! |---------------------------|-------------------------|----------------------------------|
 //! | `ScoreBoard::init()`      | `ScoreBoardSlot::init()`| Idempotent; allows re-init.      |
-//! | `ScoreBoard::get_mut()`   | `try_get_board()` /     | Bool check + ref access.         |
-//! |                           | `get_board[_mut]()`     |                                  |
+//! | `ScoreBoard::get_mut()`   | `try_get_board()` /     | Bool check + immutable ref.      |
+//! |                           | `get_board()`           | `&mut` return unsupported by     |
+//! |                           |                         | Verus; use slot field directly.  |
 //! | `ScoreBoard::dispatch()`  | `try_begin_dispatch()` +| With lock error path.            |
 //! |                           | `complete_dispatch()` / | Success/abandon paths.           |
 //! |                           | `abandon_dispatch()`    |                                  |
@@ -125,6 +133,13 @@
 //!   4. The only concurrent access is `dispatched.try_down()` in `handle()`,
 //!      which is a non-blocking atomic operation modeled by `try_handle()`.
 //!
+//!   **Note on `handle(&self)`:** The original `handle()` takes `&self` and uses
+//!   atomic `try_down()`, meaning it can run concurrently without exclusive access.
+//!   The verified model uses `&mut self`, which means the mutual exclusion between
+//!   `handle()` and `dispatch()` is *assumed* (via the sequential model), not
+//!   *proven*. The semaphore's atomic try_down guarantees this in practice, but
+//!   proving it would require a concurrent program logic.
+//!
 //!   A full mechanized refinement proof would require a concurrent program logic
 //!   (e.g., Iris or RustBelt) beyond Verus's current capabilities.
 //! - **T5: Error handling.** Error paths are modeled as follows:
@@ -137,7 +152,8 @@
 //!   - `handled.up()` failure: proven impossible by
 //!     `lemma_semaphore_up_handled_cannot_fail` (value is 0 in Dispatched phase).
 //!   - `handled.down()` interruption (`SleepError::Interrupted`): modeled by
-//!     `abandon_dispatch()`. Produces a stuck state (Handled + unlocked) that
+//!     `abandon_dispatch()`. Accepts any active phase (Signaled, Dispatched,
+//!     or Handled), producing a stuck state (active phase + unlocked) that
 //!     violates `wf()`, formally characterizing the liveness failure. Data
 //!     preservation is proven by `lemma_abandon_dispatch_preserves_data`.
 //!   - `get_mut()` on uninitialized: modeled by `try_get_board()` returning
@@ -202,6 +218,10 @@ pub struct KcallArgs {
 /// and `Error(KcallError(i32))`. For verification, we model the variant tag as
 /// `is_success: bool` and the payload as `value: i64`. Error payloads must fit
 /// in i32 (matching `KcallError(i32)`).
+///
+/// The original `KcallResult` derives `Copy`, so `Ok(self.ret)` in `dispatch()`
+/// returns a copy without moving. This flat struct model inherently has copy
+/// semantics in Verus, matching the original behavior.
 pub struct KcallResult {
     /// Whether this result represents the Success variant.
     pub is_success: bool,
@@ -552,35 +572,29 @@ impl ScoreBoard {
         }
     }
 
-    /// Abandons a dispatch cycle after handled.down() is interrupted.
+    /// Abandons a dispatch cycle after an error interrupts an active phase.
     ///
     /// # Description
     ///
-    /// Models the `SleepError::Interrupted` error path from `handled.down()`
-    /// in the original `dispatch()`. When the blocking wait for the handler's
-    /// response is interrupted:
-    /// 1. The mutex guard drops, releasing the lock.
-    /// 2. The dispatch signal has already been sent (and possibly consumed).
-    /// 3. The scoreboard is left in a stuck state.
+    /// Models error paths where the mutex guard drops during an active phase:
+    /// - `Signaled`: `handled.down()` interrupted before handler consumed signal.
+    /// - `Dispatched`: `handled.down()` interrupted while handler is processing.
+    /// - `Handled`: `handled.down()` interrupted after handler completed.
     ///
-    /// This models the worst case: the handler has completed processing
-    /// (phase is Handled, result is set, handled semaphore is 1) but the
-    /// dispatcher cannot consume the result. The mutex is released on guard
-    /// drop.
-    ///
-    /// The resulting state is **not well-formed** (phase is Handled but
-    /// mutex is unlocked), reflecting a genuine stuck state in the original.
-    /// This is documented as a liveness issue (T5).
+    /// In all cases, the mutex guard drops, releasing the lock. The scoreboard
+    /// is left in its current phase with the mutex unlocked, violating `wf()`.
+    /// This reflects a genuine stuck state in the original implementation.
     pub fn abandon_dispatch(&mut self)
         requires
             old(self).wf(),
-            old(self).spec_is_handled(),
+            !old(self).spec_is_idle(),
         ensures
             !self.locked,
-            self.phase == ScoreBoardPhase::Handled,
-            self.handled_value == 1,
+            self.phase == old(self).phase,
             self.result@ == old(self).result@,
             self.args@ == old(self).args@,
+            self.dispatched_value == old(self).dispatched_value,
+            self.handled_value == old(self).handled_value,
             self@ == ScoreBoard::spec_abandon_dispatch(old(self)@),
     {
         self.locked = false;
@@ -653,8 +667,8 @@ impl ScoreBoard {
     ///
     /// # Returns
     ///
-    /// Ghost copy of the result view.
-    pub fn complete_dispatch(&mut self) -> (result: Ghost<KcallResultView>)
+    /// Copy of the kernel call result (matches original `Ok(self.ret)`).
+    pub fn complete_dispatch(&mut self) -> (result: KcallResult)
         requires
             old(self).wf(),
             old(self).spec_is_handled(),
@@ -666,10 +680,11 @@ impl ScoreBoard {
             self.handled_value == 0,
             self.result@ == old(self).result@,
             result@ == old(self).result@,
+            result.wf(),
             self@ == ScoreBoard::spec_complete_dispatch(old(self)@),
             self.completed_cycles@ == old(self).completed_cycles@ + 1,
     {
-        let ret: Ghost<KcallResultView> = Ghost(self.result@);
+        let ret: KcallResult = KcallResult { is_success: self.result.is_success, value: self.result.value };
         self.handled_value = 0;
         self.locked = false;
         self.completed_cycles = Ghost(self.completed_cycles@ + 1);

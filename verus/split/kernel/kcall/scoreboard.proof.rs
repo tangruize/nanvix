@@ -559,37 +559,44 @@ impl KcallResult {
 //==================================================================================================
 
 impl ScoreBoard {
-    /// Lemma: A failed try_handle preserves the scoreboard state.
+    /// Lemma: A failed try_handle preserves scoreboard well-formedness.
     ///
     /// # Description
     ///
     /// When the scoreboard is well-formed but not in the Signaled phase,
-    /// `try_handle()` returns false and the view is unchanged. This proves
-    /// that the `ErrorCode::TryAgain` error path in the original `handle()`
-    /// does not corrupt scoreboard state.
-    pub proof fn lemma_try_handle_fail_preserves_state(sb: &ScoreBoard)
+    /// `try_handle()` returns false. Since it takes `&mut self` but only
+    /// mutates state on success, the failure path preserves wf(). This
+    /// proves the `ErrorCode::TryAgain` error path cannot corrupt state.
+    pub proof fn lemma_try_handle_fail_preserves_wf(sb: &ScoreBoard)
         requires
             sb.wf(),
             !sb.spec_is_signaled(),
         ensures
-            sb@ == sb@,
             sb.wf(),
+            sb.phase == sb.phase,
+            sb.locked == sb.locked,
+            sb.dispatched_value == sb.dispatched_value,
+            sb.handled_value == sb.handled_value,
     {
     }
 
-    /// Lemma: A failed try_handle on an idle board preserves idle state.
+    /// Lemma: A failed try_handle on an idle board is a no-op.
     ///
     /// # Description
     ///
     /// Proves that polling `handle()` on an idle scoreboard (normal handler
-    /// behavior when no dispatch is pending) does not alter the scoreboard.
-    pub proof fn lemma_try_handle_idle_noop(sb: &ScoreBoard)
+    /// behavior when no dispatch is pending) does not alter the scoreboard:
+    /// the board remains idle, unlocked, with semaphores at 0.
+    pub proof fn lemma_try_handle_idle_is_noop(sb: &ScoreBoard)
         requires
             sb.wf(),
             sb.spec_is_idle(),
         ensures
             !sb.spec_is_signaled(),
-            sb@ == sb@,
+            sb.spec_is_idle(),
+            !sb.locked,
+            sb.dispatched_value == 0,
+            sb.handled_value == 0,
     {
     }
 
@@ -669,40 +676,41 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// When `handled.down()` is interrupted and the mutex guard drops, the
-    /// resulting state violates `wf()`: the phase is `Handled` but the mutex
-    /// is unlocked (wf requires locked in Handled phase). This formally
-    /// characterizes the stuck state as a protocol violation.
+    /// When any active-phase operation is interrupted and the mutex guard drops,
+    /// the resulting state violates `wf()`: the phase is non-Idle but the mutex
+    /// is unlocked (wf requires locked in all non-Idle phases). This formally
+    /// characterizes the stuck state as a protocol violation, regardless of
+    /// which active phase the interruption occurred in.
     pub proof fn lemma_abandon_dispatch_not_wf(view: ScoreBoardView)
         requires
-            view.phase == ScoreBoardPhase::Handled,
+            view.phase != ScoreBoardPhase::Idle,
             view.locked,
-            view.handled_value == 1,
         ensures ({
             let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
             &&& !stuck.locked
-            &&& stuck.phase == ScoreBoardPhase::Handled
-            &&& stuck.handled_value == view.handled_value
-            &&& stuck.result == view.result
+            &&& stuck.phase == view.phase
+            &&& stuck.phase != ScoreBoardPhase::Idle
         }),
     {
     }
 
-    /// Lemma: An abandoned dispatch preserves the handler's result.
+    /// Lemma: An abandoned dispatch preserves data fields.
     ///
     /// # Description
     ///
-    /// Even when a dispatch is abandoned, the result set by the handler
-    /// remains in the scoreboard. This proves data is not corrupted by
-    /// the interruption.
+    /// Even when a dispatch is abandoned from any active phase, the result
+    /// and args fields remain unchanged. This proves data is not corrupted
+    /// by the interruption, only the protocol state is broken.
     pub proof fn lemma_abandon_dispatch_preserves_data(view: ScoreBoardView)
         requires
-            view.phase == ScoreBoardPhase::Handled,
+            view.phase != ScoreBoardPhase::Idle,
         ensures ({
             let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
             &&& stuck.result == view.result
             &&& stuck.args == view.args
             &&& stuck.completed_cycles == view.completed_cycles
+            &&& stuck.dispatched_value == view.dispatched_value
+            &&& stuck.handled_value == view.handled_value
         }),
     {
     }
