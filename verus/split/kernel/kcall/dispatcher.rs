@@ -26,6 +26,17 @@
 //! - **Sleep error routing**: Sleepable call errors are verified to route
 //!   through `handle_sleep_error` (or diverge on Killed via
 //!   `handle_sleep_error_killed`).
+//! - **Remote dispatch routing**: The remote scoreboard path is split into
+//!   verified routing logic (`remote_dispatch_verified`) over small
+//!   external bodies (`scoreboard_get_mut`, `scoreboard_dispatch_call`),
+//!   reusing `handle_sleep_error` for error conversion.
+//! - **Success payload correctness**: ok()-returning calls (Recv, MutexLock,
+//!   CondWait, Sleep, MutexUnlock, SchedulerYield) verified to return value 0
+//!   on success. JoinThread success value >= 0 (u32 exit status).
+//!   GetPid/GetTid success value >= 0 (non-negative identifiers).
+//! - **Conditional pid/tid guarantee**: `do_kcall_context` surfaces the
+//!   conditional property that GetPid/GetTid return non-negative values
+//!   when ProcessManager access succeeds.
 //! - **Local/Remote partition**: A kcall is either locally handled or dispatched
 //!   to the scoreboard, never both.
 //! - **Sleepable subset**: All sleepable calls are locally handled.
@@ -68,6 +79,9 @@
 //! | `KcallResult::ok()`             | `DispatchResult::ok()`       | Verified constructor      |
 //! | `KcallResult::Success(v)`       | `DispatchResult::success(v)` | Verified constructor      |
 //! | `KcallResult::Error(e)`         | `DispatchResult::error(e)`   | Verified constructor      |
+//! | `ScoreBoard::get_mut()`         | `scoreboard_get_mut()`       | External body (T2)        |
+//! | `scoreboard.dispatch()`         | `scoreboard_dispatch_call()` | External body (T2)        |
+//! | Remote wildcard path            | `remote_dispatch_verified()` | Verified routing          |
 //!
 //! ## Trust Boundaries
 //!

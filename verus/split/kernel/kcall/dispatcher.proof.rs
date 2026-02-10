@@ -24,6 +24,11 @@
 // 16. do_kcall_dispatch correctly routes each kcall to its subsystem handler.
 // 17. do_kcall_context handles pid/tid retrieval failure gracefully.
 // 18. convert_sleepable routes sleep errors through handle_sleep_error.
+// 19. remote_dispatch_verified splits ScoreBoard access from dispatch routing.
+// 20. ok()-returning calls (Recv, MutexLock, CondWait, Sleep, MutexUnlock,
+//     SchedulerYield) verified to return value 0 on success.
+// 21. JoinThread success value is non-negative (u32 exit status).
+// 22. GetPid/GetTid conditional guarantee: success implies non-negative value.
 
 use vstd::prelude::*;
 
