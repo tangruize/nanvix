@@ -174,10 +174,17 @@ pub open spec fn spec_all_validations_passed(input: CreateThreadInputView) -> bo
 /// 6. Call pm.create_thread → Success with TID or Error.
 ///
 /// Each step only executes if all previous steps succeeded (short-circuit).
+///
+/// The `copy_error_code` is constrained to be a valid positive error code
+/// by the `copy_from_user` external body postcondition, ensuring the
+/// propagated error code is always valid.
 pub open spec fn spec_create_thread_result(
     input: CreateThreadInputView,
     pm_outcome: CreateThreadOutcomeView,
-) -> CreateThreadResultView {
+) -> CreateThreadResultView
+    recommends
+        !input.copy_succeeded ==> spec_is_valid_error_code(input.copy_error_code),
+{
     if !spec_args_addr_valid(input) {
         CreateThreadResultView::Error { error_code: ERROR_CODE_INVALID_ARGUMENT() }
     } else if !spec_copy_succeeded(input) {
@@ -218,28 +225,6 @@ pub open spec fn spec_pm_create_thread_ok(outcome: CreateThreadOutcomeView) -> b
 /// Spec predicate: whether an error code is a valid positive error code.
 pub open spec fn spec_is_valid_error_code(code: int) -> bool {
     code > 0
-}
-
-/// Spec function: the first failing validation step determines the error.
-///
-/// # Description
-///
-/// Returns the index (1-5) of the first failing validation step, or 0 if all pass.
-/// Used in proofs to reason about which validation step caused the error.
-pub open spec fn spec_first_failing_step(input: CreateThreadInputView) -> nat {
-    if !spec_args_addr_valid(input) {
-        1
-    } else if !spec_copy_succeeded(input) {
-        2
-    } else if !spec_user_fn_valid(input) {
-        3
-    } else if !spec_user_stack_valid(input) {
-        4
-    } else if !spec_user_tda_valid(input) {
-        5
-    } else {
-        0
-    }
 }
 
 } // verus!

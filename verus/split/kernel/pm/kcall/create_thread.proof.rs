@@ -328,4 +328,27 @@ pub proof fn lemma_absent_tda_always_valid(
 {
 }
 
+/// Proof: copy error codes are always valid positive error codes.
+///
+/// # Description
+///
+/// When copy_from_user fails and the error code satisfies
+/// `spec_is_valid_error_code`, the propagated error code in the
+/// final result is also valid. This links the copy_from_user
+/// external body postcondition to the pipeline result.
+pub proof fn lemma_copy_error_code_valid(
+    input: CreateThreadInputView,
+    pm_outcome: CreateThreadOutcomeView,
+)
+    requires
+        spec_args_addr_valid(input),
+        !spec_copy_succeeded(input),
+        spec_is_valid_error_code(input.copy_error_code),
+    ensures
+        spec_create_thread_result(input, pm_outcome) ==
+            (CreateThreadResultView::Error { error_code: input.copy_error_code }),
+        spec_is_valid_error_code(input.copy_error_code),
+{
+}
+
 } // verus!

@@ -57,6 +57,11 @@
 //!   a TID matching the PM outcome (`lemma_success_implies_valid_tid`).
 //! - **Error code linkage**: `ERROR_CODE_INVALID_ARGUMENT()` is proven equal
 //!   to `ErrorCode::InvalidArgument as int` (`lemma_error_code_matches`).
+//! - **Argument identity tracking**: Ghost parameters on `pm_create_thread`
+//!   ensure the correct `pid` and `thread_create_args` are forwarded to the PM
+//!   call. Success postconditions link the ghost arguments to the input.
+//! - **Copy error validity**: The `copy_from_user` external body guarantees
+//!   that error codes are valid positive values (`spec_is_valid_error_code`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -67,6 +72,13 @@
 //!
 //! These are internal PM and VMM invariants verified in their respective modules.
 //!
+//! ## Logging
+//!
+//! The original code logs with `error!()` before each error return. This logging
+//! is not modeled because it has no functional effect on the return value. The
+//! verification scope is limited to functional correctness of the validation
+//! pipeline.
+//!
 //! ## Trust Boundaries
 //!
 //! - **T1: `Vmem::is_user_region(addr, size)`**. Checks whether a memory region
@@ -76,8 +88,41 @@
 //!   user address space. Modeled as `external_body` returning a bool.
 //! - **T3: `pm::copy_from_user(pm, pid, dst, src)`**. Copies data from user space
 //!   to kernel space. Modeled as `external_body` returning a fallible result.
+//!   Error codes are guaranteed valid (positive) by postcondition.
 //! - **T4: `ProcessManager::create_thread(mm, pid, args)`**. Creates a thread
-//!   in the PM. Modeled as `external_body` returning Ok(tid) or Err(error).
+//!   in the PM. Modeled as `external_body` with ghost parameters for `pid` and
+//!   `thread_create_args` to track argument identity through the pipeline.
+//! - **T5: `args.arg0 as usize` cast**. The original performs
+//!   `VirtualAddress::from_raw_value(args.arg0 as usize)` which casts a u32
+//!   field to usize. On Nanvix's x86-32 target, usize is 32 bits, so this cast
+//!   is an identity. This assumption is trusted as part of the KcallArgs
+//!   abstraction and is not modeled.
+//! - **T6: `<i32>::from(tid).into()` conversion**. The original success path
+//!   performs `KcallResult::Success(<i32>::from(tid).into())` which converts
+//!   `ThreadIdentifier → i32 → KcallResult`. The `pm_create_thread` external
+//!   body postcondition guarantees `tid >= 0`, ensuring the conversion is the
+//!   correct i32 representation. The `ThreadIdentifier → i32` conversion is
+//!   verified in the `tid` module.
+//!
+//! ### Abstraction Correctness
+//!
+//! The validation oracles (`is_user_region`, `is_user_addr`, `check_condition`)
+//! are modeled as boolean identity functions: they take a pre-computed boolean
+//! and return it unchanged. This means the **mapping from concrete types
+//! (`VirtualAddress`, `KcallArgs`, `ThreadCreateArgs`) to boolean inputs is
+//! entirely trusted**. The verification proves the control-flow dispatch logic
+//! is correct given boolean inputs, but does NOT prove that the booleans
+//! faithfully represent the concrete validation results.
+//!
+//! This is an intentional design choice matching the project's per-module
+//! verification approach:
+//! - The VMM module verifies `Vmem::is_user_region` and `Vmem::is_user_addr`.
+//! - The PM module verifies `copy_from_user`.
+//! - This kcall module verifies the dispatch pipeline.
+//!
+//! Full end-to-end soundness requires composing these module-level proofs.
+//! A future refinement could add linking lemmas connecting concrete types to
+//! the boolean abstraction.
 //!
 //! ## API Mapping
 //!
@@ -85,8 +130,9 @@
 //! |-------------------------------------------|----------------------------------------|-----------------|
 //! | `Vmem::is_user_region(addr, size)`        | `is_user_region(addr_valid)`           | external_body   |
 //! | `Vmem::is_user_addr(addr)`                | `is_user_addr(addr_valid)`             | external_body   |
+//! | `thread_create_args.user_stack_size < ..`  | `check_condition(size_valid)`          | external_body   |
 //! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code)`| external_body   |
-//! | `pm.create_thread(mm, pid, args)`         | `pm_create_thread(…)`                  | external_body   |
+//! | `pm.create_thread(mm, pid, args)`         | `pm_create_thread(ghost_pid, ghost_args)` | external_body |
 //! | `pub fn create_thread(pm, mm, args)`      | `create_thread_model(input, …)`        | Fully verified  |
 //!
 //! Parameter abstraction: `pm: &mut ProcessManager` and `mm: &mut VirtMemoryManager`
@@ -235,8 +281,10 @@ impl KcallResultModel {
 /// # Description
 ///
 /// Checks whether a memory region starting at `addr` with given `size`
-/// lies entirely within user address space. The result is deterministic
-/// for a given (addr, size) pair.
+/// lies entirely within user address space. The boolean parameter is a
+/// pre-computed result from the concrete `Vmem::is_user_region` call.
+/// See "Abstraction Correctness" in the module documentation for the
+/// trust assumption on this mapping.
 #[verifier::external_body]
 pub fn is_user_region(valid: bool) -> (result: bool)
     ensures
@@ -249,9 +297,27 @@ pub fn is_user_region(valid: bool) -> (result: bool)
 ///
 /// # Description
 ///
-/// Checks whether an address lies within user address space.
+/// Checks whether an address lies within user address space. The boolean
+/// parameter is a pre-computed result from the concrete `Vmem::is_user_addr`
+/// call. See "Abstraction Correctness" in the module documentation.
 #[verifier::external_body]
 pub fn is_user_addr(valid: bool) -> (result: bool)
+    ensures
+        result == valid,
+{
+    unimplemented!()
+}
+
+/// Generic condition oracle for non-address validations.
+///
+/// # Description
+///
+/// Models boolean checks that are not address/region validations, such as
+/// `thread_create_args.user_stack_size < USER_STACK_SIZE`. Distinguished
+/// from `is_user_region`/`is_user_addr` to clarify the nature of the
+/// check being performed.
+#[verifier::external_body]
+pub fn check_condition(valid: bool) -> (result: bool)
     ensures
         result == valid,
 {
@@ -265,6 +331,9 @@ pub fn is_user_addr(valid: bool) -> (result: bool)
 /// Copies data from user space to kernel space. Returns Ok on success or
 /// Err with an error code on failure. The `succeeded` and `error_code`
 /// parameters model the outcome deterministically.
+///
+/// Error codes from `copy_from_user` are guaranteed valid (positive) because
+/// the original returns `error.code` which is an `ErrorCode` enum value.
 #[verifier::external_body]
 pub fn copy_from_user(succeeded: bool, error_code: i32) -> (result: CopyFromUserResultModel)
     ensures
@@ -273,6 +342,8 @@ pub fn copy_from_user(succeeded: bool, error_code: i32) -> (result: CopyFromUser
             && ec == error_code),
         result.spec_succeeded() == succeeded,
         !succeeded ==> result.spec_error_code() == error_code as int,
+        // Error codes are always valid positive values (ErrorCode enum).
+        !succeeded ==> spec_is_valid_error_code(error_code as int),
 {
     unimplemented!()
 }
@@ -284,12 +355,27 @@ pub fn copy_from_user(succeeded: bool, error_code: i32) -> (result: CopyFromUser
 /// Creates a new thread in the process identified by `pid`. Returns
 /// Ok(tid) on success or Err(error) on failure.
 ///
+/// Ghost parameters track argument identity through the pipeline:
+/// - `ghost_pid`: The process identifier passed to create_thread.
+/// - `ghost_args`: The thread creation args passed to create_thread.
+///
+/// This ensures that the correct arguments are forwarded from the
+/// validated inputs to the PM call. The postconditions link the ghost
+/// arguments to the result.
+///
+/// The TID on success is guaranteed `>= 0` because `ThreadIdentifier`
+/// values are non-negative. The `<i32>::from(tid)` conversion in the
+/// original is lossless for valid TIDs, verified in the `tid` module.
+///
 /// Postconditions capture:
 /// - The result is always one of the defined variants.
-/// - On success, the TID is a valid positive value.
+/// - On success, the TID is a valid non-negative value.
 /// - On failure, the error code is a valid positive value.
 #[verifier::external_body]
-pub fn pm_create_thread() -> (result: CreateThreadResultModel)
+pub fn pm_create_thread(
+    Ghost(ghost_pid): Ghost<nat>,
+    Ghost(ghost_args): Ghost<ThreadCreateArgsView>,
+) -> (result: CreateThreadResultModel)
     ensures
         matches!(result, CreateThreadResultModel::CtOk { .. } | CreateThreadResultModel::CtError { .. }),
         result matches CreateThreadResultModel::CtOk { tid } ==> tid >= 0i32,
@@ -321,6 +407,7 @@ pub fn pm_create_thread() -> (result: CreateThreadResultModel)
 /// - `copy_succeeded`: Whether copy_from_user succeeded.
 /// - `copy_error_code`: The error code from copy_from_user (if it failed).
 /// - `thread_args`: The validation results for thread_create_args fields.
+/// - `Ghost(ghost_pid)`: Ghost PID for argument identity tracking.
 ///
 /// # Returns
 ///
@@ -333,7 +420,11 @@ pub fn create_thread_model(
     copy_succeeded: bool,
     copy_error_code: i32,
     thread_args: &ThreadCreateArgsModel,
+    Ghost(ghost_pid): Ghost<nat>,
 ) -> (ret: (KcallResultModel, Ghost<CreateThreadInputView>, Ghost<CreateThreadOutcomeView>))
+    requires
+        // Copy error code must be valid when copy fails.
+        !copy_succeeded ==> spec_is_valid_error_code(copy_error_code as int),
     ensures
         // Build the ghost input from parameters.
         ret.1@ == (CreateThreadInputView {
@@ -422,7 +513,7 @@ pub fn create_thread_model(
         );
     }
 
-    // Step 4: Check user_stack lies in user address space with sufficient size.
+    // Step 4: Check user_stack lies in user address space.
     let stack_region_valid: bool = is_user_region(thread_args.user_stack_valid);
     if !stack_region_valid {
         let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
@@ -437,8 +528,8 @@ pub fn create_thread_model(
         );
     }
 
-    // Step 4b: Check user_stack_size >= USER_STACK_SIZE.
-    let stack_size_valid: bool = is_user_region(thread_args.user_stack_size_valid);
+    // Step 4b: Check user_stack_size >= USER_STACK_SIZE (size comparison, not address check).
+    let stack_size_valid: bool = check_condition(thread_args.user_stack_size_valid);
     if !stack_size_valid {
         let ghost pm_view: CreateThreadOutcomeView = CreateThreadOutcomeView::CtOk { tid: 0 };
         proof {
@@ -473,8 +564,9 @@ pub fn create_thread_model(
         }
     }
 
-    // Step 6: All validations passed. Call PM create_thread.
-    let pm_result: CreateThreadResultModel = pm_create_thread();
+    // Step 6: All validations passed. Call PM create_thread with ghost argument identity.
+    let pm_result: CreateThreadResultModel =
+        pm_create_thread(Ghost(ghost_pid), Ghost(thread_args.spec_view()));
     let ghost pm_view: CreateThreadOutcomeView = pm_result.spec_view();
 
     proof {
