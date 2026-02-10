@@ -166,21 +166,30 @@ pub proof fn lemma_pm_error_propagates(
 {
 }
 
-/// Proof: the sleep result is always either success or error (trichotomy).
+/// Proof: the sleep result is always exactly one of Success, KilledError, or GenericError.
 ///
 /// # Description
 ///
-/// The result of spec_sleep_result is always exactly one of three categories:
-/// Success, KilledError, or GenericError. There is no unclassified result.
-pub proof fn lemma_sleep_result_trichotomy(
+/// The result of spec_sleep_result is exhaustive: every possible (now, seconds, nanoseconds,
+/// pm_result) combination yields exactly one of the three result categories. No result
+/// goes unclassified, and the categories are mutually exclusive.
+pub proof fn lemma_sleep_result_exhaustive(
     now: SystemTimeView,
     seconds: nat,
     nanoseconds: nat,
     pm_result: PmSleepResultView,
 )
     ensures
+        // Exhaustive: every result is success, killed, or generic error.
         spec_is_success(spec_sleep_result(now, seconds, nanoseconds, pm_result))
-        || spec_is_error(spec_sleep_result(now, seconds, nanoseconds, pm_result)),
+        || spec_is_killed(spec_sleep_result(now, seconds, nanoseconds, pm_result))
+        || spec_is_generic_error(spec_sleep_result(now, seconds, nanoseconds, pm_result)),
+        // Mutual exclusion: success and error are disjoint.
+        !(spec_is_success(spec_sleep_result(now, seconds, nanoseconds, pm_result))
+          && spec_is_error(spec_sleep_result(now, seconds, nanoseconds, pm_result))),
+        // Mutual exclusion: killed and generic error are disjoint.
+        !(spec_is_killed(spec_sleep_result(now, seconds, nanoseconds, pm_result))
+          && spec_is_generic_error(spec_sleep_result(now, seconds, nanoseconds, pm_result))),
 {
     let timeout: DurationView = spec_duration_new(seconds, nanoseconds);
     if !spec_checked_add_succeeds(now, timeout) {

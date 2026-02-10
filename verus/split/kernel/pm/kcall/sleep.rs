@@ -410,6 +410,11 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
         // Overflow path: result is always GenericError.
         !spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
             ==> matches!(result, SleepResultModel::GenericError { .. }),
+        // Success path: the 3-arm match classification was correctly applied.
+        // This ties the exec result to the spec classification for whatever PM
+        // result was obtained internally.
+        spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
+            ==> result.spec_classified_view() == spec_classify_pm_result(result.spec_pm_view()),
         // Success path: result is always a classified PM result (Ok, Killed, or GenericError).
         // TimedOut has been folded into Ok by the 3-arm match.
         spec_sleep_success_condition(now.spec_view(), seconds as nat, nanoseconds as nat)
@@ -467,6 +472,11 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
 pub fn sleep_end_to_end(seconds: u64, nanoseconds: u32) -> (result: SleepResultModel)
     requires
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
+    ensures
+        // TimedOut never appears in the output (core invariant from the 3-arm match).
+        !matches!(result, SleepResultModel::TimedOut),
+        // The classification was correctly applied to the result.
+        result.spec_classified_view() == spec_classify_pm_result(result.spec_pm_view()),
 {
     // Step 1: Get the current time (Trust Boundary T1).
     let now: SystemTimeModel = clock_now();
