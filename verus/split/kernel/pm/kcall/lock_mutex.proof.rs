@@ -418,11 +418,15 @@ pub proof fn lemma_lock_short_circuit(
 ///
 /// When the timeout is infinite (both params are MAX) or infinite (None variant),
 /// `Mutex::lock` is called with `has_timeout == false`. The `mutex_lock_model`
-/// contract guarantees that `TimedOut` cannot occur without a finite timeout.
+/// contract (postcondition `spec_lock_outcome_valid_for_timeout`) guarantees
+/// that `TimedOut` cannot occur without a finite timeout.
 /// Therefore, `LockTimedOut` cannot appear in the final result.
 ///
-/// This proves the reviewer-identified property: "if the caller passes an
-/// infinite timeout, a TimedOut error is impossible."
+/// This is a composition lemma: the `spec_lock_outcome_valid_for_timeout`
+/// precondition is established by `mutex_lock_model`'s postcondition at call
+/// sites, not proven intrinsically. The trust chain is:
+///   `mutex_lock_model` ensures → `spec_lock_outcome_valid_for_timeout` →
+///   this lemma ensures → no `LockTimedOut` in the pipeline result.
 pub proof fn lemma_infinite_timeout_no_timed_out(
     timeout_s: nat,
     timeout_ns: nat,

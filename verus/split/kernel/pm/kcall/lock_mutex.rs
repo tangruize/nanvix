@@ -273,7 +273,8 @@ impl LockMutexResultModel {
 #[verifier::external_body]
 pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
     ensures
-        matches!(result, GetMutexOutcomeModel::Ok | GetMutexOutcomeModel::Error { .. }),
+        // Error codes from the PM module are valid ErrorCode discriminants (always non-zero).
+        result matches GetMutexOutcomeModel::Error { error_code } ==> error_code != 0i32,
 {
     unimplemented!()
 }
@@ -296,11 +297,11 @@ pub fn get_mutex_model(mutex_addr: u32) -> (result: GetMutexOutcomeModel)
 #[verifier::external_body]
 pub fn mutex_lock_model(has_timeout: bool) -> (result: LockOutcomeModel)
     ensures
-        matches!(result, LockOutcomeModel::Ok | LockOutcomeModel::TimedOut
-            | LockOutcomeModel::Killed | LockOutcomeModel::GenericError { .. }),
-        // TimedOut can only occur with a finite timeout.
-        !has_timeout ==> !matches!(result, LockOutcomeModel::TimedOut),
+        // TimedOut can only occur with a finite timeout. With an infinite
+        // timeout, the Condvar::wait() path has no timer.
         spec_lock_outcome_valid_for_timeout(has_timeout, result.spec_view()),
+        // Error codes from lock failures are valid ErrorCode discriminants (always non-zero).
+        result matches LockOutcomeModel::GenericError { error_code } ==> error_code != 0i32,
 {
     unimplemented!()
 }
@@ -319,7 +320,8 @@ pub fn mutex_lock_model(has_timeout: bool) -> (result: LockOutcomeModel)
 #[verifier::external_body]
 pub fn put_mutex_guard_model(mutex_addr: u32) -> (result: PutGuardOutcomeModel)
     ensures
-        matches!(result, PutGuardOutcomeModel::Ok | PutGuardOutcomeModel::Error { .. }),
+        // Error codes from the PM module are valid ErrorCode discriminants (always non-zero).
+        result matches PutGuardOutcomeModel::Error { error_code } ==> error_code != 0i32,
 {
     unimplemented!()
 }
