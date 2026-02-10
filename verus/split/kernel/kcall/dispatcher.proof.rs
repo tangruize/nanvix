@@ -496,6 +496,20 @@ pub proof fn lemma_large_success_not_error(r: DispatchResultView)
 {
 }
 
+/// Lemma: the ABI encoding of a DispatchResult is its value field.
+///
+/// # Description
+///
+/// Proves the fundamental ABI property: `spec_encode_result(r)` equals
+/// `r.value` for any dispatch result. This means `encode_result` is
+/// the identity function on the value field, matching the real
+/// `KcallResult::into::<i64>()` implementation.
+pub proof fn lemma_encode_result_is_value(r: DispatchResultView)
+    ensures
+        spec_encode_result(r) == r.value,
+{
+}
+
 //==================================================================================================
 // Proof Lemmas: Divergence Boundary
 //==================================================================================================

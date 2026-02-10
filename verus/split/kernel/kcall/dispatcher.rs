@@ -41,7 +41,7 @@
 //!   to the scoreboard, never both.
 //! - **Sleepable subset**: All sleepable calls are locally handled.
 //! - **handle_sleep_error correctness**: Generic errors preserve the error code.
-//!   TimedOut interruptions produce OperationTimedOut (error code 110).
+//!   TimedOut interruptions produce OperationTimedOut (error code 116).
 //!   The Killed path is modeled as a divergent trust boundary.
 //! - **Result well-formedness**: All result constructors produce well-formed
 //!   results when given valid inputs.
@@ -460,7 +460,7 @@ pub fn is_sleepable(number: u32) -> (result: bool)
 ///
 /// Models the original `handle_sleep_error` function for non-divergent cases:
 /// - `Generic(error)` → Error result with the error code.
-/// - `InterruptedTimedOut` → Error result with OperationTimedOut (110).
+/// - `InterruptedTimedOut` → Error result with OperationTimedOut (116).
 ///
 /// The `InterruptedKilled` case is excluded by precondition because the
 /// original code calls `ProcessManager::exit()` and panics — it never
@@ -639,12 +639,10 @@ fn pm_wait_cond(pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32, arg3: u32) 
 /// # Description
 ///
 /// The original calls `pm::signal_cond(pid, tid, arg0 as usize, arg1 != 0)`
-/// where the 4th argument is a `bool` broadcast flag. This external body
-/// accepts the raw `arg1: u32` because the boolean conversion is an internal
-/// detail of the subsystem call — the dispatcher only routes, it does not
-/// interpret argument semantics.
+/// where the 4th argument is a `bool` broadcast flag. The external body
+/// accepts a `bool` matching the original signature.
 #[verifier::external_body]
-fn pm_signal_cond(pid: i64, tid: i64, arg0: u32, arg1: u32) -> (result: FallibleOutcome)
+fn pm_signal_cond(pid: i64, tid: i64, arg0: u32, broadcast: bool) -> (result: FallibleOutcome)
     ensures result.wf(),
 { unimplemented!() }
 
@@ -767,7 +765,7 @@ fn remote_dispatch_verified(number: u32, pid: i64, tid: i64, arg0: u32, arg1: u3
 /// Routes the outcome of a sleepable subsystem call:
 /// - Success → `DispatchResult::success(value)`.
 /// - `SleepError(Generic)` → `handle_sleep_error` → error with original code.
-/// - `SleepError(TimedOut)` → `handle_sleep_error` → error 110.
+/// - `SleepError(TimedOut)` → `handle_sleep_error` → error 116.
 /// - `SleepError(Killed)` → `handle_sleep_error_killed` → diverges.
 ///
 /// # Parameters
@@ -923,8 +921,8 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
         // CondWait: sleepable.
         convert_sleepable(pm_wait_cond(pid, tid, args.arg0, args.arg1, args.arg2, args.arg3))
     } else if number == 26u32 {
-        // CondSignal: fallible.
-        convert_fallible(pm_signal_cond(pid, tid, args.arg0, args.arg1))
+        // CondSignal: fallible. arg1 != 0 is the broadcast flag.
+        convert_fallible(pm_signal_cond(pid, tid, args.arg0, args.arg1 != 0))
     } else if number == 20u32 {
         // SchedulerYield: fallible.
         convert_fallible(pm_giveup())
@@ -1034,6 +1032,64 @@ pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
         args.number == 23u32 && result.is_success ==> result.value >= 0,
 {
     do_kcall_context(args)
+}
+
+//==================================================================================================
+// ABI Encoding
+//==================================================================================================
+
+/// Encodes a DispatchResult into an i64 matching the KcallResult::into() conversion.
+///
+/// # Description
+///
+/// Models the `Into<i64>` implementation for `KcallResult`:
+/// - `Success(KcallSuccess(v))` → `v` (the i64 value directly).
+/// - `Error(KcallError(e))` → `e as i64` (i32 sign-extended to i64).
+///
+/// Both cases encode to `result.value`, which is the identity function.
+/// This verified function proves the encoding matches `spec_encode_result`.
+///
+/// # Parameters
+///
+/// - `result`: The dispatch result to encode.
+///
+/// # Returns
+///
+/// The encoded i64 value.
+pub fn encode_result(result: &DispatchResult) -> (encoded: i64)
+    ensures
+        encoded as int == spec_encode_result(result@),
+{
+    result.value
+}
+
+/// Verified ABI-level dispatcher that returns the encoded i64.
+///
+/// # Description
+///
+/// Composes `do_kcall` with `encode_result` to produce the raw i64
+/// matching the original `extern "C" fn do_kcall(...) -> i64` return value.
+/// This bridges the gap between the typed `DispatchResult` verification
+/// model and the C ABI representation (trust boundary T5).
+///
+/// The postcondition proves the returned i64 equals the spec-level
+/// encoding of the verified dispatch result.
+///
+/// # Parameters
+///
+/// - `args`: The dispatch arguments.
+///
+/// # Returns
+///
+/// The encoded i64 return value.
+pub fn do_kcall_encoded(args: DispatchArgs) -> (encoded: i64)
+    ensures ({
+        let result_view: DispatchResultView = do_kcall(args)@;
+        encoded as int == spec_encode_result(result_view)
+    }),
+{
+    let result: DispatchResult = do_kcall(args);
+    encode_result(&result)
 }
 
 } // verus!
