@@ -787,6 +787,129 @@ impl ScoreBoard {
         }),
     {
     }
+
+    /// Lemma: The split API composition equals `spec_full_cycle`.
+    ///
+    /// # Description
+    ///
+    /// Proves that composing the four individual spec transitions
+    /// (`spec_begin_dispatch` → `spec_handle` → `spec_handled` →
+    /// `spec_complete_dispatch`) produces the same result as the
+    /// monolithic `spec_full_cycle`. This establishes that the monolithic
+    /// `dispatch()` function (which uses raw field mutations) is
+    /// equivalent to sequentially applying the split API transitions.
+    pub proof fn lemma_split_api_equals_full_cycle(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+    )
+        requires
+            view.phase == ScoreBoardPhase::Idle,
+            !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
+        ensures ({
+            let step1: ScoreBoardView = ScoreBoard::spec_begin_dispatch(view, args);
+            let step2: ScoreBoardView = ScoreBoard::spec_handle(step1);
+            let step3: ScoreBoardView = ScoreBoard::spec_handled(step2, ret);
+            let step4: ScoreBoardView = ScoreBoard::spec_complete_dispatch(step3);
+            &&& step4 == ScoreBoard::spec_full_cycle(view, args, ret)
+            &&& step4 == ScoreBoard::spec_dispatch_success(view, args, ret)
+            &&& step4.phase == ScoreBoardPhase::Idle
+            &&& !step4.locked
+            &&& step4.dispatched_value == 0
+            &&& step4.handled_value == 0
+            &&& step4.result == ret
+            &&& step4.args == args
+            &&& step4.completed_cycles == view.completed_cycles + 1
+        }),
+    {
+    }
+
+    //==============================================================================================
+    // Proof Lemmas -- Abandon from Each Active Phase
+    //==============================================================================================
+
+    /// Lemma: Abandoning from the Signaled phase produces a characterized stuck state.
+    ///
+    /// # Description
+    ///
+    /// When `handled.down()` is interrupted while the board is in the Signaled
+    /// phase (handler has not yet consumed the dispatched signal), the mutex
+    /// unlocks. The dispatched semaphore remains at 1, handled at 0, and the
+    /// args/result are preserved.
+    pub proof fn lemma_abandon_from_signaled(view: ScoreBoardView)
+        requires
+            view.phase == ScoreBoardPhase::Signaled,
+            view.locked,
+            view.dispatched_value == 1,
+            view.handled_value == 0,
+        ensures ({
+            let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
+            &&& stuck.phase == ScoreBoardPhase::Signaled
+            &&& !stuck.locked
+            &&& stuck.dispatched_value == 1
+            &&& stuck.handled_value == 0
+            &&& stuck.args == view.args
+            &&& stuck.result == view.result
+            &&& stuck.completed_cycles == view.completed_cycles
+        }),
+    {
+    }
+
+    /// Lemma: Abandoning from the Dispatched phase produces a characterized stuck state.
+    ///
+    /// # Description
+    ///
+    /// When `handled.down()` is interrupted while the board is in the Dispatched
+    /// phase (handler has consumed the dispatched signal and is processing), the
+    /// mutex unlocks. Both semaphores are at 0, and the args/result are preserved.
+    /// The handler may still be working, creating a potential race on completion.
+    pub proof fn lemma_abandon_from_dispatched(view: ScoreBoardView)
+        requires
+            view.phase == ScoreBoardPhase::Dispatched,
+            view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
+        ensures ({
+            let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
+            &&& stuck.phase == ScoreBoardPhase::Dispatched
+            &&& !stuck.locked
+            &&& stuck.dispatched_value == 0
+            &&& stuck.handled_value == 0
+            &&& stuck.args == view.args
+            &&& stuck.result == view.result
+            &&& stuck.completed_cycles == view.completed_cycles
+        }),
+    {
+    }
+
+    /// Lemma: Abandoning from the Handled phase produces a characterized stuck state.
+    ///
+    /// # Description
+    ///
+    /// When `handled.down()` is interrupted while the board is in the Handled
+    /// phase (handler has finished and signaled handled), the mutex unlocks.
+    /// The handled semaphore is at 1, dispatched at 0, and the result set by
+    /// the handler is preserved but will never be read by the dispatcher.
+    pub proof fn lemma_abandon_from_handled(view: ScoreBoardView)
+        requires
+            view.phase == ScoreBoardPhase::Handled,
+            view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 1,
+        ensures ({
+            let stuck: ScoreBoardView = ScoreBoard::spec_abandon_dispatch(view);
+            &&& stuck.phase == ScoreBoardPhase::Handled
+            &&& !stuck.locked
+            &&& stuck.dispatched_value == 0
+            &&& stuck.handled_value == 1
+            &&& stuck.args == view.args
+            &&& stuck.result == view.result
+            &&& stuck.completed_cycles == view.completed_cycles
+        }),
+    {
+    }
 }
 
 //==================================================================================================
