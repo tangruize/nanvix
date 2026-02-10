@@ -221,7 +221,8 @@ pub uninterp spec fn spec_is_user_process(pid: nat) -> bool;
 /// # Description
 ///
 /// Safety precondition: the original function requires that the process
-/// manager is initialized and access is synchronized before calling.
+/// manager is initialized and access to it is synchronized before calling.
+/// This subsumes both initialization and synchronization requirements.
 pub uninterp spec fn spec_pm_initialized() -> bool;
 
 /// Spec predicate: whether the memory manager is initialized.
@@ -229,8 +230,19 @@ pub uninterp spec fn spec_pm_initialized() -> bool;
 /// # Description
 ///
 /// Safety precondition: the original function requires that the memory
-/// manager is initialized and access is synchronized before calling.
+/// manager is initialized and access to it is synchronized before calling.
+/// This subsumes both initialization and synchronization requirements.
 pub uninterp spec fn spec_mm_initialized() -> bool;
+
+/// Spec predicate: whether the caller holds no resources.
+///
+/// # Description
+///
+/// Safety precondition: the original function documents that it must be
+/// invoked without holding any resources, since `join_thread` blocks
+/// the calling thread until the target thread exits. Holding resources
+/// (e.g., locks, borrowed references) while blocking could cause deadlocks.
+pub uninterp spec fn spec_no_resources_held() -> bool;
 
 //==================================================================================================
 // Spec Functions

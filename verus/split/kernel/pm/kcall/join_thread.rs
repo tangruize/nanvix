@@ -62,8 +62,11 @@
 //!   `lemma_invalid_argument_is_known`).
 //! - **Copy value written**: On success, `copy_to_user` writes the exit status
 //!   to user memory (`spec_user_mem_written` postcondition on T3).
+//! - **Exit status propagated to user**: On success, the joined thread's exit
+//!   status (from `ProcessManager::join_thread`) is written to user memory at
+//!   `arg1`. The `join_thread_model` postcondition propagates this from T3.
 //! - **Safety preconditions**: `join_thread_model` requires the caller to be a
-//!   user process, PM initialized, and MM initialized.
+//!   user process, PM initialized, MM initialized, and no resources held.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -376,6 +379,8 @@ pub fn join_thread_model(
         spec_pm_initialized(),
         // The memory manager must be initialized and synchronized.
         spec_mm_initialized(),
+        // The caller must not hold any resources (join_thread blocks).
+        spec_no_resources_held(),
     ensures
         // The result matches the spec pipeline.
         ret.0.spec_view() == spec_join_thread_result(ret.1@, ret.2@, ret.3@),
@@ -408,6 +413,11 @@ pub fn join_thread_model(
         spec_is_success(ret.0.spec_view()) || spec_is_error(ret.0.spec_view()),
         // Success and error are mutually exclusive.
         !(spec_is_success(ret.0.spec_view()) && spec_is_error(ret.0.spec_view())),
+        // Success path: the joined thread's exit status is written to user memory.
+        // This propagates the T3 postcondition through the pipeline: on success,
+        // copy_to_user wrote the exit_status (from the join outcome) to arg1.
+        spec_is_success(ret.0.spec_view()) && ret.2@ matches JoinThreadOutcomeView::JtOk { exit_status }
+            ==> spec_user_mem_written(pid as nat, arg1 as nat, exit_status),
 {
     // Step 1: Parse ThreadIdentifier from arg0.
     let tid_result: TidParseResultModel = try_from_thread_identifier(arg0);

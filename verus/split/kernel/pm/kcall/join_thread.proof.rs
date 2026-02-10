@@ -480,9 +480,18 @@ pub proof fn lemma_exit_status_ok_is_zero()
 ///
 /// The actual `ThreadIdentifier` wraps an `i32` internally. `try_from(u32)`
 /// succeeds iff the u32 value fits in a non-negative i32, i.e.,
-/// `raw <= 2147483647` (i32::MAX). This axiom is discharged by the TID
-/// module's verification. Used here to make the `spec_is_valid_tid`
-/// predicate concrete enough for downstream reasoning.
+/// `raw <= 2147483647` (i32::MAX).
+///
+/// ## Trust Boundary (Deliberate)
+///
+/// This axiom is an `external_body` assumption that serves as a trust boundary
+/// with the TID module. It should be discharged by verification of the
+/// `ThreadIdentifier::try_from(u32)` implementation in the TID module
+/// (`verus/split/kernel/pm/kcall/tid.rs` or the corresponding tid module).
+/// The TID module's verified `try_from` postcondition should establish that
+/// `try_from(raw)` succeeds iff `raw <= i32::MAX`, which is exactly what
+/// this axiom states. Until the TID module formally exports this fact,
+/// it remains a documented trust dependency.
 #[verifier::external_body]
 pub proof fn axiom_valid_tid_range(raw: nat)
     ensures
