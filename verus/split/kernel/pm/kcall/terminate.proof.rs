@@ -259,29 +259,6 @@ pub proof fn lemma_invalid_pid_returns_invalid_argument(
 }
 
 //==================================================================================================
-// Proof Functions — PID Identity
-//==================================================================================================
-
-/// Proof: on a successful parse, the parsed PID equals the input.
-///
-/// # Description
-///
-/// When `try_from_process_identifier(arg0)` succeeds, the postcondition
-/// guarantees `pid == arg0 as nat`. This lemma proves that this identity
-/// is preserved through the pipeline: the PID passed to
-/// `process_manager_terminate` is exactly the input argument.
-///
-/// This is a composition lemma: the identity property comes from the
-/// external_body postcondition on `try_from_process_identifier`.
-pub proof fn lemma_pid_identity(arg0: nat, pid: nat)
-    requires
-        pid == arg0,
-    ensures
-        pid == arg0,
-{
-}
-
-//==================================================================================================
 // Proof Functions — Kernel PID Protection
 //==================================================================================================
 
@@ -316,39 +293,63 @@ pub proof fn lemma_kernel_pid_always_fails(
 // Proof Functions — PM State Transitions
 //==================================================================================================
 
-/// Proof: PM state is unchanged when the overall result is an error.
+/// Proof: PM state is unchanged when the overall pipeline result is an error.
 ///
 /// # Description
 ///
 /// When the terminate kcall fails (either PID parse error or PM terminate
-/// error), the PM state is preserved. This follows from:
-/// - PID parse error: PM was never called, so state is unchanged.
-/// - PM terminate error: the external_body contract guarantees state
-///   preservation on error.
+/// error), the PM state is preserved. This follows from the pipeline
+/// structure:
+/// - PID parse error: PM was never called, so `pm_post == pm_pre`.
+/// - PM terminate error: the external_body contract guarantees
+///   `pm_post == pm_pre` on TmError.
 ///
-/// This is a composition lemma that the exec model's postconditions
-/// establish for both error paths.
+/// This lemma proves state preservation from the pipeline invariants,
+/// covering both error paths in a single proof.
 pub proof fn lemma_state_unchanged_on_error(
+    pid_parse_outcome: PidParseOutcomeView,
+    terminate_outcome: TerminateOutcomeView,
     pm_pre: ProcessManagerStateView,
     pm_post: ProcessManagerStateView,
 )
     requires
-        pm_post == pm_pre,
+        // The overall pipeline result is an error.
+        spec_is_error(spec_terminate_result(pid_parse_outcome, terminate_outcome)),
+        // Pipeline state invariant: PID parse error path preserves state.
+        !spec_pid_parsed_ok(pid_parse_outcome) ==> pm_post == pm_pre,
+        // Pipeline state invariant: terminate error path preserves state.
+        spec_pid_parsed_ok(pid_parse_outcome) && !spec_terminate_ok(terminate_outcome)
+            ==> pm_post == pm_pre,
     ensures
         pm_post == pm_pre,
 {
+    match pid_parse_outcome {
+        PidParseOutcomeView::PidError { .. } => {
+            // PID parse failed → PM never called → pm_post == pm_pre.
+        },
+        PidParseOutcomeView::PidOk { .. } => {
+            // PID parsed OK. Since overall is error, terminate must have failed.
+            match terminate_outcome {
+                TerminateOutcomeView::TmError { .. } => {
+                    // Terminate failed → pm_post == pm_pre from invariant.
+                },
+                TerminateOutcomeView::TmOk => {
+                    // Contradicts: overall is error but both steps succeeded.
+                },
+            }
+        },
+    }
 }
 
-/// Proof: on success, the terminated PID is removed from the PM state.
+/// Proof: on success, the terminated PID is removed and state changes.
 ///
 /// # Description
 ///
-/// When the terminate kcall succeeds, the external_body contract on
-/// `process_manager_terminate` guarantees that:
-/// 1. The PID existed in the pre-state (`spec_pm_has_process(pre, pid)`).
-/// 2. The PID does not exist in the post-state (`!spec_pm_has_process(post, pid)`).
-///
-/// This lemma captures the state transition property at the pipeline level.
+/// When the terminate kcall succeeds, the PID is removed from the PM state.
+/// Since `spec_pm_has_process` is now concrete (set membership), this lemma
+/// proves a non-trivial consequence: the pre-state and post-state are
+/// genuinely different (`pm_pre != pm_post`). This rules out vacuous
+/// state-transition proofs.
 pub proof fn lemma_pid_removed_on_success(
     pre: ProcessManagerStateView,
     post: ProcessManagerStateView,
@@ -359,7 +360,13 @@ pub proof fn lemma_pid_removed_on_success(
         !spec_pm_has_process(post, pid),
     ensures
         !spec_pm_has_process(post, pid),
+        // Non-trivial: the state actually changed.
+        pre != post,
 {
+    // pre.process_set.contains(pid) is true, post.process_set.contains(pid) is false.
+    // Therefore pre.process_set != post.process_set, hence pre != post.
+    assert(pre.process_set.contains(pid));
+    assert(!post.process_set.contains(pid));
 }
 
 /// Proof: after a successful terminate, re-terminating the same PID is impossible.
@@ -371,18 +378,63 @@ pub proof fn lemma_pid_removed_on_success(
 /// `spec_terminate_possible` requires `spec_pm_has_process(state, pid)`,
 /// a second terminate on the same PID cannot succeed.
 ///
-/// This proves that double-terminate is impossible, which is a key safety
-/// property for process lifecycle management.
+/// With the concrete `Set<nat>` representation, `!spec_pm_has_process`
+/// means `!state.process_set.contains(pid)`, making the double-terminate
+/// impossibility a genuine set-membership proof.
 pub proof fn lemma_double_terminate_impossible(
     pid: nat,
     state_after_first: ProcessManagerStateView,
 )
     requires
-        // After first successful terminate, PID is not in state.
         !spec_pm_has_process(state_after_first, pid),
     ensures
-        // Therefore, terminate is not possible on this state for this PID.
         !spec_terminate_possible(state_after_first, pid),
+{
+}
+
+/// Proof: success requires that termination was possible in the pre-state.
+///
+/// # Description
+///
+/// Combines `terminate_model`'s postconditions to prove that a successful
+/// terminate implies `spec_terminate_possible(pm_pre, pid)`: the PID
+/// existed in the pre-state and was not the kernel PID. This ties the
+/// exec model's postconditions to the `spec_terminate_possible` predicate.
+pub proof fn lemma_success_requires_terminatable(
+    pm_pre: ProcessManagerStateView,
+    pid: nat,
+)
+    requires
+        spec_pm_has_process(pm_pre, pid),
+        pid != KERNEL_PID(),
+    ensures
+        spec_terminate_possible(pm_pre, pid),
+{
+}
+
+/// Proof: non-existent PID produces NoSuchProcess error.
+///
+/// # Description
+///
+/// When a non-kernel PID does not exist in the PM state, the terminate
+/// call returns `ERROR_CODE_NO_SUCH_PROCESS` (ESRCH = 3). This links
+/// the spec constant to the specific failure condition.
+///
+/// The trust chain is:
+///   `process_manager_terminate` ensures (non-existent non-kernel PID
+///   ==> TmError with error_code == ERROR_CODE_NO_SUCH_PROCESS()) →
+///   this lemma ensures → the pipeline result carries that error code.
+pub proof fn lemma_nonexistent_pid_returns_no_such_process(
+    pid: nat,
+    error_code: int,
+)
+    requires
+        error_code == ERROR_CODE_NO_SUCH_PROCESS(),
+    ensures
+        spec_terminate_result(
+            PidParseOutcomeView::PidOk { pid },
+            TerminateOutcomeView::TmError { error_code },
+        ) == (TerminateResultView::Error { error_code: ERROR_CODE_NO_SUCH_PROCESS() }),
 {
 }
 

@@ -99,28 +99,31 @@ pub enum TerminateResultView {
 ///
 /// # Description
 ///
-/// Models the ProcessManager's process table state at the verification
-/// boundary. The internal representation is opaque (no fields) — all
-/// reasoning is done via the uninterpreted `spec_pm_has_process` predicate.
-/// This enables proving state transition properties (PID removal on
-/// success, state preservation on error) without importing PM internals.
+/// Models the ProcessManager's process table as a set of active PIDs.
+/// This concrete representation (vs. an empty struct) ensures that pre-state
+/// and post-state can be genuinely distinct when a PID is added or removed,
+/// making state-transition postconditions satisfiable and non-vacuous.
 #[verifier::ext_equal]
-pub struct ProcessManagerStateView {}
+pub struct ProcessManagerStateView {
+    /// The set of active process identifiers in the process manager.
+    pub process_set: Set<nat>,
+}
 
 //==================================================================================================
-// Uninterpreted Spec Predicates
+// Spec Predicates
 //==================================================================================================
 
 /// Whether the process manager state contains a process with the given PID.
 ///
 /// # Description
 ///
-/// Abstract predicate over PM state. The ProcessManager module provides the
-/// concrete interpretation. This module uses it to specify state transitions:
-/// - Success requires the PID to exist in the pre-state.
-/// - Success removes the PID from the post-state.
-/// - Error preserves the state unchanged.
-pub uninterp spec fn spec_pm_has_process(state: ProcessManagerStateView, pid: nat) -> bool;
+/// Concrete predicate over PM state using set membership. This replaces
+/// the previous uninterpreted version to ensure that pre-state and
+/// post-state with different process sets are provably distinct, making
+/// success-path postconditions satisfiable (not vacuously true).
+pub open spec fn spec_pm_has_process(state: ProcessManagerStateView, pid: nat) -> bool {
+    state.process_set.contains(pid)
+}
 
 /// Whether a raw u32 value is a valid ProcessIdentifier.
 ///
@@ -225,6 +228,11 @@ pub open spec fn spec_is_valid_error_code(code: int) -> bool {
 /// A terminate can succeed only if:
 /// 1. The PID exists in the process manager state.
 /// 2. The PID is not the kernel process (PID 0).
+///
+/// Note: the real PM also rejects terminating the *running* process
+/// (returns InvalidArgument). This is not modeled here because it
+/// requires scheduler state (current thread/process) which is outside
+/// this module's scope. The PM module's verification covers this.
 pub open spec fn spec_terminate_possible(state: ProcessManagerStateView, pid: nat) -> bool {
     spec_pm_has_process(state, pid) && pid != KERNEL_PID()
 }
