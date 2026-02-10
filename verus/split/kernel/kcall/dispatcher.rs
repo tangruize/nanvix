@@ -1082,20 +1082,35 @@ pub fn encode_result(result: &DispatchResult) -> (encoded: i64)
 /// # Returns
 ///
 /// The encoded i64 return value.
-pub fn do_kcall_encoded(args: DispatchArgs) -> (encoded: i64)
+pub fn do_kcall_encoded(args: DispatchArgs) -> (pair: (DispatchResult, i64))
     requires
         args.wf(),
     ensures ({
-        // The encoded i64 equals spec_encode_result of some well-formed result.
-        exists|r: DispatchResultView| #![auto]
-            spec_result_wf(r) && encoded as int == spec_encode_result(r)
+        let result: DispatchResult = pair.0;
+        let encoded: i64 = pair.1;
+        // The result is well-formed.
+        &&& result.wf()
+        // The encoded i64 equals spec_encode_result of this specific result.
+        &&& encoded as int == spec_encode_result(result@)
+        // The result satisfies all do_kcall postconditions.
+        &&& (spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal
+                ==> !result.is_success)
+        &&& spec_dispatch_result_constrained(spec_classify_kcall(args.number), result@)
+        &&& ((args.number == 1u32 || args.number == 2u32)
+                && result.is_success ==> result.value >= 0)
+        &&& ((args.number == 9u32 || args.number == 24u32
+                || args.number == 27u32 || args.number == 29u32
+                || args.number == 25u32 || args.number == 20u32)
+                && result.is_success ==> result.value == 0)
+        &&& (args.number == 23u32 && result.is_success ==> result.value >= 0)
     }),
 {
     let result: DispatchResult = do_kcall(args);
     proof {
         lemma_encode_result_is_value(result@);
     }
-    encode_result(&result)
+    let encoded: i64 = encode_result(&result);
+    (result, encoded)
 }
 
 } // verus!
