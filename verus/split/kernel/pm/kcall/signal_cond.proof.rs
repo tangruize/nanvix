@@ -466,13 +466,16 @@ pub proof fn lemma_broadcast_semantics_preserved(
 {
 }
 
-/// Proof: notify_first (non-broadcast) awakens at most one thread.
+/// Proof: notify_first (non-broadcast) awakens exactly one thread when waiters exist.
 ///
 /// # Description
 ///
-/// When `broadcast` is false, the spec guarantees that at most one thread
-/// is awakened, and that the count does not exceed the number of waiters
-/// (i.e., `awakened == 0` when there are no waiters).
+/// When `broadcast` is false, the spec guarantees:
+/// - If waiters exist: exactly one thread is awakened.
+/// - If no waiters: zero threads are awakened.
+/// On the success path (no Err), the real `notify_first` pops the first
+/// sleeping thread and calls `wakeup(tid)?`, so `awakened == 1` when the
+/// queue was non-empty.
 pub proof fn lemma_notify_first_awakens_at_most_one(
     cond_addr: nat,
     awakened: nat,
@@ -482,6 +485,8 @@ pub proof fn lemma_notify_first_awakens_at_most_one(
     ensures
         awakened <= 1,
         awakened <= spec_num_waiters(cond_addr),
+        spec_num_waiters(cond_addr) > 0 ==> awakened == 1,
+        spec_num_waiters(cond_addr) == 0 ==> awakened == 0,
 {
 }
 
