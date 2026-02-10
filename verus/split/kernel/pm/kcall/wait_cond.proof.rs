@@ -926,4 +926,81 @@ pub proof fn lemma_put_guard_overrides_stored_error(
 {
 }
 
+/// Proof: LockTimedOut is unreachable for any valid pipeline execution.
+///
+/// # Description
+///
+/// The `mutex_lock_model` external body guarantees `!matches!(result, TimedOut)`
+/// because reacquisition uses `None` (infinite wait). This lemma proves that
+/// for ALL combinations of other step outcomes, `LockTimedOut` never appears
+/// in the final result when the lock outcome excludes `LoTimedOut`.
+pub proof fn lemma_lock_timed_out_unreachable(
+    timeout_s: nat,
+    timeout_ns: nat,
+    take_guard_outcome: TakeMutexGuardOutcomeView,
+    get_cond_outcome: GetCondOutcomeView,
+    cond_wait_outcome: CondWaitOutcomeView,
+    put_cond_outcome: PutCondOutcomeView,
+    get_mutex_outcome: GetMutexOutcomeView,
+    lock_outcome: LockOutcomeView,
+    put_guard_outcome: PutGuardOutcomeView,
+)
+    requires
+        !matches!(lock_outcome, LockOutcomeView::LoTimedOut),
+    ensures
+        !matches!(
+            spec_wait_cond_result(
+                timeout_s, timeout_ns,
+                take_guard_outcome, get_cond_outcome, cond_wait_outcome,
+                put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
+            ),
+            WaitCondResultView::LockTimedOut
+        ),
+{
+    let parsed: Option<TimeoutView> = spec_parse_timeout(timeout_s, timeout_ns);
+    match parsed {
+        None => {},
+        Some(_) => {
+            match take_guard_outcome {
+                TakeMutexGuardOutcomeView::TmgError { .. } => {},
+                TakeMutexGuardOutcomeView::TmgOk => {
+                    match put_cond_outcome {
+                        PutCondOutcomeView::PcError { .. } => {},
+                        PutCondOutcomeView::PcOk => {
+                            match get_mutex_outcome {
+                                GetMutexOutcomeView::GmError { .. } => {},
+                                GetMutexOutcomeView::GmOk => {
+                                    match lock_outcome {
+                                        LockOutcomeView::LoOk => {
+                                            match put_guard_outcome {
+                                                PutGuardOutcomeView::PgOk => {
+                                                    match get_cond_outcome {
+                                                        GetCondOutcomeView::GcError { .. } => {},
+                                                        GetCondOutcomeView::GcOk => {
+                                                            match cond_wait_outcome {
+                                                                CondWaitOutcomeView::CwOk => {},
+                                                                CondWaitOutcomeView::CwTimedOut => {},
+                                                                CondWaitOutcomeView::CwKilled => {},
+                                                                CondWaitOutcomeView::CwGenericError { .. } => {},
+                                                            }
+                                                        },
+                                                    }
+                                                },
+                                                PutGuardOutcomeView::PgError { .. } => {},
+                                            }
+                                        },
+                                        LockOutcomeView::LoKilled => {},
+                                        LockOutcomeView::LoGenericError { .. } => {},
+                                        LockOutcomeView::LoTimedOut => {},
+                                    }
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
+
 } // verus!

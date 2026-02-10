@@ -179,7 +179,8 @@ pub enum WaitCondResultView {
     PutCondError { error_code: int },
     /// ProcessManager::get_mutex failed (during mutex reacquisition).
     GetMutexError { error_code: int },
-    /// mutex.lock failed (during mutex reacquisition).
+    /// mutex.lock returned Interrupted(TimedOut). Dead variant: unreachable with
+    /// None timeout during reacquisition. Retained for exhaustive spec matching.
     LockTimedOut,
     /// mutex.lock returned Interrupted(Killed).
     LockKilled,

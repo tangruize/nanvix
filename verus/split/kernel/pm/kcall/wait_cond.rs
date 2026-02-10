@@ -63,9 +63,24 @@
 //! - **T2: `ProcessManager::get_cond(addr)`**. Gets condition variable reference.
 //! - **T3: `cond.wait(alarm)`**. Waits on the condition variable.
 //! - **T4: `ProcessManager::put_cond(addr)`**. Releases condition variable reference.
+//!   Called unconditionally in the original code regardless of get_cond outcome.
 //! - **T5: `ProcessManager::get_mutex(addr)`**. Gets mutex for reacquisition.
 //! - **T6: `Mutex::lock(None)`**. Reacquires the mutex with infinite wait.
 //! - **T7: `ProcessManager::put_mutex_guard(addr, guard)`**. Stores new guard.
+//!
+//! ## Trust Assumptions
+//!
+//! The following uninterpreted predicates are assumed correct by the caller
+//! and are not verified within this module:
+//!
+//! - `spec_caller_is_not_kernel_process(pid)`: The calling process is not
+//!   the kernel process.
+//! - `spec_caller_holds_no_resources(tid)`: The calling thread holds no
+//!   resources that would deadlock.
+//! - `spec_caller_no_pm_reference()`: The caller does not hold a
+//!   ProcessManager reference.
+//! - `spec_is_currently_running(pid, tid)`: The supplied identifiers match
+//!   the thread the PM actually operates on.
 //!
 //! ## API Mapping
 //!
@@ -275,7 +290,8 @@ pub enum WaitCondResultModel {
     PutCondError { error_code: i32 },
     /// get_mutex failed (overrides stored result).
     GetMutexError { error_code: i32 },
-    /// mutex.lock returned TimedOut (unreachable with None timeout).
+    /// mutex.lock returned TimedOut (unreachable with None timeout; retained for
+    /// exhaustive matching — `mutex_lock_model` postcondition proves this dead).
     LockTimedOut,
     /// mutex.lock returned Killed.
     LockKilled,
@@ -335,7 +351,8 @@ impl WaitCondResultModel {
 ///
 /// # Parameters
 ///
-/// - `mutex_addr`: Mutex address.
+/// - `mutex_addr`: Mutex address (reordered first since it is the exec param;
+///   original API order is `pid, tid, mutex_addr`).
 /// - `pid`: Ghost process identifier (matches original's pid parameter).
 /// - `tid`: Ghost thread identifier (matches original's tid parameter).
 #[verifier::external_body]
@@ -376,8 +393,16 @@ pub fn get_cond_model(cond_addr: u32) -> (result: GetCondOutcomeModel)
 ///
 /// Waits on the condition variable until signaled or the alarm time is reached.
 /// The `has_alarm` flag indicates whether a finite timeout was provided.
+/// Ghost parameters `timeout_s` and `timeout_ns` carry the parsed timeout
+/// values for spec-level linkage, ensuring the correct alarm is used.
 #[verifier::external_body]
-pub fn cond_wait_model(has_alarm: bool) -> (result: CondWaitOutcomeModel)
+pub fn cond_wait_model(
+    has_alarm: bool,
+    timeout_s: Ghost<u32>,
+    timeout_ns: Ghost<u32>,
+) -> (result: CondWaitOutcomeModel)
+    requires
+        has_alarm ==> spec_is_finite_timeout(timeout_s@ as nat, timeout_ns@ as nat),
     ensures
         // TimedOut can only occur when an alarm is set.
         result matches CondWaitOutcomeModel::TimedOut ==> has_alarm,
@@ -493,11 +518,20 @@ pub fn parse_timeout_model(timeout_s: u32, timeout_ns: u32) -> (result: (bool, b
 ///
 /// - `cond_addr`: Condition variable address.
 /// - `has_alarm`: Whether a finite timeout alarm was set.
-pub fn get_cond_and_wait_model(cond_addr: u32, has_alarm: bool) -> (ret: (
+/// - `timeout_s`: Ghost timeout seconds (threaded through to cond_wait_model).
+/// - `timeout_ns`: Ghost timeout nanoseconds (threaded through to cond_wait_model).
+pub fn get_cond_and_wait_model(
+    cond_addr: u32,
+    has_alarm: bool,
+    timeout_s: Ghost<u32>,
+    timeout_ns: Ghost<u32>,
+) -> (ret: (
     WaitCondResultModel,
     Ghost<GetCondOutcomeView>,
     Ghost<CondWaitOutcomeView>,
 ))
+    requires
+        has_alarm ==> spec_is_finite_timeout(timeout_s@ as nat, timeout_ns@ as nat),
     ensures
         ret.0.spec_view() == spec_stored_result(ret.1@, ret.2@),
         ret.1@ matches GetCondOutcomeView::GcError { error_code }
@@ -521,7 +555,8 @@ pub fn get_cond_and_wait_model(cond_addr: u32, has_alarm: bool) -> (ret: (
         },
         GetCondOutcomeModel::Ok => {
             // get_cond succeeded: call cond.wait and store its result.
-            let cw_result: CondWaitOutcomeModel = cond_wait_model(has_alarm);
+            let cw_result: CondWaitOutcomeModel =
+                cond_wait_model(has_alarm, timeout_s, timeout_ns);
             let ghost cw_view: CondWaitOutcomeView = cw_result.spec_view();
             let stored: WaitCondResultModel = match cw_result {
                 CondWaitOutcomeModel::Ok => WaitCondResultModel::Success,
@@ -608,7 +643,9 @@ pub fn wait_cond_model(
         let result: WaitCondResultModel =
             WaitCondResultModel::InvalidTimeoutError { error_code: 22i32 };
         let ghost gs: WaitCondGhostState = WaitCondGhostState {
-            tmg: TakeMutexGuardOutcomeView::TmgError { error_code: 0int },
+            // Don't-care values: spec short-circuits on invalid timeout,
+            // so these are never inspected.
+            tmg: TakeMutexGuardOutcomeView::TmgOk,
             gc: GetCondOutcomeView::GcOk,
             cw: CondWaitOutcomeView::CwOk,
             pc: PutCondOutcomeView::PcOk,
@@ -629,6 +666,8 @@ pub fn wait_cond_model(
                 WaitCondResultModel::TakeMutexGuardError { error_code };
             let ghost gs: WaitCondGhostState = WaitCondGhostState {
                 tmg: tmg_view,
+                // Don't-care values: spec short-circuits on TmgError,
+                // so subsequent step outcomes are never inspected.
                 gc: GetCondOutcomeView::GcOk,
                 cw: CondWaitOutcomeView::CwOk,
                 pc: PutCondOutcomeView::PcOk,
@@ -648,7 +687,12 @@ pub fn wait_cond_model(
         WaitCondResultModel,
         Ghost<GetCondOutcomeView>,
         Ghost<CondWaitOutcomeView>,
-    ) = get_cond_and_wait_model(cond_addr, has_alarm);
+    ) = get_cond_and_wait_model(
+        cond_addr,
+        has_alarm,
+        Ghost(timeout_s),
+        Ghost(timeout_ns),
+    );
     let stored: WaitCondResultModel = gcw_ret.0;
     let ghost gc_view: GetCondOutcomeView = gcw_ret.1@;
     let ghost cw_view: CondWaitOutcomeView = gcw_ret.2@;
