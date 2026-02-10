@@ -341,65 +341,15 @@ pub proof fn lemma_state_unchanged_on_error(
     }
 }
 
-/// Proof: on success, the terminated PID is removed and state changes.
-///
-/// # Description
-///
-/// When the terminate kcall succeeds, the PID is removed from the PM state.
-/// Since `spec_pm_has_process` is now concrete (set membership), this lemma
-/// proves a non-trivial consequence: the pre-state and post-state are
-/// genuinely different (`pm_pre != pm_post`). This rules out vacuous
-/// state-transition proofs.
-pub proof fn lemma_pid_removed_on_success(
-    pre: ProcessManagerStateView,
-    post: ProcessManagerStateView,
-    pid: nat,
-)
-    requires
-        spec_pm_has_process(pre, pid),
-        !spec_pm_has_process(post, pid),
-    ensures
-        !spec_pm_has_process(post, pid),
-        // Non-trivial: the state actually changed.
-        pre != post,
-{
-    // pre.process_set.contains(pid) is true, post.process_set.contains(pid) is false.
-    // Therefore pre.process_set != post.process_set, hence pre != post.
-    assert(pre.process_set.contains(pid));
-    assert(!post.process_set.contains(pid));
-}
-
-/// Proof: after a successful terminate, re-terminating the same PID is impossible.
-///
-/// # Description
-///
-/// After `terminate(pid)` succeeds, the PID is no longer in the PM state
-/// (from `process_manager_terminate`'s postcondition). Since
-/// `spec_terminate_possible` requires `spec_pm_has_process(state, pid)`,
-/// a second terminate on the same PID cannot succeed.
-///
-/// With the concrete `Set<nat>` representation, `!spec_pm_has_process`
-/// means `!state.process_set.contains(pid)`, making the double-terminate
-/// impossibility a genuine set-membership proof.
-pub proof fn lemma_double_terminate_impossible(
-    pid: nat,
-    state_after_first: ProcessManagerStateView,
-)
-    requires
-        !spec_pm_has_process(state_after_first, pid),
-    ensures
-        !spec_terminate_possible(state_after_first, pid),
-{
-}
-
 /// Proof: success requires that termination was possible in the pre-state.
 ///
 /// # Description
 ///
 /// Combines `terminate_model`'s postconditions to prove that a successful
 /// terminate implies `spec_terminate_possible(pm_pre, pid)`: the PID
-/// existed in the pre-state and was not the kernel PID. This ties the
-/// exec model's postconditions to the `spec_terminate_possible` predicate.
+/// existed in the pre-state, was not the kernel PID, and was not the
+/// running process. This ties the exec model's postconditions to the
+/// `spec_terminate_possible` predicate.
 pub proof fn lemma_success_requires_terminatable(
     pm_pre: ProcessManagerStateView,
     pid: nat,
@@ -407,8 +357,34 @@ pub proof fn lemma_success_requires_terminatable(
     requires
         spec_pm_has_process(pm_pre, pid),
         pid != KERNEL_PID(),
+        !spec_is_running_process(pm_pre, pid),
     ensures
         spec_terminate_possible(pm_pre, pid),
+{
+}
+
+/// Proof: running PID terminate produces InvalidArgument error in the pipeline.
+///
+/// # Description
+///
+/// When the PID parses successfully but refers to the running process,
+/// `process_manager_terminate` returns `InvalidArgument`. This lemma
+/// proves the pipeline result carries that error code.
+///
+/// The trust chain is:
+///   `process_manager_terminate` ensures (running PID ==> TmError with
+///   InvalidArgument) → this lemma ensures → pipeline result is Error.
+pub proof fn lemma_running_pid_returns_error(
+    pid: nat,
+    error_code: int,
+)
+    requires
+        error_code == ERROR_CODE_INVALID_ARGUMENT(),
+    ensures
+        spec_terminate_result(
+            PidParseOutcomeView::PidOk { pid },
+            TerminateOutcomeView::TmError { error_code },
+        ) == (TerminateResultView::Error { error_code: ERROR_CODE_INVALID_ARGUMENT() }),
 {
 }
 

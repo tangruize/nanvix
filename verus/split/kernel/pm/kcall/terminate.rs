@@ -41,6 +41,9 @@
 //!   argument (`try_from_process_identifier` postcondition).
 //! - **Kernel PID protection**: Terminating PID 0 (kernel process) always fails
 //!   (`process_manager_terminate` postcondition + `lemma_kernel_pid_always_fails`).
+//! - **Running PID protection**: Terminating the currently running process always
+//!   fails with InvalidArgument (`process_manager_terminate` postcondition +
+//!   `lemma_running_pid_returns_error`).
 //! - **NoSuchProcess for missing PID**: Terminating a non-existent non-kernel PID
 //!   produces `ErrorCode::NoSuchProcess` (3)
 //!   (`process_manager_terminate` postcondition +
@@ -48,16 +51,15 @@
 //! - **PM state preservation on error**: PM state is unchanged on any error path,
 //!   proven from the pipeline structure (`terminate_model` postcondition +
 //!   `lemma_state_unchanged_on_error`).
-//! - **PM state transition on success**: The terminated PID is removed from the
-//!   PM state on success, and the state genuinely changes (`pm_pre != pm_post`)
-//!   (`terminate_model` postcondition + `lemma_pid_removed_on_success`).
-//! - **Double-terminate prevention**: After a successful terminate, the same PID
-//!   cannot be terminated again (`lemma_double_terminate_impossible`).
 //! - **Terminability precondition**: Success implies the PID was terminatable
-//!   in the pre-state (`lemma_success_requires_terminatable`).
+//!   in the pre-state: existed, not kernel, not running
+//!   (`lemma_success_requires_terminatable`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
+//! - "PID is removed from process table after terminate" — The real PM may
+//!   keep the PID alive (ready process with runnable threads is resumed).
+//!   PID removal depends on process lifecycle state, not modeled here.
 //! - "Resources held by the terminated process are freed" (resource management).
 //! - "The terminated process's threads are cleaned up" (thread management).
 //! - "Scheduler queues are consistent after terminate" (scheduler invariant).
@@ -73,8 +75,12 @@
 //!   `spec_is_valid_pid`), and InvalidArgument on failure.
 //! - **T2: `ProcessManager::terminate(pid)`**. Terminates the process. Modeled
 //!   as `external_body` taking ghost PM pre-state and returning ghost post-state.
-//!   Postconditions guarantee: kernel PID (0) rejection, PID removal on success,
-//!   state preservation on error, and PID existence requirement for success.
+//!   Postconditions guarantee: kernel PID (0) rejection, running PID rejection,
+//!   non-existent PID rejection (NoSuchProcess), PID existence requirement for
+//!   success, and state preservation on error. PID removal is NOT claimed (the
+//!   real PM may resume the process). Trusted postconditions are modeled from
+//!   the PM implementation (mod.rs:1036-1078); the PM module's own verification
+//!   covers the implementation side.
 //!
 //! ## Logging
 //!
@@ -230,18 +236,26 @@ pub fn try_from_process_identifier(arg0: u32) -> (result: PidParseResultModel)
 /// and returns a ghost PM post-state alongside the result. Postconditions
 /// capture state transition properties:
 /// - **Kernel PID rejection**: PID 0 (kernel process) always fails with InvalidArgument.
+/// - **Running PID rejection**: Running process always fails with InvalidArgument.
 /// - **Non-existent PID rejection**: PID not in process set fails with NoSuchProcess.
-/// - **State transition on success**: PID existed in pre-state and is
-///   removed from post-state.
 /// - **State preservation on error**: PM state is unchanged on failure.
 /// - **PID existence requirement**: Success requires PID to exist in pre-state.
 /// - **Error validity**: Error codes are always valid positive values.
 ///
-/// ## Running Process Rejection (Not Modeled)
+/// ## PID Removal NOT Claimed
 ///
-/// The real `ProcessManager::terminate` also rejects terminating the *running*
-/// process (returns InvalidArgument). This requires scheduler state (current
-/// thread/process identity) which is outside this module's scope.
+/// The real `ProcessManager::terminate` does NOT necessarily remove the PID
+/// from the process table on success. A ready process with runnable threads
+/// is interrupted and then resumed back to the ready queue (PID stays).
+/// Only processes with no runnable threads become zombies. Therefore, we
+/// do NOT claim `!spec_pm_has_process(post, pid)` on success.
+///
+/// ## Trusted Postconditions
+///
+/// These postconditions are trusted assumptions modeled from the PM
+/// implementation (src/kernel/src/pm/process/manager/mod.rs:1036-1078).
+/// The PM module's own verification (in the `process_manager` verified
+/// module) covers the implementation side of these contracts.
 #[verifier::external_body]
 pub fn process_manager_terminate(
     pid: u32,
@@ -255,14 +269,20 @@ pub fn process_manager_terminate(
         pid as nat == KERNEL_PID()
             ==> (ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
                 && error_code == ERROR_CODE_INVALID_ARGUMENT()),
+        // Running PID always fails.
+        spec_is_running_process(pm_pre, pid as nat)
+            ==> matches!(ret.0, TerminateResultModel::TmError { .. }),
+        // Running PID error code is InvalidArgument.
+        spec_is_running_process(pm_pre, pid as nat)
+            ==> (ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
+                && error_code == ERROR_CODE_INVALID_ARGUMENT()),
         // Non-existent non-kernel PID returns NoSuchProcess.
         pid as nat != KERNEL_PID() && !spec_pm_has_process(pm_pre, pid as nat)
             ==> (ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
                 && error_code == ERROR_CODE_NO_SUCH_PROCESS()),
-        // On success: PID existed in pre-state and is removed from post-state.
+        // On success: PID existed in pre-state.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
-            ==> spec_pm_has_process(pm_pre, pid as nat)
-                && !spec_pm_has_process(ret.1@, pid as nat),
+            ==> spec_pm_has_process(pm_pre, pid as nat),
         // On error: state is unchanged.
         ret.0.spec_view() matches TerminateOutcomeView::TmError { .. }
             ==> ret.1@ == pm_pre,
@@ -335,9 +355,6 @@ pub fn terminate_model(
         // Success path: both steps succeeded.
         spec_is_success(ret.0.spec_view())
             ==> spec_pid_parsed_ok(ret.1@) && spec_terminate_ok(ret.2@),
-        // Success path: PID removed from PM state.
-        spec_is_success(ret.0.spec_view())
-            ==> !spec_pm_has_process(ret.3@, arg0 as nat),
         // Success path: PID existed in pre-state.
         spec_is_success(ret.0.spec_view())
             ==> spec_pm_has_process(pm_pre, arg0 as nat),
@@ -346,6 +363,9 @@ pub fn terminate_model(
             ==> spec_terminate_possible(pm_pre, arg0 as nat),
         // Kernel PID: if arg0 == 0 and parses successfully, result is error.
         arg0 as nat == KERNEL_PID() && spec_pid_parsed_ok(ret.1@)
+            ==> spec_is_error(ret.0.spec_view()),
+        // Running PID: if arg0 is the running process and parses, result is error.
+        spec_is_running_process(pm_pre, arg0 as nat) && spec_pid_parsed_ok(ret.1@)
             ==> spec_is_error(ret.0.spec_view()),
         // Result is always Success or Error.
         spec_is_success(ret.0.spec_view()) || spec_is_error(ret.0.spec_view()),

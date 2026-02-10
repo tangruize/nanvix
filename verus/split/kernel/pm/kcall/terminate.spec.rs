@@ -99,14 +99,22 @@ pub enum TerminateResultView {
 ///
 /// # Description
 ///
-/// Models the ProcessManager's process table as a set of active PIDs.
-/// This concrete representation (vs. an empty struct) ensures that pre-state
-/// and post-state can be genuinely distinct when a PID is added or removed,
-/// making state-transition postconditions satisfiable and non-vacuous.
+/// Models the ProcessManager's process table as a set of tracked PIDs and
+/// the currently running process (if any). This concrete representation
+/// (vs. an empty struct) ensures that pre-state and post-state can be
+/// genuinely distinct, making state-transition postconditions satisfiable
+/// and non-vacuous.
+///
+/// The `process_set` represents PIDs known to the PM (ready, suspended,
+/// interrupted, zombie, or running). The `running_pid` tracks which
+/// process is currently executing on the CPU (if any). The PM rejects
+/// terminate requests for the running process.
 #[verifier::ext_equal]
 pub struct ProcessManagerStateView {
-    /// The set of active process identifiers in the process manager.
+    /// The set of process identifiers tracked by the process manager.
     pub process_set: Set<nat>,
+    /// The PID of the currently running process, if any.
+    pub running_pid: Option<nat>,
 }
 
 //==================================================================================================
@@ -123,6 +131,17 @@ pub struct ProcessManagerStateView {
 /// success-path postconditions satisfiable (not vacuously true).
 pub open spec fn spec_pm_has_process(state: ProcessManagerStateView, pid: nat) -> bool {
     state.process_set.contains(pid)
+}
+
+/// Whether the given PID is the currently running process.
+///
+/// # Description
+///
+/// The PM tracks which process is currently running. Terminating the
+/// running process is rejected with InvalidArgument. This predicate
+/// checks whether a given PID matches the running process.
+pub open spec fn spec_is_running_process(state: ProcessManagerStateView, pid: nat) -> bool {
+    state.running_pid == Some(pid)
 }
 
 /// Whether a raw u32 value is a valid ProcessIdentifier.
@@ -228,13 +247,12 @@ pub open spec fn spec_is_valid_error_code(code: int) -> bool {
 /// A terminate can succeed only if:
 /// 1. The PID exists in the process manager state.
 /// 2. The PID is not the kernel process (PID 0).
+/// 3. The PID is not the currently running process.
 ///
-/// Note: the real PM also rejects terminating the *running* process
-/// (returns InvalidArgument). This is not modeled here because it
-/// requires scheduler state (current thread/process) which is outside
-/// this module's scope. The PM module's verification covers this.
+/// This models the three rejection checks in `ProcessManager::terminate`:
+/// kernel PID check, running PID check, and existence check.
 pub open spec fn spec_terminate_possible(state: ProcessManagerStateView, pid: nat) -> bool {
-    spec_pm_has_process(state, pid) && pid != KERNEL_PID()
+    spec_pm_has_process(state, pid) && pid != KERNEL_PID() && !spec_is_running_process(state, pid)
 }
 
 } // verus!
