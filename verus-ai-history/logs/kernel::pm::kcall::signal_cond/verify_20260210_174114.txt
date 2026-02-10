@@ -1,0 +1,65 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 17:41:14 CST 2026
+Module: kernel::pm::kcall::signal_cond
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::signal_cond
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: no rules expected `@`
+   --> kernel/pm/kcall/signal_cond.rs:357:30
+    |
+357 |             && matches!(ret.1@.notify, NotifyOutcomeView::NOk { .. })
+    |                              ^ no rules expected this token in macro call
+    |
+note: while trying to match `,`
+   --> /home/ubuntu/.rustup/toolchains/1.91.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/macros/mod.rs:435:22
+    |
+435 |     ($expression:expr, $pattern:pat $(if $guard:expr)? $(,)?) => {
+    |                      ^
+
+error: no rules expected `@`
+   --> kernel/pm/kcall/signal_cond.rs:362:28
+    |
+362 |             !matches!(ret.1@.gc, GetCondOutcomeView::GcOk)
+    |                            ^ no rules expected this token in macro call
+    |
+note: while trying to match `,`
+   --> /home/ubuntu/.rustup/toolchains/1.91.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/macros/mod.rs:435:22
+    |
+435 |     ($expression:expr, $pattern:pat $(if $guard:expr)? $(,)?) => {
+    |                      ^
+
+error: no rules expected `@`
+   --> kernel/pm/kcall/signal_cond.rs:363:31
+    |
+363 |             || !matches!(ret.1@.notify, NotifyOutcomeView::NOk { .. })
+    |                               ^ no rules expected this token in macro call
+    |
+note: while trying to match `,`
+   --> /home/ubuntu/.rustup/toolchains/1.91.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/macros/mod.rs:435:22
+    |
+435 |     ($expression:expr, $pattern:pat $(if $guard:expr)? $(,)?) => {
+    |                      ^
+
+error: no rules expected `@`
+   --> kernel/pm/kcall/signal_cond.rs:364:31
+    |
+364 |             || !matches!(ret.1@.pc, PutCondOutcomeView::PcOk)
+    |                               ^ no rules expected this token in macro call
+    |
+note: while trying to match `,`
+   --> /home/ubuntu/.rustup/toolchains/1.91.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/macros/mod.rs:435:22
+    |
+435 |     ($expression:expr, $pattern:pat $(if $guard:expr)? $(,)?) => {
+    |                      ^
+
+error: aborting due to 4 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::signal_cond (verified:0, errors:0)
