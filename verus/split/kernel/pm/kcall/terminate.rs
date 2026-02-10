@@ -231,9 +231,9 @@ pub fn terminate_model(arg0: u32) -> (ret: (KcallResultModel, Ghost<PidParseOutc
             ==> spec_is_error(ret.0.spec_view()),
         // PID parse error path: error code is InvalidArgument.
         !spec_pid_parsed_ok(ret.1@)
-            ==> ret.0.spec_view() == TerminateResultView::Error {
+            ==> ret.0.spec_view() == (TerminateResultView::Error {
                     error_code: ERROR_CODE_INVALID_ARGUMENT()
-                },
+                }),
         // Success path: both steps succeeded.
         spec_is_success(ret.0.spec_view())
             ==> spec_pid_parsed_ok(ret.1@) && spec_terminate_ok(ret.2@),
