@@ -64,10 +64,19 @@
 //! ## Trust Boundaries
 //!
 //! - **T1: `ProcessManager::take_mutex_guard(pid, tid, addr)`**. Releases mutex guard.
-//! - **T2: `ProcessManager::get_cond(addr)`**. Gets condition variable reference.
-//! - **T3: `cond.wait(alarm)`**. Waits on the condition variable.
+//! - **T2: `ProcessManager::get_cond(addr)`**. Gets condition variable reference
+//!   (Arc clone, incrementing refcount).
+//! - **T3: `cond.wait(alarm)`**. Waits on the condition variable. The Arc clone
+//!   from T2 is implicitly dropped at the end of the block containing T2+T3,
+//!   decrementing the refcount. This Drop is absorbed into the T2→T4 trust
+//!   boundary transition.
 //! - **T4: `ProcessManager::put_cond(addr)`**. Releases condition variable reference.
 //!   Called unconditionally in the original code regardless of get_cond outcome.
+//!   **Overapproximation note**: the model treats get_cond (T2) and put_cond (T4)
+//!   outcomes as independent. In practice, when get_cond fails, put_cond will also
+//!   fail (no reference was acquired). This makes some proved lemmas vacuously true
+//!   for that impossible combination. This is sound (overapproximate) but imprecise;
+//!   the coupling is a PM-internal refcount invariant outside this module's scope.
 //! - **T5: `ProcessManager::get_mutex(addr)`**. Gets mutex for reacquisition.
 //! - **T6: `Mutex::lock(None)`**. Reacquires the mutex with infinite wait.
 //! - **T7: `ProcessManager::put_mutex_guard(addr, guard)`**. Stores new guard.
@@ -640,8 +649,12 @@ pub fn wait_cond_model(
         ret.1@.tmg matches TakeMutexGuardOutcomeView::TmgOk
             ==> spec_mutex_released(mutex_addr as nat),
         // Resource release: condvar reference was released whenever put_cond
-        // succeeded, independent of later continuation errors.
-        ret.1@.pc matches PutCondOutcomeView::PcOk
+        // succeeded AND get_cond previously acquired a reference (GcOk).
+        // When get_cond fails, no reference was acquired, so "released" is
+        // meaningless even if put_cond somehow returned Ok (which is itself
+        // unreachable — see overapproximation note in trust boundaries).
+        (ret.1@.gc matches GetCondOutcomeView::GcOk
+            && ret.1@.pc matches PutCondOutcomeView::PcOk)
             ==> spec_cond_ref_released(cond_addr as nat),
         // Resource release: mutex was reacquired whenever lock succeeded,
         // independent of later put_guard errors.
@@ -654,11 +667,12 @@ pub fn wait_cond_model(
     let has_alarm: bool = parse_result.1;
 
     if !timeout_ok {
+        let error_code: i32 = ErrorCode::InvalidArgument as i32;
         proof {
-            assert(22i32 as int == ERROR_CODE_INVALID_ARGUMENT());
+            assert(error_code as int == ERROR_CODE_INVALID_ARGUMENT());
         }
         let result: WaitCondResultModel =
-            WaitCondResultModel::InvalidTimeoutError { error_code: 22i32 };
+            WaitCondResultModel::InvalidTimeoutError { error_code };
         let ghost gs: WaitCondGhostState = WaitCondGhostState {
             // Don't-care values: spec short-circuits on invalid timeout,
             // so these are never inspected. Use Error variants so resource-release
