@@ -661,14 +661,15 @@ pub fn wait_cond_model(
             WaitCondResultModel::InvalidTimeoutError { error_code: 22i32 };
         let ghost gs: WaitCondGhostState = WaitCondGhostState {
             // Don't-care values: spec short-circuits on invalid timeout,
-            // so these are never inspected.
-            tmg: TakeMutexGuardOutcomeView::TmgOk,
-            gc: GetCondOutcomeView::GcOk,
+            // so these are never inspected. Use Error variants so resource-release
+            // postconditions (keyed on Ok) are not falsely triggered.
+            tmg: TakeMutexGuardOutcomeView::TmgError { error_code: 0 },
+            gc: GetCondOutcomeView::GcError { error_code: 0 },
             cw: CondWaitOutcomeView::CwOk,
-            pc: PutCondOutcomeView::PcOk,
-            gm: GetMutexOutcomeView::GmOk,
-            lo: LockOutcomeView::LoOk,
-            pg: PutGuardOutcomeView::PgOk,
+            pc: PutCondOutcomeView::PcError { error_code: 0 },
+            gm: GetMutexOutcomeView::GmError { error_code: 0 },
+            lo: LockOutcomeView::LoGenericError { error_code: 0 },
+            pg: PutGuardOutcomeView::PgError { error_code: 0 },
         };
         return (result, Ghost(gs));
     }
@@ -684,13 +685,14 @@ pub fn wait_cond_model(
             let ghost gs: WaitCondGhostState = WaitCondGhostState {
                 tmg: tmg_view,
                 // Don't-care values: spec short-circuits on TmgError,
-                // so subsequent step outcomes are never inspected.
-                gc: GetCondOutcomeView::GcOk,
+                // so subsequent step outcomes are never inspected. Use Error
+                // variants so resource-release postconditions are not triggered.
+                gc: GetCondOutcomeView::GcError { error_code: 0 },
                 cw: CondWaitOutcomeView::CwOk,
-                pc: PutCondOutcomeView::PcOk,
-                gm: GetMutexOutcomeView::GmOk,
-                lo: LockOutcomeView::LoOk,
-                pg: PutGuardOutcomeView::PgOk,
+                pc: PutCondOutcomeView::PcError { error_code: 0 },
+                gm: GetMutexOutcomeView::GmError { error_code: 0 },
+                lo: LockOutcomeView::LoGenericError { error_code: 0 },
+                pg: PutGuardOutcomeView::PgError { error_code: 0 },
             };
             return (result, Ghost(gs));
         },
@@ -726,9 +728,11 @@ pub fn wait_cond_model(
                 gc: gc_view,
                 cw: cw_view,
                 pc: pc_view,
-                gm: GetMutexOutcomeView::GmOk,
-                lo: LockOutcomeView::LoOk,
-                pg: PutGuardOutcomeView::PgOk,
+                // Don't-care values: spec short-circuits on PcError. Use Error
+                // variants for lo to avoid triggering spec_mutex_reacquired.
+                gm: GetMutexOutcomeView::GmError { error_code: 0 },
+                lo: LockOutcomeView::LoGenericError { error_code: 0 },
+                pg: PutGuardOutcomeView::PgError { error_code: 0 },
             };
             return (result, Ghost(gs));
         },
@@ -748,8 +752,10 @@ pub fn wait_cond_model(
                 cw: cw_view,
                 pc: pc_view,
                 gm: gm_view,
-                lo: LockOutcomeView::LoOk,
-                pg: PutGuardOutcomeView::PgOk,
+                // Don't-care values: spec short-circuits on GmError. Use Error
+                // variants for lo to avoid triggering spec_mutex_reacquired.
+                lo: LockOutcomeView::LoGenericError { error_code: 0 },
+                pg: PutGuardOutcomeView::PgError { error_code: 0 },
             };
             return (result, Ghost(gs));
         },
