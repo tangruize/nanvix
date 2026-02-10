@@ -182,7 +182,7 @@ pub enum HandlerDispatchCategory {
 /// as the dispatcher spec. Numbers outside the defined range (0..=31)
 /// or not handled (e.g., Exit, ExitThread, which are locally handled
 /// by the dispatcher) map to `Invalid`.
-pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCategory {
+pub open spec fn spec_classify_handler_kcall(number: u32) -> HandlerDispatchCategory {
     if number == 0 { HandlerDispatchCategory::Debug }
     else if number == 1 { HandlerDispatchCategory::GetPid }
     else if number == 2 { HandlerDispatchCategory::GetTid }
@@ -214,7 +214,7 @@ pub open spec fn spec_classify_handler_kcall(number: nat) -> HandlerDispatchCate
 /// Returns true if the kcall number corresponds to a handler arm in the
 /// handler's match statement (including GetPid/GetTid which return
 /// InvalidSysCall). Returns false for numbers not present in the match.
-pub open spec fn spec_is_handler_kcall(number: nat) -> bool {
+pub open spec fn spec_is_handler_kcall(number: u32) -> bool {
     !matches!(spec_classify_handler_kcall(number), HandlerDispatchCategory::Invalid)
 }
 
@@ -225,7 +225,7 @@ pub open spec fn spec_is_handler_kcall(number: nat) -> bool {
 /// GetPid and GetTid are expected to be handled by the dispatcher, not
 /// the handler loop. If they reach the handler, they return InvalidSysCall.
 /// Invalid/unknown kcall numbers also return InvalidSysCall.
-pub open spec fn spec_returns_invalid_syscall(number: nat) -> bool {
+pub open spec fn spec_returns_invalid_syscall(number: u32) -> bool {
     let cat: HandlerDispatchCategory = spec_classify_handler_kcall(number);
     ||| matches!(cat, HandlerDispatchCategory::GetPid)
     ||| matches!(cat, HandlerDispatchCategory::GetTid)

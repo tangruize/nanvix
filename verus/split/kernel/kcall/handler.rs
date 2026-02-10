@@ -297,7 +297,7 @@ pub struct ScoreBoardPollResult {
 /// GetTid, and any unrecognized number return InvalidSysCall.
 pub fn classify_and_check_invalid(number: u32) -> (result: bool)
     ensures
-        result == spec_returns_invalid_syscall(number as nat),
+        result == spec_returns_invalid_syscall(number),
 {
     if number == 1 || number == 2 {
         true

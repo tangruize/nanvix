@@ -30,7 +30,7 @@ verus! {
 ///
 /// The classification function is total: for any kcall number, a category
 /// is always returned. No kcall number is left unclassified.
-pub proof fn lemma_classification_totality(number: nat)
+pub proof fn lemma_classification_totality(number: u32)
     ensures ({
         let cat: HandlerDispatchCategory = spec_classify_handler_kcall(number);
         ||| matches!(cat, HandlerDispatchCategory::Debug)
@@ -115,7 +115,7 @@ pub proof fn lemma_invalid_kcall_classification()
         matches!(spec_classify_handler_kcall(29), HandlerDispatchCategory::Invalid),
         matches!(spec_classify_handler_kcall(32), HandlerDispatchCategory::Invalid),
         matches!(spec_classify_handler_kcall(100), HandlerDispatchCategory::Invalid),
-        matches!(spec_classify_handler_kcall(u32::MAX as nat), HandlerDispatchCategory::Invalid),
+        matches!(spec_classify_handler_kcall(u32::MAX), HandlerDispatchCategory::Invalid),
 {
 }
 
@@ -137,7 +137,7 @@ pub proof fn lemma_getpid_gettid_return_invalid()
 /// # Description
 ///
 /// Any kcall number classified as Invalid also returns InvalidSysCall.
-pub proof fn lemma_invalid_returns_invalid_syscall(number: nat)
+pub proof fn lemma_invalid_returns_invalid_syscall(number: u32)
     requires
         matches!(spec_classify_handler_kcall(number), HandlerDispatchCategory::Invalid),
     ensures
@@ -151,7 +151,7 @@ pub proof fn lemma_invalid_returns_invalid_syscall(number: nat)
 ///
 /// Kcall numbers that are routed to actual subsystem handlers (Debug, CapCtl,
 /// Terminate, etc.) do not return InvalidSysCall.
-pub proof fn lemma_valid_kcall_no_invalid_error(number: nat)
+pub proof fn lemma_valid_kcall_no_invalid_error(number: u32)
     requires
         spec_is_handler_kcall(number),
         !matches!(spec_classify_handler_kcall(number), HandlerDispatchCategory::GetPid),
@@ -315,7 +315,10 @@ pub proof fn lemma_only_initd_terminates()
 /// Harvested variant with `is_initd == true`.
 pub proof fn lemma_termination_requires_initd(outcome: HarvestOutcome)
     ensures
-        spec_should_terminate(outcome) <==> matches!(outcome, HarvestOutcome::Harvested { pid, is_initd } if is_initd),
+        spec_should_terminate(outcome) <==> match outcome {
+            HarvestOutcome::Harvested { pid, is_initd } => is_initd,
+            _ => false,
+        },
 {
 }
 
@@ -358,7 +361,7 @@ pub proof fn lemma_no_pending_no_kcall(state: LoopIterationState)
 ///
 /// When the scoreboard returns a kcall (GotCall), the iteration state
 /// should be updated to reflect that a kcall was handled.
-pub proof fn lemma_got_call_kcall_handled(state: LoopIterationState, number: nat)
+pub proof fn lemma_got_call_kcall_handled(state: LoopIterationState, number: u32)
     ensures ({
         let after: LoopIterationState = spec_after_kcall_handled(state);
         after.kcall_handled
@@ -376,7 +379,7 @@ pub proof fn lemma_got_call_kcall_handled(state: LoopIterationState, number: nat
 ///
 /// The handler classification partitions all kcall numbers into two sets:
 /// those handled by the handler loop and those classified as Invalid.
-pub proof fn lemma_dispatch_partition(number: nat)
+pub proof fn lemma_dispatch_partition(number: u32)
     ensures
         spec_is_handler_kcall(number) || matches!(spec_classify_handler_kcall(number), HandlerDispatchCategory::Invalid),
 {
@@ -387,7 +390,7 @@ pub proof fn lemma_dispatch_partition(number: nat)
 /// # Description
 ///
 /// A kcall number cannot be both a valid handler kcall and Invalid.
-pub proof fn lemma_handler_invalid_exclusive(number: nat)
+pub proof fn lemma_handler_invalid_exclusive(number: u32)
     ensures
         !(spec_is_handler_kcall(number) && matches!(spec_classify_handler_kcall(number), HandlerDispatchCategory::Invalid)),
 {
