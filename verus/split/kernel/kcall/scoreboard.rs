@@ -112,9 +112,11 @@
 //!
 //! - **T1: Global singleton.** The `ScoreBoardSlot` models the initialization/access
 //!   pattern (`init()` / `get_mut()`). The `try_get_board()` function models the
-//!   `ErrorCode::TryAgain` error when uninitialized. `get_board()` and `get_board_mut()`
-//!   provide typed references when initialized, connecting slot state to scoreboard
-//!   operations. The `static mut` memory safety and lifetime guarantees remain
+//!   `ErrorCode::TryAgain` error when uninitialized. `get_board()` provides an
+//!   immutable reference when initialized, connecting slot state to scoreboard
+//!   operations. The original `get_mut()` returns `&mut ScoreBoard`, but Verus does
+//!   not support `&mut` return types; use the slot's `board` field directly for
+//!   mutable access. The `static mut` memory safety and lifetime guarantees remain
 //!   unverified (Verus cannot reason about `static mut`).
 //! - **T2: Mutex correctness.** The model assumes the mutex provides mutual exclusion.
 //!   The mutex is separately verified in `kernel::pm::sync::mutex`.
@@ -736,22 +738,30 @@ impl ScoreBoard {
     ///    `Err(SleepError::Interrupted)`. Returns `DispatchOutcome::LockFailed`.
     ///    State is preserved.
     /// 2. **Down interrupted** (`down_interrupted == true`): Models `handled.down()`
-    ///    returning `Err(SleepError::Interrupted)`. Returns
-    ///    `DispatchOutcome::DownInterrupted`. The board is left in a stuck state
-    ///    (wf() violated), modeling the original's `?` propagation after the
-    ///    mutex guard drop.
+    ///    returning `Err(SleepError::Interrupted)`. The interrupt is modeled from
+    ///    the Signaled phase (before the handler runs), which is the worst case.
+    ///    In the real implementation, `handled.down()` blocks until the handler
+    ///    signals, so the interrupt can occur while the board is in any active
+    ///    phase (Signaled, Dispatched, or Handled). Modeling from Signaled
+    ///    captures the most conservative stuck state. The `abandon_dispatch()`
+    ///    function covers interruption from other active phases separately.
+    ///    Returns `DispatchOutcome::DownInterrupted`.
     /// 3. **Success**: Lock acquired and `handled.down()` succeeds. Returns
     ///    `DispatchOutcome::Success(result)`, modeling `Ok(self.ret)`.
     ///
-    /// This wrapper proves behavioral equivalence of the split API to the original
-    /// `dispatch()` function for all three outcome paths.
+    /// The parameters model nondeterministic environmental choices in a
+    /// sequential verification setting:
+    /// - `lock_acquired`: Whether the OS scheduler granted the lock (environment).
+    /// - `down_interrupted`: Whether the OS interrupted the blocking `down()` call.
+    /// - `ret`: The handler thread's eventual result (determined by the handler,
+    ///   not the dispatcher). Only meaningful on the success path.
     ///
     /// # Parameters
     ///
     /// - `args`: The kernel call arguments to dispatch.
-    /// - `ret`: The kernel call result (set by the handler between begin and complete).
-    /// - `lock_acquired`: Whether the lock was successfully acquired.
-    /// - `down_interrupted`: Whether `handled.down()` was interrupted.
+    /// - `ret`: The kernel call result (set by the handler; environment input).
+    /// - `lock_acquired`: Whether the lock was successfully acquired (environment).
+    /// - `down_interrupted`: Whether `handled.down()` was interrupted (environment).
     ///
     /// # Returns
     ///
@@ -774,11 +784,18 @@ impl ScoreBoard {
                 && self@ == old(self)@
                 && self.wf()
             ),
-            // Down interrupted: stuck state.
+            // Down interrupted: stuck state from Signaled phase.
+            // Args are preserved, result unchanged, semaphore state known.
             (lock_acquired && down_interrupted) ==> (
                 outcome == DispatchOutcome::DownInterrupted
                 && !self.locked
-                && self.phase == ScoreBoardPhase::Handled
+                && self.phase == ScoreBoardPhase::Signaled
+                && self.args@ == args@
+                && self.result@ == old(self).result@
+                && self.dispatched_value == 1
+                && self.handled_value == 0
+                && self.completed_cycles@ == old(self).completed_cycles@
+                && self@ == ScoreBoard::spec_dispatch_interrupted(old(self)@, args@)
             ),
             // Success: full cycle completed, result returned.
             (lock_acquired && !down_interrupted) ==> (
@@ -787,6 +804,7 @@ impl ScoreBoard {
                 && self.spec_is_idle()
                 && !self.locked
                 && self.completed_cycles@ == old(self).completed_cycles@ + 1
+                && self@ == ScoreBoard::spec_dispatch_success(old(self)@, args@, ret@)
             ),
     {
         if !lock_acquired {
@@ -798,18 +816,19 @@ impl ScoreBoard {
         self.dispatched_value = 1;
         self.phase = ScoreBoardPhase::Signaled;
 
+        if down_interrupted {
+            // handled.down() interrupted: mutex guard drops from Signaled phase.
+            // The handler has not run yet; args are preserved, result unchanged.
+            self.locked = false;
+            return DispatchOutcome::DownInterrupted;
+        }
+
         // Handler processes: consume dispatched signal, set result, signal handled.
         self.dispatched_value = 0;
         self.phase = ScoreBoardPhase::Dispatched;
         self.result = ret;
         self.handled_value = 1;
         self.phase = ScoreBoardPhase::Handled;
-
-        if down_interrupted {
-            // handled.down() interrupted: mutex guard drops, stuck state.
-            self.locked = false;
-            return DispatchOutcome::DownInterrupted;
-        }
 
         // Complete: consume handled signal, read result, release mutex.
         let dispatch_result: KcallResult = KcallResult {

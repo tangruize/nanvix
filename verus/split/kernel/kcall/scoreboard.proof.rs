@@ -760,14 +760,15 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Proves that when `handled.down()` is interrupted, the board ends in the
-    /// Handled phase with the mutex unlocked, which violates `wf()`. The result
-    /// and args are preserved. This models the original's `?` propagation after
-    /// the mutex guard drop.
+    /// Proves that when `handled.down()` is interrupted (modeled from the
+    /// Signaled phase before the handler runs), the board ends in the
+    /// Signaled phase with the mutex unlocked. The dispatched args are
+    /// preserved, the result is unchanged, and the dispatched semaphore
+    /// is still signaled (value 1). This violates `wf()` since the phase
+    /// is non-Idle but the mutex is unlocked.
     pub proof fn lemma_dispatch_interrupted_stuck(
         view: ScoreBoardView,
         args: KcallArgsView,
-        ret: KcallResultView,
     )
         requires
             view.phase == ScoreBoardPhase::Idle,
@@ -775,11 +776,14 @@ impl ScoreBoard {
             view.dispatched_value == 0,
             view.handled_value == 0,
         ensures ({
-            let stuck: ScoreBoardView = ScoreBoard::spec_dispatch_interrupted(view, args, ret);
-            &&& stuck.phase == ScoreBoardPhase::Handled
+            let stuck: ScoreBoardView = ScoreBoard::spec_dispatch_interrupted(view, args);
+            &&& stuck.phase == ScoreBoardPhase::Signaled
             &&& !stuck.locked
-            &&& stuck.result == ret
             &&& stuck.args == args
+            &&& stuck.result == view.result
+            &&& stuck.dispatched_value == 1
+            &&& stuck.handled_value == 0
+            &&& stuck.completed_cycles == view.completed_cycles
         }),
     {
     }

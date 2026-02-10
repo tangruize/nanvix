@@ -436,18 +436,22 @@ impl ScoreBoard {
     ///
     /// # Description
     ///
-    /// Models the error path where the lock is acquired, the handler processes
-    /// the call, but `handled.down()` is interrupted. The board ends in the
-    /// Handled phase with the mutex unlocked (stuck state).
+    /// Models the error path where the lock is acquired but `handled.down()`
+    /// is interrupted. The interruption is modeled from the Signaled phase
+    /// (before the handler runs), which is the most conservative: the
+    /// dispatched semaphore has been signaled (value 1) but the handler has
+    /// not consumed it, and the result is unchanged from the prior state.
+    ///
+    /// In the real implementation, `handled.down()` blocks and the interrupt
+    /// can catch the protocol in any active phase (Signaled, Dispatched, or
+    /// Handled). The `spec_abandon_dispatch` function models abandonment from
+    /// arbitrary active phases for fine-grained reasoning.
     pub open spec fn spec_dispatch_interrupted(
         view: ScoreBoardView,
         args: KcallArgsView,
-        ret: KcallResultView,
     ) -> ScoreBoardView {
         let after_signal: ScoreBoardView = Self::spec_begin_dispatch(view, args);
-        let after_handle: ScoreBoardView = Self::spec_handle(after_signal);
-        let after_handled: ScoreBoardView = Self::spec_handled(after_handle, ret);
-        Self::spec_abandon_dispatch(after_handled)
+        Self::spec_abandon_dispatch(after_signal)
     }
 
     /// Spec function: a full dispatch-handle-handled cycle.
