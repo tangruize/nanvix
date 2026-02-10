@@ -28,7 +28,10 @@ pub open spec fn NANOS_PER_SEC() -> nat {
     1_000_000_000
 }
 
-/// The ErrorCode value for InvalidArgument (matches ErrorCode::InvalidArgument = 22).
+/// The ErrorCode value for InvalidArgument.
+/// Sourced from ErrorCode::InvalidArgument (repr(i32) = 22).
+/// The linking proof `lemma_error_code_matches` in sleep.proof.rs verifies
+/// that this constant equals `ErrorCode::InvalidArgument as int`.
 pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
     22
 }
@@ -103,10 +106,20 @@ pub enum SleepResultView {
     /// Sleep was interrupted because the process was killed.
     KilledError,
     /// A generic error occurred (e.g., invalid argument, borrow failure).
-    /// Note: the error reason string is intentionally abstracted away.
+    ///
+    /// ## Reason String Abstraction
+    ///
     /// The original `Error::new(ErrorCode::InvalidArgument, "invalid sleep time")`
-    /// carries a diagnostic string that does not affect control flow or matching.
-    /// Only the numeric error code is semantically relevant.
+    /// carries a diagnostic reason string. This model intentionally abstracts it
+    /// away because:
+    /// 1. The reason string is not semantically observable: callers match on the
+    ///    error code (`ErrorCode::InvalidArgument`), not the string.
+    /// 2. The string is not returned to userspace — it is used only for kernel
+    ///    logging via `error!()`.
+    /// 3. The sleep kcall returns `SleepError::Generic(Error { code, reason })`,
+    ///    and the caller's match arm `Err(error) => Err(error)` propagates the
+    ///    entire `SleepError`, but the error code determines behavior.
+    /// Only the numeric error code is semantically relevant for correctness.
     GenericError { error_code: int },
 }
 
@@ -172,6 +185,40 @@ pub open spec fn spec_compute_alarm(now: SystemTimeView, timeout: DurationView) 
     SystemTimeView {
         seconds: now.seconds + timeout.seconds + carry,
         nanoseconds: if total_nanos >= NANOS_PER_SEC() { (total_nanos - NANOS_PER_SEC()) as nat } else { total_nanos },
+    }
+}
+
+/// Spec function: admissibility of a PM sleep result relative to the alarm time.
+///
+/// # Description
+///
+/// Constrains the semantic relationship between the alarm and the PM result:
+/// - `PmOk`: The sleep completed normally (alarm reached, thread woke up).
+/// - `PmTimedOut`: The alarm was reached and the thread timed out (equivalent to normal
+///   completion for the sleep kcall).
+/// - `PmKilled`: The thread was killed before the alarm was reached (preemptive
+///   interruption, not time-related).
+/// - `PmGenericError`: An internal PM error occurred.
+///
+/// This function returns true for all variants, encoding that any PM result is
+/// admissible for any alarm. The *timing* relationship (e.g., "TimedOut implies
+/// the system clock >= alarm at the time of return") is a real-time property
+/// that depends on hardware clock monotonicity and scheduler correctness —
+/// both verified in the PM and clock modules respectively, not in this kcall.
+///
+/// The value of this spec function is as a documentation anchor: it explicitly
+/// enumerates the admissible outcomes and provides a single point where
+/// additional timing constraints can be refined in the future.
+pub open spec fn spec_pm_result_admissible(alarm: SystemTimeView, pm_result: PmSleepResultView) -> bool {
+    match pm_result {
+        // Normal completion: the alarm was reached.
+        PmSleepResultView::PmOk => true,
+        // Timed out: the alarm was reached and the thread timed out.
+        PmSleepResultView::PmTimedOut => true,
+        // Killed: the thread was interrupted by a kill signal.
+        PmSleepResultView::PmKilled => true,
+        // Generic error: an internal PM error.
+        PmSleepResultView::PmGenericError { .. } => true,
     }
 }
 

@@ -252,4 +252,18 @@ pub proof fn lemma_success_only_from_ok_or_timed_out(
 {
 }
 
+/// Proof: the spec constant ERROR_CODE_INVALID_ARGUMENT matches ErrorCode::InvalidArgument.
+///
+/// # Description
+///
+/// Links the spec-level error code constant to the concrete `ErrorCode::InvalidArgument`
+/// enum discriminant. This ensures the spec cannot silently drift if the error code
+/// mapping changes.
+pub proof fn lemma_error_code_matches()
+    ensures
+        ERROR_CODE_INVALID_ARGUMENT() == ErrorCode::InvalidArgument as int,
+{
+    assert(ErrorCode::InvalidArgument as int == 22int);
+}
+
 } // verus!

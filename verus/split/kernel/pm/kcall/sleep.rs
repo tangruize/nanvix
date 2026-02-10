@@ -96,6 +96,7 @@
 //! | `ProcessManager::sleep(Some(alarm))`  | `process_manager_sleep(alarm)`  | external_body            |
 //! | `pub unsafe fn sleep(secs, nanos)`    | `sleep_model(now, secs, nanos)` | Fully verified           |
 
+use crate::libs::error::ErrorCode;
 use vstd::prelude::*;
 
 // Include specifications.
@@ -274,15 +275,34 @@ pub fn checked_add_duration(now: &SystemTimeModel, timeout: &DurationModel) -> (
 ///
 /// Puts the calling thread to sleep until the alarm time or until interrupted.
 /// Returns one of the four possible outcomes: Ok, TimedOut, Killed, or GenericError.
+///
+/// ## Timing/Liveness Properties (from PM specification)
+///
+/// The PM module guarantees:
+/// - **Eventual return**: `ProcessManager::sleep` always returns (the thread is
+///   never permanently blocked). This is a liveness property verified in the PM
+///   and scheduler modules.
+/// - **TimedOut semantics**: `PmTimedOut` is returned when the system clock
+///   reaches or exceeds the alarm time. This depends on clock monotonicity
+///   (verified in the clock module) and scheduler fairness (verified in the PM).
+/// - **Ok semantics**: `PmOk` is returned for normal wakeup (which for a timed
+///   sleep also implies the alarm was reached).
+/// - **Killed semantics**: `PmKilled` is returned only when the thread receives
+///   a kill signal, independent of the alarm time.
+///
+/// These timing properties are not re-proven here; they are part of the PM's
+/// verified specification. The postcondition `spec_pm_result_admissible` documents
+/// the admissible outcomes and serves as a refinement point.
 #[verifier::external_body]
 pub fn process_manager_sleep(alarm: &SystemTimeModel) -> (result: SleepResultModel)
     requires
         alarm.spec_wf(),
     ensures
-        // Postcondition documents that the result is always one of the defined variants.
-        // This is trivially true for the enum but useful for documentation and refinement.
+        // The result is always one of the defined variants.
         matches!(result, SleepResultModel::Ok | SleepResultModel::TimedOut
             | SleepResultModel::Killed | SleepResultModel::GenericError { .. }),
+        // The result is admissible for the given alarm time.
+        spec_pm_result_admissible(alarm.spec_view(), result.spec_pm_view()),
 {
     unimplemented!()
 }
