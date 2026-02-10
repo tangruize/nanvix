@@ -1,0 +1,38 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 09:13:54 CST 2026
+Module: kernel::kcall::scoreboard
+Command: verus --crate-type lib lib.rs --verify-module kernel::kcall::scoreboard
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::kcall::scoreboard
+
+error: postcondition not satisfied
+   --> kernel/kcall/scoreboard.proof.rs:290:13
+    |
+286 |     pub proof fn lemma_no_dispatch_when_active(view: ScoreBoardView)
+    |     ---------------------------------------------------------------- at the end of the function body
+...
+290 |             view.locked,
+    |             ^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/kcall/scoreboard.proof.rs:305:13
+    |
+301 |     pub proof fn lemma_no_handle_when_idle(view: ScoreBoardView)
+    |     ------------------------------------------------------------ at the end of the function body
+...
+305 |             !view.locked,
+    |             ^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 30 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 30
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::kcall::scoreboard (verified:30, errors:2)
