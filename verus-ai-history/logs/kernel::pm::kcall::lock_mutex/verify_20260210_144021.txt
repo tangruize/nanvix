@@ -1,0 +1,48 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 14:40:21 CST 2026
+Module: kernel::pm::kcall::lock_mutex
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::lock_mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+   --> kernel/pm/kcall/lock_mutex.spec.rs:338:5
+    |
+338 | pub open spec fn spec_caller_is_not_kernel_process(pid: nat) -> bool;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+   --> kernel/pm/kcall/lock_mutex.spec.rs:352:5
+    |
+352 | pub open spec fn spec_caller_holds_no_resources(tid: nat) -> bool;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+   --> kernel/pm/kcall/lock_mutex.spec.rs:366:5
+    |
+366 | pub open spec fn spec_caller_no_pm_reference() -> bool;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: verifying module kernel::pm::kcall::lock_mutex
+
+error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+   --> kernel/pm/kcall/lock_mutex.proof.rs:533:9
+    |
+533 | /         forall |p1: nat, t1: nat, p2: nat, t2: nat|
+534 | |             spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome)
+535 | |             == spec_lock_mutex_result(timeout_s, timeout_ns, get_mutex_outcome, lock_outcome, put_guard_outcome),
+    | |________________________________________________________________________________________________________________^
+
+error: aborting due to 1 previous error; 3 warnings emitted
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::lock_mutex (verified:0, errors:0)
