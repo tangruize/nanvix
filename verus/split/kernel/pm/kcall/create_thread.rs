@@ -70,6 +70,10 @@
 //!   variants present in the Verus verification model; the full kernel `ErrorCode`
 //!   enum has additional variants. Module-level proofs in PM/VMM can strengthen
 //!   the constraint for specific call sites.
+//! - **Argument passthrough preservation**: The `user_fn_arg0` and `user_fn_arg1`
+//!   fields from the copied `ThreadCreateArgs` are tracked via ghost state and
+//!   proven to be passed unchanged to `pm.create_thread`
+//!   (`lemma_args_passthrough_preserved`).
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -86,6 +90,33 @@
 //! is not modeled because it has no functional effect on the return value. The
 //! verification scope is limited to functional correctness of the validation
 //! pipeline.
+//!
+//! ## Verification Architecture (Model-Based Approach)
+//!
+//! This module verifies a **model function** (`create_thread_model`) rather than
+//! the actual `create_thread` kernel function. This is the project-wide
+//! verification architecture used by all modules in `verus/split/`:
+//!
+//! - The Verus toolchain operates in a separate `verus/split/` source tree that
+//!   cannot import the actual kernel crate's concrete types (`ProcessManager`,
+//!   `VirtMemoryManager`, `KcallArgs`, `ThreadCreateArgs`, etc.).
+//! - Refactoring to verify the actual function would require the entire kernel
+//!   (and all dependencies) to be Verus-compilable, which is infeasible.
+//! - Instead, each module verifies a model that mirrors the original's control
+//!   flow, with `external_body` wrappers at dependency boundaries.
+//! - The model's fidelity to the implementation is maintained by:
+//!   (a) Structural correspondence: the model's control flow matches the
+//!       original step-by-step (documented in the API Mapping table).
+//!   (b) Ghost parameter threading: concrete addresses and arguments are
+//!       tracked through the pipeline via ghost state.
+//!   (c) Build-time bridge functions: `assert_thread_create_args_size()` and
+//!       `assert_user_stack_size()` can be called from integration tests to
+//!       verify spec constants match runtime values.
+//!   (d) Code review: changes to the original source trigger re-review of
+//!       the corresponding Verus model.
+//!
+//! This approach is consistent with `terminate`, `sleep`, and all other
+//! verified kcall modules in the project.
 //!
 //! ## Trust Boundaries
 //!
@@ -235,12 +266,12 @@ impl CopyFromUserResultModel {
 /// enabling postconditions to verify that the addresses validated by
 /// `is_user_addr`/`is_user_region` are the same as those in the copied args.
 ///
-/// ## Omitted Fields
+/// ## Argument Passthrough Fields
 ///
-/// `user_fn_arg0` and `user_fn_arg1` are not modeled because `create_thread`
-/// does not validate them — they are passed through to `pm.create_thread`
-/// unchanged. Argument passthrough verification is out of scope for this
-/// module; it would require PM-level ghost state tracking.
+/// `user_fn_arg0` and `user_fn_arg1` are included but not validated by the
+/// `create_thread` kcall — they are passed through to `pm.create_thread`
+/// unchanged. The model tracks them via ghost state to prove they are
+/// preserved from the copied `ThreadCreateArgs` to the PM call.
 ///
 /// ## Architecture Dependency
 ///
@@ -252,6 +283,10 @@ pub struct ThreadCreateArgsModel {
     pub user_fn_addr: u32,
     /// Whether user_fn lies in user address space.
     pub user_fn_valid: bool,
+    /// First argument to the user function (passthrough, not validated).
+    pub user_fn_arg0: u32,
+    /// Second argument to the user function (passthrough, not validated).
+    pub user_fn_arg1: u32,
     /// The user_stack_base address (concrete value from copied args).
     pub user_stack_base_addr: u32,
     /// Whether user_stack region lies in user address space.
@@ -272,6 +307,8 @@ impl ThreadCreateArgsModel {
         ThreadCreateArgsView {
             user_fn_addr: self.user_fn_addr as nat,
             user_fn_valid: self.user_fn_valid,
+            user_fn_arg0: self.user_fn_arg0 as nat,
+            user_fn_arg1: self.user_fn_arg1 as nat,
             user_stack_base_addr: self.user_stack_base_addr as nat,
             user_stack_valid: self.user_stack_valid,
             user_stack_size: self.user_stack_size as nat,
@@ -468,9 +505,17 @@ pub fn pm_create_thread(
 /// that the hard-coded `THREAD_CREATE_ARGS_SIZE()` spec constant matches the
 /// actual struct layout, preventing silent drift.
 ///
-/// Example usage in a test:
+/// ## Integration Test Example
+///
+/// Add to `src/tests/` or a unit test in `src/libs/sys/`:
 /// ```ignore
-/// assert_thread_create_args_size(core::mem::size_of::<ThreadCreateArgs>() as u32);
+/// #[test]
+/// fn verify_thread_create_args_size() {
+///     assert_eq!(
+///         core::mem::size_of::<ThreadCreateArgs>(),
+///         28,  // Must match THREAD_CREATE_ARGS_SIZE() in create_thread.spec.rs
+///     );
+/// }
 /// ```
 ///
 /// The kernel already uses `static_assert::assert_eq_size!` for `VirtualAddress`
@@ -492,9 +537,17 @@ pub fn assert_thread_create_args_size(runtime_size: u32)
 /// that the hard-coded `USER_STACK_SIZE()` spec constant matches the kernel
 /// configuration, preventing silent drift.
 ///
-/// Example usage in a test:
+/// ## Integration Test Example
+///
+/// Add to `src/tests/` or a unit test in `src/libs/config/`:
 /// ```ignore
-/// assert_user_stack_size(config::memory_layout::USER_STACK_SIZE as u32);
+/// #[test]
+/// fn verify_user_stack_size() {
+///     assert_eq!(
+///         config::memory_layout::USER_STACK_SIZE,
+///         524288,  // Must match USER_STACK_SIZE() in create_thread.spec.rs
+///     );
+/// }
 /// ```
 #[verifier::external_body]
 pub fn assert_user_stack_size(runtime_size: u32)

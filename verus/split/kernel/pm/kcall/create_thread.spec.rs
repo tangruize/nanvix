@@ -82,6 +82,10 @@ pub struct ThreadCreateArgsView {
     pub user_fn_addr: nat,
     /// Whether user_fn address is in user address space.
     pub user_fn_valid: bool,
+    /// First argument to the user function (passthrough, not validated).
+    pub user_fn_arg0: nat,
+    /// Second argument to the user function (passthrough, not validated).
+    pub user_fn_arg1: nat,
     /// The user_stack_base address (concrete value from copied args).
     pub user_stack_base_addr: nat,
     /// Whether user_stack region is in user address space.
