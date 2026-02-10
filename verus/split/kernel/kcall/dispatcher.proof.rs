@@ -432,7 +432,7 @@ pub proof fn lemma_large_success_not_error(r: DispatchResultView)
         !spec_in_error_range(r.value),
     ensures
         // A well-formed error result cannot encode to this value.
-        forall|e: DispatchResultView|
+        forall|e: DispatchResultView| #![auto]
             (spec_result_wf(e) && !e.is_success)
                 ==> spec_encode_result(e) != spec_encode_result(r),
 {
@@ -510,7 +510,7 @@ pub proof fn lemma_terminal_is_exit_exitthread(number: u32)
 /// - All others: no additional constraint.
 pub proof fn lemma_dispatch_constraint_immediate()
     ensures
-        forall|r: DispatchResultView|
+        forall|r: DispatchResultView| #![auto]
             spec_dispatch_result_constrained(DispatchCategory::LocalImmediate, r) == r.is_success,
 {
 }
@@ -518,7 +518,7 @@ pub proof fn lemma_dispatch_constraint_immediate()
 /// Lemma: dispatch constraint for terminal calls requires error.
 pub proof fn lemma_dispatch_constraint_terminal()
     ensures
-        forall|r: DispatchResultView|
+        forall|r: DispatchResultView| #![auto]
             spec_dispatch_result_constrained(DispatchCategory::LocalTerminal, r) == !r.is_success,
 {
 }
@@ -526,13 +526,13 @@ pub proof fn lemma_dispatch_constraint_terminal()
 /// Lemma: dispatch constraint is trivially true for non-immediate, non-terminal categories.
 pub proof fn lemma_dispatch_constraint_other()
     ensures
-        forall|r: DispatchResultView|
+        forall|r: DispatchResultView| #![auto]
             spec_dispatch_result_constrained(DispatchCategory::LocalSleepable, r),
-        forall|r: DispatchResultView|
+        forall|r: DispatchResultView| #![auto]
             spec_dispatch_result_constrained(DispatchCategory::LocalFallible, r),
-        forall|r: DispatchResultView|
+        forall|r: DispatchResultView| #![auto]
             spec_dispatch_result_constrained(DispatchCategory::LocalDirect, r),
-        forall|r: DispatchResultView|
+        forall|r: DispatchResultView| #![auto]
             spec_dispatch_result_constrained(DispatchCategory::Remote, r),
 {
 }
