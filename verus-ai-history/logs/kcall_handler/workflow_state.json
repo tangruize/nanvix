@@ -1,6 +1,6 @@
 {
   "module_name": "kcall_handler",
-  "outer_iteration": 2,
+  "outer_iteration": 3,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "a89f7251-26bd-4451-a630-f1834218cbd7",
