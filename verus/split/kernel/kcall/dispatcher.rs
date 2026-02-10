@@ -95,14 +95,30 @@
 //! - **T3: PM subsystem calls.** `pm::join_thread`, `pm::lock_mutex`, etc. are
 //!   dependency boundary operations. Their correctness is assumed.
 //! - **T4: ProcessManager::exit divergence.** In the `Interrupted(Killed)` path,
-//!   `ProcessManager::exit()` is called and the thread terminates. The original
-//!   code panics if exit fails. This divergent path is modeled but not verified
-//!   (it should never return).
+//!   `ProcessManager::exit(ErrorCode::Interrupted)` is called (forced termination)
+//!   and the thread then panics. This divergent path is modeled with
+//!   `ensures false` but the exit side-effect is not modeled (would require
+//!   ghost global state). The original code panics if exit fails.
 //! - **T5: ABI representation gap.** The original `do_kcall` uses the C ABI
 //!   `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified model uses
 //!   `DispatchArgs`/`DispatchResult` types for richer postconditions. The
 //!   `is_success` flag in `DispatchResult` is a modeling abstraction not present
 //!   in the raw i64 return value.
+//! - **T6: Kcall number constants.** The 33 spec constants (KCALL_DEBUG through
+//!   KCALL_INVALID) are manually mirrored from the `KcallNumber` `#[repr(u32)]`
+//!   enum in `src/libs/sys/src/sys/number.rs`. The `lemma_kcall_constants_consistency`
+//!   proof asserts each value for regression, but the mirroring is not mechanically
+//!   linked to the source. If the enum values change, the spec constants must be
+//!   manually updated. A CI check diffing the enum values against the spec is
+//!   recommended.
+//!
+//! ## Scope Limitations
+//!
+//! - **Liveness**: No liveness properties (eventual return, deadlock freedom) are
+//!   specified or proved for sleepable or remote-dispatch calls. The external-body
+//!   subsystem stubs assume termination. Liveness verification requires modeling
+//!   the scheduler and scoreboard concurrency protocol, which is out of scope for
+//!   the dispatcher module.
 
 use vstd::prelude::*;
 
@@ -515,6 +531,14 @@ pub fn handle_sleep_error(sleep_error: SleepError) -> (result: DispatchResult)
 /// **Trust assumption**: This function never returns. The `panic!()` in the
 /// body guarantees divergence at runtime. The `ensures false` contract
 /// allows the verifier to soundly treat post-call code as dead code.
+///
+/// **Side-effect (unmodeled)**: The original code calls
+/// `ProcessManager::exit(ErrorCode::Interrupted)` before panicking. This
+/// forced-termination side-effect is the most safety-critical behavior on
+/// the Killed path, but it is not modeled because: (1) the function
+/// diverges, so no postcondition about state changes is observable by callers;
+/// (2) modeling it would require ghost global state for ProcessManager, which
+/// is out of scope for the dispatcher module. See trust boundary T4.
 #[verifier::external_body]
 pub fn handle_sleep_error_killed() -> (result: DispatchResult)
     ensures
@@ -960,6 +984,22 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
 ///
 /// This verified function delegates to `do_kcall_dispatch` after
 /// successful pid/tid retrieval.
+///
+/// ## Error-Code Propagation (Verification Note)
+///
+/// The verification proves internally that error codes are faithfully
+/// propagated from subsystem calls. For example, if `pm_get_pid()` fails
+/// with error code `c`, the code calls `DispatchResult::error(c)` whose
+/// postcondition guarantees `result.value == c as i64`. This chain is
+/// mechanically verified through the constructor postconditions.
+///
+/// However, this propagation property is NOT surfaced in the top-level
+/// postcondition because Verus `ensures` clauses cannot reference local
+/// variables (e.g., `pid_outcome`). Surfacing it would require ghost
+/// return values, which adds complexity disproportionate to the benefit
+/// — the error codes themselves originate from external-body subsystem
+/// calls (trust boundaries T1–T3), so their specific values are already
+/// assumed, not verified.
 ///
 /// # Parameters
 ///
