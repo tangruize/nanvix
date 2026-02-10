@@ -858,29 +858,6 @@ impl ScoreBoardSlot {
     {
         &self.board
     }
-
-    /// Returns a mutable reference to the contained scoreboard.
-    ///
-    /// # Description
-    ///
-    /// Models the success path of `get_mut()`: when the slot is initialized,
-    /// provides a mutable reference to the well-formed scoreboard, enabling
-    /// state-mutating operations (begin_dispatch, handle, handled, etc.).
-    ///
-    /// # Returns
-    ///
-    /// Mutable reference to the contained `ScoreBoard`.
-    pub fn get_board_mut(&mut self) -> (result: &mut ScoreBoard)
-        requires
-            old(self).wf(),
-            old(self).spec_is_initialized(),
-        ensures
-            result.wf(),
-            result@ == old(self).board@,
-            self.spec_is_initialized(),
-    {
-        &mut self.board
-    }
 }
 
 } // verus!
