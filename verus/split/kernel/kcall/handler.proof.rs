@@ -625,48 +625,47 @@ pub proof fn lemma_spec_constants_match_source()
 ///
 /// # Description
 ///
-/// Regression check ensuring that the classification function includes
-/// every kcall number present in the original handler's match statement.
-/// If a new kcall arm is added to the original source, a corresponding
-/// entry must be added here and in `spec_classify_handler_kcall`.
+/// Cross-module regression check: verifies that the handler's classification
+/// function (which uses dispatcher constants) correctly classifies every
+/// kcall number present in the original handler's match statement. This is
+/// NOT self-referential — it cross-checks the handler spec against the
+/// dispatcher's constant definitions, which are the single source of truth
+/// for kcall number values in the verification model.
 ///
 /// Source: `src/kernel/src/kcall/handler.rs`, lines 62-97.
-/// Kcall numbers: 0(Debug), 1(GetPid), 2(GetTid), 4(CapCtl), 6(Terminate),
-/// 7(EventCtrl), 8(Send), 10(MemoryMap), 11(MemoryUnmap), 12(MemoryCtrl),
-/// 13(MemoryCopy), 14(AllocMmio), 15(FreeMmio), 16(AllocPmio),
-/// 17(FreePmio), 18(ReadPmio), 19(WritePmio), 21(CreateThread),
-/// 28(GetTime), 30(SetThreadDataArea), 31(GetThreadDataArea).
 pub proof fn lemma_dispatch_coverage_matches_source()
     ensures
         // All 21 handler kcall numbers are classified as non-Invalid.
-        spec_is_handler_kcall(0),   // Debug
-        spec_is_handler_kcall(1),   // GetPid
-        spec_is_handler_kcall(2),   // GetTid
-        spec_is_handler_kcall(4),   // CapCtl
-        spec_is_handler_kcall(6),   // Terminate
-        spec_is_handler_kcall(7),   // EventCtrl
-        spec_is_handler_kcall(8),   // Send
-        spec_is_handler_kcall(10),  // MemoryMap
-        spec_is_handler_kcall(11),  // MemoryUnmap
-        spec_is_handler_kcall(12),  // MemoryCtrl
-        spec_is_handler_kcall(13),  // MemoryCopy
-        spec_is_handler_kcall(14),  // AllocMmio
-        spec_is_handler_kcall(15),  // FreeMmio
-        spec_is_handler_kcall(16),  // AllocPmio
-        spec_is_handler_kcall(17),  // FreePmio
-        spec_is_handler_kcall(18),  // ReadPmio
-        spec_is_handler_kcall(19),  // WritePmio
-        spec_is_handler_kcall(21),  // CreateThread
-        spec_is_handler_kcall(28),  // GetTime
-        spec_is_handler_kcall(30),  // SetThreadDataArea
-        spec_is_handler_kcall(31),  // GetThreadDataArea
+        // Uses dispatcher constants — if a constant value changes, this
+        // lemma fails, detecting the drift.
+        spec_is_handler_kcall(super::dispatcher::KCALL_DEBUG()),          // 0
+        spec_is_handler_kcall(super::dispatcher::KCALL_GET_PID()),        // 1
+        spec_is_handler_kcall(super::dispatcher::KCALL_GET_TID()),        // 2
+        spec_is_handler_kcall(super::dispatcher::KCALL_CAP_CTL()),        // 4
+        spec_is_handler_kcall(super::dispatcher::KCALL_TERMINATE()),      // 6
+        spec_is_handler_kcall(super::dispatcher::KCALL_EVENT_CTRL()),     // 7
+        spec_is_handler_kcall(super::dispatcher::KCALL_SEND()),           // 8
+        spec_is_handler_kcall(super::dispatcher::KCALL_MEMORY_MAP()),     // 10
+        spec_is_handler_kcall(super::dispatcher::KCALL_MEMORY_UNMAP()),   // 11
+        spec_is_handler_kcall(super::dispatcher::KCALL_MEMORY_CTRL()),    // 12
+        spec_is_handler_kcall(super::dispatcher::KCALL_MEMORY_COPY()),    // 13
+        spec_is_handler_kcall(super::dispatcher::KCALL_ALLOC_MMIO()),     // 14
+        spec_is_handler_kcall(super::dispatcher::KCALL_FREE_MMIO()),      // 15
+        spec_is_handler_kcall(super::dispatcher::KCALL_ALLOC_PMIO()),     // 16
+        spec_is_handler_kcall(super::dispatcher::KCALL_FREE_PMIO()),      // 17
+        spec_is_handler_kcall(super::dispatcher::KCALL_READ_PMIO()),      // 18
+        spec_is_handler_kcall(super::dispatcher::KCALL_WRITE_PMIO()),     // 19
+        spec_is_handler_kcall(super::dispatcher::KCALL_CREATE_THREAD()),  // 21
+        spec_is_handler_kcall(super::dispatcher::KCALL_GET_TIME()),       // 28
+        spec_is_handler_kcall(super::dispatcher::KCALL_SET_TDA()),        // 30
+        spec_is_handler_kcall(super::dispatcher::KCALL_GET_TDA()),        // 31
         // Dispatcher-only kcalls are Invalid in the handler.
-        !spec_is_handler_kcall(3),  // Exit (dispatcher-only)
-        !spec_is_handler_kcall(5),  // Resume (dispatcher-only)
-        !spec_is_handler_kcall(9),  // Recv (dispatcher-only)
-        !spec_is_handler_kcall(20), // SchedulerYield (dispatcher-only)
-        !spec_is_handler_kcall(22), // ExitThread (dispatcher-only)
-        !spec_is_handler_kcall(23), // JoinThread (dispatcher-only)
+        !spec_is_handler_kcall(super::dispatcher::KCALL_EXIT()),             // 3
+        !spec_is_handler_kcall(super::dispatcher::KCALL_RESUME()),           // 5
+        !spec_is_handler_kcall(super::dispatcher::KCALL_RECV()),             // 9
+        !spec_is_handler_kcall(super::dispatcher::KCALL_SCHEDULER_YIELD()),  // 20
+        !spec_is_handler_kcall(super::dispatcher::KCALL_EXIT_THREAD()),      // 22
+        !spec_is_handler_kcall(super::dispatcher::KCALL_JOIN_THREAD()),      // 23
 {
 }
 
