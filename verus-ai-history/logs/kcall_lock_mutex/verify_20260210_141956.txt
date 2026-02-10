@@ -1,0 +1,37 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 14:19:56 CST 2026
+Module: kcall_lock_mutex
+Command: verus --crate-type lib lib.rs --verify-module kcall_lock_mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: use of deprecated method `vstd::prelude::ResultAdditionalSpecFns::get_Err_0`: get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html
+   --> kernel/pm/kcall/lock_mutex.rs:369:52
+    |
+369 |             let err: LockMutexResultModel = result.get_Err_0();
+    |                                                    ^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+error[E0282]: type annotations needed
+   --> kernel/pm/kcall/lock_mutex.rs:358:27
+    |
+358 |             ==> result == Ok(false),
+    |                           ^^ cannot infer type of the type parameter `E` declared on the enum `Result`
+    |
+help: consider specifying the generic arguments
+    |
+358 |             ==> result == Ok::<bool, E>(false),
+    |                             +++++++++++
+
+error: aborting due to 1 previous error; 1 warning emitted
+
+For more information about this error, try `rustc --explain E0282`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kcall_lock_mutex (verified:0, errors:0)
