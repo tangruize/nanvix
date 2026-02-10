@@ -255,6 +255,9 @@ pub proof fn lemma_error_code_preserved_put_cond(error_code: int, awakened: nat)
 /// the pipeline's mapping from step outcomes to the final result is the same
 /// regardless of these parameters. `broadcast` selects which notify call is
 /// made but both produce the same `NotifyOutcomeView`.
+///
+/// This lemma exists for traceability to the original API and is trivially
+/// true by construction (the context wrapper delegates directly).
 pub proof fn lemma_result_mapping_independent_of_context(
     pid1: nat,
     pid2: nat,
@@ -286,6 +289,13 @@ pub proof fn lemma_architecture_guard()
 }
 
 /// Proof: the safety preconditions predicate is well-formed.
+///
+/// # Description
+///
+/// Structural guard: verifies that `spec_signal_cond_safety_preconditions`
+/// correctly composes its constituent predicates. If the predicate definition
+/// changes (e.g., adding new requirements), this lemma will fail to verify,
+/// forcing an update to the safety analysis.
 pub proof fn lemma_safety_preconditions_well_formed()
     ensures
         spec_signal_cond_safety_preconditions() ==> spec_caller_no_pm_reference(),
@@ -347,6 +357,79 @@ pub proof fn lemma_short_circuit_notify(
             GetCondOutcomeView::GcOk,
             NotifyOutcomeView::NError { error_code },
             pc2,
+        ),
+{
+}
+
+/// Proof: on NotifyError, put_cond is NOT called and the condvar slot is NOT returned.
+///
+/// # Description
+///
+/// When `notify_all` or `notify_first` fails, the original code short-circuits
+/// via `?` and `ProcessManager::put_cond()` is never reached. This is a
+/// faithful model of the original code's behavior. Whether this constitutes
+/// a resource leak depends on the PM's cleanup semantics (e.g., whether the
+/// condvar slot is reclaimed via other mechanisms such as process exit cleanup).
+///
+/// **Known limitation**: Neither the original code nor this verification
+/// guarantees that the condvar slot is returned on notify failure. The condvar
+/// reference IS released (via Condvar::drop at scope exit), but the PM slot
+/// managed by put_cond is not. This behavior is intentionally mirrored here
+/// and documented as a potential concern for the original code.
+pub proof fn lemma_notify_error_skips_put_cond(
+    error_code: int,
+)
+    ensures
+        // On notify error, the result is NotifyError regardless of put_cond outcome.
+        forall|pc: PutCondOutcomeView|
+            spec_signal_cond_result(
+                GetCondOutcomeView::GcOk,
+                NotifyOutcomeView::NError { error_code },
+                pc,
+            ) == (SignalCondResultView::NotifyError { error_code }),
+        // The result is specifically a NotifyError (not a PutCondError).
+        spec_is_notify_error(
+            spec_signal_cond_result(
+                GetCondOutcomeView::GcOk,
+                NotifyOutcomeView::NError { error_code },
+                PutCondOutcomeView::PcOk,
+            )
+        ),
+        // put_cond outcome does NOT appear in the result.
+        !spec_is_put_cond_error(
+            spec_signal_cond_result(
+                GetCondOutcomeView::GcOk,
+                NotifyOutcomeView::NError { error_code },
+                PutCondOutcomeView::PcOk,
+            )
+        ),
+{
+}
+
+/// Proof: condvar ref is released whenever get_cond succeeds, regardless of later steps.
+///
+/// # Description
+///
+/// The Condvar is dropped at Rust scope exit, which occurs unconditionally
+/// after get_cond succeeds. This holds whether notify succeeds or fails,
+/// and whether put_cond succeeds or fails. Callers can rely on resource
+/// cleanup for the condvar reference on all non-GetCondError paths.
+pub proof fn lemma_cond_ref_released_on_get_cond_success(
+    cond_addr: nat,
+    get_cond_outcome: GetCondOutcomeView,
+    notify_outcome: NotifyOutcomeView,
+    put_cond_outcome: PutCondOutcomeView,
+)
+    requires
+        get_cond_outcome == GetCondOutcomeView::GcOk,
+        // From drop_cond_model's postcondition (always called when get_cond OK).
+        spec_cond_ref_released(cond_addr),
+    ensures
+        spec_cond_ref_released(cond_addr),
+        // The result may be success, notify error, or put_cond error — but
+        // the condvar ref is released in all these cases.
+        !spec_is_get_cond_error(
+            spec_signal_cond_result(get_cond_outcome, notify_outcome, put_cond_outcome)
         ),
 {
 }

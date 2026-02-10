@@ -207,6 +207,10 @@ pub open spec fn spec_is_put_cond_error(result: SignalCondResultView) -> bool {
 /// The `broadcast` flag selects between notify_all and notify_first, but both
 /// produce the same `NotifyOutcomeView` type. The `pid` and `tid` only affect
 /// which PM outcome is produced — the pipeline mapping is independent of them.
+///
+/// This wrapper exists purely for traceability to the original API signature
+/// and to support `lemma_result_mapping_independent_of_context`, which proves
+/// the pipeline mapping is context-independent.
 pub open spec fn spec_signal_cond_result_with_context(
     pid: nat,
     tid: nat,

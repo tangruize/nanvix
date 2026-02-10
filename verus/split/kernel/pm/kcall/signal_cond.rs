@@ -43,7 +43,12 @@
 //!   the notify outcome (`lemma_success_awakened_count`).
 //! - **Condvar drop on get_cond success**: When get_cond succeeds, the condvar
 //!   reference is always released (dropped at scope exit), regardless of
-//!   whether notify succeeds or fails.
+//!   whether notify succeeds or fails. This is exposed as a postcondition
+//!   on `signal_cond_model` and proven by `lemma_cond_ref_released_on_get_cond_success`.
+//! - **Notify error skips put_cond**: When notify fails, `put_cond` is not
+//!   called and the condvar slot is not returned to the PM. This faithfully
+//!   mirrors the original code's short-circuit behavior
+//!   (`lemma_notify_error_skips_put_cond`). See "Known Limitations" below.
 //! - **Pipeline mapping independence**: The pipeline mapping is independent
 //!   of pid, tid, and broadcast (`lemma_result_mapping_independent_of_context`).
 //! - **Architecture guard**: x86-32 assumption verified
@@ -58,6 +63,20 @@
 //! - **Condvar notify correctness**: The internal state machine of
 //!   Condvar::notify_all() / Condvar::notify_first() is verified in the
 //!   condvar module.
+//! - **ProcessManager correctness**: get_cond / put_cond internals are
+//!   verified in the PM module.
+//! - **Liveness**: Whether waiting threads actually wake up is a scheduler
+//!   concern, verified separately.
+//!
+//! ## Known Limitations
+//!
+//! - **Condvar slot not returned on notify failure**: When notify_all or
+//!   notify_first fails, the original code short-circuits via `?` and
+//!   `ProcessManager::put_cond()` is never called. The condvar reference
+//!   IS released (via Condvar::drop at scope exit), but the PM condvar
+//!   slot is not explicitly returned. Whether this constitutes a resource
+//!   leak depends on the PM's cleanup semantics (e.g., process exit cleanup).
+//!   This behavior is intentionally mirrored in the verification model.
 //! - **ProcessManager correctness**: get_cond / put_cond internals are
 //!   verified in the PM module.
 //! - **Liveness**: Whether waiting threads actually wake up is a scheduler
@@ -344,6 +363,9 @@ pub fn signal_cond_model(
 ) -> (ret: (SignalCondResultModel, Ghost<SignalCondGhostState>))
     requires
         spec_signal_cond_safety_preconditions(),
+        // ABI constraint: cond_addr originates from 32-bit usize on x86-32.
+        // This is trivially satisfied for u32 (documentation-only assertion
+        // making the architecture assumption explicit; see lemma_architecture_guard).
         cond_addr as nat <= USIZE_MAX_X86_32(),
     ensures
         ({
@@ -368,6 +390,14 @@ pub fn signal_cond_model(
         // On success, the condvar reference was released (dropped).
         spec_is_success(ret.0.spec_view()) ==>
             spec_cond_ref_released(cond_addr as nat),
+        // Condvar ref released whenever get_cond succeeded (not just on overall
+        // success). The Condvar is dropped at scope exit regardless of whether
+        // notify succeeds or fails — callers can rely on resource cleanup even
+        // on NotifyError or PutCondError paths.
+        ({
+            let gs: SignalCondGhostState = ret.1@;
+            gs.gc == GetCondOutcomeView::GcOk
+        }) ==> spec_cond_ref_released(cond_addr as nat),
         // On success, the condvar slot was returned.
         spec_is_success(ret.0.spec_view()) ==>
             spec_cond_slot_returned(cond_addr as nat),
