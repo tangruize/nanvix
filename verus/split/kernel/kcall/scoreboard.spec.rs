@@ -417,6 +417,39 @@ impl ScoreBoard {
         }
     }
 
+    /// Spec function: full dispatch outcome on success (lock acquired, down not interrupted).
+    ///
+    /// # Description
+    ///
+    /// Models the successful path of the original `dispatch()`: the board goes
+    /// through Idle → Signaled → Dispatched → Handled → Idle, returning the
+    /// handler's result. Equivalent to `spec_full_cycle`.
+    pub open spec fn spec_dispatch_success(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+    ) -> ScoreBoardView {
+        Self::spec_full_cycle(view, args, ret)
+    }
+
+    /// Spec function: dispatch outcome on down interruption.
+    ///
+    /// # Description
+    ///
+    /// Models the error path where the lock is acquired, the handler processes
+    /// the call, but `handled.down()` is interrupted. The board ends in the
+    /// Handled phase with the mutex unlocked (stuck state).
+    pub open spec fn spec_dispatch_interrupted(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+    ) -> ScoreBoardView {
+        let after_signal: ScoreBoardView = Self::spec_begin_dispatch(view, args);
+        let after_handle: ScoreBoardView = Self::spec_handle(after_signal);
+        let after_handled: ScoreBoardView = Self::spec_handled(after_handle, ret);
+        Self::spec_abandon_dispatch(after_handled)
+    }
+
     /// Spec function: a full dispatch-handle-handled cycle.
     ///
     /// # Description

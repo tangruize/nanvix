@@ -67,8 +67,9 @@
 //! | `ScoreBoard::get_mut()`   | `try_get_board()` /     | Bool check + immutable ref.      |
 //! |                           | `get_board()`           | `&mut` return unsupported by     |
 //! |                           |                         | Verus; use slot field directly.  |
-//! | `ScoreBoard::dispatch()`  | `try_begin_dispatch()` +| With lock error path.            |
-//! |                           | `complete_dispatch()` / | Success/abandon paths.           |
+//! | `ScoreBoard::dispatch()`  | `dispatch()` /          | Full cycle with error paths.     |
+//! |                           | `try_begin_dispatch()` +| Split API also available.        |
+//! |                           | `complete_dispatch()` / |                                  |
 //! |                           | `abandon_dispatch()`    |                                  |
 //! | `ScoreBoard::handle()`    | `handle()`/`try_handle()`| With and without error path.    |
 //! | `ScoreBoard::handled()`   | `handled()`             | Direct mapping.                  |
@@ -79,6 +80,13 @@
 //!
 //! ## API Divergence
 //!
+//! - `dispatch()` is a verified wrapper that composes the split API into a single
+//!   function matching the original `dispatch()` signature. It returns a
+//!   `DispatchOutcome` enum modeling `Result<KcallResult, SleepError>` with three
+//!   cases: `LockFailed`, `DownInterrupted`, and `Success(KcallResult)`. The handler
+//!   steps (handle + handled) are inlined to model the full protocol cycle. The
+//!   split API (`try_begin_dispatch`, `complete_dispatch`, `abandon_dispatch`)
+//!   remains available for fine-grained reasoning about individual phases.
 //! - `handle()` takes `&mut self` (original takes `&self` with atomic try_down).
 //!   Returns `Ghost<KcallArgsView>` (original returns `Result<&KcallArgs, Error>`).
 //!   The `&mut self` is required to model the dispatched signal consumption.
@@ -112,10 +120,16 @@
 //!   The mutex is separately verified in `kernel::pm::sync::mutex`.
 //! - **T3: Semaphore correctness.** The model assumes the semaphores correctly
 //!   implement counting and blocking. The semaphore is separately verified in
-//!   `kernel::pm::sync::semaphore`. The `up()` operations are proven to be
-//!   infallible by `lemma_semaphore_up_dispatched_cannot_fail` and
-//!   `lemma_semaphore_up_handled_cannot_fail` (semaphore value is always 0
-//!   before `up()` is called, so overflow is impossible).
+//!   `kernel::pm::sync::semaphore`. The `up()` operations are proven to have
+//!   their *value precondition* satisfied by `lemma_semaphore_up_dispatched_cannot_fail`
+//!   and `lemma_semaphore_up_handled_cannot_fail` (semaphore value is always 0
+//!   before `up()` is called, so overflow is impossible). Whether `up()` can
+//!   fail through internal mechanisms (e.g., `ProcessManager::wakeup()` returning
+//!   an error in `notify_first()`) is a property of the semaphore implementation;
+//!   the original maps such failures via `map_err(SleepError::Generic)`, which is
+//!   propagated through `dispatch()` (modeled by `DispatchOutcome::DownInterrupted`
+//!   for the `handled.down()` path; the `dispatched.up()` error is a T3 trust
+//!   boundary concern).
 //! - **T4: Sequential ordering.** The model assumes sequential execution. The
 //!   original relies on mutex + semaphore for thread synchronization.
 //!
@@ -227,6 +241,24 @@ pub struct KcallResult {
     pub is_success: bool,
     /// Payload value: any i64 for success, must fit i32 for error.
     pub value: i64,
+}
+
+/// Outcome of a full dispatch cycle, modeling `Result<KcallResult, SleepError>`.
+///
+/// # Description
+///
+/// Captures the three observable outcomes of the original `dispatch()`:
+/// - `LockFailed`: `lock()` returned `Err(SleepError::Interrupted)`.
+/// - `DownInterrupted`: `handled.down()` returned `Err(SleepError::Interrupted)`.
+/// - `Success(KcallResult)`: `Ok(self.ret)` with the handler's result.
+#[derive(PartialEq, Eq)]
+pub enum DispatchOutcome {
+    /// Lock acquisition failed (models `SleepError::Interrupted` from `lock()`).
+    LockFailed,
+    /// `handled.down()` was interrupted (models `SleepError::Interrupted` from `down()`).
+    DownInterrupted,
+    /// Dispatch completed successfully with the handler's result.
+    Success(KcallResult),
 }
 
 /// The scoreboard: a rendezvous channel for kernel call dispatch.
@@ -690,6 +722,104 @@ impl ScoreBoard {
         self.completed_cycles = Ghost(self.completed_cycles@ + 1);
         self.phase = ScoreBoardPhase::Idle;
         ret
+    }
+
+    /// Performs a complete dispatch cycle, modeling the original `dispatch()`.
+    ///
+    /// # Description
+    ///
+    /// Composes the split API to model the original `dispatch()` which returns
+    /// `Result<KcallResult, SleepError>`. The method handles three cases:
+    ///
+    /// 1. **Lock failure** (`lock_acquired == false`): Models `lock()` returning
+    ///    `Err(SleepError::Interrupted)`. Returns `DispatchOutcome::LockFailed`.
+    ///    State is preserved.
+    /// 2. **Down interrupted** (`down_interrupted == true`): Models `handled.down()`
+    ///    returning `Err(SleepError::Interrupted)`. Returns
+    ///    `DispatchOutcome::DownInterrupted`. The board is left in a stuck state
+    ///    (wf() violated), modeling the original's `?` propagation after the
+    ///    mutex guard drop.
+    /// 3. **Success**: Lock acquired and `handled.down()` succeeds. Returns
+    ///    `DispatchOutcome::Success(result)`, modeling `Ok(self.ret)`.
+    ///
+    /// This wrapper proves behavioral equivalence of the split API to the original
+    /// `dispatch()` function for all three outcome paths.
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: The kernel call arguments to dispatch.
+    /// - `ret`: The kernel call result (set by the handler between begin and complete).
+    /// - `lock_acquired`: Whether the lock was successfully acquired.
+    /// - `down_interrupted`: Whether `handled.down()` was interrupted.
+    ///
+    /// # Returns
+    ///
+    /// `DispatchOutcome` modeling the original `Result<KcallResult, SleepError>`.
+    pub fn dispatch(
+        &mut self,
+        args: KcallArgs,
+        ret: KcallResult,
+        lock_acquired: bool,
+        down_interrupted: bool,
+    ) -> (outcome: DispatchOutcome)
+        requires
+            old(self).wf(),
+            old(self).spec_is_idle(),
+            ret.wf(),
+        ensures
+            // Lock failure: state preserved.
+            !lock_acquired ==> (
+                outcome == DispatchOutcome::LockFailed
+                && self@ == old(self)@
+                && self.wf()
+            ),
+            // Down interrupted: stuck state.
+            (lock_acquired && down_interrupted) ==> (
+                outcome == DispatchOutcome::DownInterrupted
+                && !self.locked
+                && self.phase == ScoreBoardPhase::Handled
+            ),
+            // Success: full cycle completed, result returned.
+            (lock_acquired && !down_interrupted) ==> (
+                outcome == DispatchOutcome::Success(KcallResult { is_success: ret.is_success, value: ret.value })
+                && self.wf()
+                && self.spec_is_idle()
+                && !self.locked
+                && self.completed_cycles@ == old(self).completed_cycles@ + 1
+            ),
+    {
+        if !lock_acquired {
+            return DispatchOutcome::LockFailed;
+        }
+        // Begin dispatch: acquire lock, set args, signal handler.
+        self.locked = true;
+        self.args = args;
+        self.dispatched_value = 1;
+        self.phase = ScoreBoardPhase::Signaled;
+
+        // Handler processes: consume dispatched signal, set result, signal handled.
+        self.dispatched_value = 0;
+        self.phase = ScoreBoardPhase::Dispatched;
+        self.result = ret;
+        self.handled_value = 1;
+        self.phase = ScoreBoardPhase::Handled;
+
+        if down_interrupted {
+            // handled.down() interrupted: mutex guard drops, stuck state.
+            self.locked = false;
+            return DispatchOutcome::DownInterrupted;
+        }
+
+        // Complete: consume handled signal, read result, release mutex.
+        let dispatch_result: KcallResult = KcallResult {
+            is_success: self.result.is_success,
+            value: self.result.value,
+        };
+        self.handled_value = 0;
+        self.locked = false;
+        self.completed_cycles = Ghost(self.completed_cycles@ + 1);
+        self.phase = ScoreBoardPhase::Idle;
+        DispatchOutcome::Success(dispatch_result)
     }
 
     /// Returns whether the scoreboard is in the idle phase.

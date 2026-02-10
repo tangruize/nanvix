@@ -646,6 +646,12 @@ impl ScoreBoard {
     /// Therefore, `dispatched.up()` in `dispatch()` cannot fail when called
     /// on a well-formed idle scoreboard. This justifies using a precondition
     /// (rather than error modeling) for this operation.
+    ///
+    /// **Note:** This lemma proves the *value precondition* for `up()` (that the
+    /// semaphore value is 0 before the call). Whether `up()` itself can fail
+    /// through internal mechanisms (e.g., `ProcessManager::wakeup()` in
+    /// `notify_first()`) is a property of the semaphore implementation, covered
+    /// by trust boundary T3 (semaphore correctness is separately verified).
     pub proof fn lemma_semaphore_up_dispatched_cannot_fail(sb: &ScoreBoard)
         requires
             sb.wf(),
@@ -663,6 +669,11 @@ impl ScoreBoard {
     /// operation increments from 0 to 1, which cannot overflow a binary
     /// semaphore. Therefore, `handled.up()` in `handled()` cannot fail.
     /// This justifies using a precondition for this operation.
+    ///
+    /// **Note:** This lemma proves the *value precondition* for `up()`. Whether
+    /// `up()` itself can fail through internal mechanisms (e.g.,
+    /// `ProcessManager::wakeup()` in `notify_first()`) is covered by trust
+    /// boundary T3 (semaphore correctness is separately verified).
     pub proof fn lemma_semaphore_up_handled_cannot_fail(sb: &ScoreBoard)
         requires
             sb.wf(),
@@ -711,6 +722,64 @@ impl ScoreBoard {
             &&& stuck.completed_cycles == view.completed_cycles
             &&& stuck.dispatched_value == view.dispatched_value
             &&& stuck.handled_value == view.handled_value
+        }),
+    {
+    }
+
+    /// Lemma: `dispatch()` success returns the handler's result with correct state.
+    ///
+    /// # Description
+    ///
+    /// Proves that the successful path of `dispatch()` is equivalent to
+    /// `spec_full_cycle`: the board returns to Idle, the cycle counter
+    /// increments, and the returned result matches the handler's input.
+    pub proof fn lemma_dispatch_success_equiv(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+    )
+        requires
+            view.phase == ScoreBoardPhase::Idle,
+            !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
+        ensures ({
+            let after: ScoreBoardView = ScoreBoard::spec_dispatch_success(view, args, ret);
+            &&& after.phase == ScoreBoardPhase::Idle
+            &&& !after.locked
+            &&& after.dispatched_value == 0
+            &&& after.handled_value == 0
+            &&& after.result == ret
+            &&& after.completed_cycles == view.completed_cycles + 1
+            &&& after == ScoreBoard::spec_full_cycle(view, args, ret)
+        }),
+    {
+    }
+
+    /// Lemma: `dispatch()` interruption produces a characterized stuck state.
+    ///
+    /// # Description
+    ///
+    /// Proves that when `handled.down()` is interrupted, the board ends in the
+    /// Handled phase with the mutex unlocked, which violates `wf()`. The result
+    /// and args are preserved. This models the original's `?` propagation after
+    /// the mutex guard drop.
+    pub proof fn lemma_dispatch_interrupted_stuck(
+        view: ScoreBoardView,
+        args: KcallArgsView,
+        ret: KcallResultView,
+    )
+        requires
+            view.phase == ScoreBoardPhase::Idle,
+            !view.locked,
+            view.dispatched_value == 0,
+            view.handled_value == 0,
+        ensures ({
+            let stuck: ScoreBoardView = ScoreBoard::spec_dispatch_interrupted(view, args, ret);
+            &&& stuck.phase == ScoreBoardPhase::Handled
+            &&& !stuck.locked
+            &&& stuck.result == ret
+            &&& stuck.args == args
         }),
     {
     }
