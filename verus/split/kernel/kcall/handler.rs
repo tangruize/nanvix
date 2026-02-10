@@ -426,6 +426,9 @@ pub struct HandlerKcallPhaseResult {
 /// Attempts to harvest one zombie process and notify termination if needed.
 /// Returns whether a zombie was harvested and whether it was the init daemon.
 pub fn handle_harvest_phase() -> (result: ZombieHarvestResult)
+    ensures
+        result.is_initd ==> (result.found && result.pid == 1u32),
+        (result.found && result.pid == 1u32) ==> result.is_initd,
 {
     harvest_zombies()
 }
