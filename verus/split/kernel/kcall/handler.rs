@@ -244,12 +244,14 @@ pub fn signal_handled(result: &HandlerKcallResult)
 ///
 /// ## Trust Boundary T2
 ///
-/// No postcondition is specified because the subsystem call results depend
-/// on kernel state that is not modeled in this module. The correctness of
-/// individual subsystem calls is the responsibility of each subsystem's
-/// verification.
+/// The subsystem call results depend on kernel state not modeled in this
+/// module. The correctness of individual subsystem calls is the responsibility
+/// of each subsystem's verification.
 #[verifier::external_body]
 pub fn dispatch_to_subsystem(kcall_number: u32) -> (result: HandlerKcallResult)
+    ensures
+        // Error results carry a non-zero error code.
+        result.is_error ==> result.error_code != 0i32,
 {
     unimplemented!()
 }
@@ -289,6 +291,12 @@ pub fn poll_messages_raw() -> (result: bool)
 /// true iff the pid equals the INITD process identifier (1).
 /// The `error` flag indicates harvest failure (original: `Err(e)`);
 /// errors guarantee no zombie was found.
+///
+/// The `exit_status` field is intentionally unconstrained. Its value
+/// originates from the terminated process and propagates to the final
+/// `kcall_handler` return value. The correctness of the exit status
+/// depends on ProcessManager state (T2) and is outside the handler's
+/// verification scope.
 ///
 /// ## Trust Boundary T2
 #[verifier::external_body]
@@ -336,7 +344,10 @@ pub fn yield_cpu()
 /// # Description
 ///
 /// Models `event::init(hal)`. Called once before the handler loop starts.
-/// Panics on failure in the original code.
+/// In the original code, failure causes `panic!("failed to initialize
+/// event manager")`. The verification assumes successful initialization;
+/// the panic path is not modeled. If initialization fails, the original
+/// code would never enter the handler loop.
 ///
 /// ## Trust Boundary T5
 #[verifier::external_body]
@@ -689,7 +700,14 @@ pub fn run_full_iteration(stdio_enabled: bool) -> (result: IterationResult)
     let result: IterationResult = run_iteration(&poll, stdio_enabled);
 
     // Phase 5: Yield CPU if no work was done and loop is not terminating.
-    // In the original, INITD termination causes `break` before yield check.
+    // The `!result.should_terminate` guard is necessary because our model returns
+    // a result struct rather than using `break` for INITD termination. In the
+    // original code (lines 165-167), INITD termination causes `break status` during
+    // the harvest phase, exiting the loop before reaching the yield check at
+    // line 187. In our sequential model, `run_full_iteration` always returns, so
+    // when INITD terminates with no other work done (`should_yield && should_terminate`),
+    // we must suppress the yield to match the original's control flow where the
+    // yield would never be reached.
     if result.should_yield && !result.should_terminate {
         yield_cpu();
     }
@@ -706,9 +724,16 @@ pub fn run_full_iteration(stdio_enabled: bool) -> (result: IterationResult)
 /// what number it has. Scoreboard access errors (`unreachable!` in
 /// original) are not modeled as they should never occur.
 ///
+/// The `kcall_number` field is unconstrained when `has_call` is true because
+/// `classify_and_check_invalid` handles all `u32` values — any out-of-range
+/// number simply maps to `Invalid` and returns `InvalidSysCall`.
+///
 /// ## Trust Boundary T1
 #[verifier::external_body]
 pub fn poll_scoreboard_full() -> (result: ScoreBoardPollResult)
+    ensures
+        // When no call is pending, the kcall_number has no meaning.
+        !result.has_call ==> result.kcall_number == 0u32,
 {
     unimplemented!()
 }
@@ -844,10 +869,16 @@ pub struct LoopResult {
 /// The `fuel` parameter models a bounded number of iterations. In the
 /// original code, the loop runs indefinitely until INITD terminates.
 /// For verification, the fuel bound provides a decreasing measure for
-/// termination. The loop invariant is preserved at every step.
+/// Verus's termination checker. The loop invariant is preserved at every
+/// step regardless of fuel exhaustion.
 ///
-/// If `fuel` is exhausted before INITD terminates, `terminated` is false
-/// and the history reflects all completed iterations.
+/// **Semantic gap**: If `fuel` is exhausted before INITD terminates,
+/// `terminated` is false, which has no counterpart in the original code
+/// (where the loop always runs until INITD exits). This means the model
+/// cannot prove that the handler *always* returns a valid `ExitStatus`.
+/// Proving total termination would require a liveness assumption (INITD
+/// eventually terminates) that depends on external system behavior and
+/// is outside the scope of this safety verification.
 pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult)
     ensures
         // The loop invariant holds for the final history.
