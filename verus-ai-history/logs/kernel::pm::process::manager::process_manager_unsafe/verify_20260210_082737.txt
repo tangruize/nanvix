@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 08:27:37 CST 2026
+Module: kernel::pm::process::manager::process_manager_unsafe
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager_unsafe
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: cannot assign to exec variable from proof mode
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:574:17
+    |
+574 |         proof { self.ghost_diverged = Ghost(true); }
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager_unsafe (verified:0, errors:0)
