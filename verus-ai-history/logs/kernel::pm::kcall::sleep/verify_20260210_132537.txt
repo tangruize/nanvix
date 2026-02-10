@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 13:25:37 CST 2026
+Module: kernel::pm::kcall::sleep
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::sleep
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::kcall::sleep
+
+error: postcondition not satisfied
+   --> kernel/pm/kcall/sleep.rs:265:9
+    |
+265 |         result.spec_view() == spec_duration_new(seconds as nat, nanoseconds as nat),
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+299 |     DurationModel { seconds: total_seconds, nanoseconds: remainder }
+    |     ---------------------------------------------------------------- at the end of the function body
+
+verification results:: 12 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 12
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::sleep (verified:12, errors:1)
