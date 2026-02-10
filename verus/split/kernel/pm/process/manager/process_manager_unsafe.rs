@@ -48,15 +48,44 @@
 //!   provides a runtime check; re-entrant calls return `Err(ResourceBusy)`.
 //! - **T8: Interrupt enable/disable.** `Interrupts::enable()` and `interrupts.wait()`
 //!   in the kernel-idle path are HAL operations, modeled as external.
-//! - **T9: TID-to-PID mapping.** The invariant that current_tid belongs to current_pid's
-//!   thread set is maintained by the thread manager (T3 boundary from inner module).
-//!   Fully modeling this would require extending ProcessManagerInner with a ghost map
-//!   from PIDs to thread sets.
-//! - **T10: Divergence.** exit() and exit_thread() return `Result<!, Error>` in the
-//!   original code: they never return on the success path. The verified model captures
-//!   the state transition but not the divergence property. After a successful exit,
-//!   the calling context's stack frame is invalidated by the hardware context switch.
-//!   Callers must not reason about code executing after a successful exit().
+//! - **T9: TID-to-PID mapping (PID↔TID membership).** The invariant that current_tid
+//!   belongs to current_pid's thread set is maintained by the thread manager (T3
+//!   boundary from inner module). The inner ProcessManagerInner model uses `Set<int>`
+//!   for PID-level queue tracking and does NOT store per-process thread sets. Extending
+//!   wf() with a `current_tid ∈ threads(current_pid)` constraint would require adding
+//!   a ghost `Map<int, Set<int>>` (PID→thread set) to ProcessManagerInner and propagating
+//!   it through all inner operations (create_thread, exit_thread, schedule, etc.) — a
+//!   cross-module change that is outside the scope of this module's verification. The
+//!   current model verifies all state transitions that THIS module performs (inner
+//!   mutation + atomic updates); the TID↔PID membership is an orthogonal invariant
+//!   maintained by a different subsystem.
+//! - **T10: Divergence (exit/exit_thread non-returning).** exit() and exit_thread()
+//!   return `Result<!, Error>` in the original code: on the success path,
+//!   `Self::switch()` performs a hardware context switch that swaps the stack pointer
+//!   and never returns to the caller. The verified model captures the state transition
+//!   (inner mutation + PID/TID/quantum atomic updates) but not the divergence property.
+//!   Verus does not support `-> !` return types or `ensures false` for non-terminating
+//!   functions. The postconditions describe the system state as seen by the NEXT
+//!   scheduled process, not the exiting process. **Caller obligation:** callers must
+//!   not chain exec code after a successful exit()/exit_thread() — the post-state
+//!   `self` is only meaningful for reasoning about the scheduler's global invariants,
+//!   not for the exiting process's continuation.
+//! - **T11: Per-thread message delivery.** try_recv_some/try_recv_none model message
+//!   reception as a count decrement. The inner model tracks only
+//!   `number_buffered_messages: usize` (a per-process aggregate count), not per-thread
+//!   message queues. Verifying that a specific TID receives the correct message would
+//!   require extending ProcessManagerInner with ghost per-thread message queues — a
+//!   cross-module concern outside this module's scope.
+//! - **T12: Synchronization object state.** Delegation functions (get_mutex, get_cond,
+//!   put_mutex_guard, put_cond, take_mutex_guard) are thin wrappers that delegate to
+//!   ProcessManagerInner methods. The synchronization object tables and guard ownership
+//!   state live inside the inner module and are not duplicated here. This module verifies
+//!   that delegation preserves wf() (no queue-level side effects); the actual mutex/condvar
+//!   correctness is verified in the inner module.
+//! - **T13: Uninitialized panic.** get() and get_mut() panic if called before init().
+//!   The model requires `wf()` (which includes `initialized == true`) as a precondition,
+//!   so the uninitialized path is excluded by construction. This is standard Verus practice:
+//!   precondition violations (programming errors) are not modeled as execution paths.
 
 use vstd::prelude::*;
 
@@ -363,10 +392,8 @@ impl ProcessManagerUnsafeState {
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
-            // If quantum not expired, new_inner must match current inner (no mutation).
-            old(self).remaining_quantum > 1 ==> (
-                new_inner.spec_running_pid() == old(self).inner.spec_running_pid()
-            ),
+            // If quantum not expired, inner state is unchanged (no mutation on no-switch path).
+            old(self).remaining_quantum > 1 ==> new_inner == old(self).inner,
         ensures
             self.wf(),
             self.scheduler_freq == old(self).scheduler_freq,
@@ -464,9 +491,9 @@ impl ProcessManagerUnsafeState {
     /// `core::hint::unreachable_unchecked()` is dead code. This model captures the
     /// state transition but NOT the divergence property. After a successful exit,
     /// the calling context's stack frame is invalidated by the hardware context
-    /// switch (T5). Callers must not reason about code executing after a
-    /// successful exit().
-    pub fn exit(
+    /// switch (T5). **Caller obligation:** callers must not chain exec code after
+    /// a successful exit() — the postconditions describe the system state for the
+    /// scheduler's global invariants, not the exiting process's continuation.
         &mut self,
         new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
@@ -509,7 +536,8 @@ impl ProcessManagerUnsafeState {
     /// ## Divergence (T10)
     ///
     /// Same as exit(): the original returns `Result<!, Error>`. The success path
-    /// performs a context switch and never returns. See exit() documentation.
+    /// performs a context switch and never returns. **Caller obligation:** callers
+    /// must not chain exec code after a successful exit_thread().
     pub fn exit_thread(
         &mut self,
         new_inner: ProcessManagerInner,
@@ -548,6 +576,12 @@ impl ProcessManagerUnsafeState {
     ///
     /// Delegates to inner.get_mutex(). Returns Ok(Mutex) or Err(Error).
     /// No queue-level state change regardless of success or failure.
+    ///
+    /// ## Trust Boundary (T12)
+    ///
+    /// Mutex/condvar table state and guard ownership live in ProcessManagerInner.
+    /// This module verifies delegation preserves wf(); actual synchronization
+    /// correctness is verified in the inner module.
     ///
     /// Parameter `succeeds` models whether the operation succeeds (true) or
     /// fails with an error (false). The queue-level state is unchanged in both cases.
@@ -651,6 +685,13 @@ impl ProcessManagerUnsafeState {
     /// `running.state_mut().receive_message(tid)`. The message is dequeued from
     /// the running process's message buffer for the given TID. The ghost `tid`
     /// parameter ensures callers reason about which thread receives the message.
+    ///
+    /// ## Trust Boundary (T11)
+    ///
+    /// The inner model only tracks `number_buffered_messages` as an aggregate count.
+    /// Per-thread message queues are not modeled; verifying that a specific TID
+    /// receives the correct message requires extending the inner model with ghost
+    /// per-thread queues.
     pub fn try_recv_some(&mut self, Ghost(tid): Ghost<int>)
         requires
             old(self).wf(),

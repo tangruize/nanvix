@@ -59,14 +59,17 @@
 //   cooperative scheduling, so re-entrant calls (e.g., from interrupt handlers)
 //   are the only source of aliasing, which is prevented by disabling interrupts.
 //
-// ## Trust Boundary: TID-to-PID Mapping (T3)
+// ## Trust Boundary: TID-to-PID Mapping (T9)
 //
 // The wf() predicate does not include a constraint tying current_tid to a thread
 // within current_pid's process. The inner model uses Set<int> for PID-level queues
 // and does not track per-process thread sets. The invariant that the current TID
 // belongs to the current PID's thread set is maintained by the thread manager
 // (T3 boundary). Fully modeling this would require extending ProcessManagerInner
-// with a ghost map from PIDs to thread sets.
+// with a ghost map from PIDs to thread sets — a cross-module change affecting all
+// inner operations (create_thread, exit_thread, schedule, etc.). The current model
+// verifies all state transitions THIS module performs; TID↔PID membership is an
+// orthogonal invariant maintained by the thread manager subsystem.
 
 use vstd::prelude::*;
 
