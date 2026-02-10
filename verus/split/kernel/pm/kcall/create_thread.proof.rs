@@ -463,18 +463,19 @@ pub proof fn lemma_thread_create_args_size_matches()
 ///
 /// # Description
 ///
-/// The `copy_from_user` external body records the copied `ThreadCreateArgsView`
-/// via its ghost `ghost_args_view` parameter. The `create_thread_model` exec code
-/// passes `thread_args.spec_view()` to `copy_from_user` and uses the same
-/// `thread_args` for steps 3–5. This lemma proves that the validation predicates
-/// (`spec_user_fn_valid`, `spec_user_stack_region_valid`,
-/// `spec_user_stack_size_sufficient`, `spec_user_tda_valid`) evaluate using the
-/// exact fields from `copied_args`, closing the gap between copy output and
-/// validation input.
+/// The `copy_from_user` external body returns `CopyOk { args }` with a
+/// postcondition `args.spec_view() == thread_args.spec_view()`. The exec
+/// code uses the returned `args` (as `copied_args`) for steps 3–5.
 ///
-/// Combined with the `create_thread_model` postcondition
-/// `ret.1@.thread_args == thread_args.spec_view()`, this proves end-to-end that
-/// validation uses the copied data — not unrelated values.
+/// This lemma proves that the validation predicates (`spec_user_fn_valid`,
+/// `spec_user_stack_region_valid`, `spec_user_stack_size_sufficient`,
+/// `spec_user_tda_valid`) evaluate using the exact fields from `copied_args`.
+///
+/// The precondition `copied_args == input.thread_args` is guaranteed by the
+/// structural data flow: the `copy_from_user` postcondition ensures
+/// `args.spec_view() == thread_args.spec_view()`, and `input.thread_args`
+/// is constructed from `thread_args.spec_view()`. So the precondition is a
+/// consequence of the copy postcondition, not an assumption.
 pub proof fn lemma_copy_output_determines_validation(
     input: CreateThreadInputView,
     copied_args: ThreadCreateArgsView,

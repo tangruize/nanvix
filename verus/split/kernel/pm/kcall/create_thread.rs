@@ -72,10 +72,11 @@
 //!   the constraint for specific call sites.
 //! - **Copy-to-validation linkage**: When `copy_from_user` succeeds, all
 //!   subsequent validation predicates (steps 3–5) operate on the copied data.
-//!   The `copy_from_user` ghost `args_view` parameter records the copy output,
-//!   and the same `thread_args` is used for validation. This linkage is proven
-//!   by `lemma_copy_output_determines_validation`, which ensures the model
-//!   cannot "succeed" with unrelated validation inputs.
+//!   The `copy_from_user` model returns `CopyOk { args }` with a postcondition
+//!   guaranteeing `args.spec_view() == thread_args.spec_view()`. The exec code
+//!   uses the returned `args` (as `copied_args`) for steps 3–5, creating an
+//!   explicit data flow from copy output to validation input. This linkage is
+//!   further proven by `lemma_copy_output_determines_validation`.
 //! - **Argument passthrough preservation**: The `user_fn_arg0` and `user_fn_arg1`
 //!   fields from the copied `ThreadCreateArgs` are tracked via ghost state and
 //!   proven to be passed unchanged to `pm.create_thread`
@@ -161,9 +162,13 @@
 //! postconditions to link validation results to specific addresses:
 //! - Step 1: `is_user_region(valid, Ghost(arg0), Ghost(args_size))` — validates
 //!   the `ThreadCreateArgs` pointer region.
-//! - Step 2: `copy_from_user(succeeded, error_code, Ghost(pid), Ghost(arg0),
-//!   Ghost(args_view))` — copies from the **same `arg0`** validated in step 1.
+//! - Step 2: `copy_from_user(succeeded, error_code, thread_args, Ghost(pid),
+//!   Ghost(arg0))` — copies from the **same `arg0`** validated in step 1.
 //!   The ghost `src_addr` parameter ties the copy source to the validated address.
+//!   On success, returns `CopyOk { args }` where `args.spec_view() ==
+//!   thread_args.spec_view()`. Steps 3–5 use the returned `args` (as
+//!   `copied_args`), creating an explicit data flow from copy output to
+//!   validation input.
 //! - Step 3: `is_user_addr(valid, Ghost(user_fn_addr))` — validates user_fn.
 //! - Step 4: `is_user_region(valid, Ghost(user_stack_base_addr), Ghost(user_stack_size))`
 //!   — validates user_stack region.
@@ -205,7 +210,7 @@
 //! | `Vmem::is_user_region(addr, size)`        | `is_user_region(valid, Ghost(addr), Ghost(size))` | external_body |
 //! | `Vmem::is_user_addr(addr)`                | `is_user_addr(valid, Ghost(addr))`     | external_body   |
 //! | `thread_create_args.user_stack_size < ..`  | Direct `u32` comparison                | Fully verified  |
-//! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code, ghost_pid, ghost_src_addr, ghost_args_view)` | external_body |
+//! | `pm::copy_from_user(pm, pid, dst, src)`   | `copy_from_user(succeeded, error_code, thread_args, ghost_pid, ghost_src_addr)` → `CopyOk { args }` | external_body |
 //! | `pm.create_thread(mm, pid, args)`         | `pm_create_thread(ghost_pid, ghost_args)` | external_body |
 //! | `pub fn create_thread(pm, mm, args)`      | `create_thread_model(input, …)`        | Fully verified  |
 //!
@@ -234,11 +239,17 @@ verus! {
 /// # Description
 ///
 /// Represents the two possible outcomes from `pm::copy_from_user`:
-/// - `CopyOk`: The copy succeeded; thread_create_args is now in kernel space.
+/// - `CopyOk`: The copy succeeded; carries the copied `ThreadCreateArgsModel`.
 /// - `CopyError`: The copy failed; carries the error code.
+///
+/// The `CopyOk` variant contains the `ThreadCreateArgsModel` that was produced
+/// by the copy operation. Subsequent validation steps (3–5) operate on this
+/// returned value, creating an explicit data flow from copy output to validation
+/// input. This eliminates the possibility of validating args unrelated to the
+/// copy output.
 pub enum CopyFromUserResultModel {
-    /// copy_from_user succeeded.
-    CopyOk,
+    /// copy_from_user succeeded; carries the copied args.
+    CopyOk { args: ThreadCreateArgsModel },
     /// copy_from_user failed with an error code.
     CopyError { error_code: i32 },
 }
@@ -246,13 +257,13 @@ pub enum CopyFromUserResultModel {
 impl CopyFromUserResultModel {
     /// Spec function: whether the copy succeeded.
     pub open spec fn spec_succeeded(&self) -> bool {
-        matches!(self, CopyFromUserResultModel::CopyOk)
+        matches!(self, CopyFromUserResultModel::CopyOk { .. })
     }
 
     /// Spec function: extract error code (meaningful only on failure).
     pub open spec fn spec_error_code(&self) -> int {
         match self {
-            CopyFromUserResultModel::CopyOk => 0int,
+            CopyFromUserResultModel::CopyOk { .. } => 0int,
             CopyFromUserResultModel::CopyError { error_code } => *error_code as int,
         }
     }
@@ -430,32 +441,38 @@ pub fn is_user_addr(
 ///
 /// # Description
 ///
-/// Copies data from user space to kernel space. Returns Ok on success or
-/// Err with an error code on failure. The `succeeded` and `error_code`
-/// parameters model the outcome deterministically.
+/// Copies data from user space to kernel space. On success, returns
+/// `CopyOk { args }` carrying the copied `ThreadCreateArgsModel`. On
+/// failure, returns `CopyError { error_code }`.
+///
+/// The `thread_args` parameter represents the expected copy output — the
+/// `ThreadCreateArgs` structure that `copy_from_user` would fill in from
+/// user memory. On success, the returned `CopyOk { args }` carries this
+/// data with a postcondition guaranteeing `args.spec_view() ==
+/// thread_args.spec_view()`. This structurally connects the copy output
+/// to subsequent validation steps (3–5), which operate on the returned
+/// `args` (bound as `copied_args` in `create_thread_model`).
 ///
 /// Error codes from `copy_from_user` are guaranteed valid (positive) because
 /// the original returns `error.code` which is an `ErrorCode` enum value.
 ///
 /// The ghost `src_addr` parameter records the source address (arg0) from
 /// which data is copied, linking the copy operation to the address validated
-/// in step 1 (`is_user_region`). On success, the copied `ThreadCreateArgs`
-/// structure produces concrete addresses (user_fn, user_stack_base, user_tda)
-/// that are subsequently validated by `is_user_addr`/`is_user_region`. The
-/// ghost `args_view` parameter tracks these addresses through the pipeline.
+/// in step 1 (`is_user_region`).
 #[verifier::external_body]
 pub fn copy_from_user(
     succeeded: bool,
     error_code: i32,
+    thread_args: &ThreadCreateArgsModel,
     Ghost(ghost_pid): Ghost<nat>,
     Ghost(ghost_src_addr): Ghost<nat>,
-    Ghost(ghost_args_view): Ghost<ThreadCreateArgsView>,
 ) -> (result: CopyFromUserResultModel)
     ensures
-        succeeded ==> matches!(result, CopyFromUserResultModel::CopyOk),
+        result.spec_succeeded() == succeeded,
+        succeeded ==> (result matches CopyFromUserResultModel::CopyOk { args }
+            && args.spec_view() == thread_args.spec_view()),
         !succeeded ==> (result matches CopyFromUserResultModel::CopyError { error_code: ec }
             && ec == error_code),
-        result.spec_succeeded() == succeeded,
         !succeeded ==> result.spec_error_code() == error_code as int,
         // Error codes are always valid positive values (ErrorCode enum discriminants).
         !succeeded ==> spec_is_valid_error_code(error_code as int),
@@ -696,14 +713,16 @@ pub fn create_thread_model(
     }
 
     // Step 2: Copy thread_create_args from user space.
+    // The copy returns the ThreadCreateArgsModel on success, creating an
+    // explicit data flow from copy output to validation input (steps 3-5).
     let copy_result: CopyFromUserResultModel = copy_from_user(
         copy_succeeded,
         copy_error_code,
+        thread_args,
         Ghost(ghost_pid),
         Ghost(ghost_arg0),
-        Ghost(thread_args.spec_view()),
     );
-    match copy_result {
+    let copied_args: ThreadCreateArgsModel = match copy_result {
         CopyFromUserResultModel::CopyError { error_code } => {
             let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
             proof {
@@ -716,16 +735,22 @@ pub fn create_thread_model(
                 Ghost(pm_view),
             );
         },
-        CopyFromUserResultModel::CopyOk => {
-            // Copy output matches the thread_args used for validation (steps 3-5).
+        CopyFromUserResultModel::CopyOk { args } => {
+            // copy_from_user postcondition guarantees: args.spec_view() == thread_args.spec_view().
+            // This links the copy output to input_view.thread_args.
             proof {
-                lemma_copy_output_determines_validation(input_view, thread_args.spec_view());
+                lemma_copy_output_determines_validation(input_view, args.spec_view());
             }
+            args
         },
-    }
+    };
+
+    // Steps 3-6 use `copied_args` — the ThreadCreateArgsModel returned by
+    // copy_from_user. This is the structural copy-to-validation linkage:
+    // validation operates on the copy output, not an independent parameter.
 
     // Step 3: Check user_fn lies in user address space.
-    let fn_valid: bool = is_user_addr(thread_args.user_fn_valid, Ghost(ghost_user_fn_addr));
+    let fn_valid: bool = is_user_addr(copied_args.user_fn_valid, Ghost(ghost_user_fn_addr));
     if !fn_valid {
         let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
         proof {
@@ -741,9 +766,9 @@ pub fn create_thread_model(
 
     // Step 4: Check user_stack lies in user address space.
     let stack_region_valid: bool = is_user_region(
-        thread_args.user_stack_valid,
+        copied_args.user_stack_valid,
         Ghost(ghost_user_stack_base_addr),
-        Ghost(thread_args.user_stack_size as nat),
+        Ghost(copied_args.user_stack_size as nat),
     );
     if !stack_region_valid {
         let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
@@ -759,7 +784,7 @@ pub fn create_thread_model(
     }
 
     // Step 4b: Check user_stack_size >= USER_STACK_SIZE (concrete numeric comparison).
-    if thread_args.user_stack_size < user_stack_size_min {
+    if copied_args.user_stack_size < user_stack_size_min {
         let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
         proof {
             lemma_user_stack_invalid_propagates(input_view, pm_view);
@@ -773,8 +798,8 @@ pub fn create_thread_model(
     }
 
     // Step 5: Check user_tda (if present) lies in user address space.
-    if thread_args.has_user_tda {
-        let tda_valid: bool = is_user_addr(thread_args.user_tda_valid, Ghost(ghost_user_tda_addr));
+    if copied_args.has_user_tda {
+        let tda_valid: bool = is_user_addr(copied_args.user_tda_valid, Ghost(ghost_user_tda_addr));
         if !tda_valid {
             let ghost pm_view: CreateThreadOutcomeView = IRRELEVANT_PM_OUTCOME();
             proof {
@@ -795,7 +820,7 @@ pub fn create_thread_model(
 
     // Step 6: All validations passed. Call PM create_thread with ghost argument identity.
     let pm_result: CreateThreadResultModel =
-        pm_create_thread(Ghost(ghost_pid), Ghost(thread_args.spec_view()));
+        pm_create_thread(Ghost(ghost_pid), Ghost(copied_args.spec_view()));
     let ghost pm_view: CreateThreadOutcomeView = pm_result.spec_view();
 
     proof {
