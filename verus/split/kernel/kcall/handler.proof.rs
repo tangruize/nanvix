@@ -738,4 +738,37 @@ pub proof fn lemma_loop_termination_completeness(
     lemma_invariant_excludes_all_termination(history);
 }
 
+/// Lemma: Top-level correctness theorem — when the loop terminates, all
+/// correctness properties hold.
+///
+/// # Description
+///
+/// Given the postconditions of `kcall_handler_loop`, proves that when
+/// `terminated == true`, the result satisfies `spec_handler_terminated_correctly`:
+/// - The loop terminated.
+/// - Termination was triggered by INITD (pid == 1).
+/// - The loop invariant is maintained for the final history.
+///
+/// This is the usable top-level theorem that clients of the handler
+/// verification can rely on. The `exit_status` is intentionally NOT
+/// constrained — it originates from `harvest_zombies()` (T2) and its
+/// correctness depends on ProcessManager state outside this module's scope.
+pub proof fn lemma_handler_top_level_correctness(
+    terminated: bool,
+    termination_pid: u32,
+    history: Seq<HarvestOutcome>,
+    fuel: u32,
+)
+    requires
+        spec_loop_invariant(history),
+        !terminated ==> history.len() == fuel as int,
+        terminated ==> history.len() < fuel as int,
+        terminated ==> termination_pid == 1u32,
+    ensures
+        terminated ==> spec_handler_terminated_correctly(terminated, termination_pid, history),
+{
+    // All postconditions of kcall_handler_loop directly establish the
+    // conjuncts of spec_handler_terminated_correctly when terminated.
+}
+
 } // verus!

@@ -182,6 +182,15 @@ pub enum HandlerDispatchCategory {
 /// as the dispatcher spec. Numbers outside the defined range (0..=31)
 /// or not handled (e.g., Exit, ExitThread, which are locally handled
 /// by the dispatcher) map to `Invalid`.
+///
+/// Source: `src/kernel/src/kcall/handler.rs` lines 62-97.
+/// Constants from `src/libs/sys/src/sys/number.rs`:
+///   NR_Debug=0, NR_GetPid=1, NR_GetTid=2, NR_CapCtl=4, NR_Terminate=6,
+///   NR_EventCtrl=7, NR_Send=8, NR_MemoryMap=10, NR_MemoryUnmap=11,
+///   NR_MemoryCtrl=12, NR_MemoryCopy=13, NR_AllocMmio=14, NR_FreeMmio=15,
+///   NR_AllocPmio=16, NR_FreePmio=17, NR_ReadPmio=18, NR_WritePmio=19,
+///   NR_CreateThread=21, NR_GetTime=28, NR_SetThreadDataArea=30,
+///   NR_GetThreadDataArea=31.
 pub open spec fn spec_classify_handler_kcall(number: u32) -> HandlerDispatchCategory {
     if number == 0 { HandlerDispatchCategory::Debug }
     else if number == 1 { HandlerDispatchCategory::GetPid }
@@ -432,6 +441,41 @@ pub open spec fn spec_harvest_to_outcome(
 /// daemon, which are external to the handler loop.
 pub open spec fn spec_initd_terminates_within(outcomes: Seq<HarvestOutcome>) -> bool {
     exists|i: int| 0 <= i < outcomes.len() && spec_should_terminate(#[trigger] outcomes[i])
+}
+
+//==================================================================================================
+// Spec Functions: Top-Level Correctness Theorem
+//==================================================================================================
+
+/// Spec function: top-level correctness predicate for the handler loop.
+///
+/// # Description
+///
+/// States the expected end-to-end correctness property of `kcall_handler`
+/// under the liveness assumption that INITD terminates within `fuel` iterations:
+///
+/// 1. The loop terminates (`terminated == true`).
+/// 2. Termination was triggered by INITD (pid == 1).
+/// 3. The loop invariant (no INITD in history) is maintained.
+///
+/// The `exit_status` value is intentionally unconstrained by this predicate
+/// because it originates from `harvest_zombies()` (T2 trust boundary) and
+/// its correctness depends on ProcessManager state outside the handler's
+/// verification scope.
+///
+/// Usage: Given `result = kcall_handler_loop(fuel, stdio_enabled)` and
+/// the assumption `spec_initd_terminates_within(actual_outcomes)` where
+/// `actual_outcomes` is the sequence of harvest outcomes that WOULD occur,
+/// the contrapositive argument from `lemma_loop_termination_completeness`
+/// proves `spec_handler_terminated_correctly(result)`.
+pub open spec fn spec_handler_terminated_correctly(
+    terminated: bool,
+    termination_pid: u32,
+    history: Seq<HarvestOutcome>,
+) -> bool {
+    &&& terminated
+    &&& termination_pid == SPEC_INITD_PID() as u32
+    &&& spec_loop_invariant(history)
 }
 
 } // verus!

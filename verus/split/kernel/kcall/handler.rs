@@ -227,11 +227,20 @@ pub struct ZombieHarvestResult {
 /// # Description
 ///
 /// Models `scoreboard.handled(ret)`. Signals the scoreboard that the
-/// kernel call has been processed and the result is available.
+/// kernel call has been processed and the result is available. In the
+/// original code (line 101), `handled()` may fail (`Err(e)`), logging
+/// a warning but NOT affecting the `kcall_handled` flag — the call is
+/// considered handled regardless of signaling success. This matches
+/// the exec model where `handle_kcall_phase` sets `kcall_handled = true`
+/// unconditionally after calling `signal_handled`.
 ///
 /// ## Trust Boundary T1
 #[verifier::external_body]
 pub fn signal_handled(result: &HandlerKcallResult)
+    ensures
+        // Signaling completes (may fail internally, but the call is
+        // considered handled regardless). See handle_kcall_phase().
+        true,
 {
     unimplemented!()
 }
@@ -378,11 +387,18 @@ pub fn event_init()
 /// # Description
 ///
 /// Bundles the scoreboard poll outcome into a struct for the iteration model.
+/// The `has_error` field models the `unreachable!()` paths in the original
+/// code where `ScoreBoard::get_mut()` fails (line 119) or `scoreboard.handle()`
+/// returns an error other than `TryAgain` (line 112). In practice, these
+/// paths never execute; the error field allows the model to prove that even
+/// if they did, no work would be reported and the iteration proceeds safely.
 pub struct ScoreBoardPollResult {
     /// Whether a kcall was found.
     pub has_call: bool,
     /// The kcall number (meaningful only when `has_call` is true).
     pub kcall_number: u32,
+    /// Whether a scoreboard access error occurred (unreachable in practice).
+    pub has_error: bool,
 }
 
 //==================================================================================================
@@ -746,7 +762,12 @@ pub fn run_full_iteration(stdio_enabled: bool) -> (result: IterationResult)
 pub fn poll_scoreboard_full() -> (result: ScoreBoardPollResult)
     ensures
         // When no call is pending, the kcall_number has no meaning.
+        // Default is 0 (Debug); the `has_call` gate in handle_kcall_phase
+        // prevents this from being used.
         !result.has_call ==> result.kcall_number == 0u32,
+        // Scoreboard error and successful call are mutually exclusive.
+        // An error means no call was retrieved.
+        result.has_error ==> !result.has_call,
 {
     unimplemented!()
 }
@@ -765,7 +786,12 @@ pub struct LifecycleStepResult {
     /// Whether the handler loop terminated (INITD exited).
     pub terminated: bool,
     /// The exit status (meaningful only when `terminated` is true).
+    /// This value originates from `harvest_zombies()` (T2) and is
+    /// unconstrained — its correctness depends on ProcessManager state.
     pub exit_status: u32,
+    /// The PID that triggered termination (meaningful only when `terminated`).
+    /// Proved to equal INITD (1) when terminated.
+    pub termination_pid: u32,
     /// Ghost history of harvest outcomes for loop invariant tracking.
     pub new_history: Ghost<Seq<HarvestOutcome>>,
 }
@@ -820,6 +846,8 @@ pub fn kcall_handler_lifecycle_step(
         !result.terminated ==> result.new_history@.len() == history@.len() + 1,
         // On termination, history is unchanged.
         result.terminated ==> result.new_history@.len() == history@.len(),
+        // On termination, the exit was triggered by INITD (pid == 1).
+        result.terminated ==> result.termination_pid == 1u32,
 {
     let iter_result: IterationResult = run_full_iteration(stdio_enabled);
 
@@ -829,6 +857,7 @@ pub fn kcall_handler_lifecycle_step(
         LifecycleStepResult {
             terminated: true,
             exit_status: iter_result.exit_status,
+            termination_pid: iter_result.initd_pid,
             new_history: Ghost(history@),
         }
     } else {
@@ -845,6 +874,7 @@ pub fn kcall_handler_lifecycle_step(
         LifecycleStepResult {
             terminated: false,
             exit_status: 0u32,
+            termination_pid: 0u32,
             new_history: Ghost(spec_extend_history(history@, outcome)),
         }
     }
@@ -860,7 +890,11 @@ pub struct LoopResult {
     /// Whether the handler loop terminated (INITD exited).
     pub terminated: bool,
     /// The exit status (meaningful only when `terminated` is true).
+    /// Originates from `harvest_zombies()` (T2); its correctness depends
+    /// on ProcessManager state and is outside verification scope.
     pub exit_status: u32,
+    /// The PID that triggered termination (meaningful only when `terminated`).
+    pub termination_pid: u32,
     /// Ghost history of harvest outcomes for all completed iterations.
     pub final_history: Ghost<Seq<HarvestOutcome>>,
 }
@@ -911,11 +945,14 @@ pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult
         !result.terminated ==> result.final_history@.len() == fuel as int,
         // Early exit: termination occurred before fuel ran out.
         result.terminated ==> result.final_history@.len() < fuel as int,
+        // On termination, it was INITD (pid == 1) that triggered exit.
+        result.terminated ==> result.termination_pid == 1u32,
 {
     let mut history: Ghost<Seq<HarvestOutcome>> = kcall_handler_init();
     let mut i: u32 = 0;
     let mut terminated: bool = false;
     let mut exit_status: u32 = 0;
+    let mut termination_pid: u32 = 0;
 
     while i < fuel && !terminated
         invariant
@@ -925,6 +962,8 @@ pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult
             !terminated ==> history@.len() == i as int,
             // Termination happened before fuel was exhausted.
             terminated ==> history@.len() < fuel as int,
+            // Termination was triggered by INITD.
+            terminated ==> termination_pid == 1u32,
         decreases fuel - i,
     {
         let step: LifecycleStepResult = kcall_handler_lifecycle_step(
@@ -933,6 +972,7 @@ pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult
         if step.terminated {
             terminated = true;
             exit_status = step.exit_status;
+            termination_pid = step.termination_pid;
         }
         // Always update history (unchanged on termination, extended otherwise).
         history = step.new_history;
@@ -942,6 +982,7 @@ pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult
     LoopResult {
         terminated,
         exit_status,
+        termination_pid,
         final_history: history,
     }
 }
