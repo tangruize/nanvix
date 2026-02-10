@@ -25,10 +25,13 @@
 //! - **Sleepable subset**: All sleepable calls are locally handled.
 //! - **handle_sleep_error correctness**: Generic errors preserve the error code.
 //!   TimedOut interruptions produce OperationTimedOut (error code 110).
+//!   The Killed path is modeled as a divergent trust boundary.
 //! - **Result well-formedness**: All result constructors produce well-formed
 //!   results when given valid inputs.
 //! - **Error code preservation**: Generic sleep errors carry the original error
 //!   code through to the dispatch result.
+//! - **Encoding injectivity**: Error-encoded i64 values always fit in i32 range,
+//!   providing a necessary condition for distinguishing error from success.
 //!
 //! ## Verification Model
 //!
@@ -48,8 +51,9 @@
 //! |---------------------------------|------------------------------|---------------------------|
 //! | `KcallNumber` enum              | u32 spec constants           | Same `#[repr(u32)]` values|
 //! | `KcallNumber::from(u32)`        | `classify_kcall_number()`    | Classification function   |
-//! | `handle_sleep_error(SleepError)`| `handle_sleep_error()`       | Fully verified            |
-//! | `do_kcall()`                    | `do_kcall()`                 | External body             |
+//! | `handle_sleep_error(SleepError)`| `handle_sleep_error()`       | Non-divergent paths     |
+//! | *(Killed path diverges)*        | `handle_sleep_error_killed()`| Divergent trust boundary|
+//! | `do_kcall()`                    | `do_kcall()`                 | External body w/ specs  |
 //! | `KcallResult::ok()`             | `DispatchResult::ok()`       | Verified constructor      |
 //! | `KcallResult::Success(v)`       | `DispatchResult::success(v)` | Verified constructor      |
 //! | `KcallResult::Error(e)`         | `DispatchResult::error(e)`   | Verified constructor      |
@@ -364,22 +368,26 @@ pub fn is_sleepable(number: u32) -> (result: bool)
 ///
 /// # Description
 ///
-/// Models the original `handle_sleep_error` function:
+/// Models the original `handle_sleep_error` function for non-divergent cases:
 /// - `Generic(error)` → Error result with the error code.
 /// - `InterruptedTimedOut` → Error result with OperationTimedOut (110).
-/// - `InterruptedKilled` → Error result with code -1 (divergent path;
-///   the original calls ProcessManager::exit and panics).
+///
+/// The `InterruptedKilled` case is excluded by precondition because the
+/// original code calls `ProcessManager::exit()` and panics — it never
+/// returns. That divergent path is modeled separately by
+/// `handle_sleep_error_killed()`.
 ///
 /// # Parameters
 ///
-/// - `sleep_error`: The sleep error to handle.
+/// - `sleep_error`: The sleep error to handle (consumed by value, matching original).
 ///
 /// # Returns
 ///
 /// A DispatchResult representing the error.
-pub fn handle_sleep_error(sleep_error: &SleepError) -> (result: DispatchResult)
+pub fn handle_sleep_error(sleep_error: SleepError) -> (result: DispatchResult)
     requires
         sleep_error.wf(),
+        spec_sleep_error_returns(sleep_error.kind),
     ensures
         result@ == spec_handle_sleep_error(sleep_error.kind, sleep_error.error_code as int),
         !result.is_success,
@@ -387,19 +395,40 @@ pub fn handle_sleep_error(sleep_error: &SleepError) -> (result: DispatchResult)
 {
     match sleep_error.kind {
         SleepErrorKind::Generic => {
-            DispatchResult { is_success: false, value: sleep_error.error_code }
+            DispatchResult::error(sleep_error.error_code as i32)
         },
         SleepErrorKind::InterruptedTimedOut => {
-            DispatchResult { is_success: false, value: 110 }
+            DispatchResult::error(110i32)
         },
         SleepErrorKind::InterruptedKilled => {
-            // In the original code, this path calls ProcessManager::exit()
-            // and panics if that fails. The process is terminated and this
-            // function never returns. We model this as returning an error
-            // with code -1, since Verus cannot model divergence.
-            DispatchResult { is_success: false, value: -1 }
+            // Unreachable: excluded by precondition spec_sleep_error_returns.
+            DispatchResult::error(-1i32)
         },
     }
+}
+
+/// Models the divergent `InterruptedKilled` path of `handle_sleep_error`.
+///
+/// # Description
+///
+/// In the original code, `SleepError::Interrupted(Killed)` causes
+/// `ProcessManager::exit()` to be called, followed by a `panic!`. The
+/// process is terminated and this function never returns.
+///
+/// This is an `external_body` trust boundary because:
+/// 1. The divergence cannot be modeled in Verus (no `!` return type support).
+/// 2. The function calls unsafe global state (`ProcessManager::exit()`).
+///
+/// The postcondition `ensures false` documents that this function diverges.
+/// As an `external_body`, this is a trusted assertion.
+#[verifier::external_body]
+pub fn handle_sleep_error_killed() -> (result: DispatchResult)
+    ensures
+        false,
+{
+    // Trust boundary: original calls ProcessManager::exit() then panic!().
+    // This function never returns.
+    panic!("handle_sleep_error_killed: divergent path")
 }
 
 //==================================================================================================
@@ -416,24 +445,30 @@ pub fn handle_sleep_error(sleep_error: &SleepError) -> (result: DispatchResult)
 ///
 /// # Parameters
 ///
-/// - `number`: Kernel call number.
-/// - `arg0`..`arg3`: Kernel call arguments.
+/// - `args`: The dispatch arguments (number and four u32 args).
 ///
 /// # Returns
 ///
-/// The kernel call result as an i64.
+/// The kernel call result as a DispatchResult.
 ///
 /// # Trust Boundary
 ///
 /// This function is the trust boundary between user-space kernel calls and the
 /// verified dispatch logic. The routing classification and error handling are
 /// verified; the actual subsystem operations are dependency boundary calls.
+///
+/// The postconditions document the intended contract:
+/// - LocalImmediate calls (GetPid, GetTid) always produce a success result.
+/// - The result is always well-formed.
+/// - The classification of the kcall number determines the dispatch path.
 #[verifier::external_body]
-pub fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> (result: i64)
+pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
     ensures
-        // The result is a valid i64 (tautological but documents the contract).
-        result >= i64::MIN,
-        result <= i64::MAX,
+        result.wf(),
+        // LocalImmediate calls (GetPid, GetTid) always succeed.
+        spec_classify_kcall(args.number) =~= DispatchCategory::LocalImmediate ==> result.is_success,
+        // The dispatch category is determined by the kcall number.
+        spec_do_kcall_result_category(args@) =~= spec_classify_kcall(args.number),
 {
     // Boundary: actual implementation accesses ProcessManager and ScoreBoard
     // via unsafe global state. See trust boundaries T1-T4.

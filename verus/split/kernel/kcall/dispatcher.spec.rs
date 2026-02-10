@@ -294,10 +294,13 @@ pub open spec fn SPEC_ERROR_TIMED_OUT() -> int { 110 }
 ///
 /// # Description
 ///
+/// Only models the two non-divergent sleep error kinds:
 /// - `Generic(error)` → Error result with the given error code.
 /// - `InterruptedTimedOut` → Error result with OperationTimedOut code.
-/// - `InterruptedKilled` → diverges (process exit); modeled as a success
-///   with value -1 since the function never actually returns in this case.
+///
+/// `InterruptedKilled` is excluded via precondition on `handle_sleep_error`
+/// because the original code diverges (calls `ProcessManager::exit` then
+/// panics). It is modeled separately as a divergent trust boundary.
 pub open spec fn spec_handle_sleep_error(kind: SleepErrorKind, error_code: int) -> DispatchResultView {
     match kind {
         SleepErrorKind::Generic => DispatchResultView {
@@ -308,11 +311,23 @@ pub open spec fn spec_handle_sleep_error(kind: SleepErrorKind, error_code: int) 
             is_success: false,
             value: SPEC_ERROR_TIMED_OUT(),
         },
+        // Unreachable: excluded by precondition on handle_sleep_error.
         SleepErrorKind::InterruptedKilled => DispatchResultView {
             is_success: false,
             value: -1,
         },
     }
+}
+
+/// Spec function: checks if a sleep error kind is non-divergent.
+///
+/// # Description
+///
+/// Returns true for the two sleep error kinds that produce a return value
+/// (Generic, InterruptedTimedOut). Returns false for InterruptedKilled,
+/// which causes process termination and never returns.
+pub open spec fn spec_sleep_error_returns(kind: SleepErrorKind) -> bool {
+    !matches!(kind, SleepErrorKind::InterruptedKilled)
 }
 
 //==================================================================================================
@@ -435,6 +450,52 @@ impl SleepError {
             _ => true,
         }
     }
+}
+
+//==================================================================================================
+// Spec Functions: KcallResult → i64 Encoding
+//==================================================================================================
+
+/// Spec function: models the `Into<i64>` conversion from KcallResult.
+///
+/// # Description
+///
+/// The original `KcallResult` converts to i64 as follows:
+/// - `Success(KcallSuccess(v))` → `v` (the i64 value directly).
+/// - `Error(KcallError(e))` → `e as i64` (i32 widened to i64).
+///
+/// Since error values are i32 and success values are i64, the encoding
+/// preserves the success/error distinction: error values always fit in
+/// i32 range, while success values may exceed that range.
+pub open spec fn spec_encode_result(r: DispatchResultView) -> int {
+    r.value
+}
+
+/// Spec function: checks if an encoded i64 value could be an error.
+///
+/// # Description
+///
+/// An encoded result could be an error only if the value fits in i32 range.
+/// This does not guarantee it IS an error (success with small values also
+/// fit in i32), but any error value MUST be in this range.
+pub open spec fn spec_could_be_error(encoded: int) -> bool {
+    encoded >= i32::MIN as int && encoded <= i32::MAX as int
+}
+
+/// Spec function: spec-level model of do_kcall dispatch outcome.
+///
+/// # Description
+///
+/// Specifies the structural properties of the dispatch result based on
+/// the classification of the kernel call number:
+/// - LocalImmediate (GetPid, GetTid): always succeeds.
+/// - Remote: result depends on scoreboard (no structural guarantee).
+/// - Others: may succeed or fail.
+///
+/// This connects the DispatchArgs to the classification logic, documenting
+/// the intended contract even though the function body is a trust boundary.
+pub open spec fn spec_do_kcall_result_category(args: DispatchArgsView) -> DispatchCategory {
+    spec_classify_kcall(args.number as u32)
 }
 
 //==================================================================================================

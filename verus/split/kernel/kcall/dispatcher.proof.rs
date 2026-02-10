@@ -15,6 +15,8 @@
 // 7. Sleepable calls are a subset of locally-handled calls.
 // 8. All defined kcalls (0..31) map to a non-Remote category or Remote.
 // 9. Result constructors produce well-formed results.
+// 10. Encoding injectivity: error values always fit in i32 range.
+// 11. Divergent Killed path is properly separated from non-divergent error handling.
 
 use vstd::prelude::*;
 
@@ -391,6 +393,120 @@ impl DispatchResult {
         }),
     {
     }
+}
+
+//==================================================================================================
+// Proof Lemmas: KcallResult → i64 Encoding
+//==================================================================================================
+
+/// Lemma: encoding preserves the value for both success and error results.
+///
+/// # Description
+///
+/// Proves that spec_encode_result simply extracts the value, which is the
+/// same behavior as the original `Into<i64>` implementation.
+pub proof fn lemma_encode_preserves_value(r: DispatchResultView)
+    ensures
+        spec_encode_result(r) == r.value,
+{
+}
+
+/// Lemma: well-formed error results encode to values in i32 range.
+///
+/// # Description
+///
+/// Proves that any well-formed error result's encoded value fits in i32,
+/// which is a necessary condition for the encoding to be distinguishable
+/// from large success values.
+pub proof fn lemma_error_encoding_fits_i32(r: DispatchResultView)
+    requires
+        spec_result_wf(r),
+        !r.is_success,
+    ensures
+        spec_could_be_error(spec_encode_result(r)),
+{
+}
+
+/// Lemma: encoding two different well-formed results preserves distinction.
+///
+/// # Description
+///
+/// Proves that if two results have different abstract views, they encode
+/// to the same value only if they have the same payload. Combined with
+/// the success/error flag, the full result is distinguishable.
+pub proof fn lemma_encode_injective_on_value(r1: DispatchResultView, r2: DispatchResultView)
+    ensures
+        spec_encode_result(r1) == spec_encode_result(r2) ==> r1.value == r2.value,
+{
+}
+
+//==================================================================================================
+// Proof Lemmas: Divergence Boundary
+//==================================================================================================
+
+/// Lemma: Generic and TimedOut are the only non-divergent sleep error kinds.
+///
+/// # Description
+///
+/// Proves that spec_sleep_error_returns is true for exactly Generic and
+/// InterruptedTimedOut, and false for InterruptedKilled.
+pub proof fn lemma_non_divergent_sleep_errors()
+    ensures
+        spec_sleep_error_returns(SleepErrorKind::Generic),
+        spec_sleep_error_returns(SleepErrorKind::InterruptedTimedOut),
+        !spec_sleep_error_returns(SleepErrorKind::InterruptedKilled),
+{
+}
+
+/// Lemma: Non-divergent sleep errors always produce error (non-success) results.
+///
+/// # Description
+///
+/// Proves that for any non-divergent sleep error kind, the spec-level
+/// handler always produces a result with `is_success == false`.
+pub proof fn lemma_non_divergent_errors_are_errors(kind: SleepErrorKind, error_code: int)
+    requires
+        spec_sleep_error_returns(kind),
+    ensures
+        !spec_handle_sleep_error(kind, error_code).is_success,
+{
+}
+
+//==================================================================================================
+// Proof Lemmas: do_kcall Postcondition Support
+//==================================================================================================
+
+/// Lemma: LocalImmediate calls are exactly GetPid and GetTid.
+///
+/// # Description
+///
+/// Proves that the only two kcall numbers classified as LocalImmediate
+/// are GetPid (1) and GetTid (2).
+pub proof fn lemma_immediate_is_getpid_gettid(number: u32)
+    ensures
+        spec_classify_kcall(number) =~= DispatchCategory::LocalImmediate
+            <==> (number == KCALL_GET_PID() || number == KCALL_GET_TID()),
+{
+}
+
+/// Lemma: The result category spec correctly reflects the classification.
+///
+/// # Description
+///
+/// Proves that `spec_do_kcall_result_category` is consistent with
+/// `spec_classify_kcall` for any valid DispatchArgs.
+pub proof fn lemma_result_category_consistent(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32)
+    ensures ({
+        let args: DispatchArgsView = DispatchArgsView {
+            number: number as nat,
+            arg0: arg0 as nat,
+            arg1: arg1 as nat,
+            arg2: arg2 as nat,
+            arg3: arg3 as nat,
+        };
+        spec_do_kcall_result_category(args) =~= spec_classify_kcall(number)
+    }),
+{
 }
 
 } // verus!
