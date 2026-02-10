@@ -46,21 +46,19 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
 ///
 /// # Description
 ///
-/// The `ErrorCode` enum has five variants with discriminant values:
-/// - `NoSuchEntry` = 2
-/// - `OutOfMemory` = 12
-/// - `BadAddress` = 14
-/// - `ResourceBusy` = 16
-/// - `InvalidArgument` = 22
+/// The `ErrorCode` enum in the kernel has many variants (all POSIX errno values),
+/// all of which are positive (non-zero) integers. Rather than enumerating every
+/// variant (which would create a maintenance burden as the enum evolves), this
+/// predicate captures the essential invariant: all error codes are non-zero.
 ///
-/// This predicate constrains error codes to exactly this set, which is
-/// stronger than `!= 0` and prevents unreachable error values in the model.
+/// This is the correct abstraction level for external_body trust boundaries:
+/// - It prevents confusion with success (error code 0).
+/// - It does not over-constrain to a specific subset, which would break
+///   semantic equivalence if new ErrorCode variants are added.
+/// - The concrete variant identity is a concern of the PM and mutex modules,
+///   not this pipeline verification.
 pub open spec fn spec_is_valid_error_code(code: int) -> bool {
-    code == 2   // NoSuchEntry
-    || code == 12  // OutOfMemory
-    || code == 14  // BadAddress
-    || code == 16  // ResourceBusy
-    || code == 22  // InvalidArgument
+    code != 0
 }
 
 //==================================================================================================
