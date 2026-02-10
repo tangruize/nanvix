@@ -1,6 +1,6 @@
 {
   "module_name": "kcall_dispatcher",
-  "outer_iteration": 1,
+  "outer_iteration": 2,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "eefe3858-9224-4fd0-abd4-5ed1dcafe9b4",
