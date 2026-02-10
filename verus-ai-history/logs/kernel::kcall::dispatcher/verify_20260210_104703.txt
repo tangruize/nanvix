@@ -1,0 +1,83 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 10:47:03 CST 2026
+Module: kernel::kcall::dispatcher
+Command: verus --crate-type lib lib.rs --verify-module kernel::kcall::dispatcher
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::kcall::dispatcher
+
+note: automatically chose triggers for this expression:
+   --> kernel/kcall/dispatcher.proof.rs:435:9
+    |
+435 | /         forall|e: DispatchResultView|
+436 | |             (spec_result_wf(e) && !e.is_success)
+437 | |                 ==> spec_encode_result(e) != spec_encode_result(r),
+    | |__________________________________________________________________^
+
+note:   trigger 1 of 2:
+   --> kernel/kcall/dispatcher.proof.rs:436:14
+    |
+436 |             (spec_result_wf(e) && !e.is_success)
+    |              ^^^^^^^^^^^^^^^^^
+
+note:   trigger 2 of 2:
+   --> kernel/kcall/dispatcher.proof.rs:437:21
+    |
+437 |                 ==> spec_encode_result(e) != spec_encode_result(r),
+    |                     ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/kcall/dispatcher.proof.rs:513:9
+    |
+513 | /         forall|r: DispatchResultView|
+514 | |             spec_dispatch_result_constrained(DispatchCategory::LocalImmediate, r) == r.is_success,
+    | |_________________________________________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> kernel/kcall/dispatcher.proof.rs:514:13
+    |
+514 |             spec_dispatch_result_constrained(DispatchCategory::LocalImmediate, r) == r.is_success,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/kcall/dispatcher.proof.rs:521:9
+    |
+521 | /         forall|r: DispatchResultView|
+522 | |             spec_dispatch_result_constrained(DispatchCategory::LocalTerminal, r) == !r.is_success,
+    | |_________________________________________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> kernel/kcall/dispatcher.proof.rs:522:13
+    |
+522 |             spec_dispatch_result_constrained(DispatchCategory::LocalTerminal, r) == !r.is_success,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> kernel/kcall/dispatcher.proof.rs:521:9
+    |
+521 | /         forall|r: DispatchResultView|
+522 | |             spec_dispatch_result_constrained(DispatchCategory::LocalTerminal, r) == !r.is_success,
+    | |_________________________________________________________________________________________________^
+
+verification results:: 51 verified, 0 errors (partial verification with `--verify-*`)
+
+Duration: 6s
+Exit code: 0
+
+=== Summary ===
+Verified: 51
+Errors: 0
+Status: PASSED
+Committed: [verus] Verification succeeded for kernel::kcall::dispatcher (verified:51, errors:0)
