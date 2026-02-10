@@ -84,24 +84,24 @@ pub proof fn lemma_result_exhaustive(
 /// # Description
 ///
 /// When `take_mutex_guard` succeeds, the returned `MutexGuard` is immediately
-/// dropped at scope exit (the original code uses `?` which discards the `()`
-/// on success). The guard's `Drop` implementation unlocks the mutex.
+/// dropped at the semicolon in the original code. The guard's `Drop`
+/// implementation unlocks the mutex.
 ///
 /// This lemma connects the pipeline result to the guard-drop guarantee:
-/// when the result is `Success`, the `guard_dropped` precondition (which
-/// comes from the `take_mutex_guard_model`'s postcondition on the success
-/// path) ensures the mutex was unlocked.
+/// when the result is `Success` and the `spec_guard_dropped_and_mutex_unlocked`
+/// predicate holds (established by `drop_guard_model`'s postcondition),
+/// both the pipeline success and the mutex unlock are guaranteed.
 pub proof fn lemma_guard_dropped_on_success(
     take_guard_outcome: TakeMutexGuardOutcomeView,
-    guard_dropped: bool,
+    mutex_addr: nat,
 )
     requires
         take_guard_outcome == TakeMutexGuardOutcomeView::TgOk,
-        // From take_mutex_guard_model's postcondition on success.
-        guard_dropped,
+        // From drop_guard_model's postcondition on the success path.
+        spec_guard_dropped_and_mutex_unlocked(mutex_addr),
     ensures
         spec_is_success(spec_unlock_mutex_result(take_guard_outcome)),
-        guard_dropped,
+        spec_guard_dropped_and_mutex_unlocked(mutex_addr),
 {
 }
 
@@ -206,6 +206,33 @@ pub proof fn lemma_error_code_preserved(error_code: int)
         spec_unlock_mutex_result(
             TakeMutexGuardOutcomeView::TgError { error_code },
         ) == (UnlockMutexResultView::TakeMutexGuardError { error_code }),
+{
+}
+
+/// Proof: guard token validity connects take_guard and drop_guard steps.
+///
+/// # Description
+///
+/// When `take_mutex_guard` succeeds with a guard token `Some(mutex_addr)`,
+/// the token is valid for the `drop_guard_model` step. When it fails, no
+/// token exists. This formalizes the ownership chain between the two steps.
+pub proof fn lemma_guard_token_chain(
+    mutex_addr: u32,
+    guard_token: Option<u32>,
+    take_guard_outcome: TakeMutexGuardOutcomeView,
+)
+    requires
+        // Guard token is Some(addr) iff take_guard succeeded.
+        (take_guard_outcome == TakeMutexGuardOutcomeView::TgOk) <==> guard_token.is_some(),
+        // Guard token carries the correct mutex address on success.
+        guard_token.is_some() ==> guard_token == Some(mutex_addr),
+    ensures
+        // On success: guard token is valid for drop_guard_model's requires.
+        take_guard_outcome == TakeMutexGuardOutcomeView::TgOk
+            ==> spec_guard_token_valid(guard_token, mutex_addr),
+        // On failure: no guard token exists (nothing to drop or leak).
+        take_guard_outcome != TakeMutexGuardOutcomeView::TgOk
+            ==> guard_token.is_none(),
 {
 }
 

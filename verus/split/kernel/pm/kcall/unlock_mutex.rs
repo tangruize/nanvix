@@ -11,8 +11,10 @@
 //! retrieving and dropping the mutex guard. It:
 //! 1. Converts `mutex_addr` to a `MutexAddress` (type wrapper, not modeled).
 //! 2. Calls `ProcessManager::take_mutex_guard(pid, tid, mutex_addr)`.
-//! 3. The returned `MutexGuard` is immediately dropped (via `?` discarding `()`),
-//!    which triggers `MutexGuard::drop()` and unlocks the mutex.
+//! 3. The returned `MutexGuard` is immediately dropped at the semicolon
+//!    (the `?` operator extracts the `MutexGuard` from `Ok`, and since
+//!    it is not bound to a variable, it is dropped), triggering
+//!    `MutexGuard::drop()` which unlocks the mutex.
 //!
 //! ## Note on Parameters
 //!
@@ -21,6 +23,8 @@
 //! `ProcessManager::take_mutex_guard`. The `pid` and `tid` affect which PM
 //! outcome is produced (e.g., only the owning thread can unlock), but the
 //! pipeline mapping from outcome to result is independent of pid/tid.
+//! Ghost `pid` and `tid` parameters are included in the model for future
+//! enrichment of the PM trust boundary with ownership constraints.
 //!
 //! ## Verified Properties
 //!
@@ -31,17 +35,23 @@
 //! - **Result exhaustiveness**: Every input produces exactly one result category
 //!   (success or take_guard error) (`lemma_result_exhaustive`).
 //! - **Guard drop on success**: On success, the guard is dropped and the mutex
-//!   is unlocked (`lemma_guard_dropped_on_success`).
+//!   is unlocked. Modeled via a separate `drop_guard_model` step that consumes
+//!   the ghost guard token and establishes `spec_guard_dropped_and_mutex_unlocked`
+//!   (`lemma_guard_dropped_on_success`).
 //! - **No guard leak on error**: On error, no guard exists to leak
 //!   (`lemma_no_guard_leak_on_error`).
+//! - **Guard token chain**: The guard token produced by `take_mutex_guard_model`
+//!   is consumed by `drop_guard_model`, formalizing the ownership chain
+//!   (`lemma_guard_token_chain`).
 //! - **Success/error complementary**: Success and error are mutually exclusive
 //!   and jointly exhaustive (`lemma_success_error_complementary`).
 //! - **Pipeline mapping independence**: The pipeline mapping from outcome to
 //!   result is independent of pid/tid (`lemma_result_mapping_independent_of_pid_tid`).
 //! - **Architecture guard**: x86-32 assumption verified
 //!   (`lemma_architecture_guard`).
-//! - **Safety predicate well-formedness**: The composite safety predicate
-//!   correctly decomposes (`lemma_safety_preconditions_well_formed`).
+//! - **Safety precondition enforcement**: The `unsafe` safety contract is
+//!   enforced as a `requires` clause on `unlock_mutex_model` and
+//!   `take_mutex_guard_model` (`lemma_safety_preconditions_well_formed`).
 //! - **Exec model correctness**: `unlock_mutex_model` matches
 //!   `spec_unlock_mutex_result` for all inputs and PM outcomes.
 //!
@@ -54,16 +64,18 @@
 //! - **Ownership validation**: Whether the calling thread actually owns the
 //!   mutex is a PM concern.
 //! - **MutexAddress validation**: Address validity is a PM concern.
-//! - **Unsafe safety contract**: The original function requires "the calling
-//!   process does not hold a reference to the process manager." This is
-//!   modeled as an abstract predicate `spec_caller_no_pm_reference`.
 //!
 //! ## Verification Model
 //!
 //! The original function uses:
 //! - `MutexAddress::from(usize)` → modeled as opaque type construction.
 //! - `ProcessManager::take_mutex_guard()` → modeled via
-//!   `take_mutex_guard_model()` `external_body`.
+//!   `take_mutex_guard_model()` `external_body`. Returns a ghost guard token
+//!   on success.
+//! - `MutexGuard::drop()` → modeled via `drop_guard_model()` `external_body`.
+//!   Consumes the ghost guard token and establishes the mutex-unlocked
+//!   postcondition. This separates the "acquire guard" and "release guard"
+//!   steps for composability.
 //!
 //! The exec-level `unlock_mutex_model()` mirrors the original control flow and
 //! proves that the result matches `spec_unlock_mutex_result` for all inputs
@@ -73,15 +85,20 @@
 //!
 //! - **T1: `ProcessManager::take_mutex_guard()`**. Returns the mutex guard for
 //!   the given (pid, tid, mutex_addr). The PM module verifies this function's
-//!   correctness internally. Modeled as `external_body`.
+//!   correctness internally. Modeled as `external_body`. Returns a ghost guard
+//!   token `Option<u32>` on success (`Some(mutex_addr)`), `None` on failure.
+//! - **T2: `MutexGuard::drop()`**. Unlocks the mutex when the guard goes out
+//!   of scope. Modeled as `drop_guard_model()` `external_body`. Consumes the
+//!   guard token and establishes `spec_guard_dropped_and_mutex_unlocked`.
 //!
 //! ## API Mapping
 //!
-//! | Original API                                  | Verified Model                    | Notes          |
-//! |-----------------------------------------------|-----------------------------------|----------------|
-//! | `MutexAddress::from(usize)`                   | (not modeled)                     | Type wrapper.  |
-//! | `ProcessManager::take_mutex_guard(pid,tid,a)`  | `take_mutex_guard_model(addr)`    | external_body. |
-//! | `pub unsafe fn unlock_mutex(pid,tid,addr)`    | `unlock_mutex_model(addr)`        | Fully verified.|
+//! | Original API                                  | Verified Model                      | Notes          |
+//! |-----------------------------------------------|-------------------------------------|----------------|
+//! | `MutexAddress::from(usize)`                   | (not modeled)                       | Type wrapper.  |
+//! | `ProcessManager::take_mutex_guard(pid,tid,a)`  | `take_mutex_guard_model(pid,tid,a)` | external_body. |
+//! | `MutexGuard::drop()`                          | `drop_guard_model(addr, token)`     | external_body. |
+//! | `pub unsafe fn unlock_mutex(pid,tid,addr)`    | `unlock_mutex_model(addr,pid,tid)`  | Fully verified.|
 
 use vstd::prelude::*;
 
@@ -102,8 +119,8 @@ verus! {
 /// # Description
 ///
 /// Represents the result of `ProcessManager::take_mutex_guard(pid, tid, mutex_addr)`.
-/// On success, a `MutexGuard` is returned. On failure, an `Error` is returned.
-/// The exec model uses this enum to capture the PM outcome.
+/// On success, a `MutexGuard` is returned (modeled via a ghost guard token).
+/// On failure, an `Error` is returned.
 pub enum TakeMutexGuardOutcomeModel {
     /// take_mutex_guard succeeded, returning a MutexGuard.
     Ok,
@@ -157,34 +174,65 @@ impl UnlockMutexResultModel {
 /// # Description
 ///
 /// Retrieves the mutex guard for the given mutex address, owned by the
-/// specified (pid, tid). The PM module verifies this function's correctness
-/// internally.
+/// specified (pid, tid). `take_mutex_guard` returns `Result<MutexGuard, Error>`.
+/// On success, the `MutexGuard` is returned by value. On failure, an `Error`
+/// is returned. The PM module verifies this function's correctness internally.
 ///
 /// In the original code, pid and tid determine ownership validation.
-/// The model abstracts these away since ownership checking is a PM concern.
+/// They are accepted as ghost parameters to allow future enrichment of the
+/// PM trust boundary with ownership constraints without restructuring.
 ///
-/// ## Guard Drop Semantics
-///
-/// On success, the original `take_mutex_guard` returns `MutexGuard` by value
-/// (inside `Ok`). The caller (unlock_mutex) uses `?` which extracts the `()`
-/// (the guard is returned but the `?` on Result<(), Error> discards it).
-/// Actually, looking more carefully: `take_mutex_guard` returns
-/// `Result<(), Error>` — it takes the guard internally and drops it.
-/// The comment in the original says "The mutex guard is dropped, causing
-/// threads to be notified."
+/// The guard token (`Option<u32>`) models the `MutexGuard` ownership:
+/// `Some(mutex_addr)` on success, `None` on failure. This token is consumed
+/// by `drop_guard_model`, separating the "acquire" and "release" semantics.
 ///
 /// # Parameters
 ///
 /// - `mutex_addr`: The mutex address (from `MutexAddress::from(usize)`).
+/// - `pid`: Ghost process identifier for the calling process.
+/// - `tid`: Ghost thread identifier for the calling thread.
 #[verifier::external_body]
-pub fn take_mutex_guard_model(mutex_addr: u32) -> (result: TakeMutexGuardOutcomeModel)
+pub fn take_mutex_guard_model(mutex_addr: u32, pid: Ghost<u32>, tid: Ghost<u32>) -> (result: (TakeMutexGuardOutcomeModel, Ghost<Option<u32>>))
+    requires
+        // Safety: the caller must not hold a PM reference.
+        spec_unlock_mutex_safety_preconditions(),
     ensures
         // Error codes from the PM module are valid ErrorCode discriminants.
-        result matches TakeMutexGuardOutcomeModel::Error { error_code }
+        result.0 matches TakeMutexGuardOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),
-        // On success, the guard was dropped and the mutex is unlocked.
-        result matches TakeMutexGuardOutcomeModel::Ok
-            ==> spec_guard_dropped_and_mutex_unlocked(mutex_addr as nat),
+        // Guard token: Some(addr) iff take_guard succeeded; None otherwise.
+        (result.0 matches TakeMutexGuardOutcomeModel::Ok) <==> result.1@.is_some(),
+        // Guard token carries the correct mutex address on success.
+        result.1@.is_some() ==> result.1@ == Some(mutex_addr),
+{
+    unimplemented!()
+}
+
+/// Trust Boundary T2: Models `MutexGuard::drop()`.
+///
+/// # Description
+///
+/// Consumes the guard token and unlocks the mutex. In the original code,
+/// `MutexGuard::drop()` is called implicitly when the guard goes out of
+/// scope (at the semicolon after the `?` operator extracts it from `Ok`).
+///
+/// This is modeled as a separate step to keep the "acquire guard" and
+/// "release guard" semantics composable. If `take_mutex_guard` were reused
+/// in a context where the guard is NOT immediately dropped, this separation
+/// would be essential.
+///
+/// # Parameters
+///
+/// - `mutex_addr`: The mutex address being unlocked.
+/// - `guard_token`: Ghost token proving the caller holds a valid guard.
+#[verifier::external_body]
+pub fn drop_guard_model(mutex_addr: u32, guard_token: Ghost<Option<u32>>)
+    requires
+        // The caller must hold a valid guard token for this specific mutex.
+        guard_token@ == Some(mutex_addr),
+    ensures
+        // After drop, the guard is consumed and the mutex is unlocked.
+        spec_guard_dropped_and_mutex_unlocked(mutex_addr as nat),
 {
     unimplemented!()
 }
@@ -199,29 +247,31 @@ pub fn take_mutex_guard_model(mutex_addr: u32) -> (result: TakeMutexGuardOutcome
 ///
 /// This function mirrors the original `pub unsafe fn unlock_mutex(pid, tid, mutex_addr)`
 /// control flow. It:
-/// 1. Calls take_mutex_guard (external).
-/// 2. Returns Ok(()) on success (guard was dropped by PM).
-/// 3. Returns the error on failure.
-///
-/// The original also takes `pid` and `tid` parameters, which are passed to
-/// `ProcessManager::take_mutex_guard`. They affect the PM outcome but not the
-/// pipeline mapping. They are omitted from this model; the PM's outcome is
-/// captured via the ghost return.
+/// 1. Calls take_mutex_guard (external) → returns guard token on success.
+/// 2. On success, drops the guard (external) → mutex unlocked.
+/// 3. Returns Ok(()) on success (guard was dropped).
+/// 4. Returns the error on failure.
 ///
 /// # Parameters
 ///
 /// - `mutex_addr`: Mutex address (from `MutexAddress::from(usize)`).
+/// - `pid`: Ghost process identifier for the calling process.
+/// - `tid`: Ghost thread identifier for the calling thread.
 ///
 /// # Returns
 ///
 /// A tuple of (result, ghost take_guard_outcome) where the ghost captures
 /// the PM outcome for postcondition linking.
-pub fn unlock_mutex_model(mutex_addr: u32) -> (ret: (
+pub fn unlock_mutex_model(mutex_addr: u32, pid: Ghost<u32>, tid: Ghost<u32>) -> (ret: (
     UnlockMutexResultModel,
     Ghost<TakeMutexGuardOutcomeView>,
 ))
     requires
+        // Safety: the caller must not hold a PM reference.
+        spec_unlock_mutex_safety_preconditions(),
         // ABI constraint: mutex_addr originates from 32-bit usize on x86-32.
+        // This is always true for u32 values (documentation-only constraint
+        // making the architecture assumption explicit).
         mutex_addr as nat <= USIZE_MAX_X86_32(),
     ensures
         // The result matches the spec for the captured PM outcome.
@@ -236,18 +286,24 @@ pub fn unlock_mutex_model(mutex_addr: u32) -> (ret: (
         spec_is_success(ret.0.spec_view()) ==>
             spec_guard_dropped_and_mutex_unlocked(mutex_addr as nat),
 {
-    // Step 1: Take mutex guard (external).
-    let tg_result: TakeMutexGuardOutcomeModel = take_mutex_guard_model(mutex_addr);
+    // Step 1: Take mutex guard (external), threading ghost pid/tid.
+    let tg_pair: (TakeMutexGuardOutcomeModel, Ghost<Option<u32>>) = take_mutex_guard_model(mutex_addr, pid, tid);
+    let tg_result: TakeMutexGuardOutcomeModel = tg_pair.0;
+    let guard_token: Ghost<Option<u32>> = tg_pair.1;
     let ghost tg_view: TakeMutexGuardOutcomeView = tg_result.spec_view();
 
     match tg_result {
         TakeMutexGuardOutcomeModel::Error { error_code } => {
+            // No guard was returned; nothing to drop.
             (
                 UnlockMutexResultModel::TakeMutexGuardError { error_code },
                 Ghost(tg_view),
             )
         },
         TakeMutexGuardOutcomeModel::Ok => {
+            // Step 2: Drop the guard (models MutexGuard going out of scope).
+            drop_guard_model(mutex_addr, guard_token);
+
             (
                 UnlockMutexResultModel::Success,
                 Ghost(tg_view),

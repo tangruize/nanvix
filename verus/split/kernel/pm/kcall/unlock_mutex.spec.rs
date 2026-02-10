@@ -8,16 +8,17 @@
 // ## Verification Model
 //
 // The unlock_mutex kcall converts a user-provided `mutex_addr: usize` into a
-// `MutexAddress`, then executes a single-step pipeline:
-//   1. ProcessManager::take_mutex_guard(pid, tid, mutex_addr) → ()
+// `MutexAddress`, then executes a two-step pipeline:
+//   1. ProcessManager::take_mutex_guard(pid, tid, mutex_addr) → MutexGuard
+//   2. The MutexGuard is dropped (scope exit) → mutex unlocked.
 //
-// On success, the returned guard is immediately dropped (scope exit), which
-// triggers `MutexGuard::drop()` and unlocks the mutex. On failure, the error
-// from `take_mutex_guard` is propagated via `?`.
+// On success, take_mutex_guard returns a MutexGuard which is immediately
+// dropped at the semicolon, triggering `MutexGuard::drop()` and unlocking
+// the mutex. On failure, the error is propagated via `?`.
 //
 // This spec models:
-// - The single-step pipeline with two outcomes (success or error).
-// - Guard drop semantics: on success, the guard is consumed by scope exit.
+// - The two-step pipeline: acquire guard, then drop guard.
+// - Guard token semantics: take_guard produces a ghost token, drop consumes it.
 // - Error propagation: take_mutex_guard errors propagated unchanged.
 
 use vstd::prelude::*;
@@ -61,7 +62,7 @@ pub open spec fn spec_is_valid_error_code(code: int) -> bool {
 /// Abstract view of the outcome of ProcessManager::take_mutex_guard.
 #[verifier::ext_equal]
 pub enum TakeMutexGuardOutcomeView {
-    /// take_mutex_guard succeeded, returning a MutexGuard that is dropped.
+    /// take_mutex_guard succeeded, returning a MutexGuard.
     TgOk,
     /// take_mutex_guard failed with an error code.
     TgError { error_code: int },
@@ -91,9 +92,10 @@ pub enum UnlockMutexResultView {
 ///
 /// # Description
 ///
-/// The unlock_mutex function executes a single-step pipeline:
+/// The unlock_mutex function executes a two-step pipeline:
 /// 1. take_mutex_guard → TakeMutexGuardError on failure.
-/// 2. Success → guard dropped, mutex unlocked.
+/// 2. Guard drop → mutex unlocked (always succeeds).
+/// Final result: Success or TakeMutexGuardError.
 pub open spec fn spec_unlock_mutex_result(
     take_guard_outcome: TakeMutexGuardOutcomeView,
 ) -> UnlockMutexResultView {
@@ -149,6 +151,17 @@ pub open spec fn spec_unlock_mutex_result_with_context(
     spec_unlock_mutex_result(take_guard_outcome)
 }
 
+/// Spec predicate: whether a guard token is valid for a given mutex address.
+///
+/// # Description
+///
+/// A guard token is valid when it carries `Some(mutex_addr)`, meaning the
+/// caller holds a MutexGuard for the specified mutex. This predicate
+/// connects the ghost guard token to the mutex identity.
+pub open spec fn spec_guard_token_valid(guard_token: Option<u32>, mutex_addr: u32) -> bool {
+    guard_token == Some(mutex_addr)
+}
+
 //==================================================================================================
 // Caller Safety Contract Spec Predicates
 //==================================================================================================
@@ -183,8 +196,9 @@ pub open spec fn spec_unlock_mutex_safety_preconditions() -> bool {
 /// Models the outcome of `MutexGuard::drop()` — the guard for `mutex_addr`
 /// has been consumed and the mutex lock released. In the original code,
 /// `take_mutex_guard` returns the `MutexGuard` by value. The guard is then
-/// immediately dropped at scope exit (the `?` discards it on success),
-/// triggering `MutexGuard::drop()` which unlocks the mutex.
+/// immediately dropped at the semicolon (the `?` operator extracts the
+/// `MutexGuard` from `Ok`, but since it is not bound to a variable, it is
+/// dropped), triggering `MutexGuard::drop()` which unlocks the mutex.
 ///
 /// This predicate is abstract because the concrete unlock semantics are
 /// defined in the mutex module, not in this pipeline.
