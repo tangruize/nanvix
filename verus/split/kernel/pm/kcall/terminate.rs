@@ -41,6 +41,8 @@
 //! - **PID identity**: On successful parse, the parsed PID equals the input
 //!   argument (`try_from_process_identifier` postcondition).
 //! - **Kernel PID protection**: Terminating PID 0 (kernel process) always fails
+//!   unconditionally — PID 0 always parses successfully
+//!   (`axiom_kernel_pid_is_valid`) and PM always rejects it
 //!   (`process_manager_terminate` postcondition + `lemma_kernel_pid_always_fails`).
 //! - **Running PID protection**: Terminating the currently running process always
 //!   fails with InvalidArgument (`process_manager_terminate` postcondition +
@@ -89,6 +91,22 @@
 //!   the PM implementation (mod.rs:1036-1078); the PM module's own verification
 //!   covers the implementation side.
 //!
+//! ### Abstraction Gap: Process Lifecycle States
+//!
+//! `ProcessManagerStateView` uses a flat `process_set: Set<nat>` that does not
+//! distinguish process lifecycle states (ready, suspended, interrupted, zombie).
+//! The real PM's `terminate` only searches the `ready` and `suspended` queues;
+//! interrupted and zombie processes fall through to `NoSuchProcess`. This means
+//! a PID can be in `process_set` (as interrupted/zombie) yet the real PM would
+//! reject it. The model is an over-approximation: it cannot express that
+//! interrupted/zombie PIDs are rejected. This is acceptable because:
+//! 1. The `external_body` postconditions never claim success for such PIDs
+//!    (they only assert success implies `spec_pm_has_process`, not the reverse).
+//! 2. Per-state sets would require modeling the full process lifecycle, which
+//!    belongs in the PM module's verification, not this kcall dispatch layer.
+//! 3. The PM module's own verification (process_manager module) covers the
+//!    per-state transition correctness.
+//!
 //! ## Logging
 //!
 //! The original code logs with `error!("{error:?}")` on PID parse failure before
@@ -103,6 +121,12 @@
 //! | `ProcessIdentifier::try_from(args.arg0)`  | `try_from_process_identifier(arg0)` | external_body   |
 //! | `pm.terminate(pid)`                       | `process_manager_terminate(pid, …)` | external_body   |
 //! | `pub fn terminate(pm, args) -> KcallResult`| `terminate_model(arg0, …)`         | Fully verified  |
+//!
+//! Parameter abstraction: `pm: &mut ProcessManager` is replaced by
+//! `Ghost<ProcessManagerStateView>` (ghost state threading), and
+//! `args: &KcallArgs` is replaced by `arg0: u32` (direct field extraction).
+//! This simplification is intentional — the model focuses on the dispatch
+//! logic, not the container types.
 
 use crate::libs::error::ErrorCode;
 use vstd::prelude::*;
@@ -298,6 +322,10 @@ pub fn process_manager_terminate(
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> spec_pm_has_process(pm_pre, pid as nat),
         // Frame: on success, no new PIDs are created (subset).
+        // Note: the real PM may preserve the target PID (resume case with
+        // runnable threads), so the frame is conservatively weak — it does
+        // not assert PID removal or PID preservation for the target.
+        // Tightening would require per-state process modeling.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> ret.1@.process_set.subset_of(pm_pre.process_set),
         // Frame: on success, all PIDs other than the target are unchanged.
@@ -390,6 +418,11 @@ pub fn terminate_model(
         // Kernel PID: if arg0 == 0 and parses successfully, result is error.
         arg0 as nat == KERNEL_PID() && spec_pid_parsed_ok(ret.1@)
             ==> spec_is_error(ret.0.spec_view()),
+        // Kernel PID (unconditional): terminate(0) always fails because
+        // PID 0 always parses successfully (axiom_kernel_pid_is_valid)
+        // and PM always rejects it.
+        arg0 as nat == KERNEL_PID()
+            ==> spec_is_error(ret.0.spec_view()),
         // Running PID: if arg0 is the running process and parses, result is error.
         spec_is_running_process(pm_pre, arg0 as nat) && spec_pid_parsed_ok(ret.1@)
             ==> spec_is_error(ret.0.spec_view()),
@@ -400,6 +433,11 @@ pub fn terminate_model(
         // Post-state is well-formed.
         spec_pm_wf(ret.3@),
 {
+    // Establish kernel PID validity axiom for use in postconditions.
+    proof {
+        axiom_kernel_pid_is_valid();
+    }
+
     // Step 1: Parse ProcessIdentifier from arg0.
     let pid_result: PidParseResultModel = try_from_process_identifier(arg0);
 
@@ -410,6 +448,10 @@ pub fn terminate_model(
         PidParseResultModel::PidError { error_code } => {
             // Parse error: return immediately with the error code.
             // PM was never called, so state is unchanged.
+            // Dummy terminate outcome: the value is irrelevant because
+            // `spec_terminate_result` short-circuits on PidError (proven
+            // by `lemma_pid_parse_short_circuit`). TmOk is used as a
+            // placeholder since no actual PM call occurred.
             let ghost tm_view: TerminateOutcomeView = TerminateOutcomeView::TmOk;
             proof {
                 lemma_pid_parse_error_propagates(error_code as int, tm_view);
