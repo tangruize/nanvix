@@ -70,6 +70,12 @@
 //!   variants present in the Verus verification model; the full kernel `ErrorCode`
 //!   enum has additional variants. Module-level proofs in PM/VMM can strengthen
 //!   the constraint for specific call sites.
+//! - **Copy-to-validation linkage**: When `copy_from_user` succeeds, all
+//!   subsequent validation predicates (steps 3–5) operate on the copied data.
+//!   The `copy_from_user` ghost `args_view` parameter records the copy output,
+//!   and the same `thread_args` is used for validation. This linkage is proven
+//!   by `lemma_copy_output_determines_validation`, which ensures the model
+//!   cannot "succeed" with unrelated validation inputs.
 //! - **Argument passthrough preservation**: The `user_fn_arg0` and `user_fn_arg1`
 //!   fields from the copied `ThreadCreateArgs` are tracked via ghost state and
 //!   proven to be passed unchanged to `pm.create_thread`
@@ -711,7 +717,10 @@ pub fn create_thread_model(
             );
         },
         CopyFromUserResultModel::CopyOk => {
-            // Continue to validation steps.
+            // Copy output matches the thread_args used for validation (steps 3-5).
+            proof {
+                lemma_copy_output_determines_validation(input_view, thread_args.spec_view());
+            }
         },
     }
 

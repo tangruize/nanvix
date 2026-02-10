@@ -454,6 +454,47 @@ pub proof fn lemma_thread_create_args_size_matches()
 {
 }
 
+//==================================================================================================
+// Proof Functions — Copy-to-Validation Linkage
+//==================================================================================================
+
+/// Proof: when copy_from_user succeeds, all subsequent validation predicates
+/// (steps 3–5) operate on the copied data.
+///
+/// # Description
+///
+/// The `copy_from_user` external body records the copied `ThreadCreateArgsView`
+/// via its ghost `ghost_args_view` parameter. The `create_thread_model` exec code
+/// passes `thread_args.spec_view()` to `copy_from_user` and uses the same
+/// `thread_args` for steps 3–5. This lemma proves that the validation predicates
+/// (`spec_user_fn_valid`, `spec_user_stack_region_valid`,
+/// `spec_user_stack_size_sufficient`, `spec_user_tda_valid`) evaluate using the
+/// exact fields from `copied_args`, closing the gap between copy output and
+/// validation input.
+///
+/// Combined with the `create_thread_model` postcondition
+/// `ret.1@.thread_args == thread_args.spec_view()`, this proves end-to-end that
+/// validation uses the copied data — not unrelated values.
+pub proof fn lemma_copy_output_determines_validation(
+    input: CreateThreadInputView,
+    copied_args: ThreadCreateArgsView,
+)
+    requires
+        spec_args_addr_valid(input),
+        spec_copy_succeeded(input),
+        copied_args == input.thread_args,
+    ensures
+        // Step 3 validation uses the copied user_fn field.
+        spec_user_fn_valid(input) == copied_args.user_fn_valid,
+        // Step 4 validation uses the copied user_stack_valid field.
+        spec_user_stack_region_valid(input) == copied_args.user_stack_valid,
+        // Step 4b validation uses the copied user_stack_size field.
+        spec_user_stack_size_sufficient(input) == (copied_args.user_stack_size >= USER_STACK_SIZE()),
+        // Step 5 validation uses the copied user_tda fields.
+        spec_user_tda_valid(input) == (if copied_args.has_user_tda { copied_args.user_tda_valid } else { true }),
+{
+}
+
 // NOTE: Copy source address linkage (arg0 → copy_from_user)
 //
 // In the original `create_thread` function:
