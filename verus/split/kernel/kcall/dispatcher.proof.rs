@@ -342,6 +342,55 @@ pub proof fn lemma_remote_examples()
 {
 }
 
+/// Lemma: Spec constants match the original `#[repr(u32)]` KcallNumber values.
+///
+/// # Description
+///
+/// Asserts that each spec constant matches the value from the original
+/// `KcallNumber` enum in `src/libs/sys/src/sys/number.rs`. This serves
+/// as a consistency check: if the original enum values change, a human
+/// reviewer can detect drift by comparing these assertions.
+///
+/// Note: Verus cannot import the original enum, so this is a manual
+/// cross-reference. The values were verified against the source.
+pub proof fn lemma_kcall_constants_consistency()
+    ensures
+        KCALL_DEBUG() == 0u32,
+        KCALL_GET_PID() == 1u32,
+        KCALL_GET_TID() == 2u32,
+        KCALL_EXIT() == 3u32,
+        KCALL_CAP_CTL() == 4u32,
+        KCALL_RESUME() == 5u32,
+        KCALL_TERMINATE() == 6u32,
+        KCALL_EVENT_CTRL() == 7u32,
+        KCALL_SEND() == 8u32,
+        KCALL_RECV() == 9u32,
+        KCALL_MEMORY_MAP() == 10u32,
+        KCALL_MEMORY_UNMAP() == 11u32,
+        KCALL_MEMORY_CTRL() == 12u32,
+        KCALL_MEMORY_COPY() == 13u32,
+        KCALL_ALLOC_MMIO() == 14u32,
+        KCALL_FREE_MMIO() == 15u32,
+        KCALL_ALLOC_PMIO() == 16u32,
+        KCALL_FREE_PMIO() == 17u32,
+        KCALL_READ_PMIO() == 18u32,
+        KCALL_WRITE_PMIO() == 19u32,
+        KCALL_SCHEDULER_YIELD() == 20u32,
+        KCALL_CREATE_THREAD() == 21u32,
+        KCALL_EXIT_THREAD() == 22u32,
+        KCALL_JOIN_THREAD() == 23u32,
+        KCALL_MUTEX_LOCK() == 24u32,
+        KCALL_MUTEX_UNLOCK() == 25u32,
+        KCALL_COND_SIGNAL() == 26u32,
+        KCALL_COND_WAIT() == 27u32,
+        KCALL_GET_TIME() == 28u32,
+        KCALL_SLEEP() == 29u32,
+        KCALL_SET_TDA() == 30u32,
+        KCALL_GET_TDA() == 31u32,
+        KCALL_INVALID() == u32::MAX as u32,
+{
+}
+
 //==================================================================================================
 // Proof Lemmas: SleepError Well-Formedness
 //==================================================================================================
@@ -500,18 +549,17 @@ pub proof fn lemma_terminal_is_exit_exitthread(number: u32)
 {
 }
 
-/// Lemma: spec_dispatch_result_constrained implies specific behavior per category.
+/// Lemma: dispatch constraint is trivially true for LocalImmediate.
 ///
 /// # Description
 ///
-/// Proves that the constraint function correctly requires:
-/// - LocalImmediate: result must be success.
-/// - LocalTerminal: result must be error.
-/// - All others: no additional constraint.
+/// After weakening the spec (pid/tid retrieval may fail), LocalImmediate
+/// has no structural constraint beyond well-formedness. The stronger
+/// postcondition (success when pid/tid available) lives on `do_kcall_dispatch`.
 pub proof fn lemma_dispatch_constraint_immediate()
     ensures
         forall|r: DispatchResultView| #![auto]
-            spec_dispatch_result_constrained(DispatchCategory::LocalImmediate, r) == r.is_success,
+            spec_dispatch_result_constrained(DispatchCategory::LocalImmediate, r),
 {
 }
 

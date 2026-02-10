@@ -459,6 +459,41 @@ impl SleepError {
     }
 }
 
+impl SleepableOutcome {
+    /// Spec function: well-formedness predicate.
+    ///
+    /// # Description
+    ///
+    /// A SleepableOutcome is well-formed when:
+    /// - On success: always true (any i64 value is valid).
+    /// - On failure with Generic: the error code fits in i32 range.
+    /// - On failure with other kinds: always true.
+    pub open spec fn wf(&self) -> bool {
+        if self.succeeded {
+            true
+        } else {
+            match self.sleep_error_kind {
+                SleepErrorKind::Generic => {
+                    self.sleep_error_code >= i32::MIN as i64
+                        && self.sleep_error_code <= i32::MAX as i64
+                },
+                _ => true,
+            }
+        }
+    }
+}
+
+impl FallibleOutcome {
+    /// Spec function: well-formedness predicate.
+    ///
+    /// # Description
+    ///
+    /// Always true because `error_code` is i32 (automatically in range).
+    pub open spec fn wf(&self) -> bool {
+        true
+    }
+}
+
 //==================================================================================================
 // Spec Functions: KcallResult → i64 Encoding
 //==================================================================================================
@@ -504,7 +539,9 @@ pub open spec fn spec_dispatch_result_constrained(
     result: DispatchResultView,
 ) -> bool {
     match category {
-        DispatchCategory::LocalImmediate => result.is_success,
+        // LocalImmediate may fail if pid/tid retrieval fails;
+        // success is only guaranteed when ProcessManager is accessible
+        // (see do_kcall_dispatch for the stronger conditional postcondition).
         DispatchCategory::LocalTerminal => !result.is_success,
         _ => true,
     }
