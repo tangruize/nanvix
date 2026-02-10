@@ -99,12 +99,60 @@ pub proof fn lemma_take_guard_error_propagates(
 {
 }
 
-/// Proof: when get_cond fails, its error propagates.
+/// Proof: when get_cond fails and ALL continuation steps succeed, GetCondError is returned.
+///
+/// # Description
+///
+/// In the original code, get_cond failure stores the error in `result`, and the
+/// continuation pipeline (put_cond, get_mutex, lock, put_guard) runs unconditionally.
+/// Only when all continuation steps succeed is the stored get_cond error returned.
 pub proof fn lemma_get_cond_error_propagates(
     timeout_s: nat,
     timeout_ns: nat,
     error_code: int,
     cond_wait_outcome: CondWaitOutcomeView,
+)
+    requires
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+    ensures
+        spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            TakeMutexGuardOutcomeView::TmgOk,
+            GetCondOutcomeView::GcError { error_code },
+            cond_wait_outcome,
+            PutCondOutcomeView::PcOk,
+            GetMutexOutcomeView::GmOk,
+            LockOutcomeView::LoOk,
+            PutGuardOutcomeView::PgOk,
+        ) == (WaitCondResultView::GetCondError { error_code }),
+        spec_is_get_cond_error(
+            spec_wait_cond_result(
+                timeout_s, timeout_ns,
+                TakeMutexGuardOutcomeView::TmgOk,
+                GetCondOutcomeView::GcError { error_code },
+                cond_wait_outcome,
+                PutCondOutcomeView::PcOk,
+                GetMutexOutcomeView::GmOk,
+                LockOutcomeView::LoOk,
+                PutGuardOutcomeView::PgOk,
+            )
+        ),
+{
+}
+
+/// Proof: when get_cond fails, cond_wait_outcome is irrelevant.
+///
+/// # Description
+///
+/// When get_cond fails, cond.wait is never called. The cond_wait_outcome
+/// parameter does not affect the result because `spec_stored_result`
+/// ignores it when get_cond failed.
+pub proof fn lemma_get_cond_fail_ignores_cond_wait(
+    timeout_s: nat,
+    timeout_ns: nat,
+    error_code: int,
+    cw1: CondWaitOutcomeView,
+    cw2: CondWaitOutcomeView,
     put_cond_outcome: PutCondOutcomeView,
     get_mutex_outcome: GetMutexOutcomeView,
     lock_outcome: LockOutcomeView,
@@ -117,25 +165,59 @@ pub proof fn lemma_get_cond_error_propagates(
             timeout_s, timeout_ns,
             TakeMutexGuardOutcomeView::TmgOk,
             GetCondOutcomeView::GcError { error_code },
-            cond_wait_outcome,
+            cw1,
             put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
-        ) == (WaitCondResultView::GetCondError { error_code }),
-        spec_is_get_cond_error(
-            spec_wait_cond_result(
-                timeout_s, timeout_ns,
-                TakeMutexGuardOutcomeView::TmgOk,
-                GetCondOutcomeView::GcError { error_code },
-                cond_wait_outcome,
-                put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
-            )
+        ) == spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            TakeMutexGuardOutcomeView::TmgOk,
+            GetCondOutcomeView::GcError { error_code },
+            cw2,
+            put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
         ),
 {
 }
 
-/// Proof: when put_cond fails, its error propagates regardless of mutex reacquisition.
+/// Proof: continuation errors override stored get_cond error.
+///
+/// # Description
+///
+/// When get_cond fails but a continuation step also fails, the continuation
+/// step's error takes priority (via `?` operator). For example, if get_cond
+/// fails AND put_cond fails, the function returns PutCondError, not GetCondError.
+pub proof fn lemma_continuation_overrides_stored_error(
+    timeout_s: nat,
+    timeout_ns: nat,
+    gc_error_code: int,
+    cond_wait_outcome: CondWaitOutcomeView,
+    pc_error_code: int,
+)
+    requires
+        spec_timeout_parsed_ok(timeout_s, timeout_ns),
+    ensures
+        // put_cond error overrides stored get_cond error.
+        spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            TakeMutexGuardOutcomeView::TmgOk,
+            GetCondOutcomeView::GcError { error_code: gc_error_code },
+            cond_wait_outcome,
+            PutCondOutcomeView::PcError { error_code: pc_error_code },
+            GetMutexOutcomeView::GmOk,
+            LockOutcomeView::LoOk,
+            PutGuardOutcomeView::PgOk,
+        ) == (WaitCondResultView::PutCondError { error_code: pc_error_code }),
+{
+}
+
+/// Proof: when put_cond fails, its error propagates regardless of get_cond/cond_wait outcome.
+///
+/// # Description
+///
+/// put_cond runs unconditionally after the get_cond+cond_wait block. If it fails,
+/// its error is returned via `?`, overriding any stored result.
 pub proof fn lemma_put_cond_error_propagates(
     timeout_s: nat,
     timeout_ns: nat,
+    get_cond_outcome: GetCondOutcomeView,
     cond_wait_outcome: CondWaitOutcomeView,
     error_code: int,
     get_mutex_outcome: GetMutexOutcomeView,
@@ -148,7 +230,7 @@ pub proof fn lemma_put_cond_error_propagates(
         spec_wait_cond_result(
             timeout_s, timeout_ns,
             TakeMutexGuardOutcomeView::TmgOk,
-            GetCondOutcomeView::GcOk,
+            get_cond_outcome,
             cond_wait_outcome,
             PutCondOutcomeView::PcError { error_code },
             get_mutex_outcome, lock_outcome, put_guard_outcome,
@@ -157,7 +239,7 @@ pub proof fn lemma_put_cond_error_propagates(
             spec_wait_cond_result(
                 timeout_s, timeout_ns,
                 TakeMutexGuardOutcomeView::TmgOk,
-                GetCondOutcomeView::GcOk,
+                get_cond_outcome,
                 cond_wait_outcome,
                 PutCondOutcomeView::PcError { error_code },
                 get_mutex_outcome, lock_outcome, put_guard_outcome,
@@ -167,9 +249,15 @@ pub proof fn lemma_put_cond_error_propagates(
 }
 
 /// Proof: when get_mutex fails during reacquisition, its error propagates.
+///
+/// # Description
+///
+/// Generalized: works for any get_cond/cond_wait outcome, since the get_mutex
+/// error overrides the stored result.
 pub proof fn lemma_get_mutex_error_propagates(
     timeout_s: nat,
     timeout_ns: nat,
+    get_cond_outcome: GetCondOutcomeView,
     cond_wait_outcome: CondWaitOutcomeView,
     error_code: int,
     lock_outcome: LockOutcomeView,
@@ -181,7 +269,7 @@ pub proof fn lemma_get_mutex_error_propagates(
         spec_wait_cond_result(
             timeout_s, timeout_ns,
             TakeMutexGuardOutcomeView::TmgOk,
-            GetCondOutcomeView::GcOk,
+            get_cond_outcome,
             cond_wait_outcome,
             PutCondOutcomeView::PcOk,
             GetMutexOutcomeView::GmError { error_code },
@@ -191,7 +279,7 @@ pub proof fn lemma_get_mutex_error_propagates(
             spec_wait_cond_result(
                 timeout_s, timeout_ns,
                 TakeMutexGuardOutcomeView::TmgOk,
-                GetCondOutcomeView::GcOk,
+                get_cond_outcome,
                 cond_wait_outcome,
                 PutCondOutcomeView::PcOk,
                 GetMutexOutcomeView::GmError { error_code },
@@ -202,9 +290,14 @@ pub proof fn lemma_get_mutex_error_propagates(
 }
 
 /// Proof: lock errors during mutex reacquisition propagate.
+///
+/// # Description
+///
+/// Generalized: works for any get_cond/cond_wait outcome.
 pub proof fn lemma_lock_error_propagates(
     timeout_s: nat,
     timeout_ns: nat,
+    get_cond_outcome: GetCondOutcomeView,
     cond_wait_outcome: CondWaitOutcomeView,
     lock_outcome: LockOutcomeView,
     put_guard_outcome: PutGuardOutcomeView,
@@ -217,7 +310,7 @@ pub proof fn lemma_lock_error_propagates(
             spec_wait_cond_result(
                 timeout_s, timeout_ns,
                 TakeMutexGuardOutcomeView::TmgOk,
-                GetCondOutcomeView::GcOk,
+                get_cond_outcome,
                 cond_wait_outcome,
                 PutCondOutcomeView::PcOk,
                 GetMutexOutcomeView::GmOk,
@@ -234,9 +327,14 @@ pub proof fn lemma_lock_error_propagates(
 }
 
 /// Proof: put_guard error during reacquisition propagates.
+///
+/// # Description
+///
+/// Generalized: works for any get_cond/cond_wait outcome.
 pub proof fn lemma_put_guard_error_propagates(
     timeout_s: nat,
     timeout_ns: nat,
+    get_cond_outcome: GetCondOutcomeView,
     cond_wait_outcome: CondWaitOutcomeView,
     error_code: int,
 )
@@ -246,7 +344,7 @@ pub proof fn lemma_put_guard_error_propagates(
         spec_wait_cond_result(
             timeout_s, timeout_ns,
             TakeMutexGuardOutcomeView::TmgOk,
-            GetCondOutcomeView::GcOk,
+            get_cond_outcome,
             cond_wait_outcome,
             PutCondOutcomeView::PcOk,
             GetMutexOutcomeView::GmOk,
@@ -257,7 +355,7 @@ pub proof fn lemma_put_guard_error_propagates(
             spec_wait_cond_result(
                 timeout_s, timeout_ns,
                 TakeMutexGuardOutcomeView::TmgOk,
-                GetCondOutcomeView::GcOk,
+                get_cond_outcome,
                 cond_wait_outcome,
                 PutCondOutcomeView::PcOk,
                 GetMutexOutcomeView::GmOk,
@@ -305,19 +403,20 @@ pub proof fn lemma_success_requires_all_steps(
             match take_guard_outcome {
                 TakeMutexGuardOutcomeView::TmgError { .. } => {},
                 TakeMutexGuardOutcomeView::TmgOk => {
-                    match get_cond_outcome {
-                        GetCondOutcomeView::GcError { .. } => {},
-                        GetCondOutcomeView::GcOk => {
-                            match put_cond_outcome {
-                                PutCondOutcomeView::PcError { .. } => {},
-                                PutCondOutcomeView::PcOk => {
-                                    match get_mutex_outcome {
-                                        GetMutexOutcomeView::GmError { .. } => {},
-                                        GetMutexOutcomeView::GmOk => {
-                                            match lock_outcome {
-                                                LockOutcomeView::LoOk => {
-                                                    match put_guard_outcome {
-                                                        PutGuardOutcomeView::PgOk => {
+                    match put_cond_outcome {
+                        PutCondOutcomeView::PcError { .. } => {},
+                        PutCondOutcomeView::PcOk => {
+                            match get_mutex_outcome {
+                                GetMutexOutcomeView::GmError { .. } => {},
+                                GetMutexOutcomeView::GmOk => {
+                                    match lock_outcome {
+                                        LockOutcomeView::LoOk => {
+                                            match put_guard_outcome {
+                                                PutGuardOutcomeView::PgOk => {
+                                                    // Now check stored result.
+                                                    match get_cond_outcome {
+                                                        GetCondOutcomeView::GcError { .. } => {},
+                                                        GetCondOutcomeView::GcOk => {
                                                             match cond_wait_outcome {
                                                                 CondWaitOutcomeView::CwOk => {},
                                                                 CondWaitOutcomeView::CwTimedOut => {},
@@ -325,14 +424,14 @@ pub proof fn lemma_success_requires_all_steps(
                                                                 CondWaitOutcomeView::CwGenericError { .. } => {},
                                                             }
                                                         },
-                                                        PutGuardOutcomeView::PgError { .. } => {},
                                                     }
                                                 },
-                                                LockOutcomeView::LoTimedOut => {},
-                                                LockOutcomeView::LoKilled => {},
-                                                LockOutcomeView::LoGenericError { .. } => {},
+                                                PutGuardOutcomeView::PgError { .. } => {},
                                             }
                                         },
+                                        LockOutcomeView::LoTimedOut => {},
+                                        LockOutcomeView::LoKilled => {},
+                                        LockOutcomeView::LoGenericError { .. } => {},
                                     }
                                 },
                             }
@@ -389,19 +488,19 @@ pub proof fn lemma_result_exhaustive(
             match take_guard_outcome {
                 TakeMutexGuardOutcomeView::TmgError { .. } => {},
                 TakeMutexGuardOutcomeView::TmgOk => {
-                    match get_cond_outcome {
-                        GetCondOutcomeView::GcError { .. } => {},
-                        GetCondOutcomeView::GcOk => {
-                            match put_cond_outcome {
-                                PutCondOutcomeView::PcError { .. } => {},
-                                PutCondOutcomeView::PcOk => {
-                                    match get_mutex_outcome {
-                                        GetMutexOutcomeView::GmError { .. } => {},
-                                        GetMutexOutcomeView::GmOk => {
-                                            match lock_outcome {
-                                                LockOutcomeView::LoOk => {
-                                                    match put_guard_outcome {
-                                                        PutGuardOutcomeView::PgOk => {
+                    match put_cond_outcome {
+                        PutCondOutcomeView::PcError { .. } => {},
+                        PutCondOutcomeView::PcOk => {
+                            match get_mutex_outcome {
+                                GetMutexOutcomeView::GmError { .. } => {},
+                                GetMutexOutcomeView::GmOk => {
+                                    match lock_outcome {
+                                        LockOutcomeView::LoOk => {
+                                            match put_guard_outcome {
+                                                PutGuardOutcomeView::PgOk => {
+                                                    match get_cond_outcome {
+                                                        GetCondOutcomeView::GcError { .. } => {},
+                                                        GetCondOutcomeView::GcOk => {
                                                             match cond_wait_outcome {
                                                                 CondWaitOutcomeView::CwOk => {},
                                                                 CondWaitOutcomeView::CwTimedOut => {},
@@ -409,14 +508,14 @@ pub proof fn lemma_result_exhaustive(
                                                                 CondWaitOutcomeView::CwGenericError { .. } => {},
                                                             }
                                                         },
-                                                        PutGuardOutcomeView::PgError { .. } => {},
                                                     }
                                                 },
-                                                LockOutcomeView::LoTimedOut => {},
-                                                LockOutcomeView::LoKilled => {},
-                                                LockOutcomeView::LoGenericError { .. } => {},
+                                                PutGuardOutcomeView::PgError { .. } => {},
                                             }
                                         },
+                                        LockOutcomeView::LoTimedOut => {},
+                                        LockOutcomeView::LoKilled => {},
+                                        LockOutcomeView::LoGenericError { .. } => {},
                                     }
                                 },
                             }
@@ -529,12 +628,12 @@ pub proof fn lemma_safety_preconditions_well_formed(pid: nat, tid: nat)
 {
 }
 
-/// Proof: the cond.wait result is preserved when all subsequent steps succeed.
+/// Proof: the cond.wait result is preserved when all surrounding steps succeed.
 ///
 /// # Description
 ///
-/// When get_cond, put_cond, and the entire mutex reacquisition pipeline succeed,
-/// the final result exactly reflects the cond.wait outcome:
+/// When get_cond succeeds, put_cond succeeds, and the entire mutex reacquisition
+/// pipeline succeeds, the final result exactly reflects the cond.wait outcome:
 /// - CwOk → Success
 /// - CwTimedOut → CondWaitTimedOut
 /// - CwKilled → CondWaitKilled
@@ -578,29 +677,23 @@ pub proof fn lemma_cond_wait_result_preserved(
 
 /// Proof: mutex reacquisition uses infinite wait (None timeout), so TimedOut
 /// cannot occur in the lock step during reacquisition.
-///
-/// # Description
-///
-/// In the original code, `mutex.lock(None)` is called for reacquisition. With
-/// no timeout, TimedOut is impossible. When the lock outcome is valid for
-/// an infinite timeout, LockTimedOut cannot appear in the final result.
 pub proof fn lemma_reacquisition_no_timed_out(
     timeout_s: nat,
     timeout_ns: nat,
+    get_cond_outcome: GetCondOutcomeView,
     cond_wait_outcome: CondWaitOutcomeView,
     lock_outcome: LockOutcomeView,
     put_guard_outcome: PutGuardOutcomeView,
 )
     requires
         spec_timeout_parsed_ok(timeout_s, timeout_ns),
-        // Lock outcome valid for infinite wait (no timeout → TimedOut impossible).
         !matches!(lock_outcome, LockOutcomeView::LoTimedOut),
     ensures
         !matches!(
             spec_wait_cond_result(
                 timeout_s, timeout_ns,
                 TakeMutexGuardOutcomeView::TmgOk,
-                GetCondOutcomeView::GcOk,
+                get_cond_outcome,
                 cond_wait_outcome,
                 PutCondOutcomeView::PcOk,
                 GetMutexOutcomeView::GmOk,
@@ -614,11 +707,16 @@ pub proof fn lemma_reacquisition_no_timed_out(
         LockOutcomeView::LoOk => {
             match put_guard_outcome {
                 PutGuardOutcomeView::PgOk => {
-                    match cond_wait_outcome {
-                        CondWaitOutcomeView::CwOk => {},
-                        CondWaitOutcomeView::CwTimedOut => {},
-                        CondWaitOutcomeView::CwKilled => {},
-                        CondWaitOutcomeView::CwGenericError { .. } => {},
+                    match get_cond_outcome {
+                        GetCondOutcomeView::GcError { .. } => {},
+                        GetCondOutcomeView::GcOk => {
+                            match cond_wait_outcome {
+                                CondWaitOutcomeView::CwOk => {},
+                                CondWaitOutcomeView::CwTimedOut => {},
+                                CondWaitOutcomeView::CwKilled => {},
+                                CondWaitOutcomeView::CwGenericError { .. } => {},
+                            }
+                        },
                     }
                 },
                 PutGuardOutcomeView::PgError { .. } => {},
@@ -628,6 +726,52 @@ pub proof fn lemma_reacquisition_no_timed_out(
         LockOutcomeView::LoGenericError { .. } => {},
         LockOutcomeView::LoTimedOut => {},
     }
+}
+
+/// Proof: on success, the mutex protocol was followed (release-before-wait-before-reacquire).
+///
+/// # Description
+///
+/// When the result is Success, the exec model postconditions guarantee that:
+/// - spec_mutex_released (from take_mutex_guard_model on TmgOk).
+/// - spec_cond_ref_released (from put_cond_model on PcOk).
+/// - spec_mutex_reacquired (from mutex_lock_model on LoOk).
+///
+/// This lemma verifies that Success implies all three uninterpreted predicates
+/// must have been established during execution.
+pub proof fn lemma_success_implies_all_predicates_set(
+    timeout_s: nat,
+    timeout_ns: nat,
+    take_guard_outcome: TakeMutexGuardOutcomeView,
+    get_cond_outcome: GetCondOutcomeView,
+    cond_wait_outcome: CondWaitOutcomeView,
+    put_cond_outcome: PutCondOutcomeView,
+    get_mutex_outcome: GetMutexOutcomeView,
+    lock_outcome: LockOutcomeView,
+    put_guard_outcome: PutGuardOutcomeView,
+)
+    requires
+        spec_is_success(spec_wait_cond_result(
+            timeout_s, timeout_ns,
+            take_guard_outcome, get_cond_outcome, cond_wait_outcome,
+            put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
+        )),
+    ensures
+        // All steps that establish the protocol predicates must have succeeded.
+        matches!(take_guard_outcome, TakeMutexGuardOutcomeView::TmgOk),
+        matches!(get_cond_outcome, GetCondOutcomeView::GcOk),
+        matches!(cond_wait_outcome, CondWaitOutcomeView::CwOk),
+        matches!(put_cond_outcome, PutCondOutcomeView::PcOk),
+        matches!(get_mutex_outcome, GetMutexOutcomeView::GmOk),
+        matches!(lock_outcome, LockOutcomeView::LoOk),
+        matches!(put_guard_outcome, PutGuardOutcomeView::PgOk),
+{
+    // Follows from lemma_success_requires_all_steps.
+    lemma_success_requires_all_steps(
+        timeout_s, timeout_ns,
+        take_guard_outcome, get_cond_outcome, cond_wait_outcome,
+        put_cond_outcome, get_mutex_outcome, lock_outcome, put_guard_outcome,
+    );
 }
 
 } // verus!

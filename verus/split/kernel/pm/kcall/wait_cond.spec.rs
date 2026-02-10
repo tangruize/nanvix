@@ -11,15 +11,15 @@
 // optional SystemTime alarm, then executes a multi-step pipeline:
 //   1. Parse timeout → Optional alarm (Infinite, Finite, or Invalid).
 //   2. ProcessManager::take_mutex_guard(pid, tid, mutex_addr) → release mutex.
-//   3. ProcessManager::get_cond(cond_addr) → get condition variable.
-//   4. cond.wait(alarm) → wait on condition variable.
-//   5. ProcessManager::put_cond(cond_addr) → release condition variable ref.
-//   6. ProcessManager::get_mutex(mutex_addr) → reacquire mutex reference.
-//   7. mutex.lock(None) → lock mutex (infinite wait on reacquisition).
-//   8. ProcessManager::put_mutex_guard(mutex_addr, guard) → store guard.
+//   3. get_cond + cond.wait → combined into a "stored result".
+//   4. ProcessManager::put_cond(cond_addr) → release condition variable ref.
+//   5. ProcessManager::get_mutex(mutex_addr) → reacquire mutex reference.
+//   6. mutex.lock(None) → lock mutex (infinite wait on reacquisition).
+//   7. ProcessManager::put_mutex_guard(mutex_addr, guard) → store guard.
 //
-// The function returns the result of step 4 (cond.wait), but errors from
-// any step short-circuit the pipeline.
+// Steps 4-7 execute regardless of the stored result from step 3. The stored
+// result is returned only if all of steps 4-7 succeed. If any step 4-7 fails,
+// its error overrides the stored result (via the `?` operator).
 
 use vstd::prelude::*;
 
@@ -167,7 +167,7 @@ pub enum WaitCondResultView {
     InvalidTimeoutError { error_code: int },
     /// ProcessManager::take_mutex_guard failed.
     TakeMutexGuardError { error_code: int },
-    /// ProcessManager::get_cond failed.
+    /// ProcessManager::get_cond failed (returned only if all continuation steps succeed).
     GetCondError { error_code: int },
     /// cond.wait returned Interrupted(TimedOut).
     CondWaitTimedOut,
@@ -187,6 +187,32 @@ pub enum WaitCondResultView {
     LockGenericError { error_code: int },
     /// ProcessManager::put_mutex_guard failed.
     PutGuardError { error_code: int },
+}
+
+/// Ghost state bundle capturing all step outcomes for exec-spec linkage.
+///
+/// # Description
+///
+/// Returned as a ghost value from `wait_cond_model` to prove the exec result
+/// matches `spec_wait_cond_result` applied to the actual step outcomes.
+/// When a step is not reached (due to prior error), its field is set to an
+/// arbitrary don't-care value — the spec ignores it due to short-circuit.
+#[verifier::ext_equal]
+pub struct WaitCondGhostState {
+    /// Outcome of ProcessManager::take_mutex_guard.
+    pub tmg: TakeMutexGuardOutcomeView,
+    /// Outcome of ProcessManager::get_cond.
+    pub gc: GetCondOutcomeView,
+    /// Outcome of cond.wait (don't-care when get_cond fails).
+    pub cw: CondWaitOutcomeView,
+    /// Outcome of ProcessManager::put_cond.
+    pub pc: PutCondOutcomeView,
+    /// Outcome of ProcessManager::get_mutex.
+    pub gm: GetMutexOutcomeView,
+    /// Outcome of mutex.lock.
+    pub lo: LockOutcomeView,
+    /// Outcome of ProcessManager::put_mutex_guard.
+    pub pg: PutGuardOutcomeView,
 }
 
 //==================================================================================================
@@ -231,34 +257,66 @@ pub open spec fn spec_is_finite_timeout(timeout_s: nat, timeout_ns: nat) -> bool
     spec_parse_timeout(timeout_s, timeout_ns) matches Some(TimeoutView::Finite { .. })
 }
 
+/// Spec function: computes the "stored result" from get_cond + cond.wait.
+///
+/// # Description
+///
+/// In the original code (lines 109-122):
+/// ```ignore
+/// let result = {
+///     match ProcessManager::get_cond(cond_addr) {
+///         Ok(cond) => cond.wait(alarm),
+///         Err(error) => Err(SleepError::Generic(error)),
+///     }
+/// };
+/// ```
+/// The stored result combines get_cond and cond.wait:
+/// - If get_cond fails, the error is stored (cond.wait is never called).
+/// - If get_cond succeeds, cond.wait's result is stored.
+///
+/// The continuation pipeline (put_cond, get_mutex, lock, put_guard) runs
+/// regardless, and the stored result is returned only if all continue OK.
+pub open spec fn spec_stored_result(
+    get_cond_outcome: GetCondOutcomeView,
+    cond_wait_outcome: CondWaitOutcomeView,
+) -> WaitCondResultView {
+    match get_cond_outcome {
+        GetCondOutcomeView::GcError { error_code } => {
+            WaitCondResultView::GetCondError { error_code }
+        },
+        GetCondOutcomeView::GcOk => {
+            match cond_wait_outcome {
+                CondWaitOutcomeView::CwOk => WaitCondResultView::Success,
+                CondWaitOutcomeView::CwTimedOut => WaitCondResultView::CondWaitTimedOut,
+                CondWaitOutcomeView::CwKilled => WaitCondResultView::CondWaitKilled,
+                CondWaitOutcomeView::CwGenericError { error_code } => {
+                    WaitCondResultView::CondWaitGenericError { error_code }
+                },
+            }
+        },
+    }
+}
+
 /// Spec function: models the complete wait_cond pipeline.
 ///
 /// # Description
 ///
-/// The wait_cond function executes a sequential pipeline:
+/// The wait_cond function executes the following pipeline:
 /// 1. Parse timeout → InvalidTimeoutError on failure.
-/// 2. take_mutex_guard → TakeMutexGuardError on failure.
-/// 3. get_cond → GetCondError on failure.
-/// 4. cond.wait → CondWait variant on failure.
-/// 5. put_cond → PutCondError on failure.
-/// 6. get_mutex → GetMutexError on failure.
-/// 7. mutex.lock → Lock variant on failure.
-/// 8. put_mutex_guard → PutGuardError on failure.
-/// 9. Return the cond.wait result (propagated from step 4).
+/// 2. take_mutex_guard → TakeMutexGuardError on failure (short-circuit).
+/// 3. get_cond + cond.wait → combined into a "stored result" (NO short-circuit).
+/// 4. put_cond → PutCondError on failure (overrides stored result).
+/// 5. get_mutex → GetMutexError on failure (overrides stored result).
+/// 6. lock → Lock error on failure (overrides stored result).
+/// 7. put_guard → PutGuardError on failure (overrides stored result).
+/// 8. Return stored result from step 3.
 ///
-/// Note: In the original code, put_cond (step 5) happens AFTER cond.wait
-/// returns, and regardless of whether cond.wait succeeded or failed, the
-/// code continues to put_cond, then reacquires the mutex. The cond.wait
-/// result is stored and returned at the end.
-///
-/// However, examining the source more carefully:
-/// - If cond.wait returns Err, that error is stored in `result`.
-/// - put_cond is called next and if it fails, its error is returned (via `?`).
-/// - Then get_mutex, lock, put_mutex_guard are called (each with `?`).
-/// - Finally `result` (from cond.wait) is returned.
-///
-/// So the pipeline continues even if cond.wait fails, but the cond.wait
-/// result is only returned if ALL subsequent steps succeed.
+/// **Critical semantic detail**: In the original code, the `result` variable
+/// (line 109) stores the get_cond/cond.wait outcome, and the continuation
+/// pipeline (put_cond through put_guard, lines 123-128) executes
+/// UNCONDITIONALLY via `?` operators. Continuation errors override the
+/// stored result. The stored result is returned only at line 130 after all
+/// continuation steps succeed.
 pub open spec fn spec_wait_cond_result(
     timeout_s: nat,
     timeout_ns: nat,
@@ -280,58 +338,39 @@ pub open spec fn spec_wait_cond_result(
                     WaitCondResultView::TakeMutexGuardError { error_code }
                 },
                 TakeMutexGuardOutcomeView::TmgOk => {
-                    match get_cond_outcome {
-                        GetCondOutcomeView::GcError { error_code } => {
-                            WaitCondResultView::GetCondError { error_code }
+                    // Compute stored result (get_cond + cond.wait).
+                    let stored: WaitCondResultView =
+                        spec_stored_result(get_cond_outcome, cond_wait_outcome);
+                    // Continuation pipeline runs regardless of stored result.
+                    match put_cond_outcome {
+                        PutCondOutcomeView::PcError { error_code } => {
+                            WaitCondResultView::PutCondError { error_code }
                         },
-                        GetCondOutcomeView::GcOk => {
-                            // cond.wait is called; result is stored.
-                            // put_cond is called next regardless.
-                            match put_cond_outcome {
-                                PutCondOutcomeView::PcError { error_code } => {
-                                    WaitCondResultView::PutCondError { error_code }
+                        PutCondOutcomeView::PcOk => {
+                            match get_mutex_outcome {
+                                GetMutexOutcomeView::GmError { error_code } => {
+                                    WaitCondResultView::GetMutexError { error_code }
                                 },
-                                PutCondOutcomeView::PcOk => {
-                                    // Mutex reacquisition pipeline.
-                                    match get_mutex_outcome {
-                                        GetMutexOutcomeView::GmError { error_code } => {
-                                            WaitCondResultView::GetMutexError { error_code }
+                                GetMutexOutcomeView::GmOk => {
+                                    match lock_outcome {
+                                        LockOutcomeView::LoTimedOut => {
+                                            WaitCondResultView::LockTimedOut
                                         },
-                                        GetMutexOutcomeView::GmOk => {
-                                            match lock_outcome {
-                                                LockOutcomeView::LoTimedOut => {
-                                                    WaitCondResultView::LockTimedOut
+                                        LockOutcomeView::LoKilled => {
+                                            WaitCondResultView::LockKilled
+                                        },
+                                        LockOutcomeView::LoGenericError { error_code } => {
+                                            WaitCondResultView::LockGenericError { error_code }
+                                        },
+                                        LockOutcomeView::LoOk => {
+                                            match put_guard_outcome {
+                                                PutGuardOutcomeView::PgError { error_code } => {
+                                                    WaitCondResultView::PutGuardError { error_code }
                                                 },
-                                                LockOutcomeView::LoKilled => {
-                                                    WaitCondResultView::LockKilled
-                                                },
-                                                LockOutcomeView::LoGenericError { error_code } => {
-                                                    WaitCondResultView::LockGenericError { error_code }
-                                                },
-                                                LockOutcomeView::LoOk => {
-                                                    match put_guard_outcome {
-                                                        PutGuardOutcomeView::PgError { error_code } => {
-                                                            WaitCondResultView::PutGuardError { error_code }
-                                                        },
-                                                        PutGuardOutcomeView::PgOk => {
-                                                            // All reacquisition steps succeeded.
-                                                            // Return the cond.wait result.
-                                                            match cond_wait_outcome {
-                                                                CondWaitOutcomeView::CwOk => {
-                                                                    WaitCondResultView::Success
-                                                                },
-                                                                CondWaitOutcomeView::CwTimedOut => {
-                                                                    WaitCondResultView::CondWaitTimedOut
-                                                                },
-                                                                CondWaitOutcomeView::CwKilled => {
-                                                                    WaitCondResultView::CondWaitKilled
-                                                                },
-                                                                CondWaitOutcomeView::CwGenericError { error_code } => {
-                                                                    WaitCondResultView::CondWaitGenericError { error_code }
-                                                                },
-                                                            }
-                                                        },
-                                                    }
+                                                PutGuardOutcomeView::PgOk => {
+                                                    // All continuation succeeded.
+                                                    // Return stored result.
+                                                    stored
                                                 },
                                             }
                                         },
@@ -420,12 +459,21 @@ pub open spec fn spec_wait_cond_safety_preconditions(pid: nat, tid: nat) -> bool
     && spec_caller_no_pm_reference()
 }
 
+/// Spec predicate: the supplied pid/tid identify the currently-running thread.
+///
+/// # Description
+///
+/// The PM operates on the currently-running thread internally. This predicate
+/// ensures the supplied identifiers match the thread the PM actually operates
+/// on, so that ownership postconditions are semantically correct.
+pub uninterp spec fn spec_is_currently_running(pid: nat, tid: nat) -> bool;
+
 /// Spec predicate: the mutex was released before the condition wait.
 ///
 /// # Description
 ///
 /// In the wait_cond protocol, the mutex must be released (step 2) before
-/// waiting on the condition variable (step 4). This is the standard
+/// waiting on the condition variable (step 3). This is the standard
 /// condition variable usage pattern to avoid deadlocks.
 pub uninterp spec fn spec_mutex_released(mutex_addr: nat) -> bool;
 

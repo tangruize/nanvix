@@ -11,30 +11,41 @@
 //! waits on a condition variable. It:
 //! 1. Parses the timeout parameters into an optional alarm time.
 //! 2. Releases the caller's mutex guard via `ProcessManager::take_mutex_guard`.
-//! 3. Retrieves the condition variable via `ProcessManager::get_cond`.
-//! 4. Waits on the condition variable via `cond.wait(alarm)`.
-//! 5. Releases the condition variable reference via `ProcessManager::put_cond`.
-//! 6. Reacquires the mutex via `ProcessManager::get_mutex` + `mutex.lock(None)` +
-//!    `ProcessManager::put_mutex_guard`.
-//! 7. Returns the result of `cond.wait` (step 4).
+//! 3. Computes a "stored result" from `get_cond` + `cond.wait(alarm)`. If get_cond
+//!    fails, the error is stored and cond.wait is NOT called.
+//! 4. Runs the continuation pipeline unconditionally: `put_cond`, `get_mutex`,
+//!    `mutex.lock(None)`, `put_mutex_guard`. Each step uses `?` so its error
+//!    overrides the stored result.
+//! 5. Returns the stored result only if all continuation steps succeed.
 //!
 //! ## Verified Properties
 //!
 //! - **Timeout parsing correctness**: Both MAX → infinite; valid nanos → finite;
 //!   invalid nanos → InvalidArgument error.
-//! - **Pipeline short-circuit**: Errors at any step abort the remaining pipeline.
+//! - **Stored result semantics**: get_cond failure stores the error (cond.wait is
+//!   never called); get_cond success stores the cond.wait outcome.
+//! - **Continuation pipeline**: put_cond, get_mutex, lock, put_guard run
+//!   unconditionally after the stored result; their errors override it.
+//! - **Pipeline short-circuit**: Errors at steps 1-2 abort before the stored result
+//!   computation. Continuation errors override the stored result.
 //! - **Error propagation**: Each step's error maps to the corresponding result variant.
 //! - **Success requires all steps**: Success iff ALL pipeline steps succeed AND
-//!   cond.wait returns Ok.
+//!   get_cond succeeds AND cond.wait returns Ok.
 //! - **Result exhaustiveness**: Every input produces exactly one result category.
-//! - **cond.wait result preservation**: When all subsequent steps succeed, the
-//!   cond.wait outcome is faithfully reflected in the final result.
+//! - **cond.wait result preservation**: When all subsequent steps succeed and get_cond
+//!   succeeded, the cond.wait outcome is faithfully reflected in the final result.
 //! - **Reacquisition uses infinite wait**: `mutex.lock(None)` cannot produce TimedOut.
+//! - **get_cond failure ignores cond_wait**: When get_cond fails, the cond_wait_outcome
+//!   parameter is irrelevant — changing it does not affect the result.
+//! - **Continuation errors override stored result**: When get_cond fails but a
+//!   continuation step also fails, the continuation error takes priority.
 //! - **Error code linkage**: Spec constant matches `ErrorCode::InvalidArgument`.
 //! - **Architecture guard**: x86-32 assumption verified.
 //! - **Safety precondition composition**: Three safety requirements compose correctly.
-//! - **Exec model correctness**: `wait_cond_model` matches `spec_wait_cond_result`
-//!   for all inputs and all step outcomes.
+//! - **Mutex protocol on success**: On success, `spec_mutex_released`,
+//!   `spec_cond_ref_released`, and `spec_mutex_reacquired` all hold.
+//! - **Exec-spec equivalence**: `wait_cond_model` result matches
+//!   `spec_wait_cond_result` applied to the ghost step outcomes.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -46,45 +57,32 @@
 //! - **Timing**: Whether TimedOut is returned only after the alarm time is a
 //!   real-time property, verified in the clock and condvar modules.
 //!
-//! ## Verification Model
-//!
-//! The original function uses several external dependencies:
-//! - `ConditionAddress::from(usize)` → type wrapper, not modeled.
-//! - `MutexAddress::from(usize)` → type wrapper, not modeled.
-//! - `SystemTime::new()` → modeled via timeout parsing in the exec model.
-//! - `ProcessManager::take_mutex_guard()` → `take_mutex_guard_model()` external_body.
-//! - `ProcessManager::get_cond()` → `get_cond_model()` external_body.
-//! - `cond.wait(alarm)` → `cond_wait_model()` external_body.
-//! - `ProcessManager::put_cond()` → `put_cond_model()` external_body.
-//! - `ProcessManager::get_mutex()` → `get_mutex_model()` external_body.
-//! - `Mutex::lock(None)` → `mutex_lock_model()` external_body.
-//! - `ProcessManager::put_mutex_guard()` → `put_mutex_guard_model()` external_body.
-//!
 //! ## Trust Boundaries
 //!
-//! - **T1: `ProcessManager::take_mutex_guard()`**. Releases the caller's mutex guard.
-//! - **T2: `ProcessManager::get_cond()`**. Retrieves condition variable reference.
+//! - **T1: `ProcessManager::take_mutex_guard(pid, tid, addr)`**. Releases mutex guard.
+//! - **T2: `ProcessManager::get_cond(addr)`**. Gets condition variable reference.
 //! - **T3: `cond.wait(alarm)`**. Waits on the condition variable.
-//! - **T4: `ProcessManager::put_cond()`**. Releases condition variable reference.
-//! - **T5: `ProcessManager::get_mutex()`**. Gets mutex reference for reacquisition.
+//! - **T4: `ProcessManager::put_cond(addr)`**. Releases condition variable reference.
+//! - **T5: `ProcessManager::get_mutex(addr)`**. Gets mutex for reacquisition.
 //! - **T6: `Mutex::lock(None)`**. Reacquires the mutex with infinite wait.
-//! - **T7: `ProcessManager::put_mutex_guard()`**. Stores the new guard.
+//! - **T7: `ProcessManager::put_mutex_guard(addr, guard)`**. Stores new guard.
 //!
 //! ## API Mapping
 //!
-//! | Original API                                  | Verified Model                    | Notes            |
-//! |-----------------------------------------------|-----------------------------------|------------------|
-//! | `ConditionAddress::from(usize)`               | (not modeled)                     | Type wrapper.    |
-//! | `MutexAddress::from(usize)`                   | (not modeled)                     | Type wrapper.    |
-//! | `SystemTime::new(s, ns)`                      | `parse_timeout_model(s, ns)`      | Verified.        |
-//! | `ProcessManager::take_mutex_guard(p,t,a)`     | `take_mutex_guard_model(a)`       | external_body.   |
-//! | `ProcessManager::get_cond(a)`                 | `get_cond_model(a)`               | external_body.   |
-//! | `cond.wait(alarm)`                            | `cond_wait_model(alarm)`          | external_body.   |
-//! | `ProcessManager::put_cond(a)`                 | `put_cond_model(a)`               | external_body.   |
-//! | `ProcessManager::get_mutex(a)`                | `get_mutex_model(a)`              | external_body.   |
-//! | `Mutex::lock(None)`                           | `mutex_lock_model(a)`             | external_body.   |
-//! | `ProcessManager::put_mutex_guard(a, guard)`   | `put_mutex_guard_model(a)`        | external_body.   |
-//! | `pub unsafe fn wait_cond(...)`                | `wait_cond_model(...)`            | Fully verified.  |
+//! | Original API                                  | Verified Model                     | Notes            |
+//! |-----------------------------------------------|------------------------------------|------------------|
+//! | `ConditionAddress::from(usize)`               | (not modeled)                      | Type wrapper.    |
+//! | `MutexAddress::from(usize)`                   | (not modeled)                      | Type wrapper.    |
+//! | `SystemTime::new(s, ns)`                      | `parse_timeout_model(s, ns)`       | Verified.        |
+//! | `ProcessManager::take_mutex_guard(p,t,a)`     | `take_mutex_guard_model(a,p,t)`    | external_body.   |
+//! | `ProcessManager::get_cond(a)`                 | `get_cond_model(a)`                | external_body.   |
+//! | `cond.wait(alarm)`                            | `cond_wait_model(alarm)`           | external_body.   |
+//! | get_cond + cond.wait combined                 | `get_cond_and_wait_model(a,alarm)` | Verified helper. |
+//! | `ProcessManager::put_cond(a)`                 | `put_cond_model(a)`                | external_body.   |
+//! | `ProcessManager::get_mutex(a)`                | `get_mutex_model(a)`               | external_body.   |
+//! | `Mutex::lock(None)`                           | `mutex_lock_model(a)`              | external_body.   |
+//! | `ProcessManager::put_mutex_guard(a, guard)`   | `put_mutex_guard_model(a)`         | external_body.   |
+//! | `pub unsafe fn wait_cond(...)`                | `wait_cond_model(...)`             | Fully verified.  |
 
 use crate::libs::error::ErrorCode;
 use vstd::prelude::*;
@@ -265,7 +263,7 @@ pub enum WaitCondResultModel {
     InvalidTimeoutError { error_code: i32 },
     /// take_mutex_guard failed.
     TakeMutexGuardError { error_code: i32 },
-    /// get_cond failed.
+    /// get_cond failed (returned only when all continuation steps succeed).
     GetCondError { error_code: i32 },
     /// cond.wait returned TimedOut.
     CondWaitTimedOut,
@@ -273,17 +271,17 @@ pub enum WaitCondResultModel {
     CondWaitKilled,
     /// cond.wait returned GenericError.
     CondWaitGenericError { error_code: i32 },
-    /// put_cond failed.
+    /// put_cond failed (overrides stored result).
     PutCondError { error_code: i32 },
-    /// get_mutex failed.
+    /// get_mutex failed (overrides stored result).
     GetMutexError { error_code: i32 },
-    /// mutex.lock returned TimedOut.
+    /// mutex.lock returned TimedOut (unreachable with None timeout).
     LockTimedOut,
     /// mutex.lock returned Killed.
     LockKilled,
     /// mutex.lock returned GenericError.
     LockGenericError { error_code: i32 },
-    /// put_mutex_guard failed.
+    /// put_mutex_guard failed (overrides stored result).
     PutGuardError { error_code: i32 },
 }
 
@@ -334,8 +332,20 @@ impl WaitCondResultModel {
 ///
 /// Retrieves and drops the caller's mutex guard, releasing the mutex.
 /// In the original, the guard is dropped at the closing brace of the block.
+///
+/// # Parameters
+///
+/// - `mutex_addr`: Mutex address.
+/// - `pid`: Ghost process identifier (matches original's pid parameter).
+/// - `tid`: Ghost thread identifier (matches original's tid parameter).
 #[verifier::external_body]
-pub fn take_mutex_guard_model(mutex_addr: u32) -> (result: TakeMutexGuardOutcomeModel)
+pub fn take_mutex_guard_model(
+    mutex_addr: u32,
+    pid: Ghost<u32>,
+    tid: Ghost<u32>,
+) -> (result: TakeMutexGuardOutcomeModel)
+    requires
+        spec_is_currently_running(pid@ as nat, tid@ as nat),
     ensures
         result matches TakeMutexGuardOutcomeModel::Error { error_code }
             ==> spec_is_valid_error_code(error_code as int),
@@ -449,26 +459,78 @@ pub fn put_mutex_guard_model(mutex_addr: u32) -> (result: PutGuardOutcomeModel)
 /// - Valid nanoseconds → Some(true) indicating a finite alarm.
 /// - Invalid nanoseconds → error.
 ///
-/// Returns `(ok, has_alarm)` where ok indicates success and has_alarm
+/// # Returns
+///
+/// `(ok, has_alarm)` where ok indicates success and has_alarm
 /// indicates whether a finite alarm was produced.
 pub fn parse_timeout_model(timeout_s: u32, timeout_ns: u32) -> (result: (bool, bool))
     ensures
-        // First element is true iff parsing succeeded.
         result.0 == spec_timeout_parsed_ok(timeout_s as nat, timeout_ns as nat),
-        // Second element is true iff a finite timeout was parsed.
         result.0 ==> (result.1 == spec_is_finite_timeout(timeout_s as nat, timeout_ns as nat)),
-        // When not ok, has_alarm is false.
         !result.0 ==> !result.1,
 {
     if timeout_s == u32::MAX && timeout_ns == u32::MAX {
-        // Infinite timeout.
         (true, false)
     } else if timeout_ns < 1_000_000_000u32 {
-        // Valid finite timeout.
         (true, true)
     } else {
-        // Invalid nanoseconds.
         (false, false)
+    }
+}
+
+/// Verified helper: models get_cond + optional cond.wait → stored result.
+///
+/// # Description
+///
+/// Encapsulates the "stored result" computation from the original code (lines
+/// 109-122). If get_cond fails, the error is stored and cond.wait is NOT called.
+/// If get_cond succeeds, cond.wait is called and its result is stored.
+///
+/// Returns the stored result model and ghost views of both step outcomes for
+/// exec-spec linkage.
+///
+/// # Parameters
+///
+/// - `cond_addr`: Condition variable address.
+/// - `has_alarm`: Whether a finite timeout alarm was set.
+pub fn get_cond_and_wait_model(cond_addr: u32, has_alarm: bool) -> (ret: (
+    WaitCondResultModel,
+    Ghost<GetCondOutcomeView>,
+    Ghost<CondWaitOutcomeView>,
+))
+    ensures
+        ret.0.spec_view() == spec_stored_result(ret.1@, ret.2@),
+        ret.1@ matches GetCondOutcomeView::GcError { error_code }
+            ==> spec_is_valid_error_code(error_code),
+        ret.2@ matches CondWaitOutcomeView::CwTimedOut ==> has_alarm,
+{
+    let gc_result: GetCondOutcomeModel = get_cond_model(cond_addr);
+    let ghost gc_view: GetCondOutcomeView = gc_result.spec_view();
+
+    match gc_result {
+        GetCondOutcomeModel::Error { error_code } => {
+            // get_cond failed: store error, cond.wait is never called.
+            let ghost cw_view: CondWaitOutcomeView = CondWaitOutcomeView::CwOk;
+            (
+                WaitCondResultModel::GetCondError { error_code },
+                Ghost(gc_view),
+                Ghost(cw_view),
+            )
+        },
+        GetCondOutcomeModel::Ok => {
+            // get_cond succeeded: call cond.wait and store its result.
+            let cw_result: CondWaitOutcomeModel = cond_wait_model(has_alarm);
+            let ghost cw_view: CondWaitOutcomeView = cw_result.spec_view();
+            let stored: WaitCondResultModel = match cw_result {
+                CondWaitOutcomeModel::Ok => WaitCondResultModel::Success,
+                CondWaitOutcomeModel::TimedOut => WaitCondResultModel::CondWaitTimedOut,
+                CondWaitOutcomeModel::Killed => WaitCondResultModel::CondWaitKilled,
+                CondWaitOutcomeModel::GenericError { error_code } => {
+                    WaitCondResultModel::CondWaitGenericError { error_code }
+                },
+            };
+            (stored, Ghost(gc_view), Ghost(cw_view))
+        },
     }
 }
 
@@ -478,14 +540,18 @@ pub fn parse_timeout_model(timeout_s: u32, timeout_ns: u32) -> (result: (bool, b
 ///
 /// This function mirrors the original `pub unsafe fn wait_cond(...)` control flow:
 /// 1. Parse timeout.
-/// 2. take_mutex_guard → release mutex.
-/// 3. get_cond → get condition variable.
-/// 4. cond.wait(alarm) → wait on condition variable.
-/// 5. put_cond → release condition variable ref.
-/// 6. get_mutex → get mutex for reacquisition.
-/// 7. mutex.lock(None) → reacquire mutex.
-/// 8. put_mutex_guard → store guard.
-/// 9. Return cond.wait result.
+/// 2. take_mutex_guard → release mutex (short-circuits on error).
+/// 3. get_cond + cond.wait → compute "stored result". If get_cond fails, the
+///    error is stored and cond.wait is NOT called. NO short-circuit.
+/// 4. put_cond → continuation pipeline (overrides stored result on error).
+/// 5. get_mutex → continuation pipeline.
+/// 6. mutex.lock(None) → continuation pipeline.
+/// 7. put_mutex_guard → continuation pipeline.
+/// 8. Return stored result from step 3.
+///
+/// **Critical semantic detail**: Steps 4-7 execute regardless of step 3's outcome.
+/// Errors in steps 4-7 override the stored result via the `?` operator. The stored
+/// result is returned only when all continuation steps succeed.
 ///
 /// # Parameters
 ///
@@ -493,20 +559,37 @@ pub fn parse_timeout_model(timeout_s: u32, timeout_ns: u32) -> (result: (bool, b
 /// - `mutex_addr`: Mutex address.
 /// - `timeout_s`: Timeout seconds (u32 on x86-32).
 /// - `timeout_ns`: Timeout nanoseconds (u32 on x86-32).
+/// - `pid`: Ghost process identifier (matches original's pid parameter).
+/// - `tid`: Ghost thread identifier (matches original's tid parameter).
+///
+/// # Returns
+///
+/// A tuple of the exec result model and a ghost `WaitCondGhostState` capturing
+/// all step outcomes for exec-spec equivalence.
 pub fn wait_cond_model(
     cond_addr: u32,
     mutex_addr: u32,
     timeout_s: u32,
     timeout_ns: u32,
-) -> (ret: (WaitCondResultModel, Ghost<WaitCondResultView>))
+    pid: Ghost<u32>,
+    tid: Ghost<u32>,
+) -> (ret: (WaitCondResultModel, Ghost<WaitCondGhostState>))
     requires
-        cond_addr as nat <= USIZE_MAX_X86_32(),
-        mutex_addr as nat <= USIZE_MAX_X86_32(),
-        timeout_s as nat <= USIZE_MAX_X86_32(),
-        timeout_ns as nat <= USIZE_MAX_X86_32(),
+        spec_wait_cond_safety_preconditions(pid@ as nat, tid@ as nat),
+        spec_is_currently_running(pid@ as nat, tid@ as nat),
     ensures
-        // The result model's view matches the ghost result view.
-        ret.0.spec_view() == ret.1@,
+        // Exec-spec equivalence: the result matches the spec function.
+        ret.0.spec_view() == spec_wait_cond_result(
+            timeout_s as nat, timeout_ns as nat,
+            ret.1@.tmg, ret.1@.gc, ret.1@.cw,
+            ret.1@.pc, ret.1@.gm, ret.1@.lo, ret.1@.pg,
+        ),
+        // Mutex protocol on success.
+        spec_is_success(ret.0.spec_view()) ==> (
+            spec_mutex_released(mutex_addr as nat)
+            && spec_cond_ref_released(cond_addr as nat)
+            && spec_mutex_reacquired(mutex_addr as nat)
+        ),
 {
     // Step 1: Parse timeout.
     let parse_result: (bool, bool) = parse_timeout_model(timeout_s, timeout_ns);
@@ -514,103 +597,181 @@ pub fn wait_cond_model(
     let has_alarm: bool = parse_result.1;
 
     if !timeout_ok {
-        // Invalid timeout → error.
         proof {
             assert(22i32 as int == ERROR_CODE_INVALID_ARGUMENT());
         }
-        let result: WaitCondResultModel = WaitCondResultModel::InvalidTimeoutError { error_code: 22i32 };
-        let ghost result_view: WaitCondResultView = result.spec_view();
-        return (result, Ghost(result_view));
+        let result: WaitCondResultModel =
+            WaitCondResultModel::InvalidTimeoutError { error_code: 22i32 };
+        let ghost gs: WaitCondGhostState = WaitCondGhostState {
+            tmg: TakeMutexGuardOutcomeView::TmgError { error_code: 0int },
+            gc: GetCondOutcomeView::GcOk,
+            cw: CondWaitOutcomeView::CwOk,
+            pc: PutCondOutcomeView::PcOk,
+            gm: GetMutexOutcomeView::GmOk,
+            lo: LockOutcomeView::LoOk,
+            pg: PutGuardOutcomeView::PgOk,
+        };
+        return (result, Ghost(gs));
     }
 
     // Step 2: take_mutex_guard → release mutex.
-    let tmg_result: TakeMutexGuardOutcomeModel = take_mutex_guard_model(mutex_addr);
+    let tmg_result: TakeMutexGuardOutcomeModel =
+        take_mutex_guard_model(mutex_addr, pid, tid);
+    let ghost tmg_view: TakeMutexGuardOutcomeView = tmg_result.spec_view();
     match tmg_result {
         TakeMutexGuardOutcomeModel::Error { error_code } => {
-            let result: WaitCondResultModel = WaitCondResultModel::TakeMutexGuardError { error_code };
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
+            let result: WaitCondResultModel =
+                WaitCondResultModel::TakeMutexGuardError { error_code };
+            let ghost gs: WaitCondGhostState = WaitCondGhostState {
+                tmg: tmg_view,
+                gc: GetCondOutcomeView::GcOk,
+                cw: CondWaitOutcomeView::CwOk,
+                pc: PutCondOutcomeView::PcOk,
+                gm: GetMutexOutcomeView::GmOk,
+                lo: LockOutcomeView::LoOk,
+                pg: PutGuardOutcomeView::PgOk,
+            };
+            return (result, Ghost(gs));
         },
         TakeMutexGuardOutcomeModel::Ok => {},
     }
 
-    // Step 3: get_cond.
-    let gc_result: GetCondOutcomeModel = get_cond_model(cond_addr);
-    match gc_result {
-        GetCondOutcomeModel::Error { error_code } => {
-            let result: WaitCondResultModel = WaitCondResultModel::GetCondError { error_code };
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
-        },
-        GetCondOutcomeModel::Ok => {},
-    }
+    // Steps 3+4: get_cond + optional cond.wait → stored result.
+    // In the original code (lines 109-122), get_cond failure stores the error
+    // and cond.wait is NOT called. The continuation pipeline runs regardless.
+    let gcw_ret: (
+        WaitCondResultModel,
+        Ghost<GetCondOutcomeView>,
+        Ghost<CondWaitOutcomeView>,
+    ) = get_cond_and_wait_model(cond_addr, has_alarm);
+    let stored: WaitCondResultModel = gcw_ret.0;
+    let ghost gc_view: GetCondOutcomeView = gcw_ret.1@;
+    let ghost cw_view: CondWaitOutcomeView = gcw_ret.2@;
 
-    // Step 4: cond.wait(alarm).
-    let cw_result: CondWaitOutcomeModel = cond_wait_model(has_alarm);
-
-    // Step 5: put_cond.
+    // Step 5: put_cond (runs unconditionally after get_cond+cond.wait block).
     let pc_result: PutCondOutcomeModel = put_cond_model(cond_addr);
+    let ghost pc_view: PutCondOutcomeView = pc_result.spec_view();
     match pc_result {
         PutCondOutcomeModel::Error { error_code } => {
-            let result: WaitCondResultModel = WaitCondResultModel::PutCondError { error_code };
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
+            let result: WaitCondResultModel =
+                WaitCondResultModel::PutCondError { error_code };
+            let ghost gs: WaitCondGhostState = WaitCondGhostState {
+                tmg: tmg_view,
+                gc: gc_view,
+                cw: cw_view,
+                pc: pc_view,
+                gm: GetMutexOutcomeView::GmOk,
+                lo: LockOutcomeView::LoOk,
+                pg: PutGuardOutcomeView::PgOk,
+            };
+            return (result, Ghost(gs));
         },
         PutCondOutcomeModel::Ok => {},
     }
 
     // Step 6: get_mutex.
     let gm_result: GetMutexOutcomeModel = get_mutex_model(mutex_addr);
+    let ghost gm_view: GetMutexOutcomeView = gm_result.spec_view();
     match gm_result {
         GetMutexOutcomeModel::Error { error_code } => {
-            let result: WaitCondResultModel = WaitCondResultModel::GetMutexError { error_code };
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
+            let result: WaitCondResultModel =
+                WaitCondResultModel::GetMutexError { error_code };
+            let ghost gs: WaitCondGhostState = WaitCondGhostState {
+                tmg: tmg_view,
+                gc: gc_view,
+                cw: cw_view,
+                pc: pc_view,
+                gm: gm_view,
+                lo: LockOutcomeView::LoOk,
+                pg: PutGuardOutcomeView::PgOk,
+            };
+            return (result, Ghost(gs));
         },
         GetMutexOutcomeModel::Ok => {},
     }
 
     // Step 7: mutex.lock(None) — reacquire with infinite wait.
     let lock_result: LockOutcomeModel = mutex_lock_model(mutex_addr);
+    let ghost lo_view: LockOutcomeView = lock_result.spec_view();
     match lock_result {
         LockOutcomeModel::TimedOut => {
+            // Unreachable: mutex_lock_model postcondition guarantees
+            // !matches!(result, LockOutcomeModel::TimedOut).
+            // Branch retained for exhaustive matching; postcondition vacuously true.
             let result: WaitCondResultModel = WaitCondResultModel::LockTimedOut;
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
+            let ghost gs: WaitCondGhostState = WaitCondGhostState {
+                tmg: tmg_view,
+                gc: gc_view,
+                cw: cw_view,
+                pc: pc_view,
+                gm: gm_view,
+                lo: lo_view,
+                pg: PutGuardOutcomeView::PgOk,
+            };
+            return (result, Ghost(gs));
         },
         LockOutcomeModel::Killed => {
             let result: WaitCondResultModel = WaitCondResultModel::LockKilled;
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
+            let ghost gs: WaitCondGhostState = WaitCondGhostState {
+                tmg: tmg_view,
+                gc: gc_view,
+                cw: cw_view,
+                pc: pc_view,
+                gm: gm_view,
+                lo: lo_view,
+                pg: PutGuardOutcomeView::PgOk,
+            };
+            return (result, Ghost(gs));
         },
         LockOutcomeModel::GenericError { error_code } => {
-            let result: WaitCondResultModel = WaitCondResultModel::LockGenericError { error_code };
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
+            let result: WaitCondResultModel =
+                WaitCondResultModel::LockGenericError { error_code };
+            let ghost gs: WaitCondGhostState = WaitCondGhostState {
+                tmg: tmg_view,
+                gc: gc_view,
+                cw: cw_view,
+                pc: pc_view,
+                gm: gm_view,
+                lo: lo_view,
+                pg: PutGuardOutcomeView::PgOk,
+            };
+            return (result, Ghost(gs));
         },
         LockOutcomeModel::Ok => {},
     }
 
     // Step 8: put_mutex_guard.
     let pg_result: PutGuardOutcomeModel = put_mutex_guard_model(mutex_addr);
+    let ghost pg_view: PutGuardOutcomeView = pg_result.spec_view();
     match pg_result {
         PutGuardOutcomeModel::Error { error_code } => {
-            let result: WaitCondResultModel = WaitCondResultModel::PutGuardError { error_code };
-            let ghost result_view: WaitCondResultView = result.spec_view();
-            return (result, Ghost(result_view));
+            let result: WaitCondResultModel =
+                WaitCondResultModel::PutGuardError { error_code };
+            let ghost gs: WaitCondGhostState = WaitCondGhostState {
+                tmg: tmg_view,
+                gc: gc_view,
+                cw: cw_view,
+                pc: pc_view,
+                gm: gm_view,
+                lo: lo_view,
+                pg: pg_view,
+            };
+            return (result, Ghost(gs));
         },
         PutGuardOutcomeModel::Ok => {},
     }
 
-    // Step 9: Return cond.wait result.
-    let result: WaitCondResultModel = match cw_result {
-        CondWaitOutcomeModel::Ok => WaitCondResultModel::Success,
-        CondWaitOutcomeModel::TimedOut => WaitCondResultModel::CondWaitTimedOut,
-        CondWaitOutcomeModel::Killed => WaitCondResultModel::CondWaitKilled,
-        CondWaitOutcomeModel::GenericError { error_code } => WaitCondResultModel::CondWaitGenericError { error_code },
+    // Step 9: All continuation steps succeeded. Return stored result.
+    let ghost gs: WaitCondGhostState = WaitCondGhostState {
+        tmg: tmg_view,
+        gc: gc_view,
+        cw: cw_view,
+        pc: pc_view,
+        gm: gm_view,
+        lo: lo_view,
+        pg: pg_view,
     };
-    let ghost result_view: WaitCondResultView = result.spec_view();
-    (result, Ghost(result_view))
+    (stored, Ghost(gs))
 }
 
 } // verus!
