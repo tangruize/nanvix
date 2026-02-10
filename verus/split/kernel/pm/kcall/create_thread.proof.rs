@@ -355,18 +355,34 @@ pub proof fn lemma_copy_error_code_valid(
 // Proof Functions — Error Code Domain
 //==================================================================================================
 
-/// Proof: error codes in the ErrorCode enum domain are valid positive codes.
+/// Proof: error codes in the verified ErrorCode subset are valid positive codes.
 ///
 /// # Description
 ///
-/// Links `spec_is_error_code_value` (which enumerates the actual ErrorCode
-/// discriminants) to `spec_is_valid_error_code` (which requires code > 0).
-/// All ErrorCode values (2, 3, 12, 14, 16, 22) are positive.
+/// Links `spec_is_error_code_value` (the verified ErrorCode subset) to
+/// `spec_is_valid_error_code` (code > 0). All ErrorCode values in the
+/// subset (2, 3, 12, 14, 16, 22) are positive. This lemma enables
+/// module-level proofs to strengthen from the broad `code > 0` constraint
+/// to specific ErrorCode values when the call site's error codes are known.
 pub proof fn lemma_error_code_value_implies_valid(code: int)
     requires
         spec_is_error_code_value(code),
     ensures
         spec_is_valid_error_code(code),
+{
+}
+
+/// Proof: the USER_STACK_SIZE spec constant matches config::memory_layout::USER_STACK_SIZE.
+///
+/// # Description
+///
+/// Documents that `USER_STACK_SIZE() == 524288` (512 * 1024 bytes).
+/// Source: `src/libs/config/src/lib.rs` line 120:
+///   `pub const USER_STACK_SIZE: usize = 512 * crate::constants::KILOBYTE;`
+/// If the kernel constant changes, this lemma will need updating.
+pub proof fn lemma_user_stack_size_matches_config()
+    ensures
+        USER_STACK_SIZE() == 524288nat,
 {
 }
 

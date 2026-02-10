@@ -62,8 +62,11 @@
 //!   `KcallArgs` is used in both operations. Ghost `arg0` tracks the source
 //!   address. Success postconditions link the ghost arguments to the input view.
 //! - **Copy error validity**: The `copy_from_user` external body guarantees
-//!   that error codes match the `ErrorCode` enum domain (`spec_is_error_code_value`)
-//!   and are valid positive values (`spec_is_valid_error_code`).
+//!   that error codes are valid positive values (`spec_is_valid_error_code`).
+//!   The `spec_is_error_code_value` predicate enumerates the subset of ErrorCode
+//!   variants present in the Verus verification model; the full kernel `ErrorCode`
+//!   enum has additional variants. Module-level proofs in PM/VMM can strengthen
+//!   the constraint for specific call sites.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -116,6 +119,15 @@
 //! is correct given boolean inputs, but does NOT prove that the booleans
 //! faithfully represent the concrete validation results.
 //!
+//! Specifically, `args_addr_valid` should equal
+//! `Vmem::is_user_region(VirtualAddress::from_raw_value(arg0), size_of::<ThreadCreateArgs>())`
+//! but this mapping is not verified here. The `arg0` field in
+//! `CreateThreadInputView` provides ghost traceability: it records which
+//! address was used, and the same `ghost_pid` is threaded through
+//! `copy_from_user` and `pm_create_thread` to prove the PID is consistent.
+//! However, linking `arg0` to `args_addr_valid` requires composing with
+//! the VMM module's `Vmem::is_user_region` specification.
+//!
 //! This is an intentional design choice matching the project's per-module
 //! verification approach:
 //! - The VMM module verifies `Vmem::is_user_region` and `Vmem::is_user_addr`.
@@ -124,7 +136,7 @@
 //!
 //! Full end-to-end soundness requires composing these module-level proofs.
 //! A future refinement could add linking lemmas connecting concrete types to
-//! the boolean abstraction.
+//! the boolean abstraction by importing VMM spec functions.
 //!
 //! ## API Mapping
 //!
@@ -332,8 +344,7 @@ pub fn copy_from_user(
             && ec == error_code),
         result.spec_succeeded() == succeeded,
         !succeeded ==> result.spec_error_code() == error_code as int,
-        // Error codes match the ErrorCode enum domain and are valid positive values.
-        !succeeded ==> spec_is_error_code_value(error_code as int),
+        // Error codes are always valid positive values (ErrorCode enum discriminants).
         !succeeded ==> spec_is_valid_error_code(error_code as int),
 {
     unimplemented!()
@@ -370,8 +381,6 @@ pub fn pm_create_thread(
     ensures
         matches!(result, CreateThreadResultModel::CtOk { .. } | CreateThreadResultModel::CtError { .. }),
         result matches CreateThreadResultModel::CtOk { tid } ==> tid >= 0i32,
-        result.spec_view() matches CreateThreadOutcomeView::CtError { error_code }
-            ==> spec_is_error_code_value(error_code),
         result.spec_view() matches CreateThreadOutcomeView::CtError { error_code }
             ==> spec_is_valid_error_code(error_code),
 {

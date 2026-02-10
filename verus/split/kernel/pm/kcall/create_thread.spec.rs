@@ -36,6 +36,10 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
 
 /// The minimum user stack size in bytes (512 KiB = 524288).
 /// Corresponds to `config::memory_layout::USER_STACK_SIZE`.
+///
+/// Sync point: if the kernel constant changes, update this value and
+/// `lemma_user_stack_size_matches_config` in the proof file.
+/// CI should verify this via `./verus-ai/scripts/verify.sh kcall_create_thread`.
 pub open spec fn USER_STACK_SIZE() -> nat {
     524288
 }
@@ -237,13 +241,21 @@ pub open spec fn spec_is_valid_error_code(code: int) -> bool {
     code > 0
 }
 
-/// Spec predicate: whether an error code matches the ErrorCode enum domain.
+/// Spec predicate: whether an error code matches the verified ErrorCode subset.
 ///
 /// # Description
 ///
-/// Enumerates the actual discriminant values of the `ErrorCode` enum
-/// (repr(i32)): NoSuchEntry=2, NoSuchProcess=3, OutOfMemory=12,
-/// BadAddress=14, ResourceBusy=16, InvalidArgument=22.
+/// Enumerates the discriminant values of the `ErrorCode` variants present
+/// in the Verus verification model (`verus/split/libs/error/lib.rs`):
+/// NoSuchEntry=2, NoSuchProcess=3, OutOfMemory=12, BadAddress=14,
+/// ResourceBusy=16, InvalidArgument=22.
+///
+/// NOTE: The full kernel `ErrorCode` enum (`src/libs/error/src/lib.rs`)
+/// defines ~30 additional variants. This predicate only covers the subset
+/// used in the Verus model. External body postconditions use the broader
+/// `spec_is_valid_error_code(code > 0)` to avoid unsound over-constraint.
+/// Module-level proofs can strengthen to this predicate when the specific
+/// error codes returned by a call site are known.
 pub open spec fn spec_is_error_code_value(code: int) -> bool {
     code == 2    // NoSuchEntry
     || code == 3    // NoSuchProcess
