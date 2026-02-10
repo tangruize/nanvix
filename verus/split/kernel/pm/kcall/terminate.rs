@@ -253,12 +253,12 @@ pub fn process_manager_terminate(
             ==> matches!(ret.0, TerminateResultModel::TmError { .. }),
         // Kernel PID error code is InvalidArgument.
         pid as nat == KERNEL_PID()
-            ==> ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
-                && error_code == ERROR_CODE_INVALID_ARGUMENT(),
+            ==> (ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
+                && error_code == ERROR_CODE_INVALID_ARGUMENT()),
         // Non-existent non-kernel PID returns NoSuchProcess.
         pid as nat != KERNEL_PID() && !spec_pm_has_process(pm_pre, pid as nat)
-            ==> ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
-                && error_code == ERROR_CODE_NO_SUCH_PROCESS(),
+            ==> (ret.0.spec_view() matches TerminateOutcomeView::TmError { error_code }
+                && error_code == ERROR_CODE_NO_SUCH_PROCESS()),
         // On success: PID existed in pre-state and is removed from post-state.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> spec_pm_has_process(pm_pre, pid as nat)
