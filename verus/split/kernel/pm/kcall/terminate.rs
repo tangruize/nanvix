@@ -321,6 +321,12 @@ pub fn process_manager_terminate(
         // On success: PID existed in pre-state.
         ret.0.spec_view() == TerminateOutcomeView::TmOk
             ==> spec_pm_has_process(pm_pre, pid as nat),
+        // On success: PID is not the kernel PID (contrapositive of kernel rejection).
+        ret.0.spec_view() == TerminateOutcomeView::TmOk
+            ==> pid as nat != KERNEL_PID(),
+        // On success: PID is not the running process (contrapositive of running rejection).
+        ret.0.spec_view() == TerminateOutcomeView::TmOk
+            ==> !spec_is_running_process(pm_pre, pid as nat),
         // Frame: on success, no new PIDs are created (subset).
         // Note: the real PM may preserve the target PID (resume case with
         // runnable threads), so the frame is conservatively weak — it does
