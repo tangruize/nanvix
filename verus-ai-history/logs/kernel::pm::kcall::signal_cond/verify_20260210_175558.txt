@@ -1,0 +1,24 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 17:55:58 CST 2026
+Module: kernel::pm::kcall::signal_cond
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::signal_cond
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0425]: cannot find value `awakened` in this scope
+   --> kernel/pm/kcall/signal_cond.rs:422:71
+    |
+422 |             ==> spec_broadcast_semantics(broadcast, cond_addr as nat, awakened),
+    |                                                                       ^^^^^^^^ not found in this scope
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0425`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::signal_cond (verified:0, errors:0)
