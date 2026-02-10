@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 15:23:51 CST 2026
+Module: kernel::pm::kcall::unlock_mutex
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::unlock_mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: no rules expected `@`
+   --> kernel/pm/kcall/unlock_mutex.rs:234:28
+    |
+234 |             !matches!(ret.1@, TakeMutexGuardOutcomeView::TgOk),
+    |                            ^ no rules expected this token in macro call
+    |
+note: while trying to match `,`
+   --> /home/ubuntu/.rustup/toolchains/1.91.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/macros/mod.rs:435:22
+    |
+435 |     ($expression:expr, $pattern:pat $(if $guard:expr)? $(,)?) => {
+    |                      ^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::unlock_mutex (verified:0, errors:0)
