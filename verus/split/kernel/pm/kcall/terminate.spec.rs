@@ -144,6 +144,26 @@ pub open spec fn spec_is_running_process(state: ProcessManagerStateView, pid: na
     state.running_pid == Some(pid)
 }
 
+/// Well-formedness predicate for ProcessManager state.
+///
+/// # Description
+///
+/// Ensures structural consistency of the PM state:
+/// - If a running process exists, its PID must be in the process set.
+/// - The kernel PID (0) is always in the process set (it is never removed).
+///
+/// This invariant prevents inconsistent postconditions in
+/// `process_manager_terminate`. Without it, a state where
+/// `running_pid == Some(pid)` but `!process_set.contains(pid)` would
+/// trigger both `InvalidArgument` (running) and `NoSuchProcess`
+/// (non-existent) postconditions simultaneously.
+pub open spec fn spec_pm_wf(state: ProcessManagerStateView) -> bool {
+    // Running process must be in the process set.
+    (state.running_pid matches Some(pid) ==> state.process_set.contains(pid))
+    // Kernel PID is always tracked.
+    && state.process_set.contains(KERNEL_PID())
+}
+
 /// Whether a raw u32 value is a valid ProcessIdentifier.
 ///
 /// # Description

@@ -293,6 +293,47 @@ pub proof fn lemma_kernel_pid_always_fails(
 // Proof Functions — PM State Transitions
 //==================================================================================================
 
+/// Proof: well-formed PM state ensures running PID is in the process set.
+///
+/// # Description
+///
+/// When the PM state is well-formed and a PID is the running process, that
+/// PID must be in the process set. This ensures the `running PID` and
+/// `non-existent PID` postconditions of `process_manager_terminate` are
+/// never simultaneously triggered (they are mutually exclusive for
+/// well-formed states).
+pub proof fn lemma_wf_running_implies_exists(
+    state: ProcessManagerStateView,
+    pid: nat,
+)
+    requires
+        spec_pm_wf(state),
+        spec_is_running_process(state, pid),
+    ensures
+        spec_pm_has_process(state, pid),
+{
+}
+
+/// Proof: well-formed state prevents inconsistent error postconditions.
+///
+/// # Description
+///
+/// For a well-formed PM state, the `running PID` condition and the
+/// `non-existent non-kernel PID` condition are mutually exclusive.
+/// This proves the `process_manager_terminate` postconditions are
+/// consistent (never simultaneously triggered).
+pub proof fn lemma_wf_prevents_inconsistency(
+    state: ProcessManagerStateView,
+    pid: nat,
+)
+    requires
+        spec_pm_wf(state),
+    ensures
+        // Running PID and non-existent PID are mutually exclusive.
+        !(spec_is_running_process(state, pid) && !spec_pm_has_process(state, pid)),
+{
+}
+
 /// Proof: PM state is unchanged when the overall pipeline result is an error.
 ///
 /// # Description

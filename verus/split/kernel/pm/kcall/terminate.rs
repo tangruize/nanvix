@@ -54,6 +54,12 @@
 //! - **Terminability precondition**: Success implies the PID was terminatable
 //!   in the pre-state: existed, not kernel, not running
 //!   (`lemma_success_requires_terminatable`).
+//! - **PM state well-formedness**: The `spec_pm_wf` invariant ensures the
+//!   running PID is always in the process set and the kernel PID is tracked.
+//!   This prevents inconsistent postconditions on the PM external_body
+//!   (`lemma_wf_running_implies_exists`, `lemma_wf_prevents_inconsistency`).
+//!   Well-formedness is required as a precondition and guaranteed as a
+//!   postcondition of both `process_manager_terminate` and `terminate_model`.
 //!
 //! ## Properties NOT Proven Here (Out of Scope)
 //!
@@ -255,12 +261,19 @@ pub fn try_from_process_identifier(arg0: u32) -> (result: PidParseResultModel)
 /// These postconditions are trusted assumptions modeled from the PM
 /// implementation (src/kernel/src/pm/process/manager/mod.rs:1036-1078).
 /// The PM module's own verification (in the `process_manager` verified
-/// module) covers the implementation side of these contracts.
+/// module) covers the implementation side of these contracts. The
+/// `spec_pm_wf` precondition ensures structural consistency, preventing
+/// contradictory postconditions (e.g., running + non-existent for the
+/// same PID). This is a refinement contract: the PM module must maintain
+/// well-formedness as an invariant, and this kcall module requires it.
 #[verifier::external_body]
 pub fn process_manager_terminate(
     pid: u32,
     Ghost(pm_pre): Ghost<ProcessManagerStateView>,
 ) -> (ret: (TerminateResultModel, Ghost<ProcessManagerStateView>))
+    requires
+        // The pre-state must be well-formed.
+        spec_pm_wf(pm_pre),
     ensures
         // Kernel PID (0) always fails.
         pid as nat == KERNEL_PID()
@@ -294,6 +307,8 @@ pub fn process_manager_terminate(
             ==> spec_is_valid_error_code(error_code),
         // The result is always one of the defined variants.
         matches!(ret.0, TerminateResultModel::TmOk | TerminateResultModel::TmError { .. }),
+        // The post-state is well-formed.
+        spec_pm_wf(ret.1@),
 {
     unimplemented!()
 }
@@ -332,6 +347,9 @@ pub fn terminate_model(
     arg0: u32,
     Ghost(pm_pre): Ghost<ProcessManagerStateView>,
 ) -> (ret: (KcallResultModel, Ghost<PidParseOutcomeView>, Ghost<TerminateOutcomeView>, Ghost<ProcessManagerStateView>))
+    requires
+        // The pre-state must be well-formed.
+        spec_pm_wf(pm_pre),
     ensures
         // The result matches the spec pipeline.
         ret.0.spec_view() == spec_terminate_result(ret.1@, ret.2@),
@@ -371,6 +389,8 @@ pub fn terminate_model(
         spec_is_success(ret.0.spec_view()) || spec_is_error(ret.0.spec_view()),
         // Success and Error are mutually exclusive.
         !(spec_is_success(ret.0.spec_view()) && spec_is_error(ret.0.spec_view())),
+        // Post-state is well-formed.
+        spec_pm_wf(ret.3@),
 {
     // Step 1: Parse ProcessIdentifier from arg0.
     let pid_result: PidParseResultModel = try_from_process_identifier(arg0);
