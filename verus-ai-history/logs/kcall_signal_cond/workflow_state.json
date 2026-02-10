@@ -1,6 +1,6 @@
 {
   "module_name": "kcall_signal_cond",
-  "outer_iteration": 1,
+  "outer_iteration": 2,
   "inner_iteration": 0,
   "current_reviewer_idx": 0,
   "prover_session_id": "cda9a12e-d25c-4601-a510-c92817a69f95",
