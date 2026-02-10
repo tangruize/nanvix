@@ -532,6 +532,12 @@ pub fn handle_sleep_error_killed() -> (result: DispatchResult)
 // Each function models one ProcessManager / subsystem operation.
 // These are dependency boundary types — their correctness is assumed
 // via trust boundaries T1–T3.
+//
+// NOTE: The original code passes `arg0 as usize` to many subsystem calls.
+// On the target x86-32 platform, `usize` is 32 bits (same as `u32`),
+// so the verified model accepts `u32` directly. If the code were ported
+// to a 64-bit target, this equivalence would no longer hold and the
+// external bodies would need to be updated.
 
 /// Retrieves the current process identifier from the ProcessManager.
 ///
@@ -540,17 +546,17 @@ pub fn handle_sleep_error_killed() -> (result: DispatchResult)
 /// FallibleOutcome: success with pid value (>= 0), or error code on failure.
 #[verifier::external_body]
 fn pm_get_pid() -> (result: FallibleOutcome)
-    ensures result.wf(), result.succeeded ==> result.value >= 0,
+    ensures result.wf(), result.succeeded ==> (result.value >= 0 && result.value <= i32::MAX as i64),
 { unimplemented!() }
 
 /// Retrieves the current thread identifier from the ProcessManager.
 ///
 /// # Returns
 ///
-/// FallibleOutcome: success with tid value (>= 0), or error code on failure.
+/// FallibleOutcome: success with tid value (>= 0, <= i32::MAX), or error code on failure.
 #[verifier::external_body]
 fn pm_get_tid() -> (result: FallibleOutcome)
-    ensures result.wf(), result.succeeded ==> result.value >= 0,
+    ensures result.wf(), result.succeeded ==> (result.value >= 0 && result.value <= i32::MAX as i64),
 { unimplemented!() }
 
 /// Models ProcessManager::exit (Exit kcall).
@@ -643,7 +649,7 @@ fn pm_wait_cond(pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32, arg3: u32) 
 /// accepts a `bool` matching the original signature.
 #[verifier::external_body]
 fn pm_signal_cond(pid: i64, tid: i64, arg0: u32, broadcast: bool) -> (result: FallibleOutcome)
-    ensures result.wf(),
+    ensures result.wf(), result.succeeded ==> result.value >= 0,
 { unimplemented!() }
 
 /// Models ProcessManager::giveup (SchedulerYield kcall).
@@ -732,13 +738,17 @@ fn remote_dispatch_verified(number: u32, pid: i64, tid: i64, arg0: u32, arg1: u3
         let dispatch_outcome: ScoreboardDispatchOutcome =
             scoreboard_dispatch_call(number, pid, tid, arg0, arg1, arg2, arg3);
         if dispatch_outcome.succeeded {
-            DispatchResult {
-                is_success: dispatch_outcome.result_is_success,
-                value: dispatch_outcome.result_value,
+            if dispatch_outcome.result_is_success {
+                DispatchResult::success(dispatch_outcome.result_value)
+            } else {
+                DispatchResult::error(dispatch_outcome.result_value as i32)
             }
         } else {
             match dispatch_outcome.sleep_error_kind {
                 SleepErrorKind::InterruptedKilled => {
+                    // SOUNDNESS NOTE: handle_sleep_error_killed has `ensures false`.
+                    // If the original Killed path ever changes to NOT diverge,
+                    // this external_body must be updated. See trust boundary T4.
                     handle_sleep_error_killed()
                 },
                 SleepErrorKind::Generic => {
@@ -788,6 +798,9 @@ fn convert_sleepable(outcome: SleepableOutcome) -> (result: DispatchResult)
     } else {
         match outcome.sleep_error_kind {
             SleepErrorKind::InterruptedKilled => {
+                // SOUNDNESS NOTE: handle_sleep_error_killed has `ensures false`.
+                // If the original Killed path ever changes to NOT diverge,
+                // this external_body must be updated. See trust boundary T4.
                 handle_sleep_error_killed()
             },
             SleepErrorKind::Generic => {
@@ -881,6 +894,8 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
         // ok()-returning fallible calls: success value is 0.
         (args.number == 25u32 || args.number == 20u32)
             && result.is_success ==> result.value == 0,
+        // CondSignal: success value >= 0 (count of woken threads).
+        args.number == 26u32 && result.is_success ==> result.value >= 0,
         // Sleepable/fallible error paths produce well-formed error results.
         (args.number == 9u32 || args.number == 23u32 || args.number == 24u32
             || args.number == 27u32 || args.number == 29u32
@@ -967,6 +982,8 @@ pub fn do_kcall_context(args: DispatchArgs) -> (result: DispatchResult)
             || args.number == 27u32 || args.number == 29u32
             || args.number == 25u32 || args.number == 20u32)
             && result.is_success ==> result.value == 0,
+        // CondSignal: success value >= 0 (count of woken threads).
+        args.number == 26u32 && result.is_success ==> result.value >= 0,
         // JoinThread: success value >= 0 (u32 exit status).
         args.number == 23u32 && result.is_success ==> result.value >= 0,
 {
@@ -1028,6 +1045,8 @@ pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
             || args.number == 27u32 || args.number == 29u32
             || args.number == 25u32 || args.number == 20u32)
             && result.is_success ==> result.value == 0,
+        // CondSignal: success value >= 0 (count of woken threads).
+        args.number == 26u32 && result.is_success ==> result.value >= 0,
         // JoinThread: success value >= 0.
         args.number == 23u32 && result.is_success ==> result.value >= 0,
 {
@@ -1083,8 +1102,6 @@ pub fn encode_result(result: &DispatchResult) -> (encoded: i64)
 ///
 /// The encoded i64 return value.
 pub fn do_kcall_encoded(args: DispatchArgs) -> (pair: (DispatchResult, i64))
-    requires
-        args.wf(),
     ensures ({
         let result: DispatchResult = pair.0;
         let encoded: i64 = pair.1;
@@ -1102,6 +1119,7 @@ pub fn do_kcall_encoded(args: DispatchArgs) -> (pair: (DispatchResult, i64))
                 || args.number == 27u32 || args.number == 29u32
                 || args.number == 25u32 || args.number == 20u32)
                 && result.is_success ==> result.value == 0)
+        &&& (args.number == 26u32 && result.is_success ==> result.value >= 0)
         &&& (args.number == 23u32 && result.is_success ==> result.value >= 0)
     }),
 {
