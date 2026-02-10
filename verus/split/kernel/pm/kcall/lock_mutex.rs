@@ -355,20 +355,22 @@ pub fn parse_timeout(timeout_s: u32, timeout_ns: u32) -> (result: Result<bool, L
     ensures
         // Infinite timeout case.
         spec_is_infinite_timeout(timeout_s as nat, timeout_ns as nat)
-            ==> result.is_ok() && result.unwrap() == false,
+            ==> result == Ok(false),
         // Valid finite timeout case.
         (!spec_is_infinite_timeout(timeout_s as nat, timeout_ns as nat)
             && spec_timeout_ns_valid(timeout_ns as nat))
-            ==> result.is_ok() && result.unwrap() == true,
+            ==> result == Ok(true),
         // Invalid timeout case.
         (!spec_is_infinite_timeout(timeout_s as nat, timeout_ns as nat)
             && !spec_timeout_ns_valid(timeout_ns as nat))
             ==> result.is_err(),
         // Error case produces correct error code.
-        result.is_err() ==> result.unwrap_err().spec_view()
-            == (LockMutexResultView::InvalidTimeoutError {
+        result.is_err() ==> ({
+            let err: LockMutexResultModel = result.get_Err_0();
+            err.spec_view() == (LockMutexResultView::InvalidTimeoutError {
                 error_code: ERROR_CODE_INVALID_ARGUMENT(),
-            }),
+            })
+        }),
         // Result matches spec_parse_timeout.
         result.is_ok() <==> spec_timeout_parsed_ok(timeout_s as nat, timeout_ns as nat),
 {
