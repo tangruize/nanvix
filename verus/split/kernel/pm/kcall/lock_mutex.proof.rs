@@ -96,7 +96,7 @@ pub proof fn lemma_get_mutex_error_propagates(
             GetMutexOutcomeView::GmError { error_code },
             lock_outcome,
             put_guard_outcome,
-        ) == LockMutexResultView::GetMutexError { error_code },
+        ) == (LockMutexResultView::GetMutexError { error_code }),
         spec_is_get_mutex_error(
             spec_lock_mutex_result(
                 timeout_s, timeout_ns,
@@ -177,7 +177,7 @@ pub proof fn lemma_put_guard_error_propagates(
             GetMutexOutcomeView::GmOk,
             LockOutcomeView::LoOk,
             PutGuardOutcomeView::PgError { error_code },
-        ) == LockMutexResultView::PutGuardError { error_code },
+        ) == (LockMutexResultView::PutGuardError { error_code }),
         spec_is_put_guard_error(
             spec_lock_mutex_result(
                 timeout_s, timeout_ns,
