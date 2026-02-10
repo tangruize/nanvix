@@ -142,6 +142,9 @@
 //!   definitions (`ProcessIdentifier::INITD`, `ErrorCode::InvalidSysCall`).
 //!   The regression-style `lemma_spec_constants_match_source()` in the proof
 //!   file documents the expected values for drift detection.
+//!   **Source baseline**: `src/kernel/src/kcall/handler.rs` (200 lines,
+//!   commit ff5c49cc, SHA-256 prefix 38c3e49732afc4ed). If the source file
+//!   changes, compare the diff against this model and update accordingly.
 //! - **IKC polling internals**: The IKC message polling loop's internal logic
 //!   (batching with `IKC_POLL_BATCH_SIZE`, buffer limit `MAX_IKC_MESSAGES`,
 //!   `stdio::read()` and `EventManager::post_message()`) is abstracted into
