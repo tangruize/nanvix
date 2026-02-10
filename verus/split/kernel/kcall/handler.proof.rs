@@ -780,32 +780,30 @@ pub proof fn lemma_handler_top_level_correctness(
 /// # Description
 ///
 /// This lemma bridges the gap between the environment oracle model and
-/// the exec loop. It proves that under two assumptions:
-/// 1. The loop postconditions hold (from `kcall_handler_loop`).
-/// 2. The environment oracle faithfully represents actual harvest outcomes
-///    (i.e., the recorded history is a prefix of the oracle's non-terminating
-///    outcomes).
+/// the exec loop. Given:
+/// 1. The loop postconditions (from `kcall_handler_loop`).
+/// 2. An oracle that faithfully represents the actual harvest outcomes
+///    (`spec_oracle_matches_history`).
+/// 3. The oracle contains a terminating outcome within `fuel` iterations.
 ///
-/// Then: if the oracle produces a terminating outcome within `fuel`
-/// iterations, the loop MUST have returned `terminated == true`.
+/// It proves that the loop MUST have returned `terminated == true` with
+/// all correctness properties (`spec_handler_terminated_correctly`).
 ///
-/// **Proof sketch** (contrapositive):
+/// **Proof** (contrapositive):
 /// - Suppose `!terminated`. Then `history.len() == fuel` (postcondition).
-/// - `spec_loop_invariant(history)` holds, so all `fuel` recorded outcomes
-///   are non-terminating.
-/// - If the oracle matches the actual execution, then the first `fuel`
-///   actual outcomes are non-terminating.
-/// - But the oracle says one of them IS terminating — contradiction.
+/// - `spec_loop_invariant(history)` holds, so for every `i < fuel`,
+///   `!spec_should_terminate(history[i])`.
+/// - `spec_oracle_matches_history` says `history[i] == oracle[i]` for
+///   all `i < history.len()`.
+/// - So `!spec_should_terminate(oracle[i])` for all `i < fuel`.
+/// - But `spec_oracle_has_termination(oracle, fuel)` says there exists
+///   `k < fuel` with `spec_should_terminate(oracle[k])` — contradiction.
 /// - Therefore `terminated == true`.
-///
-/// **Key assumption**: The oracle-to-execution correspondence cannot be
-/// mechanically verified because `harvest_zombies()` is an external body.
-/// This lemma encodes the logical structure of the argument so that
-/// consumers can apply it given the oracle assumption.
 pub proof fn lemma_oracle_connected_liveness(
     terminated: bool,
     termination_pid: u32,
     history: Seq<HarvestOutcome>,
+    oracle: Seq<HarvestOutcome>,
     fuel: u32,
 )
     requires
@@ -814,18 +812,40 @@ pub proof fn lemma_oracle_connected_liveness(
         !terminated ==> history.len() == fuel as int,
         terminated ==> history.len() < fuel as int,
         terminated ==> termination_pid == 1u32,
+        // Oracle-execution correspondence.
+        spec_oracle_matches_history(oracle, history),
+        // Liveness assumption: INITD terminates within fuel iterations.
+        spec_oracle_has_termination(oracle, fuel as int),
     ensures
-        // Contrapositive: !terminated ==> no termination in history.
-        !terminated ==> !spec_initd_terminates_within(history),
-        // Positive: terminated ==> correctness holds.
-        terminated ==> spec_handler_terminated_correctly(
-            terminated, termination_pid, history,
-        ),
+        // The loop terminated correctly.
+        terminated,
+        spec_handler_terminated_correctly(terminated, termination_pid, history),
 {
-    lemma_invariant_excludes_all_termination(history);
-    if terminated {
-        // spec_handler_terminated_correctly follows from the requires.
+    // Proof by contradiction: assume !terminated.
+    // Then history.len() == fuel.
+    // The loop invariant gives us: forall i < fuel, !should_terminate(history[i]).
+    // The oracle match gives us: history[i] == oracle[i] for all i < fuel.
+    // Therefore: forall i < fuel, !should_terminate(oracle[i]).
+    // But spec_oracle_has_termination says exists k < fuel, should_terminate(oracle[k]).
+    // Contradiction. So terminated must be true.
+    if !terminated {
+        assert(history.len() == fuel as int);
+        // Instantiate the invariant and oracle match to show no termination
+        // in the first fuel oracle entries.
+        assert forall|i: int| 0 <= i < fuel as int implies
+            !spec_should_terminate(#[trigger] oracle[i]) by {
+            // history[i] == oracle[i] from spec_oracle_matches_history.
+            assert(history[i] == oracle[i]);
+            // !spec_should_terminate(history[i]) from spec_loop_invariant.
+            lemma_invariant_excludes_termination(history, i);
+        }
+        // Now we have: forall i < fuel, !should_terminate(oracle[i]).
+        // But spec_oracle_has_termination(oracle, fuel) says:
+        //   exists k, 0 <= k < fuel && should_terminate(oracle[k]).
+        // This is a contradiction, which Verus will discharge automatically.
+        assert(false);
     }
+    // terminated == true, so correctness follows from the requires.
 }
 
 } // verus!

@@ -810,6 +810,13 @@ pub struct LifecycleStepResult {
 /// Initializes the event subsystem (T5) and establishes the base case of
 /// the loop invariant: the empty history satisfies `spec_loop_invariant`.
 /// This models the `event::init(hal)` call before the handler loop starts.
+///
+/// ## Precondition (Assumption)
+///
+/// Event initialization succeeds. In the original code, `event::init(hal)`
+/// panics on failure, aborting the kernel before the handler loop starts.
+/// This function assumes the panic path is unreachable. The assumption is
+/// encoded in `event_init()`'s external body postcondition (`ensures true`).
 pub fn kcall_handler_init() -> (history: Ghost<Seq<HarvestOutcome>>)
     ensures
         spec_loop_invariant(history@),

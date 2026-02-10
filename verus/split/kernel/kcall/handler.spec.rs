@@ -509,6 +509,30 @@ pub open spec fn spec_oracle_has_termination(oracle: Seq<HarvestOutcome>, n: int
     exists|k: int| 0 <= k < n && k < oracle.len() && spec_should_terminate(#[trigger] oracle[k])
 }
 
+/// Spec function: the recorded history matches the oracle's non-terminating prefix.
+///
+/// # Description
+///
+/// This predicate encodes the oracle-to-execution correspondence assumption:
+/// the recorded history (which only contains non-terminating outcomes by
+/// invariant) matches the first `history.len()` entries of the oracle, and
+/// those entries are all non-terminating. This is the key assumption that
+/// cannot be mechanically verified because `harvest_zombies()` is external.
+///
+/// When this holds and the oracle contains a terminating outcome at index `k`,
+/// then `k >= history.len()` (because history entries are non-terminating).
+/// If the loop ran for `fuel` iterations without terminating, history has
+/// `fuel` entries, so `k >= fuel`. Contrapositive: if the oracle terminates
+/// at `k < fuel`, the loop must have terminated at or before iteration `k`.
+pub open spec fn spec_oracle_matches_history(
+    oracle: Seq<HarvestOutcome>,
+    history: Seq<HarvestOutcome>,
+) -> bool {
+    &&& oracle.len() >= history.len()
+    &&& forall|i: int| 0 <= i < history.len() ==>
+        (#[trigger] history[i]) == oracle[i]
+}
+
 /// Spec function: correctness under liveness assumption.
 ///
 /// # Description
