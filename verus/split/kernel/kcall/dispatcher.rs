@@ -488,7 +488,7 @@ pub fn handle_sleep_error(sleep_error: SleepError) -> (result: DispatchResult)
             DispatchResult::error(sleep_error.error_code as i32)
         },
         SleepErrorKind::InterruptedTimedOut => {
-            DispatchResult::error(110i32)
+            DispatchResult::error(116i32)
         },
         SleepErrorKind::InterruptedKilled => {
             // Unreachable: excluded by precondition spec_sleep_error_returns.
@@ -635,6 +635,14 @@ fn pm_wait_cond(pid: i64, tid: i64, arg0: u32, arg1: u32, arg2: u32, arg3: u32) 
 { unimplemented!() }
 
 /// Models pm::signal_cond (CondSignal kcall).
+///
+/// # Description
+///
+/// The original calls `pm::signal_cond(pid, tid, arg0 as usize, arg1 != 0)`
+/// where the 4th argument is a `bool` broadcast flag. This external body
+/// accepts the raw `arg1: u32` because the boolean conversion is an internal
+/// detail of the subsystem call — the dispatcher only routes, it does not
+/// interpret argument semantics.
 #[verifier::external_body]
 fn pm_signal_cond(pid: i64, tid: i64, arg0: u32, arg1: u32) -> (result: FallibleOutcome)
     ensures result.wf(),
@@ -875,12 +883,13 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
         // ok()-returning fallible calls: success value is 0.
         (args.number == 25u32 || args.number == 20u32)
             && result.is_success ==> result.value == 0,
-        // Sleepable/fallible calls on error: result is error.
+        // Sleepable/fallible error paths produce well-formed error results.
         (args.number == 9u32 || args.number == 23u32 || args.number == 24u32
             || args.number == 27u32 || args.number == 29u32
             || args.number == 25u32 || args.number == 26u32
             || args.number == 20u32)
-            && !result.is_success ==> !result.is_success,
+            && !result.is_success ==> (result.value >= i32::MIN as i64
+                                        && result.value <= i32::MAX as i64),
 {
     let number: u32 = args.number;
     if number == 1u32 {

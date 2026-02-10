@@ -221,7 +221,7 @@ pub proof fn lemma_handle_generic_error(error_code: int)
 /// # Description
 ///
 /// Proves that a timed-out interruption produces an error result with the
-/// OperationTimedOut error code (110).
+/// OperationTimedOut error code (116, ETIMEDOUT in Nanvix).
 pub proof fn lemma_handle_timed_out()
     ensures ({
         let result: DispatchResultView = spec_handle_sleep_error(
@@ -251,7 +251,7 @@ pub proof fn lemma_handle_generic_error_wf(error_code: int)
 ///
 /// # Description
 ///
-/// Proves that the timed-out error result is well-formed (110 fits in i32).
+/// Proves that the timed-out error result is well-formed (116 fits in i32).
 pub proof fn lemma_handle_timed_out_wf()
     ensures
         spec_result_wf(spec_handle_sleep_error(SleepErrorKind::InterruptedTimedOut, 0)),

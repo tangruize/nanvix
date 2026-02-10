@@ -287,8 +287,9 @@ pub open spec fn spec_is_remote(number: u32) -> bool {
 ///
 /// # Description
 ///
-/// ErrorCode::OperationTimedOut = 110 (ETIMEDOUT in Linux).
-pub open spec fn SPEC_ERROR_TIMED_OUT() -> int { 110 }
+/// ErrorCode::OperationTimedOut = ETIMEDOUT = 116 in Nanvix
+/// (defined in `src/libs/sysapi/src/errno.rs:209`).
+pub open spec fn SPEC_ERROR_TIMED_OUT() -> int { 116 }
 
 /// Spec function: models `handle_sleep_error` at the spec level.
 ///
