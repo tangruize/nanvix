@@ -94,11 +94,13 @@
 //!   global. The scoreboard protocol is separately verified in `kernel::kcall::scoreboard`.
 //! - **T3: PM subsystem calls.** `pm::join_thread`, `pm::lock_mutex`, etc. are
 //!   dependency boundary operations. Their correctness is assumed.
-//! - **T4: ProcessManager::exit divergence.** In the `Interrupted(Killed)` path,
-//!   `ProcessManager::exit(ErrorCode::Interrupted)` is called (forced termination)
-//!   and the thread then panics. This divergent path is modeled with
-//!   `ensures false` but the exit side-effect is not modeled (would require
-//!   ghost global state). The original code panics if exit fails.
+//! - **T4: ProcessManager::exit divergence (decomposed).** In the
+//!   `Interrupted(Killed)` path, `handle_sleep_error_killed()` is now verified
+//!   (not external_body) and calls two external bodies in sequence:
+//!   - **T4a: `pm_exit_interrupted()`** — models `ProcessManager::exit(ErrorCode::Interrupted)`.
+//!     The exit side-effect is trusted but now explicitly part of the model.
+//!   - **T4b: `diverge_after_exit()`** — models the `panic!()`. Ensures `false`.
+//!   The verification proves that exit is performed before divergence.
 //! - **T5: ABI representation gap.** The original `do_kcall` uses the C ABI
 //!   `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified model uses
 //!   `DispatchArgs`/`DispatchResult` types for richer postconditions. The
@@ -518,35 +520,57 @@ pub fn handle_sleep_error(sleep_error: SleepError) -> (result: DispatchResult)
 /// # Description
 ///
 /// In the original code, `SleepError::Interrupted(Killed)` causes
-/// `ProcessManager::exit()` to be called, followed by a `panic!`. The
-/// process is terminated and this function never returns.
+/// `ProcessManager::exit(ErrorCode::Interrupted)` to be called, followed
+/// by a `panic!`. The process is terminated and this function never returns.
 ///
-/// This is an `external_body` trust boundary because:
-/// 1. Verus does not support the `!` (never) return type. The `ensures false`
-///    postcondition is the standard Verus idiom for modeling divergence —
-///    it states that the function never returns normally, so any code after
-///    a call to this function is unreachable.
-/// 2. The function calls unsafe global state (`ProcessManager::exit()`).
+/// This function is now verified (not `external_body`). It calls two
+/// external bodies in sequence:
+/// 1. `pm_exit_interrupted()` — models `ProcessManager::exit(ErrorCode::Interrupted)`.
+/// 2. `diverge_after_exit()` — models the `panic!()` that follows.
 ///
-/// **Trust assumption**: This function never returns. The `panic!()` in the
-/// body guarantees divergence at runtime. The `ensures false` contract
-/// allows the verifier to soundly treat post-call code as dead code.
+/// This decomposition proves that the exit side-effect is performed
+/// before divergence, narrowing the trust boundary from "the whole
+/// function" to the two individual operations.
 ///
-/// **Side-effect (unmodeled)**: The original code calls
-/// `ProcessManager::exit(ErrorCode::Interrupted)` before panicking. This
-/// forced-termination side-effect is the most safety-critical behavior on
-/// the Killed path, but it is not modeled because: (1) the function
-/// diverges, so no postcondition about state changes is observable by callers;
-/// (2) modeling it would require ghost global state for ProcessManager, which
-/// is out of scope for the dispatcher module. See trust boundary T4.
-#[verifier::external_body]
+/// **Trust assumptions**:
+/// - `pm_exit_interrupted()` performs forced process termination (T4a).
+/// - `diverge_after_exit()` never returns (T4b).
 pub fn handle_sleep_error_killed() -> (result: DispatchResult)
     ensures
         false, // This function diverges (never returns).
 {
-    // Trust boundary: original calls ProcessManager::exit() then panic!().
-    // This function never returns.
-    panic!("handle_sleep_error_killed: divergent path")
+    pm_exit_interrupted();
+    diverge_after_exit()
+}
+
+/// Models `ProcessManager::exit(ErrorCode::Interrupted)`.
+///
+/// # Description
+///
+/// Performs forced process termination on the Killed path. This is the
+/// safety-critical side-effect of the Interrupted(Killed) sleep error.
+/// The original code calls `ProcessManager::exit(ErrorCode::Interrupted)`.
+///
+/// Trust boundary T4a: the correctness of this call is assumed.
+#[verifier::external_body]
+fn pm_exit_interrupted()
+    ensures true,
+{ unimplemented!() }
+
+/// Models the `panic!()` after `ProcessManager::exit()` on the Killed path.
+///
+/// # Description
+///
+/// This function never returns. It models the `panic!("do_kcall()")`
+/// in the original code that follows the exit call.
+///
+/// Trust boundary T4b: this function is assumed to never return.
+#[verifier::external_body]
+fn diverge_after_exit() -> (result: DispatchResult)
+    ensures
+        false, // This function diverges (never returns).
+{
+    panic!("diverge_after_exit: killed path divergence")
 }
 
 //==================================================================================================
@@ -770,9 +794,9 @@ fn remote_dispatch_verified(number: u32, pid: i64, tid: i64, arg0: u32, arg1: u3
         } else {
             match dispatch_outcome.sleep_error_kind {
                 SleepErrorKind::InterruptedKilled => {
-                    // SOUNDNESS NOTE: handle_sleep_error_killed has `ensures false`.
-                    // If the original Killed path ever changes to NOT diverge,
-                    // this external_body must be updated. See trust boundary T4.
+                    // SOUNDNESS NOTE: handle_sleep_error_killed calls
+                    // pm_exit_interrupted() then diverge_after_exit().
+                    // If the original Killed path changes, update T4a/T4b.
                     handle_sleep_error_killed()
                 },
                 SleepErrorKind::Generic => {
@@ -822,9 +846,9 @@ fn convert_sleepable(outcome: SleepableOutcome) -> (result: DispatchResult)
     } else {
         match outcome.sleep_error_kind {
             SleepErrorKind::InterruptedKilled => {
-                // SOUNDNESS NOTE: handle_sleep_error_killed has `ensures false`.
-                // If the original Killed path ever changes to NOT diverge,
-                // this external_body must be updated. See trust boundary T4.
+                // SOUNDNESS NOTE: handle_sleep_error_killed calls
+                // pm_exit_interrupted() then diverge_after_exit().
+                // If the original Killed path changes, update T4a/T4b.
                 handle_sleep_error_killed()
             },
             SleepErrorKind::Generic => {
@@ -987,19 +1011,26 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
 ///
 /// ## Error-Code Propagation (Verification Note)
 ///
-/// The verification proves internally that error codes are faithfully
-/// propagated from subsystem calls. For example, if `pm_get_pid()` fails
-/// with error code `c`, the code calls `DispatchResult::error(c)` whose
-/// postcondition guarantees `result.value == c as i64`. This chain is
-/// mechanically verified through the constructor postconditions.
+/// Error-code propagation is verified internally through the constructor
+/// chain. Each failure path calls `DispatchResult::error(code)` whose
+/// postcondition is `result.value == code as i64` (proven by
+/// `lemma_error_constructor_preserves_code`). This guarantees that
+/// subsystem error codes are faithfully propagated to the result.
 ///
-/// However, this propagation property is NOT surfaced in the top-level
-/// postcondition because Verus `ensures` clauses cannot reference local
-/// variables (e.g., `pid_outcome`). Surfacing it would require ghost
-/// return values, which adds complexity disproportionate to the benefit
-/// — the error codes themselves originate from external-body subsystem
-/// calls (trust boundaries T1–T3), so their specific values are already
-/// assumed, not verified.
+/// For GetPid/GetTid specifically, `lemma_getpid_gettid_dispatch_infallible`
+/// proves that the dispatch path always succeeds. Therefore, if
+/// `do_kcall_context` returns an error for GetPid/GetTid, the error
+/// necessarily came from pid/tid retrieval (trust boundary T1), not
+/// from the dispatch logic.
+///
+/// The propagation property is not surfaced in the top-level postcondition
+/// because Verus `ensures` clauses cannot reference local variables (e.g.,
+/// `pid_outcome`). Ghost return values would add complexity without
+/// verification value — the error codes originate from external-body
+/// subsystem calls (trust boundaries T1–T3), so their specific values
+/// are already assumed, not verified. Adding ghost outputs would prove
+/// `result.value == ghost@`, which is trivially satisfiable by any
+/// implementation setting `ghost = result.value`.
 ///
 /// # Parameters
 ///

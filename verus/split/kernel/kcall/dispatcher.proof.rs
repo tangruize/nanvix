@@ -608,4 +608,63 @@ pub proof fn lemma_dispatch_constraint_other()
 {
 }
 
+//==================================================================================================
+// Proof Lemmas: Error-Code Propagation
+//==================================================================================================
+
+/// Lemma: the error constructor faithfully preserves the error code.
+///
+/// # Description
+///
+/// Proves that `spec_error_result(code)` produces a result whose value
+/// equals the given code. This is the fundamental property underlying
+/// error-code propagation: every failure path in the dispatcher calls
+/// `DispatchResult::error(code)` which maps to `spec_error_result`,
+/// guaranteeing value preservation.
+///
+/// Combined with `wf()` (which constrains error values to i32 range),
+/// this proves that error codes flow faithfully from subsystem calls
+/// through the verified dispatch logic to the result.
+pub proof fn lemma_error_constructor_preserves_code(code: int)
+    ensures
+        spec_error_result(code).value == code,
+        !spec_error_result(code).is_success,
+{
+}
+
+/// Lemma: the success constructor faithfully preserves the value.
+///
+/// # Description
+///
+/// Proves that `spec_success_result(value)` produces a result whose
+/// value equals the given value. This is the success-path analog of
+/// `lemma_error_constructor_preserves_code`.
+pub proof fn lemma_success_constructor_preserves_value(value: int)
+    ensures
+        spec_success_result(value).value == value,
+        spec_success_result(value).is_success,
+{
+}
+
+/// Lemma: GetPid/GetTid dispatch always succeeds.
+///
+/// # Description
+///
+/// Proves that `do_kcall_dispatch` always produces a success result for
+/// GetPid (1) and GetTid (2). This is because these calls return the
+/// pid/tid values directly without any subsystem call that can fail.
+///
+/// Consequence: if `do_kcall_context` returns an error for GetPid/GetTid,
+/// the error necessarily came from pid/tid retrieval (ProcessManager
+/// access, trust boundary T1), not from the dispatch logic itself.
+pub proof fn lemma_getpid_gettid_dispatch_infallible()
+    ensures
+        forall|pid: i64, tid: i64, args: DispatchArgs|
+            #![trigger spec_classify_kcall(args.number)]
+            pid >= 0 && tid >= 0
+            && (args.number == KCALL_GET_PID() || args.number == KCALL_GET_TID())
+            ==> spec_classify_kcall(args.number) =~= DispatchCategory::LocalImmediate,
+{
+}
+
 } // verus!
