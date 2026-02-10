@@ -437,8 +437,9 @@ pub fn classify_pm_result(pm_result: SleepResultModel) -> (result: SleepResultMo
 pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (ret: (SleepResultModel, Ghost<PmSleepResultView>))
     requires
         now.spec_wf(),
-        // On Nanvix's x86-32, seconds originates from a 32-bit usize.
-        seconds <= u32::MAX as u64,
+        // ABI constraint: seconds originates from a 32-bit usize on x86-32.
+        seconds as nat <= USIZE_MAX_X86_32(),
+        // nanoseconds is already u32, which matches 32-bit usize identity cast.
         // Duration normalization must not overflow.
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
@@ -518,8 +519,9 @@ pub fn sleep_model(now: &SystemTimeModel, seconds: u64, nanoseconds: u32) -> (re
 /// A SleepResultModel indicating the outcome.
 pub fn sleep_end_to_end(seconds: u64, nanoseconds: u32) -> (ret: (SleepResultModel, Ghost<PmSleepResultView>, Ghost<SystemTimeView>))
     requires
-        // On Nanvix's x86-32, seconds originates from a 32-bit usize.
-        seconds <= u32::MAX as u64,
+        // ABI constraint: seconds originates from a 32-bit usize on x86-32.
+        seconds as nat <= USIZE_MAX_X86_32(),
+        // nanoseconds is already u32, which matches 32-bit usize identity cast.
         seconds as nat + nanoseconds as nat / NANOS_PER_SEC() <= u64::MAX as nat,
     ensures
         // TimedOut never appears in the output (core invariant from the 3-arm match).

@@ -36,6 +36,23 @@ pub open spec fn ERROR_CODE_INVALID_ARGUMENT() -> int {
     22
 }
 
+/// ABI assumption: on Nanvix's x86-32 target, `usize` is 32 bits.
+///
+/// # Description
+///
+/// The original `sleep(seconds: usize, nanoseconds: usize)` takes `usize` parameters.
+/// On x86-32, `usize` is 32 bits, so:
+/// - `seconds as u64` is a zero-extending widening cast (always safe).
+/// - `nanoseconds as u32` is an identity cast (always safe).
+///
+/// This spec constant encodes the assumption formally. The preconditions
+/// `seconds <= USIZE_MAX_X86_32()` in `sleep_model` and `sleep_end_to_end`
+/// enforce that inputs stay within the 32-bit `usize` domain, ensuring the
+/// model only accepts values that the original API can produce.
+pub open spec fn USIZE_MAX_X86_32() -> nat {
+    u32::MAX as nat
+}
+
 //==================================================================================================
 // View Types
 //==================================================================================================

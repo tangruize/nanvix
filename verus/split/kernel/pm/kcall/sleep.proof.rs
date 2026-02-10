@@ -266,4 +266,31 @@ pub proof fn lemma_error_code_matches()
     assert(ErrorCode::InvalidArgument as int == 22int);
 }
 
+/// Proof: the x86-32 usize cast to (u64, u32) is safe for any values in the usize domain.
+///
+/// # Description
+///
+/// On Nanvix's x86-32 target, `usize` is 32 bits. This lemma proves that any
+/// (seconds, nanoseconds) pair where both values are within the 32-bit usize range
+/// satisfies the Duration normalization precondition (`seconds + nanoseconds / 1e9 <= u64::MAX`).
+/// This validates that the `seconds as u64` widening cast and `nanoseconds as u32` identity
+/// cast in the original code can never cause the downstream normalization to overflow.
+pub proof fn lemma_usize_cast_safety(seconds: nat, nanoseconds: nat)
+    requires
+        seconds <= USIZE_MAX_X86_32(),
+        nanoseconds <= USIZE_MAX_X86_32(),
+    ensures
+        // The nanosecond carry is at most 4 (u32::MAX / 1_000_000_000 == 4).
+        nanoseconds / NANOS_PER_SEC() <= 4,
+        // The total after normalization fits in u64.
+        seconds + nanoseconds / NANOS_PER_SEC() <= u64::MAX as nat,
+{
+    assert(USIZE_MAX_X86_32() == 0xFFFF_FFFFnat);
+    assert(NANOS_PER_SEC() == 1_000_000_000nat);
+    // nanoseconds <= 0xFFFF_FFFF = 4_294_967_295, so nanoseconds / 1_000_000_000 <= 4.
+    assert(nanoseconds / NANOS_PER_SEC() <= 4nat);
+    // seconds <= 0xFFFF_FFFF, carry <= 4, sum <= 0xFFFF_FFFF + 4 < u64::MAX.
+    assert(seconds + nanoseconds / NANOS_PER_SEC() <= 0xFFFF_FFFFnat + 4nat);
+}
+
 } // verus!
