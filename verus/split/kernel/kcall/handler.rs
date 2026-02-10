@@ -134,6 +134,20 @@
 //! - **Post-loop drain**: `drain_remaining_zombies()` is invoked in the
 //!   lifecycle step model on termination. The property that "no zombies remain
 //!   after drain" depends on ProcessManager state (T2) and is not proved.
+//! - **Model synchronization**: This verification uses a shadow model that
+//!   abstracts the original `src/kernel/src/kcall/handler.rs`. If the original
+//!   source changes (e.g., adding a new kcall number, changing yield logic),
+//!   the model must be updated manually. Spec constants (`SPEC_INITD_PID`,
+//!   `SPEC_ERROR_INVALID_SYSCALL`) are hardcoded and must match their source
+//!   definitions (`ProcessIdentifier::INITD`, `ErrorCode::InvalidSysCall`).
+//!   The regression-style `lemma_spec_constants_match_source()` in the proof
+//!   file documents the expected values for drift detection.
+//! - **IKC polling internals**: The IKC message polling loop's internal logic
+//!   (batching with `IKC_POLL_BATCH_SIZE`, buffer limit `MAX_IKC_MESSAGES`,
+//!   `stdio::read()` and `EventManager::post_message()`) is abstracted into
+//!   the `poll_messages_raw()` external body. The handler-level verification
+//!   proves yield correctness based on the result, but does not verify that
+//!   the polling loop respects batch/buffer constraints.
 
 use vstd::prelude::*;
 

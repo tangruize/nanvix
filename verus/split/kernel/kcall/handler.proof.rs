@@ -593,4 +593,78 @@ pub proof fn lemma_harvest_to_outcome_termination(
 {
 }
 
+//==================================================================================================
+// Proof Lemmas: Spec Constant Regression
+//==================================================================================================
+
+/// Lemma: Spec constants match their source code definitions.
+///
+/// # Description
+///
+/// Regression check ensuring that the hardcoded spec constants match the
+/// values defined in the Nanvix source code:
+/// - `SPEC_INITD_PID() == 1` matches `ProcessIdentifier::INITD = ProcessIdentifier(1)`
+///   (defined in `sys::pm::ProcessIdentifier`).
+/// - `SPEC_ERROR_INVALID_SYSCALL() == 88` matches `ErrorCode::InvalidSysCall` value 88
+///   (ENOSYS, defined in `sys::error::ErrorCode`).
+///
+/// If the source definitions change, this lemma's ensures clause should be
+/// updated to reflect the new values, triggering a review of all dependent
+/// specs and proofs.
+pub proof fn lemma_spec_constants_match_source()
+    ensures
+        SPEC_INITD_PID() == 1,
+        SPEC_ERROR_INVALID_SYSCALL() == 88,
+{
+}
+
+/// Lemma: The dispatch classification covers all 21 original handler match arms.
+///
+/// # Description
+///
+/// Regression check ensuring that the classification function includes
+/// every kcall number present in the original handler's match statement.
+/// If a new kcall arm is added to the original source, a corresponding
+/// entry must be added here and in `spec_classify_handler_kcall`.
+///
+/// Source: `src/kernel/src/kcall/handler.rs`, lines 62-97.
+/// Kcall numbers: 0(Debug), 1(GetPid), 2(GetTid), 4(CapCtl), 6(Terminate),
+/// 7(EventCtrl), 8(Send), 10(MemoryMap), 11(MemoryUnmap), 12(MemoryCtrl),
+/// 13(MemoryCopy), 14(AllocMmio), 15(FreeMmio), 16(AllocPmio),
+/// 17(FreePmio), 18(ReadPmio), 19(WritePmio), 21(CreateThread),
+/// 28(GetTime), 30(SetThreadDataArea), 31(GetThreadDataArea).
+pub proof fn lemma_dispatch_coverage_matches_source()
+    ensures
+        // All 21 handler kcall numbers are classified as non-Invalid.
+        spec_is_handler_kcall(0),   // Debug
+        spec_is_handler_kcall(1),   // GetPid
+        spec_is_handler_kcall(2),   // GetTid
+        spec_is_handler_kcall(4),   // CapCtl
+        spec_is_handler_kcall(6),   // Terminate
+        spec_is_handler_kcall(7),   // EventCtrl
+        spec_is_handler_kcall(8),   // Send
+        spec_is_handler_kcall(10),  // MemoryMap
+        spec_is_handler_kcall(11),  // MemoryUnmap
+        spec_is_handler_kcall(12),  // MemoryCtrl
+        spec_is_handler_kcall(13),  // MemoryCopy
+        spec_is_handler_kcall(14),  // AllocMmio
+        spec_is_handler_kcall(15),  // FreeMmio
+        spec_is_handler_kcall(16),  // AllocPmio
+        spec_is_handler_kcall(17),  // FreePmio
+        spec_is_handler_kcall(18),  // ReadPmio
+        spec_is_handler_kcall(19),  // WritePmio
+        spec_is_handler_kcall(21),  // CreateThread
+        spec_is_handler_kcall(28),  // GetTime
+        spec_is_handler_kcall(30),  // SetThreadDataArea
+        spec_is_handler_kcall(31),  // GetThreadDataArea
+        // Dispatcher-only kcalls are Invalid in the handler.
+        !spec_is_handler_kcall(3),  // Exit (dispatcher-only)
+        !spec_is_handler_kcall(5),  // Resume (dispatcher-only)
+        !spec_is_handler_kcall(9),  // Recv (dispatcher-only)
+        !spec_is_handler_kcall(20), // SchedulerYield (dispatcher-only)
+        !spec_is_handler_kcall(22), // ExitThread (dispatcher-only)
+        !spec_is_handler_kcall(23), // JoinThread (dispatcher-only)
+{
+}
+
 } // verus!
