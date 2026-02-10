@@ -1,6 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+pub mod create_thread;
 pub mod lock_mutex;
 pub mod signal_cond;
 pub mod sleep;
