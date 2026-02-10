@@ -418,8 +418,12 @@ pub fn signal_cond_model(
             spec_cond_slot_returned(cond_addr as nat),
         // On success, broadcast semantics are satisfied: the awakened count
         // respects the broadcast flag (at most 1 for signal, all waiters for broadcast).
-        (ret.0.spec_view() matches SignalCondResultView::Success { awakened })
-            ==> spec_broadcast_semantics(broadcast, cond_addr as nat, awakened),
+        // Uses ghost state to access the notify outcome's awakened count.
+        spec_is_success(ret.0.spec_view()) ==> ({
+            let gs: SignalCondGhostState = ret.1@;
+            gs.notify matches NotifyOutcomeView::NOk { awakened }
+                && spec_broadcast_semantics(broadcast, cond_addr as nat, awakened)
+        }),
 {
     // Step 1: Get condvar reference (external).
     let gc_result: GetCondOutcomeModel = get_cond_model(cond_addr);
