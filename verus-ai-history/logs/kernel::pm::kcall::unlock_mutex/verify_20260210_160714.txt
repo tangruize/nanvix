@@ -1,0 +1,30 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 16:07:14 CST 2026
+Module: kernel::pm::kcall::unlock_mutex
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::unlock_mutex
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0425]: cannot find function `pow2` in this scope
+   --> kernel/pm/kcall/unlock_mutex.proof.rs:142:35
+    |
+142 |         USIZE_MAX_X86_32() == sub(pow2(USIZE_BITS()), 1),
+    |                                   ^^^^ not found in this scope
+    |
+help: consider importing this function
+   --> kernel/pm/kcall/unlock_mutex.rs:133:1
+    |
+133 + use vstd::arithmetic::power2::pow2;
+    |
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0425`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::kcall::unlock_mutex (verified:0, errors:0)
