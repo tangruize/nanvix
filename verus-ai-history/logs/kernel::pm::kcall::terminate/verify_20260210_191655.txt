@@ -1,0 +1,52 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 10 19:16:55 CST 2026
+Module: kernel::pm::kcall::terminate
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::kcall::terminate
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::kcall::terminate
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/kcall/terminate.rs:305:17
+    |
+305 |               ==> forall|p: nat| p != pid as nat ==>
+    |  _________________^
+306 | |                 (spec_pm_has_process(pm_pre, p) <==> spec_pm_has_process(ret.1@, p)),
+    | |____________________________________________________________________________________^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/kcall/terminate.rs:306:18
+    |
+306 |                 (spec_pm_has_process(pm_pre, p) <==> spec_pm_has_process(ret.1@, p)),
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> kernel/pm/kcall/terminate.rs:305:17
+    |
+305 |               ==> forall|p: nat| p != pid as nat ==>
+    |  _________________^
+306 | |                 (spec_pm_has_process(pm_pre, p) <==> spec_pm_has_process(ret.1@, p)),
+    | |____________________________________________________________________________________^
+
+verification results:: 19 verified, 0 errors (partial verification with `--verify-*`)
+
+Duration: 8s
+Exit code: 0
+
+=== Summary ===
+Verified: 19
+Errors: 0
+Status: PASSED
+Committed: [verus] Verification succeeded for kernel::pm::kcall::terminate (verified:19, errors:0)
