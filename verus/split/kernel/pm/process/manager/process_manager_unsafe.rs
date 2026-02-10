@@ -902,23 +902,41 @@ impl ProcessManagerUnsafeState {
     /// ```
     ///
     /// This unified function models one iteration of the loop:
-    /// - `outcome == 0`: harvest path — target thread is zombie, harvested. No queue change.
-    /// - `outcome == 1`: wait path — target thread not zombie, block on condvar via sleep().
-    /// - `outcome == 2`: error path — try_join_thread failed. No queue change.
+    /// - `outcome == 0`: harvest path — returns Ok(exit_status). Target thread is zombie,
+    ///   harvested (pages unmapped — external to queue model). No queue-level state change.
+    /// - `outcome == 1`: wait path — returns Ok(0) (placeholder; actual return happens after
+    ///   wakeup on a future iteration). Target thread not zombie, block on condvar via sleep().
+    /// - `outcome == 2`: error path — returns Err. try_join_thread or condvar-wait failed.
+    ///   No queue-level state change.
     ///
     /// Each iteration preserves wf(). The loop terminates when outcome == 0 or 2.
     /// Liveness (eventual outcome == 0) depends on the target thread eventually
     /// calling exit_thread() and signaling the join condvar — a trust boundary.
     ///
-    /// The `new_inner`/`chosen_next_pid`/`chosen_next_tid` parameters are only
-    /// used when outcome == 1 (wait path). When outcome != 1, they are ignored.
+    /// ## Return Value Modeling
+    ///
+    /// The original returns `Result<ExitStatus, SleepError>`. We model this as:
+    /// - `result.0`: true = Ok, false = Err
+    /// - `result.1`: on Ok (outcome 0), the harvested thread's exit status (ghost input
+    ///   `exit_status`); on Ok (outcome 1), 0 (loop continues); on Err, 0 (unused).
+    ///
+    /// The exit_status value is a T3 trust boundary input: its correctness depends on
+    /// the inner module correctly storing the status when the target thread called exit().
+    ///
+    /// ## Loop Model
+    ///
+    /// Verus does not natively support loop invariant reasoning. This single-iteration
+    /// model is the standard Verus approach: callers prove that wf() is maintained across
+    /// each iteration and that terminal outcomes (0 or 2) produce the correct return.
+    /// A caller-level proof can compose iterations to show full loop correctness.
     pub fn join_thread(
         &mut self,
         outcome: u8,
+        exit_status: i32,
         new_inner: ProcessManagerInner,
         chosen_next_pid: i32,
         chosen_next_tid: i32,
-    )
+    ) -> (result: (bool, i32))
         requires
             old(self).wf(),
             outcome <= 2,
@@ -936,7 +954,14 @@ impl ProcessManagerUnsafeState {
         ensures
             self.wf(),
             self.scheduler_freq == old(self).scheduler_freq,
-            // Harvest path: no state change.
+            // Return value modeling.
+            // Harvest: Ok(exit_status).
+            outcome == 0 ==> (result.0 == true && result.1 == exit_status),
+            // Wait: Ok(0) — loop continues, actual return on future iteration.
+            outcome == 1 ==> (result.0 == true && result.1 == 0),
+            // Error: Err.
+            outcome == 2 ==> result.0 == false,
+            // Harvest path: no queue-level state change.
             outcome == 0 ==> (
                 self.inner == old(self).inner
                 && self.current_pid == old(self).current_pid
@@ -945,7 +970,7 @@ impl ProcessManagerUnsafeState {
             ),
             // Wait path: inner updated via sleep/switch.
             outcome == 1 ==> self.inner == new_inner,
-            // Error path: no state change.
+            // Error path: no queue-level state change.
             outcome == 2 ==> (
                 self.inner == old(self).inner
                 && self.current_pid == old(self).current_pid
@@ -955,8 +980,12 @@ impl ProcessManagerUnsafeState {
     {
         if outcome == 1 {
             self.join_thread_wait(new_inner, chosen_next_pid, chosen_next_tid);
+            (true, 0i32)
+        } else if outcome == 0 {
+            (true, exit_status)
+        } else {
+            (false, 0i32)
         }
-        // outcome 0 (harvest) and 2 (error): no state change.
     }
 }
 
