@@ -101,11 +101,12 @@
 //!     The exit side-effect is trusted but now explicitly part of the model.
 //!   - **T4b: `diverge_after_exit()`** — models the `panic!()`. Ensures `false`.
 //!   The verification proves that exit is performed before divergence.
-//! - **T5: ABI representation gap.** The original `do_kcall` uses the C ABI
-//!   `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified model uses
-//!   `DispatchArgs`/`DispatchResult` types for richer postconditions. The
-//!   `is_success` flag in `DispatchResult` is a modeling abstraction not present
-//!   in the raw i64 return value.
+//! - **T5: ABI representation gap (mostly closed).** The original `do_kcall`
+//!   uses the C ABI `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The
+//!   verified `do_kcall_abi` function now matches this signature, constructing
+//!   `DispatchArgs` from raw u32 parameters and encoding the result as i64.
+//!   The only remaining trust assumption is that the Rust calling convention
+//!   delivers the u32/i64 values faithfully (a compiler concern).
 //! - **T6: Kcall number constants.** The 33 spec constants (KCALL_DEBUG through
 //!   KCALL_INVALID) are manually mirrored from the `KcallNumber` `#[repr(u32)]`
 //!   enum in `src/libs/sys/src/sys/number.rs`. The `lemma_kcall_constants_consistency`
@@ -1094,13 +1095,10 @@ pub fn do_kcall_context(args: DispatchArgs) -> (result: DispatchResult)
 /// # Note on ABI Representation (Trust Boundary T5)
 ///
 /// The original `do_kcall` has the C ABI signature
-/// `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. The verified model uses
-/// `DispatchArgs` and `DispatchResult` for richer postconditions. The
-/// `DispatchResult.is_success` flag does not exist in the actual i64 return
-/// value — it is a modeling abstraction. The ABI-level mapping between
-/// `DispatchArgs`/`DispatchResult` and the C `u32`/`i64` parameters is not
-/// modeled; the trust assumption is that the caller correctly constructs
-/// `DispatchArgs` from the C arguments and interprets the `DispatchResult`.
+/// `extern "C" fn(u32, u32, u32, u32, u32) -> i64`. This verified model uses
+/// `DispatchArgs` and `DispatchResult` for richer postconditions. The ABI gap
+/// is closed by `do_kcall_abi`, which takes raw u32 parameters, constructs
+/// `DispatchArgs`, dispatches, and encodes the result as i64.
 pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
     ensures
         result.wf(),
@@ -1200,6 +1198,48 @@ pub fn do_kcall_encoded(args: DispatchArgs) -> (pair: (DispatchResult, i64))
     }
     let encoded: i64 = encode_result(&result);
     (result, encoded)
+}
+
+/// Verified C ABI entry point for the kernel call dispatcher.
+///
+/// # Description
+///
+/// Matches the original `extern "C" fn do_kcall(number: u32, arg0: u32,
+/// arg1: u32, arg2: u32, arg3: u32) -> i64` signature. This function:
+/// 1. Constructs `DispatchArgs` from the raw u32 parameters.
+/// 2. Calls `do_kcall` to perform the verified dispatch.
+/// 3. Encodes the result as an i64 via `encode_result`.
+///
+/// All three steps are verified, closing the ABI gap (trust boundary T5).
+/// The only remaining trust assumption is that the Rust ABI calling
+/// convention delivers the u32/i64 values faithfully (a compiler concern,
+/// not a verification concern).
+///
+/// # Parameters
+///
+/// - `number`: Kernel call number.
+/// - `arg0`..`arg3`: Kernel call arguments.
+///
+/// # Returns
+///
+/// The encoded i64 return value.
+pub fn do_kcall_abi(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> (encoded: i64)
+    ensures ({
+        let args: DispatchArgs = DispatchArgs { number, arg0, arg1, arg2, arg3 };
+        exists|r: DispatchResultView| #![auto]
+            spec_result_wf(r)
+            && encoded as int == spec_encode_result(r)
+            && (spec_classify_kcall(number) =~= DispatchCategory::LocalTerminal
+                    ==> !r.is_success)
+            && spec_dispatch_result_constrained(spec_classify_kcall(number), r)
+    }),
+{
+    let args: DispatchArgs = DispatchArgs::new(number, arg0, arg1, arg2, arg3);
+    let result: DispatchResult = do_kcall(args);
+    proof {
+        lemma_encode_result_is_value(result@);
+    }
+    encode_result(&result)
 }
 
 } // verus!
