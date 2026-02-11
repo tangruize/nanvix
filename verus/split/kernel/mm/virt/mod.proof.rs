@@ -37,7 +37,7 @@ impl VirtProofs {
         ensures
             spec_align_down(addr, alignment) <= addr,
     {
-        assert(addr == (addr / alignment) * alignment + (addr % alignment));
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod(addr, alignment);
         assert(addr % alignment >= 0);
     }
 
@@ -113,7 +113,7 @@ impl VirtProofs {
         ensures
             spec_align_down(addr, alignment) == addr,
     {
-        assert(addr == (addr / alignment) * alignment + (addr % alignment));
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod(addr, alignment);
         assert(addr % alignment == 0);
     }
 
