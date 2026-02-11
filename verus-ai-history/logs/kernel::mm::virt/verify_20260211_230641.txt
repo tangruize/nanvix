@@ -1,0 +1,52 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 23:06:41 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+  --> kernel/mm/virt/mod.spec.rs:94:5
+   |
+94 | pub open spec fn spec_mmio_paddr(region_start: int) -> int;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: verifying module kernel::mm::virt
+
+note: verifying module kernel::mm::virt::kpage
+
+note: verifying module kernel::mm::virt::vmem
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/mm/virt/mod.rs:590:9
+    |
+590 |         while p_idx < page_count
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> kernel/mm/virt/mod.rs:666:28
+    |
+666 |                       assert(forall|i: int| #![auto]
+    |  ____________________________^
+667 | |                         0 <= i < all_bases.len() as int ==>
+668 | |                         (all_bases[i] as int) <= cb);
+    | |___________________________________________________^ assertion failed
+
+error: assertion failed
+   --> kernel/mm/virt/mod.rs:671:28
+    |
+671 |                     assert(all_bases.len() == 1);
+    |                            ^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 77 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors; 1 warning emitted
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 77
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:77, errors:1)
