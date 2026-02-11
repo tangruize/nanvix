@@ -1,0 +1,57 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 23:01:46 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+  --> kernel/mm/virt/mod.spec.rs:94:5
+   |
+94 | pub open spec fn spec_mmio_paddr(region_start: int) -> int;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: verifying module kernel::mm::virt
+
+note: verifying module kernel::mm::virt::kpage
+
+note: verifying module kernel::mm::virt::vmem
+
+error: invariant not satisfied at end of loop body
+   --> kernel/mm/virt/mod.rs:571:13
+    |
+571 | /             forall|i: int, j: int|
+572 | |                 #![trigger new_bases[i], new_bases[j]]
+573 | |                 0 <= i < j < new_bases.len() as int ==>
+574 | |                 (new_bases[i] as int) < (new_bases[j] as int),
+    | |_____________________________________________________________^
+
+error: invariant not satisfied at end of loop body
+   --> kernel/mm/virt/mod.rs:682:13
+    |
+682 | /             last_base.is_some() ==> forall|i: int| #![auto]
+683 | |                 0 <= i < all_bases.len() as int ==>
+684 | |                 all_bases[i] as int <= last_base.unwrap() as int,
+    | |________________________________________________________________^
+
+error: invariant not satisfied at end of loop body
+   --> kernel/mm/virt/mod.rs:720:17
+    |
+720 | /                 forall|i: int, j: int|
+721 | |                     #![trigger all_bases[i], all_bases[j]]
+722 | |                     0 <= i < j < all_bases.len() as int ==>
+723 | |                     (all_bases[i] as int) < (all_bases[j] as int),
+    | |_________________________________________________________________^
+
+verification results:: 77 verified, 3 errors (partial verification with `--verify-*`)
+error: aborting due to 3 previous errors; 1 warning emitted
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 77
+Errors: 3
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:77, errors:3)
