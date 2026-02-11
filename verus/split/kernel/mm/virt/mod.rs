@@ -674,7 +674,17 @@ pub fn validate_regions(regions: &Vec<MemRegion>) -> (result: bool)
                 regions[a].spec_start() <= regions[b].spec_start(),
         decreases regions.len() - 1 - i,
     {
-        if regions[i].start + regions[i].size > regions[i + 1].start {
+        // Check: region[i].end > region[i+1].start, i.e. overlap.
+        // Use subtraction to avoid overflow: start + size could overflow usize,
+        // but spec_is_valid ensures start + size - 1 <= usize::MAX.
+        // Compare as: regions[i+1].start - regions[i].start < regions[i].size
+        // (safe because regions with valid starts won't underflow).
+        if regions[i + 1].start < regions[i].start
+           || regions[i + 1].start - regions[i].start < regions[i].size {
+            // Overlap detected: regions[i].end > regions[i+1].start.
+            proof {
+                assert(regions[i as int].spec_end() > regions[i as int + 1].spec_start());
+            }
             return false;
         }
         proof {
