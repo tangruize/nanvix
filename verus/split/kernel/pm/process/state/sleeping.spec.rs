@@ -8,12 +8,12 @@
 //
 // SleepingProcess has at least one sleeping thread and optional zombie threads.
 // For verification:
-// - Thread lists are modeled as `Seq<int>` of abstract thread IDs.
-// - `NonEmptyVecDeque<SleepingThread>` is modeled as `Seq<int>` with `len() >= 1`.
-// - `Option<NonEmptyVecDeque<ZombieThread>>` is modeled as `Seq<int>`:
-//   - `Seq::empty()` represents `None`.
-//   - `Seq` with `len() >= 1` represents `Some(non_empty_deque)`.
-// - `Box<ProcessState>` is transparent (modeled as PID only).
+// - Thread lists are modeled as concrete `Vec<u64>` of thread IDs.
+// - `NonEmptyVecDeque<SleepingThread>` is modeled as `Vec<u64>` with `len() >= 1`.
+// - `Option<NonEmptyVecDeque<ZombieThread>>` is modeled as `Vec<u64>`:
+//   - Empty Vec represents `None`.
+//   - Vec with `len() >= 1` represents `Some(non_empty_deque)`.
+// - `Box<ProcessState>` is transparent (modeled as PID only, concrete `u64`).
 //
 // ## Key Invariants
 //
@@ -65,39 +65,39 @@ verus! {
 #[verifier::ext_equal]
 pub struct SleepingProcessView {
     /// Process identifier value.
-    pub pid: int,
+    pub pid: u64,
     /// Sleeping thread IDs (non-empty).
-    pub sleeping_thread_ids: Seq<int>,
+    pub sleeping_thread_ids: Seq<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<u64>,
 }
 
 /// Abstract view of a RunnableProcess (boundary type).
 #[verifier::ext_equal]
 pub struct RunnableProcessView {
     /// Process identifier value.
-    pub pid: int,
+    pub pid: u64,
     /// Ready thread IDs (non-empty).
-    pub ready_thread_ids: Seq<int>,
+    pub ready_thread_ids: Seq<u64>,
     /// Interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Seq<int>,
+    pub interrupted_thread_ids: Seq<u64>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<int>,
+    pub sleeping_thread_ids: Seq<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<u64>,
 }
 
 /// Abstract view of an InterruptedProcess (boundary type).
 #[verifier::ext_equal]
 pub struct InterruptedProcessView {
     /// Process identifier value.
-    pub pid: int,
+    pub pid: u64,
     /// Interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Seq<int>,
+    pub interrupted_thread_ids: Seq<u64>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<int>,
+    pub sleeping_thread_ids: Seq<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<u64>,
 }
 
 //==================================================================================================
@@ -106,8 +106,8 @@ pub struct InterruptedProcessView {
 
 impl SleepingProcess {
     /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+    pub open spec fn spec_pid(&self) -> u64 {
+        self.pid
     }
 
     /// Spec function: returns the number of sleeping threads.
@@ -126,19 +126,19 @@ impl SleepingProcess {
     }
 
     /// Spec function: checks if a thread ID is in the sleeping list.
-    pub open spec fn spec_has_sleeping_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.sleeping_thread_ids@.len()
             && self.sleeping_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in the zombie list.
-    pub open spec fn spec_has_zombie_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.zombie_thread_ids@.len()
             && self.zombie_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in any list.
-    pub open spec fn spec_has_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_thread(&self, tid: u64) -> bool {
         self.spec_has_sleeping_thread(tid)
         || self.spec_has_zombie_thread(tid)
     }
@@ -150,7 +150,7 @@ impl SleepingProcess {
     /// - `None` if not found.
     ///
     /// Search order matches original: sleeping → zombie.
-    pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+    pub open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
         if self.spec_has_sleeping_thread(tid) {
             Some(0int)
         } else if self.spec_has_zombie_thread(tid) {
@@ -161,25 +161,25 @@ impl SleepingProcess {
     }
 
     /// Spec helper: checks if a sequence contains a given value.
-    pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
+    pub open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
     /// Spec helper: computes the sequence resulting from removing index `idx`.
-    pub open spec fn spec_remove_at(s: Seq<int>, idx: int) -> Seq<int>
+    pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
         recommends 0 <= idx < s.len()
     {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
     /// Spec helper: checks whether a sequence has no duplicate elements.
-    pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
+    pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
             ==> s[i] != s[j]
     }
 
     /// Spec helper: checks whether two sequences share no common elements.
-    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+    pub open spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
@@ -191,7 +191,7 @@ impl SleepingProcess {
     /// appears in `full` in the same relative order. This models the stable
     /// partition semantics of the original `wakeup_alarm()` implementation,
     /// which processes threads front-to-back and preserves their order.
-    pub open spec fn spec_is_subsequence(sub: Seq<int>, full: Seq<int>) -> bool {
+    pub open spec fn spec_is_subsequence(sub: Seq<u64>, full: Seq<u64>) -> bool {
         exists|indices: Seq<int>|
             indices.len() == sub.len()
             && (forall|k: int| #![auto] 0 <= k < indices.len() ==>
@@ -204,12 +204,10 @@ impl SleepingProcess {
     /// Spec function: well-formedness predicate.
     ///
     /// A SleepingProcess is well-formed when:
-    /// - The sleeping thread count matches the ghost sequence length.
     /// - There is at least one sleeping thread (NonEmptyVecDeque invariant).
     /// - No duplicate thread IDs within either list.
     /// - Sleeping and zombie thread IDs are disjoint.
     pub open spec fn wf(&self) -> bool {
-        &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
         &&& self.sleeping_thread_ids@.len() >= 1
         &&& Self::spec_no_duplicates(self.sleeping_thread_ids@)
         &&& Self::spec_no_duplicates(self.zombie_thread_ids@)
@@ -221,7 +219,6 @@ impl SleepingProcess {
         &&& new_self.spec_pid() == old_self.spec_pid()
         &&& new_self.sleeping_thread_ids@ == old_self.sleeping_thread_ids@
         &&& new_self.zombie_thread_ids@ == old_self.zombie_thread_ids@
-        &&& new_self.sleeping_count == old_self.sleeping_count
     }
 }
 
@@ -231,8 +228,8 @@ impl SleepingProcess {
 
 impl RunnableProcess {
     /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+    pub open spec fn spec_pid(&self) -> u64 {
+        self.pid
     }
 
     /// Spec function: well-formedness predicate.
@@ -243,8 +240,8 @@ impl RunnableProcess {
 
 impl InterruptedProcess {
     /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+    pub open spec fn spec_pid(&self) -> u64 {
+        self.pid
     }
 
     /// Spec function: well-formedness predicate.
@@ -262,7 +259,7 @@ impl View for SleepingProcess {
 
     open spec fn view(&self) -> SleepingProcessView {
         SleepingProcessView {
-            pid: self.pid@,
+            pid: self.pid,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
         }
@@ -274,7 +271,7 @@ impl View for RunnableProcess {
 
     open spec fn view(&self) -> RunnableProcessView {
         RunnableProcessView {
-            pid: self.pid@,
+            pid: self.pid,
             ready_thread_ids: self.ready_thread_ids@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
@@ -288,7 +285,7 @@ impl View for InterruptedProcess {
 
     open spec fn view(&self) -> InterruptedProcessView {
         InterruptedProcessView {
-            pid: self.pid@,
+            pid: self.pid,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,

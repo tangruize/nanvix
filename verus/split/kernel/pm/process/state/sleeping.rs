@@ -28,9 +28,9 @@
 //! ## Verification Model
 //!
 //! The original `SleepingProcess` contains complex kernel types. For verification:
-//! - `Box<ProcessState>` -> PID (int, identity tracking only).
-//! - `NonEmptyVecDeque<SleepingThread>` -> `Seq<int>` of thread IDs (ghost).
-//! - `Option<NonEmptyVecDeque<ZombieThread>>` -> `Seq<int>` (empty = None).
+//! - `Box<ProcessState>` -> PID (`u64`, identity tracking only).
+//! - `NonEmptyVecDeque<SleepingThread>` -> `Vec<u64>` of thread IDs (concrete).
+//! - `Option<NonEmptyVecDeque<ZombieThread>>` -> `Vec<u64>` (empty = None).
 //! - `InterruptReason` -> elided (always `Killed` in terminate, `TimedOut` in
 //!   wakeup_alarm — the reason value does not affect state machine logic).
 //! - `alarm: Option<SystemTime>` -> elided. Alarm-based partitioning in
@@ -82,13 +82,11 @@ verus! {
 /// Verification model of `src/kernel/src/pm/process/state/sleeping.rs::SleepingProcess`.
 pub struct SleepingProcess {
     /// Process identifier (from the inner ProcessState).
-    pub pid: Ghost<int>,
-    /// Ghost sequence of sleeping thread IDs (non-empty).
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
-    /// Ghost sequence of zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Ghost<Seq<int>>,
-    /// Exec-level count of sleeping threads.
-    pub sleeping_count: u64,
+    pub pid: u64,
+    /// Sleeping thread IDs (non-empty).
+    pub sleeping_thread_ids: Vec<u64>,
+    /// Zombie thread IDs (may be empty).
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 /// A process that is ready to run (boundary model).
@@ -96,15 +94,15 @@ pub struct SleepingProcess {
 /// Models `RunnableProcess` from the sibling module.
 pub struct RunnableProcess {
     /// Process identifier.
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Ready thread IDs (non-empty).
-    pub ready_thread_ids: Ghost<Seq<int>>,
+    pub ready_thread_ids: Vec<u64>,
     /// Interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Ghost<Seq<int>>,
+    pub interrupted_thread_ids: Vec<u64>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
+    pub sleeping_thread_ids: Vec<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 /// A process that was interrupted (boundary model).
@@ -112,13 +110,13 @@ pub struct RunnableProcess {
 /// Models `InterruptedProcess` from the sibling module.
 pub struct InterruptedProcess {
     /// Process identifier.
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Ghost<Seq<int>>,
+    pub interrupted_thread_ids: Vec<u64>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
+    pub sleeping_thread_ids: Vec<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 //==================================================================================================
@@ -133,27 +131,24 @@ impl SleepingProcess {
     /// # Parameters
     ///
     /// - `pid`: Process identifier.
-    /// - `sleeping_ids`: Ghost sleeping thread IDs (must be non-empty).
-    /// - `zombie_ids`: Ghost zombie thread IDs (may be empty).
-    /// - `sleeping_count`: Exec-level count of sleeping threads.
+    /// - `sleeping_ids`: Sleeping thread IDs (must be non-empty).
+    /// - `zombie_ids`: Zombie thread IDs (may be empty).
     ///
     /// # Returns
     ///
     /// A new, well-formed SleepingProcess.
     pub fn new(
-        pid: Ghost<int>,
-        sleeping_ids: Ghost<Seq<int>>,
-        zombie_ids: Ghost<Seq<int>>,
-        sleeping_count: u64,
+        pid: u64,
+        sleeping_ids: Vec<u64>,
+        zombie_ids: Vec<u64>,
     ) -> (result: SleepingProcess)
         requires
-            sleeping_count as nat == sleeping_ids@.len(),
             sleeping_ids@.len() >= 1,
             Self::spec_no_duplicates(sleeping_ids@),
             Self::spec_no_duplicates(zombie_ids@),
             Self::spec_seqs_disjoint(sleeping_ids@, zombie_ids@),
         ensures
-            result.spec_pid() == pid@,
+            result.spec_pid() == pid,
             result.sleeping_thread_ids@ == sleeping_ids@,
             result.zombie_thread_ids@ == zombie_ids@,
             result.spec_sleeping_count() == sleeping_ids@.len(),
@@ -163,7 +158,6 @@ impl SleepingProcess {
             pid,
             sleeping_thread_ids: sleeping_ids,
             zombie_thread_ids: zombie_ids,
-            sleeping_count,
         }
     }
 
@@ -175,9 +169,9 @@ impl SleepingProcess {
     ///
     /// The process identifier.
     #[verifier::external_body]
-    pub fn state(&self) -> (result: Ghost<int>)
+    pub fn state(&self) -> (result: u64)
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
     {
         unimplemented!()
     }
@@ -189,15 +183,14 @@ impl SleepingProcess {
     ///
     /// # Returns
     ///
-    /// The process identifier (as a ghost value).
+    /// The process identifier.
     #[verifier::external_body]
-    pub fn state_mut(&mut self) -> (result: Ghost<int>)
+    pub fn state_mut(&mut self) -> (result: u64)
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
             self.spec_pid() == old(self).spec_pid(),
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
-            self.sleeping_count == old(self).sleeping_count,
     {
         unimplemented!()
     }
@@ -230,10 +223,10 @@ impl SleepingProcess {
         }
 
         InterruptedProcess {
-            pid: Ghost(self.pid@),
-            interrupted_thread_ids: Ghost(self.sleeping_thread_ids@),
-            sleeping_thread_ids: Ghost(Seq::empty()),
-            zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+            pid: self.pid,
+            interrupted_thread_ids: self.sleeping_thread_ids,
+            sleeping_thread_ids: Vec::new(),
+            zombie_thread_ids: self.zombie_thread_ids,
         }
     }
 
@@ -246,13 +239,12 @@ impl SleepingProcess {
     ///
     /// ## Oracle Parameter
     ///
-    /// The `found` parameter is required because the sleeping list is ghost
-    /// (`Ghost<Seq<int>>`), so `Seq::contains()` cannot be evaluated at exec
-    /// time. The precondition ties `found` to `spec_seq_contains()`.
+    /// The `found` parameter indicates whether the thread exists in the
+    /// sleeping list. The precondition ties `found` to `spec_seq_contains()`.
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to wake up.
+    /// - `tid`: Thread identifier to wake up.
     /// - `found`: Oracle — whether the thread is in the sleeping list.
     ///
     /// # Returns
@@ -260,12 +252,12 @@ impl SleepingProcess {
     /// Ok(RunnableProcess) if found, Err(SleepingProcess) if not found.
     pub fn wakeup(
         self,
-        tid: Ghost<int>,
+        tid: u64,
         found: bool,
     ) -> (result: Result<RunnableProcess, SleepingProcess>)
         requires
             self.wf(),
-            found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid@),
+            found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid),
         ensures
             match result {
                 Ok(rp) => {
@@ -274,18 +266,18 @@ impl SleepingProcess {
                     && rp.wf()
                     // Exactly one ready thread: the woken thread.
                     && rp.ready_thread_ids@.len() == 1
-                    && rp.ready_thread_ids@[0] == tid@
+                    && rp.ready_thread_ids@[0] == tid
                     // No interrupted threads.
                     && rp.interrupted_thread_ids@.len() == 0
                     // Sleeping list has the found thread removed.
                     // Under wf() no_duplicates, this existential is uniquely determined.
                     && (exists|idx: int| 0 <= idx < self.sleeping_thread_ids@.len()
-                        && self.sleeping_thread_ids@[idx] == tid@
+                        && self.sleeping_thread_ids@[idx] == tid
                         && rp.sleeping_thread_ids@ ==
                             Self::spec_remove_at(self.sleeping_thread_ids@, idx))
                     && rp.sleeping_thread_ids@.len() == self.spec_sleeping_count() - 1
                     // The woken thread is no longer in the sleeping list.
-                    && !Self::spec_seq_contains(rp.sleeping_thread_ids@, tid@)
+                    && !Self::spec_seq_contains(rp.sleeping_thread_ids@, tid)
                     // Zombie threads preserved.
                     && rp.zombie_thread_ids@ == self.zombie_thread_ids@
                 },
@@ -295,63 +287,77 @@ impl SleepingProcess {
                     && sp.wf()
                     && sp.sleeping_thread_ids@ == self.sleeping_thread_ids@
                     && sp.zombie_thread_ids@ == self.zombie_thread_ids@
-                    && sp.sleeping_count == self.sleeping_count
                 },
             },
     {
         if !found {
-            return Err(SleepingProcess {
-                pid: Ghost(self.pid@),
-                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
-                sleeping_count: self.sleeping_count,
-            });
+            return Err(self);
         }
 
-        // Derive the index via proof using `choose`.
-        let ghost found_idx: int = choose|i: int|
-            0 <= i < self.sleeping_thread_ids@.len()
-            && self.sleeping_thread_ids@[i] == tid@;
+        // Destructure self to work with individual fields.
+        let pid: u64 = self.pid;
+        let mut sleeping: Vec<u64> = self.sleeping_thread_ids;
+        let zombie: Vec<u64> = self.zombie_thread_ids;
+        let ghost old_sleeping: Seq<u64> = sleeping@;
 
-        proof {
-            self.lemma_spec_find_sleeping_index(tid);
+        // Concrete linear search for tid.
+        let mut idx: usize = 0;
+        let mut found_it: bool = false;
+        while idx < sleeping.len() && !found_it
+            invariant
+                idx <= sleeping@.len(),
+                sleeping@ == old_sleeping,
+                found_it ==> (idx < sleeping@.len() && sleeping@[idx as int] == tid),
+                !found_it ==> (forall|j: int| #![auto] 0 <= j < idx as int
+                    ==> sleeping@[j] != tid),
+            decreases (sleeping@.len() - idx) + (if !found_it { 1nat } else { 0nat }),
+        {
+            if sleeping[idx] == tid {
+                found_it = true;
+            } else {
+                idx = idx + 1;
+            }
         }
 
-        let ghost new_sleeping_ids: Seq<int> =
-            self.sleeping_thread_ids@.subrange(0, found_idx)
-                .add(self.sleeping_thread_ids@.subrange(
-                    found_idx + 1,
-                    self.sleeping_thread_ids@.len() as int,
-                ));
+        proof {
+            // The search must succeed because found == true implies
+            // spec_seq_contains(old_sleeping, tid).
+            if !found_it {
+                assert(forall|j: int| #![auto] 0 <= j < sleeping@.len() as int
+                    ==> sleeping@[j] != tid);
+                assert(!Self::spec_seq_contains(sleeping@, tid));
+                assert(false);
+            }
+        }
+
+        let ghost found_idx: int = idx as int;
+        let _removed: u64 = sleeping.remove(idx);
 
         proof {
-            // Prove lengths.
-            let s: Seq<int> = self.sleeping_thread_ids@;
-            let idx: int = found_idx;
-            let left: Seq<int> = s.subrange(0, idx);
-            let right: Seq<int> = s.subrange(idx + 1, s.len() as int);
-            assert(left.len() == idx as nat);
-            assert(right.len() == (s.len() - idx as nat - 1) as nat);
-            assert(left.add(right).len() == (s.len() - 1) as nat);
+            // Vec::remove ensures: sleeping@ == old_sleeping.remove(found_idx).
+            // Seq::remove is defined identically to spec_remove_at.
+            assert(sleeping@ == old_sleeping.remove(found_idx));
+            assert(old_sleeping.remove(found_idx) =~=
+                Self::spec_remove_at(old_sleeping, found_idx));
 
-            // Prove new_sleeping_ids matches spec_remove_at.
-            assert(new_sleeping_ids =~= Self::spec_remove_at(s, idx));
-
-            // Prove the woken thread is no longer in the sleeping list.
-            Self::lemma_remove_at_removes_element(s, idx);
+            // The woken thread is no longer in the sleeping list.
+            Self::lemma_remove_at_removes_element(old_sleeping, found_idx);
 
             // Prove single-element ready list properties.
-            let ready: Seq<int> = Seq::<int>::empty().push(tid@);
+            let ready: Seq<u64> = Seq::<u64>::empty().push(tid);
             assert(ready.len() == 1);
-            assert(ready[0] == tid@);
+            assert(ready[0] == tid);
         }
 
+        let mut ready: Vec<u64> = Vec::new();
+        ready.push(tid);
+
         Ok(RunnableProcess {
-            pid: Ghost(self.pid@),
-            ready_thread_ids: Ghost(Seq::<int>::empty().push(tid@)),
-            interrupted_thread_ids: Ghost(Seq::empty()),
-            sleeping_thread_ids: Ghost(new_sleeping_ids),
-            zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+            pid,
+            ready_thread_ids: ready,
+            interrupted_thread_ids: Vec::new(),
+            sleeping_thread_ids: sleeping,
+            zombie_thread_ids: zombie,
         })
     }
 
@@ -367,7 +373,7 @@ impl SleepingProcess {
     /// The alarm-based partition is provided as oracle parameters because:
     /// - Per-thread alarm data (`Option<SystemTime>`) is not modeled in this
     ///   verification module (alarm checking is simple comparison logic).
-    /// - The partition cannot be computed from ghost state alone.
+    /// - The partition cannot be computed from the concrete thread ID lists.
     /// - Conservation constraint ties the oracle to structural correctness.
     ///
     /// # Parameters
@@ -382,8 +388,8 @@ impl SleepingProcess {
     pub fn wakeup_alarm(
         self,
         has_expired: bool,
-        interrupted_ids: Ghost<Seq<int>>,
-        remaining_ids: Ghost<Seq<int>>,
+        interrupted_ids: Vec<u64>,
+        remaining_ids: Vec<u64>,
     ) -> (result: Result<InterruptedProcess, SleepingProcess>)
         requires
             self.wf(),
@@ -429,7 +435,6 @@ impl SleepingProcess {
                     && sp.wf()
                     && sp.sleeping_thread_ids@ == self.sleeping_thread_ids@
                     && sp.zombie_thread_ids@ == self.zombie_thread_ids@
-                    && sp.sleeping_count == self.sleeping_count
                 },
             },
     {
@@ -439,19 +444,17 @@ impl SleepingProcess {
             }
 
             Ok(InterruptedProcess {
-                pid: Ghost(self.pid@),
+                pid: self.pid,
                 interrupted_thread_ids: interrupted_ids,
                 sleeping_thread_ids: remaining_ids,
-                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                zombie_thread_ids: self.zombie_thread_ids,
             })
         } else {
             // No alarm expired: the process remains sleeping with all state unchanged.
-            // sleeping_count, sleeping_thread_ids, and zombie_thread_ids are identity-preserved.
             Err(SleepingProcess {
-                pid: Ghost(self.pid@),
-                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
-                sleeping_count: self.sleeping_count,
+                pid: self.pid,
+                sleeping_thread_ids: self.sleeping_thread_ids,
+                zombie_thread_ids: self.zombie_thread_ids,
             })
         }
     }
@@ -464,24 +467,24 @@ impl SleepingProcess {
     ///
     /// # Parameters
     ///
-    /// - `ready_tid`: Ghost thread identifier of the thread to add.
+    /// - `ready_tid`: Thread identifier of the thread to add.
     ///
     /// # Returns
     ///
     /// A RunnableProcess with the added thread as the only ready thread.
-    pub fn add_thread(self, ready_tid: Ghost<int>) -> (result: RunnableProcess)
+    pub fn add_thread(self, ready_tid: u64) -> (result: RunnableProcess)
         requires
             self.wf(),
             // The added thread must not collide with existing sleeping or zombie threads.
             // In the original code, Rust ownership prevents this; we enforce it explicitly.
-            !Self::spec_seq_contains(self.sleeping_thread_ids@, ready_tid@),
-            !Self::spec_seq_contains(self.zombie_thread_ids@, ready_tid@),
+            !Self::spec_seq_contains(self.sleeping_thread_ids@, ready_tid),
+            !Self::spec_seq_contains(self.zombie_thread_ids@, ready_tid),
         ensures
             result.spec_pid() == self.spec_pid(),
             result.wf(),
             // Exactly one ready thread: the added thread.
             result.ready_thread_ids@.len() == 1,
-            result.ready_thread_ids@[0] == ready_tid@,
+            result.ready_thread_ids@[0] == ready_tid,
             // No interrupted threads.
             result.interrupted_thread_ids@.len() == 0,
             // Sleeping threads preserved.
@@ -489,18 +492,20 @@ impl SleepingProcess {
             // Zombie threads preserved.
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
     {
+        let mut ready: Vec<u64> = Vec::new();
+        ready.push(ready_tid);
+
         proof {
-            let ready: Seq<int> = Seq::<int>::empty().push(ready_tid@);
-            assert(ready.len() == 1);
-            assert(ready[0] == ready_tid@);
+            assert(ready@.len() == 1);
+            assert(ready@[0] == ready_tid);
         }
 
         RunnableProcess {
-            pid: Ghost(self.pid@),
-            ready_thread_ids: Ghost(Seq::<int>::empty().push(ready_tid@)),
-            interrupted_thread_ids: Ghost(Seq::empty()),
-            sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-            zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+            pid: self.pid,
+            ready_thread_ids: ready,
+            interrupted_thread_ids: Vec::new(),
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids,
         }
     }
 
@@ -519,16 +524,16 @@ impl SleepingProcess {
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
     /// The ghost list variant.
-    pub fn find_thread(&self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<int>>)
         ensures
-            result@ == self.spec_find_thread(tid@),
+            result@ == self.spec_find_thread(tid),
     {
-        Ghost(self.spec_find_thread(tid@))
+        Ghost(self.spec_find_thread(tid))
     }
 
     /// Finds a thread by its identifier (mutable variant).
@@ -541,23 +546,22 @@ impl SleepingProcess {
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
     /// The ghost list variant.
-    pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread_mut(&mut self, tid: u64) -> (result: Ghost<Option<int>>)
         requires
             old(self).wf(),
         ensures
-            result@ == old(self).spec_find_thread(tid@),
+            result@ == old(self).spec_find_thread(tid),
             self.spec_pid() == old(self).spec_pid(),
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
-            self.sleeping_count == old(self).sleeping_count,
             self.wf(),
     {
-        Ghost(old(self).spec_find_thread(tid@))
+        Ghost(old(self).spec_find_thread(tid))
     }
 }
 
