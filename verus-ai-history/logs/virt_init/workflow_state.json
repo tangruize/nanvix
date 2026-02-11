@@ -8,6 +8,6 @@
   "final_grades": {
     "claude": "A",
     "gpt": "C",
-    "gemini": "B+"
+    "gemini": "B-"
   }
 }
