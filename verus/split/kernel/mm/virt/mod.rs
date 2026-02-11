@@ -180,8 +180,8 @@ pub fn virt_align_down(addr: usize, alignment: usize) -> (result: usize)
         result as int % alignment as int == 0,
 {
     proof {
-        lemma_align_down_le(addr as int, alignment as int);
-        lemma_align_down_aligned(addr as int, alignment as int);
+        VirtProofs::lemma_align_down_le(addr as int, alignment as int);
+        VirtProofs::lemma_align_down_aligned(addr as int, alignment as int);
     }
     (addr / alignment) * alignment
 }
@@ -210,8 +210,8 @@ pub fn compute_pgtab_base(vaddr: usize) -> (result: usize)
         result as int % INIT_PGTAB_ALIGNMENT as int == 0,
 {
     proof {
-        lemma_align_down_le(vaddr as int, INIT_PGTAB_ALIGNMENT as int);
-        lemma_align_down_aligned(vaddr as int, INIT_PGTAB_ALIGNMENT as int);
+        VirtProofs::lemma_align_down_le(vaddr as int, INIT_PGTAB_ALIGNMENT as int);
+        VirtProofs::lemma_align_down_aligned(vaddr as int, INIT_PGTAB_ALIGNMENT as int);
     }
     virt_align_down(vaddr, INIT_PGTAB_ALIGNMENT)
 }
@@ -243,7 +243,7 @@ pub fn check_pgtab_monotonicity(prev_vaddr: usize, curr_vaddr: usize) -> (result
         result == true,
 {
     proof {
-        lemma_sorted_addrs_sorted_pgtab_bases(prev_vaddr as int, curr_vaddr as int);
+        VirtProofs::lemma_sorted_addrs_sorted_pgtab_bases(prev_vaddr as int, curr_vaddr as int);
     }
     let prev_base: usize = compute_pgtab_base(prev_vaddr);
     let curr_base: usize = compute_pgtab_base(curr_vaddr);
