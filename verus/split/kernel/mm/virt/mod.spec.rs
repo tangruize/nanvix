@@ -91,7 +91,7 @@ pub open spec fn spec_loop_end(start: int, size: int) -> int {
 ///
 /// This is an opaque hardware-dependent translation. The spec models
 /// it as an uninterpreted function from region start to physical address.
-pub open spec fn spec_mmio_paddr(region_start: int) -> int;
+pub uninterp spec fn spec_mmio_paddr(region_start: int) -> int;
 
 
 /// Spec function for the physical address of a page during init.
