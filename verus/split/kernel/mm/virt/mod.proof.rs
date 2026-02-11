@@ -25,11 +25,6 @@ impl VirtProofs {
     //==============================================================================================
 
     /// Proof that align_down produces a value <= the input.
-    ///
-    /// # Description
-    ///
-    /// For any positive alignment, the aligned-down value is at most the original.
-    /// This follows from the floor-division property: (a / k) * k <= a.
     pub proof fn lemma_align_down_le(addr: int, alignment: int)
         requires
             alignment > 0,
@@ -38,18 +33,12 @@ impl VirtProofs {
             spec_align_down(addr, alignment) <= addr,
     {
         vstd::arithmetic::div_mod::lemma_fundamental_div_mod(addr, alignment);
-        // vstd gives: addr == alignment * (addr / alignment) + (addr % alignment).
-        // Our spec uses (addr / alignment) * alignment, so apply commutativity.
         vstd::arithmetic::mul::lemma_mul_is_commutative(alignment, addr / alignment);
         assert(addr % alignment >= 0);
     }
 
 
     /// Proof that align_down produces an aligned result.
-    ///
-    /// # Description
-    ///
-    /// The result of align_down is always divisible by the alignment.
     pub proof fn lemma_align_down_aligned(addr: int, alignment: int)
         requires
             alignment > 0,
@@ -88,10 +77,6 @@ impl VirtProofs {
 
 
     /// Proof that align_down is idempotent.
-    ///
-    /// # Description
-    ///
-    /// align_down(align_down(x, k), k) == align_down(x, k).
     pub proof fn lemma_align_down_idempotent(addr: int, alignment: int)
         requires
             alignment > 0,
@@ -187,13 +172,7 @@ impl VirtProofs {
     {
         let ps: int = INIT_PAGE_SIZE as int;
         let page_addr: int = spec_nth_page_addr(start, i);
-        // page_addr >= start because i >= 0 and PAGE_SIZE > 0.
         vstd::arithmetic::mul::lemma_mul_nonnegative(i, ps);
-        // i * PAGE_SIZE < size because i < size / PAGE_SIZE (and size is page-aligned).
-        // From i < size / PAGE_SIZE: i * PAGE_SIZE < size.
-        // Proof: size = (size / ps) * ps + size % ps = (size / ps) * ps (since size % ps == 0).
-        // i < size / ps, so i + 1 <= size / ps, so (i + 1) * ps <= (size / ps) * ps = size.
-        // Therefore i * ps + ps <= size, i.e., i * ps <= size - ps < size.
         vstd::arithmetic::mul::lemma_mul_inequality(i + 1, size / ps, ps);
         assert((i + 1) * ps <= (size / ps) * ps);
         assert(size == (size / ps) * ps + size % ps);
@@ -202,17 +181,11 @@ impl VirtProofs {
         vstd::arithmetic::mul::lemma_mul_is_distributive_add(ps, i, 1);
         assert((i + 1) * ps == i * ps + 1 * ps);
         assert(i * ps < size);
-        // page_addr = start + i * ps, and page_addr % ps == 0.
         assert(page_addr == start + i * ps);
     }
 
 
     /// Proof that consecutive pages within a region maintain page table ordering.
-    ///
-    /// # Description
-    ///
-    /// If page i comes before page j in a region, then the page table base
-    /// for page i is <= the page table base for page j.
     pub proof fn lemma_consecutive_pages_ordered_bases(start: int, i: int, j: int)
         requires
             start >= 0,
@@ -234,26 +207,125 @@ impl VirtProofs {
     }
 
     //==============================================================================================
-    // Identity Mapping Proof
+    // Loop Bound Reconciliation Proofs
     //==============================================================================================
 
-    /// Proof documenting the identity mapping property for non-MMIO regions.
+    /// Proof reconciling the original loop bound with the spec page count.
     ///
     /// # Description
     ///
-    /// For non-MMIO memory regions in the Nanvix kernel, the physical address
-    /// equals the virtual address (identity mapping). Evidenced by:
-    /// - `PhysicalAddress` wraps `VirtualAddress` directly.
-    /// - `PhysicalAddress::into_virtual_address()` is the identity function.
-    /// - The init function explicitly performs "identity map memory regions".
-    pub proof fn lemma_identity_mapping_non_mmio(vaddr: int)
+    /// The original computes `end = raw_vaddr + (region.size() - 1)` and loops
+    /// `while raw_vaddr < end`. The spec uses `i < size / PAGE_SIZE` as the page count.
+    ///
+    /// For a page-aligned region of size S starting at A:
+    /// - The last page address is `A + S - PAGE_SIZE`.
+    /// - The loop condition `A + S - PAGE_SIZE < A + S - 1` holds because PAGE_SIZE >= 2.
+    /// - Therefore all `S / PAGE_SIZE` pages are visited.
+    ///
+    /// # Single-Page Edge Case
+    ///
+    /// When S == PAGE_SIZE (single page): `end = A + PAGE_SIZE - 1 = A + 4095`.
+    /// Since `A < A + 4095`, the loop body executes exactly once, mapping the page.
+    /// This is correct: `S / PAGE_SIZE = 1`, so exactly one page should be mapped.
+    pub proof fn lemma_loop_bound_matches_page_count(start: int, size: int)
+        requires
+            start >= 0,
+            size > 0,
+            size % INIT_PAGE_SIZE as int == 0,
+            INIT_PAGE_SIZE > 1,
+        ensures
+            // The loop condition admits exactly size/PAGE_SIZE iterations.
+            // Last page addr < end (loop continues through all pages).
+            spec_nth_page_addr(start, size / INIT_PAGE_SIZE as int - 1)
+                < spec_loop_end(start, size),
+            // Single-page case: loop executes at least once.
+            size == INIT_PAGE_SIZE as int ==> start < spec_loop_end(start, size),
+    {
+        let ps: int = INIT_PAGE_SIZE as int;
+        let n: int = size / ps;
+        let last_page: int = spec_nth_page_addr(start, n - 1);
+        let end: int = spec_loop_end(start, size);
+        // last_page = start + (n-1) * ps = start + n*ps - ps = start + size - ps.
+        // end = start + size - 1.
+        // last_page < end iff start + size - ps < start + size - 1 iff ps > 1.
+        vstd::arithmetic::mul::lemma_mul_is_distributive_sub(ps, n, 1);
+        assert(n * ps == size);
+        assert((n - 1) * ps == n * ps - 1 * ps);
+        assert(last_page == start + size - ps);
+        assert(end == start + size - 1);
+        assert(ps > 1);
+    }
+
+
+    /// Proof that a valid MemRegion does not overflow on the end computation.
+    ///
+    /// # Description
+    ///
+    /// The original `let end: usize = raw_vaddr + (region.size() - 1);` requires
+    /// that `start + size - 1 <= usize::MAX`. This is guaranteed by
+    /// `MemRegion::spec_is_valid()` which requires `start + size - 1 <= usize::MAX`.
+    pub proof fn lemma_end_no_overflow(start: int, size: int)
+        requires
+            start >= 0,
+            size > 0,
+            start + size - 1 <= usize::MAX as int,
+        ensures
+            spec_loop_end(start, size) >= 0,
+            spec_loop_end(start, size) <= usize::MAX as int,
+    {
+        // Trivially follows from spec_loop_end(start, size) = start + size - 1.
+    }
+
+    //==============================================================================================
+    // Identity Mapping Proof
+    //==============================================================================================
+
+    /// Proof that non-MMIO init paddr equals vaddr (identity mapping).
+    ///
+    /// # Description
+    ///
+    /// For non-MMIO memory regions in the Nanvix kernel, the init function
+    /// computes `paddr = FrameAddress::new(PageAligned::from_address(
+    /// PhysicalAddress::from_raw_value(raw_vaddr)))`. Since PhysicalAddress
+    /// wraps VirtualAddress directly and identity mapping is used for kernel
+    /// memory (see virt/mod.rs line 125: "Identity map memory regions"), the
+    /// physical address equals the virtual address.
+    ///
+    /// This is verified by the chain:
+    /// - `PhysicalAddress::from_raw_value(raw_vaddr)` creates a PhysicalAddress = vaddr
+    /// - `PageAligned::from_address(phys_addr)` preserves the value (page-aligned input)
+    /// - `FrameAddress::new(page_aligned)` preserves the value
+    pub proof fn lemma_non_mmio_paddr_is_identity(vaddr: int)
         requires
             vaddr >= 0,
             vaddr % INIT_PAGE_SIZE as int == 0,
         ensures
-            vaddr == vaddr,
+            spec_init_paddr(vaddr, vaddr, false) == vaddr,
     {
-        // Trivially true. Documents the identity mapping design decision.
+        // Follows from definition: spec_init_paddr(vaddr, _, false) == vaddr.
+    }
+
+
+    /// Proof that MMIO paddr is constant across all pages in a region.
+    ///
+    /// # Description
+    ///
+    /// In the original init(), MMIO paddr is recomputed on each iteration using
+    /// `region.start()` (NOT the current `raw_vaddr`). This means all pages in
+    /// an MMIO region map to the SAME physical frame. This behavior is captured
+    /// by `spec_init_paddr(_, region_start, true) == spec_mmio_paddr(region_start)`.
+    ///
+    /// This is a potential bug in the original code (all MMIO pages sharing a frame),
+    /// but the verification faithfully models the actual behavior.
+    pub proof fn lemma_mmio_paddr_constant(vaddr1: int, vaddr2: int, region_start: int)
+        requires
+            vaddr1 >= 0,
+            vaddr2 >= 0,
+        ensures
+            spec_init_paddr(vaddr1, region_start, true)
+                == spec_init_paddr(vaddr2, region_start, true),
+    {
+        // Both equal spec_mmio_paddr(region_start) by definition.
     }
 
     //==============================================================================================
@@ -261,12 +333,6 @@ impl VirtProofs {
     //==============================================================================================
 
     /// Proof that non-overlapping sorted regions produce ordered page table bases.
-    ///
-    /// # Description
-    ///
-    /// If region A ends before region B starts (A.end <= B.start),
-    /// and both are page-aligned, then any page in A has a page table base
-    /// <= any page in B.
     pub proof fn lemma_non_overlapping_regions_ordered(
         a_start: int, a_size: int, b_start: int, b_size: int, i: int, j: int)
         requires
@@ -302,6 +368,26 @@ impl VirtProofs {
         assert(b_page >= 0);
 
         Self::lemma_sorted_addrs_sorted_pgtab_bases(a_page, b_page);
+    }
+
+    //==============================================================================================
+    // Page Table Decision Proof
+    //==============================================================================================
+
+    /// Proof that the Ordering::Less branch is unreachable for sorted inputs.
+    ///
+    /// # Description
+    ///
+    /// When processing pages in non-decreasing virtual address order, the
+    /// page table base for the current address is always >= the base for the
+    /// previous address. Therefore `PgtabDecision::Overlap` never occurs.
+    pub proof fn lemma_no_overlap_for_sorted_inputs(prev_vaddr: int, curr_vaddr: int)
+        requires
+            0 <= prev_vaddr <= curr_vaddr,
+        ensures
+            spec_pgtab_base(curr_vaddr) >= spec_pgtab_base(prev_vaddr),
+    {
+        Self::lemma_sorted_addrs_sorted_pgtab_bases(prev_vaddr, curr_vaddr);
     }
 }
 
