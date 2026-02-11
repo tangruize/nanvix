@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 
 # Model configurations.
-PROVER_MODEL = "claude-opus-4.6"
+PROVER_MODEL = "claude-opus-4.6-fast"
 
 REVIEWER_MODELS = [
     "claude-opus-4.6",

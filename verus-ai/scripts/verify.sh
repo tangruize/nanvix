@@ -48,6 +48,16 @@ if [ -n "$MODULE" ] && [[ ! "$MODULE" == *"::"* ]]; then
             FOUND_PATH=$(find "$VERUS_DIR" -path "*/${PARTS[1]}/*/${PARTS[0]}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
         fi
     fi
+    if [ -z "$FOUND_PATH" ]; then
+        # Fallback for 3+ segments: try first segment as directory, rest joined by underscore as filename.
+        # e.g., kcall_lock_mutex -> kcall/lock_mutex.rs
+        IFS='_' read -ra PARTS <<< "$MODULE"
+        if [ "${#PARTS[@]}" -ge 3 ]; then
+            DIR_PART="${PARTS[0]}"
+            FILE_PART=$(IFS='_'; echo "${PARTS[*]:1}")
+            FOUND_PATH=$(find "$VERUS_DIR" -path "*/${DIR_PART}/${FILE_PART}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
+        fi
+    fi
     if [ -n "$FOUND_PATH" ]; then
         # Convert file path to module path.
         # e.g., /path/verus/split/kernel/pm/sys/pid.rs -> kernel::pm::sys::pid

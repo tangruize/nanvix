@@ -154,16 +154,30 @@ def run_copilot(
 
     # Method 2: Get the most recently modified session from ~/.copilot/session-state/.
     # This is the most reliable method since copilot doesn't print session ID in output.
+    # Newer copilot versions store sessions as directories with events.jsonl inside;
+    # older versions store them as plain .jsonl files.
     if not new_session.session_id:
         session_state_dir = Path.home() / ".copilot" / "session-state"
         if session_state_dir.exists():
             try:
-                # Find the most recently modified session file.
-                session_files = list(session_state_dir.glob("*.jsonl"))
-                if session_files:
-                    latest_session = max(session_files, key=lambda p: p.stat().st_mtime)
-                    # Session ID is the filename without extension.
-                    new_session.session_id = latest_session.stem
+                # Collect candidates: directories with events.jsonl + plain .jsonl files.
+                candidates: list[tuple[float, str]] = []
+
+                # New-style: directories containing events.jsonl.
+                for d in session_state_dir.iterdir():
+                    if d.is_dir():
+                        events_file = d / "events.jsonl"
+                        if events_file.exists():
+                            candidates.append((events_file.stat().st_mtime, d.name))
+
+                # Old-style: plain .jsonl files.
+                for f in session_state_dir.glob("*.jsonl"):
+                    candidates.append((f.stat().st_mtime, f.stem))
+
+                if candidates:
+                    # Pick the most recently modified.
+                    candidates.sort(key=lambda x: x[0], reverse=True)
+                    new_session.session_id = candidates[0][1]
             except Exception:
                 pass
 
