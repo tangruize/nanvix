@@ -77,10 +77,10 @@ impl Spinlock {
     }
 
     /// Lemma: unlock on a locked spinlock produces an unlocked spinlock.
-    pub proof fn lemma_unlock_produces_unlocked(id: nat)
+    pub proof fn lemma_unlock_produces_unlocked(id: usize)
         ensures
-            !(Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) }).locked,
-            (Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) }).spec_is_unlocked(),
+            !(Spinlock { locked: false, id: id, token_issued: false }).locked,
+            (Spinlock { locked: false, id: id, token_issued: false }).spec_is_unlocked(),
     {
     }
 
@@ -164,11 +164,11 @@ impl Spinlock {
 impl Spinlock {
     /// Lemma: Lock-then-unlock round-trip restores unlocked state. Identity and
     /// token tracking are preserved through the protocol.
-    pub proof fn lemma_lock_unlock_roundtrip(id: nat)
+    pub proof fn lemma_lock_unlock_roundtrip(id: usize)
         ensures ({
-            let initial: Spinlock = Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) };
-            let after_lock: Spinlock = Spinlock { locked: true, id: Ghost(id), token_issued: Ghost(true) };
-            let after_unlock: Spinlock = Spinlock { locked: false, id: Ghost(id), token_issued: Ghost(false) };
+            let initial: Spinlock = Spinlock { locked: false, id: id, token_issued: false };
+            let after_lock: Spinlock = Spinlock { locked: true, id: id, token_issued: true };
+            let after_unlock: Spinlock = Spinlock { locked: false, id: id, token_issued: false };
             &&& initial.spec_is_unlocked()
             &&& after_lock.spec_is_locked()
             &&& after_unlock.spec_is_unlocked()

@@ -102,7 +102,7 @@ impl View for Spinlock {
     type V = SpinlockView;
 
     open spec fn view(&self) -> SpinlockView {
-        SpinlockView { locked: self.locked, id: self.id@, token_issued: self.token_issued@ }
+        SpinlockView { locked: self.locked, id: self.id as nat, token_issued: self.token_issued }
     }
 }
 
