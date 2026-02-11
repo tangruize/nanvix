@@ -593,8 +593,8 @@ pub fn handle_harvest_phase() -> (result: ZombieHarvestResult)
 ///
 /// Executes all three phases (kcall dispatch, message polling, zombie harvest)
 /// and determines whether to yield or continue. Returns the work state,
-/// termination signal, and a ghost `HarvestOutcome` linked to the actual
-/// harvest result via `spec_harvest_to_outcome`.
+/// termination signal, and concrete harvest fields that link to the spec-level
+/// `HarvestOutcome` via `spec_harvest_to_outcome`.
 ///
 /// The `harvested_process` work flag is only set when:
 /// 1. A zombie was found (`harvest.found`),
@@ -617,8 +617,9 @@ pub fn run_iteration(poll: &ScoreBoardPollResult, stdio_enabled: bool) -> (resul
         result.should_terminate ==> result.initd_pid == 1u32,
         // INITD termination does NOT set harvested_process (loop breaks first).
         result.should_terminate ==> !result.work_state.harvested_process,
-        // Ghost outcome reflects actual harvest and links to spec termination.
-        result.should_terminate == spec_should_terminate(result.harvest_outcome@),
+        // Concrete harvest fields link to spec termination via spec_harvest_to_outcome.
+        result.should_terminate == spec_should_terminate(spec_harvest_to_outcome(
+            result.harvest_found, result.harvest_error, result.harvest_pid as nat, result.harvest_is_initd)),
         // Non-stdio builds never receive messages.
         !stdio_enabled ==> !result.work_state.message_received,
 {
@@ -662,9 +663,10 @@ pub fn run_iteration(poll: &ScoreBoardPollResult, stdio_enabled: bool) -> (resul
         should_terminate: terminate,
         exit_status: harvest.exit_status,
         initd_pid: harvest.pid,
-        harvest_outcome: Ghost(spec_harvest_to_outcome(
-            harvest.found, harvest.error, harvest.pid as nat, harvest.is_initd,
-        )),
+        harvest_found: harvest.found,
+        harvest_error: harvest.error,
+        harvest_pid: harvest.pid,
+        harvest_is_initd: harvest.is_initd,
     }
 }
 
@@ -680,9 +682,14 @@ pub struct IterationResult {
     pub exit_status: u32,
     /// The PID that triggered termination (meaningful only when `should_terminate` is true).
     pub initd_pid: u32,
-    /// Ghost harvest outcome linked to the spec-level HarvestOutcome enum.
-    /// Derived from the actual harvest via `spec_harvest_to_outcome`.
-    pub harvest_outcome: Ghost<HarvestOutcome>,
+    /// Whether a zombie was found in this iteration's harvest phase.
+    pub harvest_found: bool,
+    /// Whether the harvest phase encountered an error.
+    pub harvest_error: bool,
+    /// PID of the harvested zombie (meaningful when `harvest_found` is true).
+    pub harvest_pid: u32,
+    /// Whether the harvested zombie was INITD.
+    pub harvest_is_initd: bool,
 }
 
 /// Drains remaining zombie processes after the handler loop exits.
@@ -734,8 +741,9 @@ pub fn run_full_iteration(stdio_enabled: bool) -> (result: IterationResult)
         result.should_terminate ==> result.initd_pid == 1u32,
         // INITD termination does NOT set harvested_process.
         result.should_terminate ==> !result.work_state.harvested_process,
-        // Ghost outcome reflects actual harvest.
-        result.should_terminate == spec_should_terminate(result.harvest_outcome@),
+        // Concrete harvest fields link to spec termination.
+        result.should_terminate == spec_should_terminate(spec_harvest_to_outcome(
+            result.harvest_found, result.harvest_error, result.harvest_pid as nat, result.harvest_is_initd)),
         // Non-stdio builds never receive messages.
         !stdio_enabled ==> !result.work_state.message_received,
 {
@@ -799,7 +807,9 @@ pub fn poll_scoreboard_full() -> (result: ScoreBoardPollResult)
 /// # Description
 ///
 /// Encapsulates the outcome of one step of the handler lifecycle, including
-/// whether the loop terminated and the ghost history for invariant tracking.
+/// whether the loop terminated. The ghost history for invariant tracking is
+/// returned separately as a `Ghost<Seq<HarvestOutcome>>` value (not a struct
+/// field) to keep all struct fields concrete.
 pub struct LifecycleStepResult {
     /// Whether the handler loop terminated (INITD exited).
     pub terminated: bool,
@@ -810,8 +820,6 @@ pub struct LifecycleStepResult {
     /// The PID that triggered termination (meaningful only when `terminated`).
     /// Proved to equal INITD (1) when terminated.
     pub termination_pid: u32,
-    /// Ghost history of harvest outcomes for loop invariant tracking.
-    pub new_history: Ghost<Seq<HarvestOutcome>>,
 }
 
 /// Models handler initialization and returns the initial loop history.
@@ -861,33 +869,37 @@ pub fn kcall_handler_init() -> (history: Ghost<Seq<HarvestOutcome>>)
 pub fn kcall_handler_lifecycle_step(
     history: Ghost<Seq<HarvestOutcome>>,
     stdio_enabled: bool,
-) -> (result: LifecycleStepResult)
+) -> (result: (LifecycleStepResult, Ghost<Seq<HarvestOutcome>>))
     requires
         spec_loop_invariant(history@),
     ensures
         // The invariant is always preserved.
-        spec_loop_invariant(result.new_history@),
+        spec_loop_invariant(result.1@),
         // On continuation, history grows by one.
-        !result.terminated ==> result.new_history@.len() == history@.len() + 1,
+        !result.0.terminated ==> result.1@.len() == history@.len() + 1,
         // On termination, history is unchanged.
-        result.terminated ==> result.new_history@.len() == history@.len(),
+        result.0.terminated ==> result.1@.len() == history@.len(),
         // On termination, the exit was triggered by INITD (pid == 1).
-        result.terminated ==> result.termination_pid == 1u32,
+        result.0.terminated ==> result.0.termination_pid == 1u32,
 {
     let iter_result: IterationResult = run_full_iteration(stdio_enabled);
 
     if iter_result.should_terminate {
         // INITD terminated: drain remaining zombies and exit.
         drain_remaining_zombies();
-        LifecycleStepResult {
+        (LifecycleStepResult {
             terminated: true,
             exit_status: iter_result.exit_status,
             termination_pid: iter_result.initd_pid,
-            new_history: Ghost(history@),
-        }
+        }, Ghost(history@))
     } else {
         // Loop continues: extend history with the REAL harvest outcome.
-        let ghost outcome: HarvestOutcome = iter_result.harvest_outcome@;
+        let ghost outcome: HarvestOutcome = spec_harvest_to_outcome(
+            iter_result.harvest_found,
+            iter_result.harvest_error,
+            iter_result.harvest_pid as nat,
+            iter_result.harvest_is_initd,
+        );
         proof {
             // The ensures on run_full_iteration gives us:
             //   iter_result.should_terminate == spec_should_terminate(outcome)
@@ -896,12 +908,11 @@ pub fn kcall_handler_lifecycle_step(
             assert(spec_loop_continues(outcome));
             lemma_loop_invariant_inductive(history@, outcome);
         }
-        LifecycleStepResult {
+        (LifecycleStepResult {
             terminated: false,
             exit_status: 0u32,
             termination_pid: 0u32,
-            new_history: Ghost(spec_extend_history(history@, outcome)),
-        }
+        }, Ghost(spec_extend_history(history@, outcome)))
     }
 }
 
@@ -920,8 +931,6 @@ pub struct LoopResult {
     pub exit_status: u32,
     /// The PID that triggered termination (meaningful only when `terminated`).
     pub termination_pid: u32,
-    /// Ghost history of harvest outcomes for all completed iterations.
-    pub final_history: Ghost<Seq<HarvestOutcome>>,
 }
 
 /// Models the full handler loop from init through iteration until
@@ -962,16 +971,16 @@ pub struct LoopResult {
 /// `lemma_loop_termination_completeness`, this proves the contrapositive:
 /// if INITD terminates within `fuel` iterations, the loop MUST return
 /// `terminated == true`.
-pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult)
+pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: (LoopResult, Ghost<Seq<HarvestOutcome>>))
     ensures
         // The loop invariant holds for the final history.
-        spec_loop_invariant(result.final_history@),
+        spec_loop_invariant(result.1@),
         // Fuel exhaustion: all iterations ran, none triggered termination.
-        !result.terminated ==> result.final_history@.len() == fuel as int,
+        !result.0.terminated ==> result.1@.len() == fuel as int,
         // Early exit: termination occurred before fuel ran out.
-        result.terminated ==> result.final_history@.len() < fuel as int,
+        result.0.terminated ==> result.1@.len() < fuel as int,
         // On termination, it was INITD (pid == 1) that triggered exit.
-        result.terminated ==> result.termination_pid == 1u32,
+        result.0.terminated ==> result.0.termination_pid == 1u32,
 {
     let mut history: Ghost<Seq<HarvestOutcome>> = kcall_handler_init();
     let mut i: u32 = 0;
@@ -991,25 +1000,23 @@ pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: LoopResult
             terminated ==> termination_pid == 1u32,
         decreases fuel - i,
     {
-        let step: LifecycleStepResult = kcall_handler_lifecycle_step(
-            history, stdio_enabled,
-        );
+        let (step, new_hist): (LifecycleStepResult, Ghost<Seq<HarvestOutcome>>) =
+            kcall_handler_lifecycle_step(history, stdio_enabled);
         if step.terminated {
             terminated = true;
             exit_status = step.exit_status;
             termination_pid = step.termination_pid;
         }
         // Always update history (unchanged on termination, extended otherwise).
-        history = step.new_history;
+        history = new_hist;
         i = i + 1;
     }
 
-    LoopResult {
+    (LoopResult {
         terminated,
         exit_status,
         termination_pid,
-        final_history: history,
-    }
+    }, history)
 }
 
 } // verus!
