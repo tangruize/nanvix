@@ -1,0 +1,36 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 22:48:47 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::virt
+
+note: verifying module kernel::mm::virt::kpage
+
+note: verifying module kernel::mm::virt::vmem
+
+error: assertion failed
+  --> kernel/mm/virt/mod.proof.rs:40:16
+   |
+40 |         assert(addr == (addr / alignment) * alignment + (addr % alignment));
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> kernel/mm/virt/mod.proof.rs:116:16
+    |
+116 |         assert(addr == (addr / alignment) * alignment + (addr % alignment));
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 68 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 68
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:68, errors:2)
