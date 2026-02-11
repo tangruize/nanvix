@@ -570,11 +570,17 @@ pub fn get_page_paddr(vaddr: usize, region_start: usize, is_mmio: bool) -> (resu
 /// - The region start address is page-aligned (guaranteed by `MemRegion::spec_is_valid`
 ///   and the init preconditions).
 /// - The MMIO physical address returned by the firmware/hardware is page-aligned.
-///   This is a hardware invariant: firmware memory maps report MMIO regions at
-///   page-aligned boundaries.
+///   This is a hardware invariant: firmware memory maps (e.g., UEFI, multiboot)
+///   report MMIO regions at page-aligned boundaries. The x86 MMIO address space
+///   is organized by page-aligned BARs (Base Address Registers). The original
+///   code's `PageAligned::from_address(phys_addr)?` runtime check would catch a
+///   violation, but no well-formed firmware memory map would produce one.
 /// - The original `from_mmio_address` returns `Result` and can fail on
 ///   non-page-aligned input. Since our preconditions guarantee page-aligned
-///   input, the translation is infallible in this context.
+///   input, the translation is infallible in this context. If the firmware
+///   were to provide a non-aligned MMIO address, the original would return
+///   `Err` and init would fail. Our model assumes this never happens, which
+///   matches the kernel's assumption about well-formed firmware memory maps.
 ///   (See original source: `FIXME: ensure safety here` at line 210.)
 #[verifier::external_body]
 pub fn get_mmio_paddr(region_start: usize) -> (result: usize)
@@ -695,6 +701,15 @@ pub fn page_table_map_page(vaddr: usize, paddr: usize)
 /// original silently allows. Our stricter check subsumes the original's
 /// error detection (region overlap implies pgtab base disorder for
 /// sorted inputs) and also catches the intra-base overlap case.
+///
+/// ## Implied Sort Order
+///
+/// When this function returns `true` for valid regions (size > 0),
+/// sorted order is implied: `end_i <= start_{i+1}` with `size > 0`
+/// gives `start_i < start_i + size_i <= start_{i+1}`. This means the
+/// trusted `sort_regions_by_start`'s sorted postcondition is redundantly
+/// checked at runtime by this function — even if the sort were buggy,
+/// `validate_regions` would catch any disorder.
 ///
 /// # Parameters
 ///
