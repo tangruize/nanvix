@@ -220,6 +220,12 @@ pub struct PageMapping {
 /// The original init() maps all pages with:
 /// `present=true, writable=true, user=false, AccessPermission::RDWR`.
 /// This spec function checks that a mapping has these fixed attributes.
+///
+/// The original has `FIXME: do not be so open about permissions and caching`,
+/// indicating that these permissions may be tightened in the future. If the
+/// original is updated, this spec should be parameterized over a permission
+/// policy rather than hardcoded. The `PageMapping` struct already has
+/// individual permission fields to support such an extension.
 pub open spec fn spec_has_init_permissions(m: PageMapping) -> bool {
     m.present && m.writable && !m.user_accessible
 }
