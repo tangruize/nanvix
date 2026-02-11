@@ -1,0 +1,78 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 22:50:27 CST 2026
+Module: virt_init
+Command: verus --crate-type lib lib.rs --verify-module virt_init
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: could not find module virt_init specified by --verify-module or --verify-only-module
+       available modules are:
+       - kernel::hal::mem::types::address::frame
+       - kernel::kcall::dispatcher
+       - kernel::kcall::handler
+       - kernel::kcall::scoreboard
+       - kernel::mm::kheap
+       - kernel::mm::kredzone
+       - kernel::mm::kstack
+       - kernel::mm::phys::frame
+       - kernel::mm::phys::frame::test
+       - kernel::mm::phys::kpool
+       - kernel::mm::phys::kpool::test
+       - kernel::mm::phys::manager
+       - kernel::mm::phys::upool
+       - kernel::mm::phys::upool::test
+       - kernel::mm::ustack
+       - kernel::mm::virt
+       - kernel::mm::virt::kpage
+       - kernel::mm::virt::vmem
+       - kernel::pm::clock
+       - kernel::pm::kcall::create_thread
+       - kernel::pm::kcall::join_thread
+       - kernel::pm::kcall::lock_mutex
+       - kernel::pm::kcall::signal_cond
+       - kernel::pm::kcall::sleep
+       - kernel::pm::kcall::terminate
+       - kernel::pm::kcall::unlock_mutex
+       - kernel::pm::kcall::wait_cond
+       - kernel::pm::process::capability
+       - kernel::pm::process::manager::process_manager
+       - kernel::pm::process::manager::process_manager_unsafe
+       - kernel::pm::process::state::interrupted
+       - kernel::pm::process::state::process_state
+       - kernel::pm::process::state::runnable
+       - kernel::pm::process::state::running
+       - kernel::pm::process::state::sleeping
+       - kernel::pm::process::state::zombie
+       - kernel::pm::sync::condvar
+       - kernel::pm::sync::fence
+       - kernel::pm::sync::mutex
+       - kernel::pm::sync::semaphore
+       - kernel::pm::sync::spinlock
+       - kernel::pm::sys::capability
+       - kernel::pm::sys::pid
+       - kernel::pm::sys::tid
+       - kernel::pm::thread::interrupted
+       - kernel::pm::thread::ready
+       - kernel::pm::thread::running
+       - kernel::pm::thread::sleeping
+       - kernel::pm::thread::state
+       - kernel::pm::thread::thread_manager
+       - kernel::pm::thread::zombie
+       - libs::bitmap
+       - libs::bitmap::test
+       - libs::error
+       - libs::raw_array
+       - libs::raw_array::test
+       - libs::slab
+       or use --verify-root
+
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+No changes to commit in verus/
