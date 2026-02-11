@@ -1,0 +1,54 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 22:47:36 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: expected `,`
+   --> kernel/mm/virt/mod.proof.rs:184:11
+    |
+184 |     assert(i * INIT_PAGE_SIZE as int < size) by {
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0425]: cannot find function `lemma_align_down_le` in this scope
+   --> kernel/mm/virt/mod.rs:183:9
+    |
+183 |         lemma_align_down_le(addr as int, alignment as int);
+    |         ^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `lemma_align_down_aligned` in this scope
+   --> kernel/mm/virt/mod.rs:184:9
+    |
+184 |         lemma_align_down_aligned(addr as int, alignment as int);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `lemma_align_down_le` in this scope
+   --> kernel/mm/virt/mod.rs:213:9
+    |
+213 |         lemma_align_down_le(vaddr as int, INIT_PGTAB_ALIGNMENT as int);
+    |         ^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `lemma_align_down_aligned` in this scope
+   --> kernel/mm/virt/mod.rs:214:9
+    |
+214 |         lemma_align_down_aligned(vaddr as int, INIT_PGTAB_ALIGNMENT as int);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `lemma_sorted_addrs_sorted_pgtab_bases` in this scope
+   --> kernel/mm/virt/mod.rs:246:9
+    |
+246 |         lemma_sorted_addrs_sorted_pgtab_bases(prev_vaddr as int, curr_vaddr as int);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error: aborting due to 6 previous errors
+
+For more information about this error, try `rustc --explain E0425`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:0, errors:0)
