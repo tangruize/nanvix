@@ -44,11 +44,13 @@
 //! 10. **Init Composition**: A verified `init()` function composes helpers,
 //!     proves structural properties (alignment, ordering, uniqueness), and
 //!     proves functional completeness (every page visited, correct paddr).
-//! 11. **Page Mapping Correctness**: A ghost `Seq<(vaddr, paddr, is_mmio)>` tracks
-//!     every page mapping produced by init. Verified properties:
+//! 11. **Page Mapping Correctness**: A ghost `Seq<PageMapping>` records every
+//!     (vaddr, paddr, region_start, is_mmio) mapping produced by init, exposed
+//!     as a postcondition via `Ghost` return. Verified properties:
 //!     - Coverage: `mappings.len() == spec_total_pages(regions)`.
+//!     - Correctness: every `paddr == spec_init_paddr(vaddr, region_start, is_mmio)`.
 //!     - Identity: non-MMIO pages satisfy `paddr == vaddr`.
-//!     - Alignment: all mapped vaddrs are page-aligned.
+//!     - Alignment: all mapped vaddrs and paddrs are page-aligned.
 //!
 //! ## Abstraction Decisions
 //!
@@ -67,6 +69,11 @@
 //! ### MMIO Address Translation
 //! The `PhysicalAddress::from_mmio_address()` call is hardware-dependent and
 //! modeled as an `external_body` with an opaque `spec_mmio_paddr` spec function.
+//! The original `from_mmio_address` returns `Result`, but only fails on
+//! non-page-aligned input. Since our preconditions require page-aligned
+//! regions, the MMIO translation is infallible. The page-alignment
+//! postcondition on `get_mmio_paddr` captures the hardware invariant that
+//! MMIO physical addresses from the firmware memory map are always page-aligned.
 //!
 //! ### Return Type: `Vec<usize>` instead of `Result<..., Error>`
 //! The original `init()` returns `Result<LinkedList<...>, Error>` with error
@@ -563,11 +570,13 @@ pub fn is_last_kernel_page(vaddr: usize) -> (result: bool)
 ///
 /// ## Functional Completeness
 ///
-/// A ghost counter (`total_mapped`) tracks the number of pages visited.
-/// At the end of init, `total_mapped == spec_total_pages(regions@, regions.len())`
-/// is asserted, proving every page in every region was processed. For each page,
-/// `get_page_paddr` is called to compute the physical address, whose ensures
+/// A ghost `Seq<PageMapping>` records every (vaddr, paddr, region_start, is_mmio)
+/// mapping produced during initialization. This sequence is returned as a `Ghost`
+/// postcondition, enabling callers to reason about the complete page table state.
+/// For each page, `get_page_paddr` computes the physical address, and its ensures
 /// prove identity mapping (non-MMIO: paddr == vaddr) and MMIO constant-paddr.
+/// The postcondition `paddr == spec_init_paddr(vaddr, region_start, is_mmio)`
+/// connects every mapping to the specification.
 ///
 /// ## Error Handling
 ///
@@ -592,14 +601,22 @@ pub fn is_last_kernel_page(vaddr: usize) -> (result: bool)
 ///
 /// # Returns
 ///
-/// A vector of unique, strictly increasing, page-table-aligned base addresses.
+/// A tuple of:
+/// - `Vec<usize>`: unique, strictly increasing, page-table-aligned base addresses.
+/// - `Ghost<Seq<PageMapping>>`: ghost mapping record proving correct (vaddr, paddr)
+///   pairs for every page processed. Callers can use this to reason about the
+///   complete page table contents.
 ///
 /// # Ensures
 ///
 /// - All bases are page-table-aligned.
 /// - Bases are strictly increasing (ordered + unique).
 /// - Number of bases <= total pages (at most one base per page).
-pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
+/// - Mapping coverage: exactly `spec_total_pages` entries.
+/// - Mapping correctness: each entry satisfies `spec_init_paddr`.
+/// - Identity mapping: non-MMIO pages have paddr == vaddr.
+/// - Alignment: all mapped vaddrs and paddrs are page-aligned.
+pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMapping>>))
     requires
         // All regions are valid.
         forall|i: int| #![auto] 0 <= i < regions.len() as int ==>
@@ -623,21 +640,36 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             regions[i].spec_end() <= INIT_MEMORY_SIZE as int,
     ensures
         // All output bases are aligned.
-        forall|i: int| #![auto] 0 <= i < result.len() as int ==>
-            result[i] as int % INIT_PGTAB_ALIGNMENT as int == 0,
+        forall|i: int| #![auto] 0 <= i < result.0.len() as int ==>
+            result.0[i] as int % INIT_PGTAB_ALIGNMENT as int == 0,
         // Output bases are strictly increasing (ordered + unique).
         forall|i: int, j: int|
-            #![trigger result[i], result[j]]
-            0 <= i < j < result.len() as int ==>
-            (result[i] as int) < (result[j] as int),
+            #![trigger result.0[i], result.0[j]]
+            0 <= i < j < result.0.len() as int ==>
+            (result.0[i] as int) < (result.0[j] as int),
         // Number of page table bases <= total pages across all regions.
-        result.len() as int <= spec_total_pages(regions@, regions.len() as int),
+        result.0.len() as int <= spec_total_pages(regions@, regions.len() as int),
+        // Mapping coverage: exactly spec_total_pages entries produced.
+        result.1@.len() == spec_total_pages(regions@, regions.len() as int),
+        // Mapping correctness: paddr matches spec_init_paddr for every page.
+        forall|k: int| #![auto] 0 <= k < result.1@.len() ==>
+            result.1@[k].paddr == spec_init_paddr(
+                result.1@[k].vaddr, result.1@[k].region_start, result.1@[k].is_mmio),
+        // Identity mapping: non-MMIO pages have paddr == vaddr.
+        forall|k: int| #![auto] 0 <= k < result.1@.len() ==>
+            (!result.1@[k].is_mmio ==> result.1@[k].paddr == result.1@[k].vaddr),
+        // Alignment: all mapped vaddrs are page-aligned.
+        forall|k: int| #![auto] 0 <= k < result.1@.len() ==>
+            result.1@[k].vaddr % INIT_PAGE_SIZE as int == 0,
+        // Alignment: all mapped paddrs are page-aligned.
+        forall|k: int| #![auto] 0 <= k < result.1@.len() ==>
+            result.1@[k].paddr % INIT_PAGE_SIZE as int == 0,
 {
     let mut all_bases: Vec<usize> = Vec::new();
     let mut last_base: Option<usize> = None;
     let mut r_idx: usize = 0;
     let ghost mut total_mapped: int = 0;
-    let ghost mut mappings: Seq<(int, int, bool)> = Seq::empty();
+    let ghost mut mappings: Seq<PageMapping> = Seq::empty();
 
     proof {
         VirtProofs::lemma_total_pages_nonneg(regions@, 0);
@@ -689,12 +721,19 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             all_bases.len() as int <= total_mapped,
             // Ghost mapping tracker: one entry per page processed.
             mappings.len() == total_mapped,
+            // Ghost mapping: paddr matches spec_init_paddr for every page.
+            forall|k: int| #![auto] 0 <= k < mappings.len() ==>
+                mappings[k].paddr == spec_init_paddr(
+                    mappings[k].vaddr, mappings[k].region_start, mappings[k].is_mmio),
             // Ghost mapping: non-MMIO pages are identity-mapped.
             forall|k: int| #![auto] 0 <= k < mappings.len() ==>
-                (!mappings[k].2 ==> mappings[k].1 == mappings[k].0),
+                (!mappings[k].is_mmio ==> mappings[k].paddr == mappings[k].vaddr),
             // Ghost mapping: all vaddrs are page-aligned.
             forall|k: int| #![auto] 0 <= k < mappings.len() ==>
-                mappings[k].0 % INIT_PAGE_SIZE as int == 0,
+                mappings[k].vaddr % INIT_PAGE_SIZE as int == 0,
+            // Ghost mapping: all paddrs are page-aligned.
+            forall|k: int| #![auto] 0 <= k < mappings.len() ==>
+                mappings[k].paddr % INIT_PAGE_SIZE as int == 0,
         decreases regions.len() - r_idx,
     {
         let region: &MemRegion = &regions[r_idx];
@@ -742,12 +781,19 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
                 all_bases.len() as int <= total_mapped,
                 // Ghost mapping tracker: one entry per page processed.
                 mappings.len() == total_mapped,
+                // Ghost mapping: paddr matches spec_init_paddr for every page.
+                forall|k: int| #![auto] 0 <= k < mappings.len() ==>
+                    mappings[k].paddr == spec_init_paddr(
+                        mappings[k].vaddr, mappings[k].region_start, mappings[k].is_mmio),
                 // Ghost mapping: non-MMIO pages are identity-mapped.
                 forall|k: int| #![auto] 0 <= k < mappings.len() ==>
-                    (!mappings[k].2 ==> mappings[k].1 == mappings[k].0),
+                    (!mappings[k].is_mmio ==> mappings[k].paddr == mappings[k].vaddr),
                 // Ghost mapping: all vaddrs are page-aligned.
                 forall|k: int| #![auto] 0 <= k < mappings.len() ==>
-                    mappings[k].0 % INIT_PAGE_SIZE as int == 0,
+                    mappings[k].vaddr % INIT_PAGE_SIZE as int == 0,
+                // Ghost mapping: all paddrs are page-aligned.
+                forall|k: int| #![auto] 0 <= k < mappings.len() ==>
+                    mappings[k].paddr % INIT_PAGE_SIZE as int == 0,
             decreases page_count - p_idx,
         {
             proof {
@@ -782,7 +828,12 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             last_base = Some(curr_base);
 
             proof {
-                mappings = mappings.push((vaddr as int, paddr as int, region.is_mmio));
+                mappings = mappings.push(PageMapping {
+                    vaddr: vaddr as int,
+                    paddr: paddr as int,
+                    region_start: region.start as int,
+                    is_mmio: region.is_mmio,
+                });
                 total_mapped = total_mapped + 1;
             }
 
@@ -811,16 +862,7 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
         }
     }
 
-    proof {
-        // Verify ghost mapping coverage and correctness.
-        assert(mappings.len() as int == spec_total_pages(regions@, regions.len() as int));
-        assert(forall|k: int| #![auto] 0 <= k < mappings.len() ==>
-            (!mappings[k].2 ==> mappings[k].1 == mappings[k].0));
-        assert(forall|k: int| #![auto] 0 <= k < mappings.len() ==>
-            mappings[k].0 % INIT_PAGE_SIZE as int == 0);
-    }
-
-    all_bases
+    (all_bases, Ghost(mappings))
 }
 
 } // verus!

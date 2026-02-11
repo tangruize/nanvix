@@ -181,6 +181,28 @@ impl PageTableStorage {
 }
 
 //==================================================================================================
+// Page Mapping Record (Ghost State)
+//==================================================================================================
+
+/// Record of a single page mapping produced by init.
+///
+/// # Description
+///
+/// Captures the (vaddr, paddr, region_start, is_mmio) tuple for each page
+/// mapped during initialization. Exposed as a ghost postcondition of init()
+/// so callers can reason about the complete mapping table.
+pub struct PageMapping {
+    /// Virtual address of the mapped page (page-aligned).
+    pub vaddr: int,
+    /// Physical address the page is mapped to.
+    pub paddr: int,
+    /// Start address of the region this page belongs to.
+    pub region_start: int,
+    /// Whether this page belongs to an MMIO region.
+    pub is_mmio: bool,
+}
+
+//==================================================================================================
 // Page Table Decision Spec
 //==================================================================================================
 
