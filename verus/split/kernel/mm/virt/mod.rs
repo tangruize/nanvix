@@ -531,6 +531,7 @@ pub fn get_nth_page_addr(region_start: usize, index: usize) -> (result: usize)
 pub fn get_page_paddr(vaddr: usize, region_start: usize, is_mmio: bool) -> (result: usize)
     requires
         vaddr as int % INIT_PAGE_SIZE as int == 0,
+        region_start as int % INIT_PAGE_SIZE as int == 0,
     ensures
         !is_mmio ==> result == vaddr,
         result as int == spec_init_paddr(vaddr as int, region_start as int, is_mmio),
