@@ -63,6 +63,10 @@
 //!     completeness (if regions are sorted and non-overlapping, validation passes).
 //!     The `init_checked` wrapper composes validation with init, modeling the
 //!     original's `Result` return: `Ok` on valid input, `OverlapError` on overlap.
+//! 14. **Permission Attributes**: All init mappings are verified to have the
+//!     fixed permission attributes from the original: `present=true`,
+//!     `writable=true`, `user=false` (captured by `spec_has_init_permissions`).
+//!     These are recorded in the `PageMapping` ghost record.
 //!
 //! ## Verification Boundary
 //!
@@ -143,6 +147,38 @@
 //! - Page table management connects to `vmem.rs` (verified)
 //! - The `manager` sub-module is a separate component and is not in scope
 //!   for this verification (it manages page table lifecycle, not init logic)
+//!
+//! ## Verification Gaps
+//!
+//! The following are known limitations, documented for future work:
+//!
+//! 1. **PageTable Object Refinement**: The ghost `PageMapping` sequence proves
+//!    what SHOULD be in the page tables, but there is no refinement proof
+//!    connecting it to actual `PageTable` object state. The `page_table_map_page`
+//!    external_body is the boundary; a full proof would require a ghost model
+//!    of `PageTable` contents updated per map call.
+//!
+//! 2. **Manager Sub-Module**: The `VirtMemoryManager` in `manager.rs` manages
+//!    page table lifecycle (allocation, deallocation, lookup). It is excluded
+//!    because it is a separate component with different verification concerns
+//!    (resource management vs. initialization algorithm).
+//!
+//! 3. **Merge+Sort Preprocessing**: The original merges two `LinkedList` inputs
+//!    and sorts via `Vec::sort`. Standard library sort correctness is trusted.
+//!    The `validate_regions` function verifies the postcondition of sort
+//!    (sorted, non-overlapping) at the Verus level.
+//!
+//! 4. **PageTableStorage PTE Contents**: The `Deref`/`DerefMut` external_body
+//!    specs only assert slice length (1024 entries). Reasoning about individual
+//!    PTE values requires a page table content model (HAL-level concern).
+//!
+//! 5. **Memory Boundary Truncation**: The original's `is_last_kernel_page`
+//!    break can silently truncate a region that straddles `MEMORY_SIZE`,
+//!    leaving some pages unmapped. The verified model rejects such regions
+//!    via precondition instead. If a buggy memory map provided an oversized
+//!    region, the original would partially map it while the model would
+//!    refuse it. This is an intentional strengthening: the kernel's memory
+//!    regions should never exceed `MEMORY_SIZE`.
 //==================================================================================================
 
 pub mod kpage;
@@ -517,10 +553,23 @@ pub fn get_page_paddr(vaddr: usize, region_start: usize, is_mmio: bool) -> (resu
 ///
 /// Models `PhysicalAddress::from_mmio_address(region.start())` from the original.
 /// This is a hardware-dependent translation that cannot be verified without a
-/// hardware model. The page-alignment ensures reflects that physical addresses
-/// returned by the hardware are always page-aligned (a hardware invariant).
+/// hardware model.
+///
+/// # Assumptions
+///
+/// - The region start address is page-aligned (guaranteed by `MemRegion::spec_is_valid`
+///   and the init preconditions).
+/// - The MMIO physical address returned by the firmware/hardware is page-aligned.
+///   This is a hardware invariant: firmware memory maps report MMIO regions at
+///   page-aligned boundaries.
+/// - The original `from_mmio_address` returns `Result` and can fail on
+///   non-page-aligned input. Since our preconditions guarantee page-aligned
+///   input, the translation is infallible in this context.
+///   (See original source: `FIXME: ensure safety here` at line 210.)
 #[verifier::external_body]
 pub fn get_mmio_paddr(region_start: usize) -> (result: usize)
+    requires
+        region_start as int % INIT_PAGE_SIZE as int == 0,
     ensures
         result as int == spec_mmio_paddr(region_start as int),
         result as int % INIT_PAGE_SIZE as int == 0,
@@ -583,18 +632,23 @@ pub fn is_last_kernel_page(vaddr: usize) -> (result: bool)
 }
 
 
-/// Models the `page_table.map(vaddr, paddr)` call from the original `init()`.
+/// Models the `page_table.map(vaddr, paddr, present, writable, user, perms)` call.
 ///
 /// # Description
 ///
-/// The original `init()` calls `page_table.map(vaddr, paddr)` for every page,
-/// which writes a page table entry (PTE) to the page table storage. This
-/// involves unsafe pointer writes to hardware-managed memory structures.
+/// The original `init()` calls `page_table.map()` for every page with six
+/// arguments: `PageAddress`, `FrameAddress`, `present=true`, `writable=true`,
+/// `user=false`, and `AccessPermission::RDWR`. The permission attributes are
+/// fixed for all init mappings and are captured in the `PageMapping` ghost
+/// record via `spec_has_init_permissions`.
+///
+/// The original has `FIXME: do not be so open about permissions and caching`,
+/// indicating that the current permission policy is intentionally permissive
+/// and may be tightened in the future.
 ///
 /// This `external_body` models the side effect: the function is called with
-/// verified-correct (vaddr, paddr) arguments, and the ghost `PageMapping`
-/// postconditions prove the arguments match `spec_init_paddr`. The actual
-/// PTE write is a HAL-level operation verified separately.
+/// verified-correct (vaddr, paddr) arguments. The actual PTE write is a
+/// HAL-level operation.
 ///
 /// # Parameters
 ///
@@ -899,6 +953,9 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
             #![trigger result.1@[i], result.1@[j]]
             0 <= i < j < result.1@.len() ==>
             result.1@[i].vaddr < result.1@[j].vaddr,
+        // Permissions: all mappings have init-time permission attributes.
+        forall|k: int| #![auto] 0 <= k < result.1@.len() ==>
+            spec_has_init_permissions(result.1@[k]),
 {
     let mut all_bases: Vec<usize> = Vec::new();
     let mut last_base: Option<usize> = None;
@@ -984,6 +1041,9 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
             // Ghost: cross-region vaddr ordering.
             last_mapped_vaddr.is_some() && r_idx < regions.len() as int ==>
                 last_mapped_vaddr.unwrap() < regions[r_idx as int].spec_start(),
+            // Ghost mapping: all mappings have init-time permissions.
+            forall|k: int| #![auto] 0 <= k < mappings.len() ==>
+                spec_has_init_permissions(mappings[k]),
         decreases regions.len() - r_idx,
     {
         let region: &MemRegion = &regions[r_idx];
@@ -1061,6 +1121,9 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
                 // Ghost: for p_idx == 0, last_mapped_vaddr < region start.
                 p_idx == 0 && last_mapped_vaddr.is_some() ==>
                     last_mapped_vaddr.unwrap() < region.spec_start(),
+                // Ghost mapping: all mappings have init-time permissions.
+                forall|k: int| #![auto] 0 <= k < mappings.len() ==>
+                    spec_has_init_permissions(mappings[k]),
             decreases page_count - p_idx,
         {
             proof {
@@ -1115,6 +1178,9 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
                     paddr: paddr as int,
                     region_start: region.start as int,
                     is_mmio: region.is_mmio,
+                    present: true,
+                    writable: true,
+                    user_accessible: false,
                 });
                 total_mapped = total_mapped + 1;
             }

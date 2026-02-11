@@ -188,9 +188,14 @@ impl PageTableStorage {
 ///
 /// # Description
 ///
-/// Captures the (vaddr, paddr, region_start, is_mmio) tuple for each page
-/// mapped during initialization. Exposed as a ghost postcondition of init()
-/// so callers can reason about the complete mapping table.
+/// Captures the mapping parameters for each page mapped during initialization.
+/// Exposed as a ghost postcondition of init() so callers can reason about
+/// the complete mapping table including permission attributes.
+///
+/// The permission fields model the original's `page_table.map()` arguments:
+/// `present=true, writable=true, user=false` with `AccessPermission::RDWR`.
+/// These are fixed for all init mappings (the original has `FIXME: do not
+/// be so open about permissions and caching`).
 pub struct PageMapping {
     /// Virtual address of the mapped page (page-aligned).
     pub vaddr: int,
@@ -200,6 +205,23 @@ pub struct PageMapping {
     pub region_start: int,
     /// Whether this page belongs to an MMIO region.
     pub is_mmio: bool,
+    /// Page is present in the page table.
+    pub present: bool,
+    /// Page is writable.
+    pub writable: bool,
+    /// Page is user-accessible (false for kernel init mappings).
+    pub user_accessible: bool,
+}
+
+/// Spec: the default permission attributes for init mappings.
+///
+/// # Description
+///
+/// The original init() maps all pages with:
+/// `present=true, writable=true, user=false, AccessPermission::RDWR`.
+/// This spec function checks that a mapping has these fixed attributes.
+pub open spec fn spec_has_init_permissions(m: PageMapping) -> bool {
+    m.present && m.writable && !m.user_accessible
 }
 
 //==================================================================================================
