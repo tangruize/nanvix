@@ -639,9 +639,35 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             };
 
             if should_add {
-                // curr_base > last_base.unwrap() >= all existing all_bases,
-                // so curr_base > all existing all_bases. Push maintains strictly increasing.
+                proof {
+                    // When should_add is true and last_base is Some,
+                    // curr_base > last_base.unwrap() >= all existing all_bases elements.
+                    // So curr_base > all existing all_bases elements.
+                    // When last_base is None, all_bases is empty, so trivially fine.
+                    if last_base.is_some() {
+                        assert(curr_base as int > last_base.unwrap() as int);
+                        assert(forall|i: int| #![auto]
+                            0 <= i < all_bases.len() as int ==>
+                            all_bases[i] as int < curr_base as int);
+                    }
+                }
                 all_bases.push(curr_base);
+            }
+            // After update: curr_base >= prev (monotonicity) so
+            // curr_base >= all existing all_bases elements (which are <= prev).
+            // If we pushed, curr_base is in all_bases and equals itself.
+            proof {
+                if last_base.is_some() {
+                    // curr_base >= last_base.unwrap() >= all old elements.
+                    // If pushed, new element is curr_base, and curr_base >= curr_base.
+                    assert(forall|i: int| #![auto]
+                        0 <= i < all_bases.len() as int ==>
+                        all_bases[i] as int <= curr_base as int);
+                } else {
+                    // First element pushed. all_bases has exactly one element.
+                    assert(all_bases.len() == 1);
+                    assert(all_bases[0] as int == curr_base as int);
+                }
             }
             last_base = Some(curr_base);
             p_idx = p_idx + 1;
