@@ -1,0 +1,42 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 22:49:22 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::virt
+
+note: verifying module kernel::mm::virt::kpage
+
+note: verifying module kernel::mm::virt::vmem
+
+error: postcondition not satisfied
+  --> kernel/mm/virt/mod.proof.rs:38:13
+   |
+33 |     pub proof fn lemma_align_down_le(addr: int, alignment: int)
+   |     ----------------------------------------------------------- at the end of the function body
+...
+38 |             spec_align_down(addr, alignment) <= addr,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/mm/virt/mod.proof.rs:114:13
+    |
+108 |     pub proof fn lemma_aligned_is_fixed_point(addr: int, alignment: int)
+    |     -------------------------------------------------------------------- at the end of the function body
+...
+114 |             spec_align_down(addr, alignment) == addr,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 68 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 5s
+Exit code: 1
+
+=== Summary ===
+Verified: 68
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:68, errors:2)
