@@ -103,7 +103,7 @@ impl View for Mutex {
     type V = MutexView;
 
     open spec fn view(&self) -> MutexView {
-        MutexView { locked: self.locked, id: self.id@, token_issued: self.token_issued@ }
+        MutexView { locked: self.locked, id: self.id as nat, token_issued: self.token_issued }
     }
 }
 

@@ -57,7 +57,7 @@
 //!
 //! | Original API              | Verified Model         | Notes                         |
 //! |---------------------------|------------------------|-------------------------------|
-//! | `Mutex::new()`            | `new(id)`              | Ghost id for instance identity. |
+//! | `Mutex::new()`            | `new(id)`              | Concrete id for instance identity. |
 //! | `Mutex::try_lock(&self)`  | `try_lock(&mut self)`  | `&mut self` for state mutation. |
 //! | `Mutex::lock(&self, t)`   | `lock(&mut self)`      | Timeout not modeled.          |
 //! | `MutexGuard::drop()`      | `unlock(&mut self)`    | Explicit token consumption.   |
@@ -168,15 +168,15 @@ verus! {
 /// The fields are `pub` as required by Verus for `pub open spec fn` access.
 /// Per Nanvix coding standards, struct fields should be private with getter/setter
 /// access; this is an exception due to Verus tooling constraints.
-/// The ghost `id` field provides instance identity for token binding.
+/// The `id` field provides instance identity for token binding.
 pub struct Mutex {
     /// Lock state: `true` means locked, `false` means unlocked.
     pub locked: bool,
-    /// Ghost identity for distinguishing mutex instances.
+    /// Identity for distinguishing mutex instances.
     /// Callers must provide a unique `id` per instance at construction time.
-    pub id: Ghost<nat>,
-    /// Ghost tracking of whether a `MutexToken` is currently outstanding.
-    pub token_issued: Ghost<bool>,
+    pub id: usize,
+    /// Tracking of whether a `MutexToken` is currently outstanding.
+    pub token_issued: bool,
 }
 
 //==================================================================================================
@@ -188,21 +188,21 @@ impl Mutex {
     ///
     /// # Parameters
     ///
-    /// - `id`: Ghost identity for this mutex instance. Callers should ensure
+    /// - `id`: Identity for this mutex instance. Callers should ensure
     ///   unique IDs across all mutex instances to preserve token isolation.
     ///
     /// # Returns
     ///
     /// A new `Mutex` in the unlocked state with the given identity.
-    pub fn new(Ghost(id): Ghost<nat>) -> (result: Self)
+    pub fn new(id: usize) -> (result: Self)
         ensures
             !result.locked,
             result.spec_is_unlocked(),
-            result@ == Mutex::spec_new_view(id),
-            result@.id == id,
+            result@ == Mutex::spec_new_view(id as nat),
+            result@.id == id as nat,
             result.wf(),
     {
-        Mutex { locked: false, id: Ghost(id), token_issued: Ghost(false) }
+        Mutex { locked: false, id: id, token_issued: false }
     }
 
     /// Attempts to acquire the mutex without blocking.
@@ -244,7 +244,7 @@ impl Mutex {
     {
         if !self.locked {
             self.locked = true;
-            self.token_issued = Ghost(true);
+            self.token_issued = true;
             let tracked token: MutexToken = MutexToken { view: self@ };
             (true, Tracked(Some(token)))
         } else {
@@ -315,7 +315,7 @@ impl Mutex {
             self.wf(),
     {
         self.locked = false;
-        self.token_issued = Ghost(false);
+        self.token_issued = false;
     }
 
     /// Checks if the mutex is currently locked.
