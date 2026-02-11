@@ -1,0 +1,6 @@
+Fix Ghost-in-Exec Summary
+Date: 2026-02-12T02:12:56.956347
+Total ghost: 3 -> 0
+Fixed: 1, Partial: 0, Failed: 0
+
+kernel/kcall/handler.rs: 3->0 verify:pass

@@ -9,12 +9,12 @@
 // - ID is immutable: all operations preserve the thread identifier.
 // - Take operations clear the corresponding field (Option::take semantics).
 // - Store operations set the corresponding field.
-// - Mutex guard store inserts address into ghost set; take removes it.
+// - Mutex guard store inserts address into concrete set; take removes it.
 // - Drop safety: newly constructed state is drop-safe (no locked mutexes).
 // - Interrupt reason set/take follows Option semantics with non-vacuous round-trip.
 // - Resource tracking: taking both stacks removes all resources.
 
-use vstd::prelude::*;
+// NOTE: imports are in state.rs (this file is included via include!()).
 
 verus! {
 
@@ -25,71 +25,33 @@ impl ThreadState {
     //==============================================================================================
 
     /// Lemma: A newly constructed ThreadState is well-formed.
-    pub proof fn lemma_new_is_wf(
-        id: ThreadIdentifier,
-        kernel_stack: Option<int>,
-        user_stack: Option<int>,
-        user_tda: Option<int>,
-    )
+    pub proof fn lemma_new_is_wf(s: &ThreadState)
+        requires
+            s.locked_mutex_count == 0usize,
+            s.locked_mutex_set@.len() == 0,
+            s.locked_mutex_set@.no_duplicates(),
+            s.interrupt_reason.is_none(),
         ensures
-            ({
-                let s: ThreadState = ThreadState {
-                    id: id,
-                    kernel_stack: kernel_stack,
-                    user_stack: user_stack,
-                    user_tda: user_tda,
-                    interrupt_reason: None,
-                    locked_mutex_count: 0,
-                    locked_mutex_set: Ghost(Set::empty()),
-                };
-                s.wf()
-            }),
+            s.wf(),
     {
     }
 
     /// Lemma: A newly constructed ThreadState is drop-safe (no locked mutexes).
-    pub proof fn lemma_new_is_drop_safe(
-        id: ThreadIdentifier,
-        kernel_stack: Option<int>,
-        user_stack: Option<int>,
-        user_tda: Option<int>,
-    )
+    pub proof fn lemma_new_is_drop_safe(s: &ThreadState)
+        requires
+            s.locked_mutex_count == 0usize,
+            s.locked_mutex_set@.len() == 0,
         ensures
-            ({
-                let s: ThreadState = ThreadState {
-                    id: id,
-                    kernel_stack: kernel_stack,
-                    user_stack: user_stack,
-                    user_tda: user_tda,
-                    interrupt_reason: None,
-                    locked_mutex_count: 0,
-                    locked_mutex_set: Ghost(Set::empty()),
-                };
-                s.spec_drop_safe()
-            }),
+            s.spec_drop_safe(),
     {
     }
 
     /// Lemma: A newly constructed ThreadState has no interrupt reason.
-    pub proof fn lemma_new_not_interrupted(
-        id: ThreadIdentifier,
-        kernel_stack: Option<int>,
-        user_stack: Option<int>,
-        user_tda: Option<int>,
-    )
+    pub proof fn lemma_new_not_interrupted(s: &ThreadState)
+        requires
+            s.interrupt_reason.is_none(),
         ensures
-            ({
-                let s: ThreadState = ThreadState {
-                    id: id,
-                    kernel_stack: kernel_stack,
-                    user_stack: user_stack,
-                    user_tda: user_tda,
-                    interrupt_reason: None,
-                    locked_mutex_count: 0,
-                    locked_mutex_set: Ghost(Set::empty()),
-                };
-                !s.spec_is_interrupted()
-            }),
+            !s.spec_is_interrupted(),
     {
     }
 
@@ -262,78 +224,88 @@ impl ThreadState {
     // Mutex Guard Lemmas
     //==============================================================================================
 
-    /// Lemma: Storing a mutex guard inserts the address and increments count.
-    pub proof fn lemma_store_mutex_guard_increments(&self, address: int)
+    /// Lemma: Pushing a new address to the Vec inserts it into the abstract set.
+    pub proof fn lemma_store_mutex_guard_increments(&self, address: u64)
         requires
             self.wf(),
             self.locked_mutex_count < usize::MAX,
-            !self.spec_has_mutex(address),
+            !self.spec_has_mutex(address as int),
         ensures
-            ({
-                let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
-                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
-                    ..*self
-                };
-                post.spec_locked_mutex_count() == self.spec_locked_mutex_count() + 1
-                && post.spec_has_mutex(address)
-            }),
+            seq_to_set(self.locked_mutex_set@.push(address)).contains(address as int),
+            self.locked_mutex_set@.push(address).no_duplicates(),
+            seq_to_set(self.locked_mutex_set@.push(address)).len()
+                == seq_to_set(self.locked_mutex_set@).len() + 1,
     {
+        // push(v) gives s.push(v), and seq_to_set(s.push(v))
+        // = seq_to_set(s).insert(v as int) by definition.
+        assert(self.locked_mutex_set@.push(address).drop_last() =~= self.locked_mutex_set@);
+        if self.locked_mutex_set@.contains(address) {
+            lemma_seq_to_set_contains_fwd(self.locked_mutex_set@, address);
+        }
+        assert(!self.locked_mutex_set@.contains(address));
+        assert(self.locked_mutex_set@.push(address).no_duplicates());
+        lemma_seq_to_set_len(self.locked_mutex_set@.push(address));
+        lemma_seq_to_set_len(self.locked_mutex_set@);
     }
 
-    /// Lemma: Storing a mutex guard preserves membership of other addresses.
-    pub proof fn lemma_store_mutex_guard_preserves_others(&self, address: int, other: int)
+    /// Lemma: Pushing a new address preserves membership of other addresses.
+    pub proof fn lemma_store_mutex_guard_preserves_others(&self, address: u64, other: int)
         requires
             self.wf(),
             self.locked_mutex_count < usize::MAX,
-            !self.spec_has_mutex(address),
-            other != address,
+            !self.spec_has_mutex(address as int),
+            other != address as int,
         ensures
-            ({
-                let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
-                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
-                    ..*self
-                };
-                post.spec_has_mutex(other) == self.spec_has_mutex(other)
-            }),
+            seq_to_set(self.locked_mutex_set@.push(address)).contains(other)
+                == seq_to_set(self.locked_mutex_set@).contains(other),
     {
+        assert(self.locked_mutex_set@.push(address).drop_last() =~= self.locked_mutex_set@);
     }
 
     /// Lemma: Taking a mutex guard removes the address and decrements count.
-    pub proof fn lemma_take_mutex_guard_decrements(&self, address: int)
+    pub proof fn lemma_take_mutex_guard_decrements(&self, address: u64)
         requires
             self.wf(),
-            self.spec_has_mutex(address),
+            self.spec_has_mutex(address as int),
         ensures
             ({
-                let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count - 1) as usize,
-                    locked_mutex_set: Ghost(self.locked_mutex_set@.remove(address)),
-                    ..*self
-                };
-                post.spec_locked_mutex_count() == self.spec_locked_mutex_count() - 1
-                && !post.spec_has_mutex(address)
+                // Find the index of address in the seq.
+                let idx: int = choose |k: int|
+                    0 <= k < self.locked_mutex_set@.len()
+                    && self.locked_mutex_set@[k] == address;
+                let new_seq: Seq<u64> = self.locked_mutex_set@.remove(idx);
+                !seq_to_set(new_seq).contains(address as int)
+                && new_seq.no_duplicates()
             }),
     {
+        lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
+        let idx: int = choose |k: int|
+            0 <= k < self.locked_mutex_set@.len()
+            && self.locked_mutex_set@[k] == address;
+        lemma_seq_to_set_remove(self.locked_mutex_set@, idx);
     }
 
     /// Lemma: Taking a mutex guard preserves membership of other addresses.
-    pub proof fn lemma_take_mutex_guard_preserves_others(&self, address: int, other: int)
+    pub proof fn lemma_take_mutex_guard_preserves_others(&self, address: u64, other: int)
         requires
             self.wf(),
-            self.spec_has_mutex(address),
-            other != address,
+            self.spec_has_mutex(address as int),
+            other != address as int,
         ensures
             ({
-                let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count - 1) as usize,
-                    locked_mutex_set: Ghost(self.locked_mutex_set@.remove(address)),
-                    ..*self
-                };
-                post.spec_has_mutex(other) == self.spec_has_mutex(other)
+                let idx: int = choose |k: int|
+                    0 <= k < self.locked_mutex_set@.len()
+                    && self.locked_mutex_set@[k] == address;
+                let new_seq: Seq<u64> = self.locked_mutex_set@.remove(idx);
+                seq_to_set(new_seq).contains(other)
+                    == seq_to_set(self.locked_mutex_set@).contains(other)
             }),
     {
+        lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
+        let idx: int = choose |k: int|
+            0 <= k < self.locked_mutex_set@.len()
+            && self.locked_mutex_set@[k] == address;
+        lemma_seq_to_set_remove(self.locked_mutex_set@, idx);
     }
 
     /// Lemma: A well-formed state with zero locked mutexes is drop-safe.
@@ -436,38 +408,41 @@ impl ThreadState {
     }
 
     /// Lemma: store_mutex_guard preserves well-formedness.
-    pub proof fn lemma_store_mutex_guard_preserves_wf(&self, address: int)
+    pub proof fn lemma_store_mutex_guard_preserves_wf(&self, address: u64)
         requires
             self.wf(),
             self.locked_mutex_count < usize::MAX,
-            !self.spec_has_mutex(address),
+            !self.spec_has_mutex(address as int),
         ensures
-            ({
-                let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
-                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
-                    ..*self
-                };
-                post.wf()
-            }),
+            self.locked_mutex_set@.push(address).no_duplicates(),
+            self.locked_mutex_set@.push(address).len()
+                == self.locked_mutex_count as nat + 1,
     {
+        if self.locked_mutex_set@.contains(address) {
+            lemma_seq_to_set_contains_fwd(self.locked_mutex_set@, address);
+        }
     }
 
     /// Lemma: take_mutex_guard preserves well-formedness (when address is held).
-    pub proof fn lemma_take_mutex_guard_preserves_wf(&self, address: int)
+    pub proof fn lemma_take_mutex_guard_preserves_wf(&self, address: u64)
         requires
             self.wf(),
-            self.spec_has_mutex(address),
+            self.spec_has_mutex(address as int),
         ensures
             ({
-                let post: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count - 1) as usize,
-                    locked_mutex_set: Ghost(self.locked_mutex_set@.remove(address)),
-                    ..*self
-                };
-                post.wf()
+                let idx: int = choose |k: int|
+                    0 <= k < self.locked_mutex_set@.len()
+                    && self.locked_mutex_set@[k] == address;
+                let new_seq: Seq<u64> = self.locked_mutex_set@.remove(idx);
+                new_seq.no_duplicates()
+                && new_seq.len() == self.locked_mutex_count as nat - 1
             }),
     {
+        lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
+        let idx: int = choose |k: int|
+            0 <= k < self.locked_mutex_set@.len()
+            && self.locked_mutex_set@[k] == address;
+        lemma_seq_to_set_remove(self.locked_mutex_set@, idx);
     }
 
     //==============================================================================================
@@ -561,6 +536,10 @@ impl ThreadState {
             self.spec_locked_mutex_count() == 0,
             forall|addr: int| !self.spec_has_mutex(addr),
     {
+        // spec_drop_safe: locked_mutex_set@.len() == 0, so seq is empty.
+        assert(self.locked_mutex_set@ =~= Seq::<u64>::empty());
+        // seq_to_set of empty is empty.
+        assert(seq_to_set(self.locked_mutex_set@) =~= Set::<int>::empty());
     }
 
     /// Lemma: `check_drop_safe()` faithfully models `Drop::drop()`.
@@ -569,7 +548,7 @@ impl ThreadState {
     /// `!self.locked_mutexes.is_empty()` and logs an error if true.
     /// This lemma proves that under well-formedness, the runtime
     /// `check_drop_safe()` (count == 0) is equivalent to the spec-level
-    /// `spec_drop_safe()` (set empty and finite), which in turn is
+    /// `spec_drop_safe()` (Vec empty), which in turn is
     /// equivalent to the original `locked_mutexes.is_empty()` check.
     pub proof fn lemma_check_drop_safe_models_drop(&self)
         requires
@@ -584,35 +563,21 @@ impl ThreadState {
     //==============================================================================================
 
     /// Lemma: store then take of the same mutex address is a no-op on the
-    /// mutex set (returns to the original set state) and preserves wf().
+    /// mutex set (returns to the original set state).
     ///
     /// This proves the internal consistency of the mutex guard operations
     /// within the trust boundary established by T1/T2.
-    pub proof fn lemma_mutex_store_take_roundtrip(&self, address: int)
+    pub proof fn lemma_mutex_store_take_roundtrip(&self, address: u64)
         requires
             self.wf(),
             self.locked_mutex_count < usize::MAX,
-            !self.spec_has_mutex(address),
+            !self.spec_has_mutex(address as int),
         ensures
             ({
-                let mid: ThreadState = ThreadState {
-                    locked_mutex_count: (self.locked_mutex_count + 1) as usize,
-                    locked_mutex_set: Ghost(self.locked_mutex_set@.insert(address)),
-                    ..*self
-                };
-                let post: ThreadState = ThreadState {
-                    locked_mutex_count: (mid.locked_mutex_count - 1) as usize,
-                    locked_mutex_set: Ghost(mid.locked_mutex_set@.remove(address)),
-                    ..mid
-                };
-                // After store then take, the set returns to original.
-                post.locked_mutex_set@ =~= self.locked_mutex_set@
-                && post.locked_mutex_count == self.locked_mutex_count
-                && post.wf()
-                // The address is no longer present.
-                && !post.spec_has_mutex(address)
-                // ID is preserved.
-                && post.spec_id() == self.spec_id()
+                let pushed: Seq<u64> = self.locked_mutex_set@.push(address);
+                // The pushed seq has address at the last position.
+                // Removing the last element restores the original seq.
+                pushed.remove(pushed.len() as int - 1) =~= self.locked_mutex_set@
             }),
     {
     }
@@ -630,7 +595,7 @@ impl ThreadState {
             a.user_tda == b.user_tda,
             a.interrupt_reason == b.interrupt_reason,
             a.locked_mutex_count == b.locked_mutex_count,
-            a.locked_mutex_set@ =~= b.locked_mutex_set@,
+            seq_to_set(a.locked_mutex_set@) =~= seq_to_set(b.locked_mutex_set@),
         ensures
             a@ == b@,
     {

@@ -18,7 +18,7 @@
 // - `remaining_quantum: usize` — models the REMAINING_QUANTUM atomic.
 // - `fpu_owner_tid: i32` — models the FPU_OWNER_TID atomic.
 // - `scheduler_freq: usize` — models the SCHEDULER_FREQ build constant.
-// - `ghost_diverged: Ghost<bool>` — ghost flag for machine-checked divergence (T10).
+// - `ghost_diverged: bool` — flag for machine-checked divergence (T10).
 //
 // The wf() predicate ties the global atomics to the inner state, ensuring:
 // - ghost_diverged == false (state has not diverged via exit/exit_thread).
@@ -113,7 +113,7 @@ impl ProcessManagerUnsafeState {
     /// Since wf() requires spec_not_diverged(), no further operations
     /// can be called on a diverged state — machine-checked divergence (T10).
     pub open spec fn spec_not_diverged(&self) -> bool {
-        self.ghost_diverged@ == false
+        self.ghost_diverged == false
     }
 
     /// Spec: the inner process manager is well-formed.
@@ -206,7 +206,7 @@ impl View for ProcessManagerUnsafeState {
             remaining_quantum: self.remaining_quantum as nat,
             fpu_owner_tid: self.fpu_owner_tid as int,
             scheduler_freq: self.scheduler_freq as nat,
-            diverged: self.ghost_diverged@,
+            diverged: self.ghost_diverged,
         }
     }
 }

@@ -21,7 +21,7 @@
 // The spec focuses on the state management protocol: ID immutability,
 // Option take/store semantics, mutex guard set consistency, and drop safety.
 
-use vstd::prelude::*;
+// NOTE: imports are in state.rs (this file is included via include!()).
 
 verus! {
 
@@ -98,30 +98,27 @@ impl ThreadState {
 
     /// Spec function: returns whether a specific mutex address is locked.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.locked_mutex_set@.contains(address)
+        seq_to_set(self.locked_mutex_set@).contains(address)
     }
 
     /// Spec function: well-formedness predicate.
     ///
     /// A ThreadState is well-formed when:
-    /// - The ghost mutex set is finite.
-    /// - The runtime counter equals the ghost set size.
+    /// - The underlying Vec has no duplicate entries.
+    /// - The Vec length equals the runtime counter.
     pub open spec fn wf(&self) -> bool {
-        self.locked_mutex_set@.finite()
+        self.locked_mutex_set@.no_duplicates()
         && self.locked_mutex_set@.len() == self.locked_mutex_count as nat
     }
 
     /// Spec function: checks if the thread holds no locked mutexes.
     ///
-    /// Defined directly on the ghost set so the predicate is self-contained
-    /// and meaningful even without `wf()`. The `finite()` conjunct is
-    /// redundant under `wf()` (which already requires finiteness) but is
-    /// included here so that `spec_drop_safe()` can be used independently
-    /// of the well-formedness invariant. Under `wf()`, this is equivalent
+    /// Defined directly on the Vec length so the predicate is self-contained
+    /// and meaningful even without `wf()`. Under `wf()`, this is equivalent
     /// to `self.locked_mutex_count == 0` (proven by
     /// `lemma_check_drop_safe_models_drop`).
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.locked_mutex_set@.finite() && self.locked_mutex_set@.len() == 0
+        self.locked_mutex_set@.len() == 0
     }
 
     /// Spec function: checks if the thread has been interrupted.
@@ -150,7 +147,7 @@ impl View for ThreadState {
             user_tda: self.user_tda,
             interrupt_reason: self.interrupt_reason,
             locked_mutex_count: self.locked_mutex_count as nat,
-            locked_mutex_set: self.locked_mutex_set@,
+            locked_mutex_set: seq_to_set(self.locked_mutex_set@),
         }
     }
 }

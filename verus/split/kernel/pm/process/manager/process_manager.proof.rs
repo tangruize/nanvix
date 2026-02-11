@@ -40,25 +40,29 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Lemma: A newly constructed ProcessManagerInner is well-formed.
-    pub proof fn lemma_new_is_wf(interrupt_capable: bool)
+    ///
+    /// States that any PM with initial field values satisfies wf().
+    /// The exec `new()` function ensures these field values, so callers
+    /// get wf() from new()'s ensures clause directly.
+    pub proof fn lemma_new_is_wf(pm: &ProcessManagerInner)
+        requires
+            pm.running_pid == 0i32,
+            pm.ready_count == 0usize,
+            pm.suspended_count == 0usize,
+            pm.interrupted_count == 0usize,
+            pm.zombie_count == 0usize,
+            pm.next_pid == 1i32,
+            pm.number_buffered_messages == 0usize,
+            pm.ghost_ready@ =~= Set::<int>::empty(),
+            pm.ghost_suspended@ =~= Set::<int>::empty(),
+            pm.ghost_interrupted@ =~= Set::<int>::empty(),
+            pm.ghost_zombies@ =~= Set::<int>::empty(),
+            pm.ghost_ready.no_dups(),
+            pm.ghost_suspended.no_dups(),
+            pm.ghost_interrupted.no_dups(),
+            pm.ghost_zombies.no_dups(),
         ensures
-            ({
-                let pm: ProcessManagerInner = ProcessManagerInner {
-                    running_pid: 0i32,
-                    ready_count: 0usize,
-                    suspended_count: 0usize,
-                    interrupted_count: 0usize,
-                    zombie_count: 0usize,
-                    next_pid: 1i32,
-                    interrupt_capable: interrupt_capable,
-                    number_buffered_messages: 0usize,
-                    ghost_ready: Ghost(Set::empty()),
-                    ghost_suspended: Ghost(Set::empty()),
-                    ghost_interrupted: Ghost(Set::empty()),
-                    ghost_zombies: Ghost(Set::empty()),
-                };
-                pm.wf()
-            }),
+            pm.wf(),
     {
     }
 
@@ -122,25 +126,11 @@ impl ProcessManagerInner {
     //==============================================================================================
 
     /// Lemma: The kernel PID (0) is always alive after new().
-    pub proof fn lemma_kernel_alive_after_new(interrupt_capable: bool)
+    pub proof fn lemma_kernel_alive_after_new(pm: &ProcessManagerInner)
+        requires
+            pm.running_pid == 0i32,
         ensures
-            ({
-                let pm: ProcessManagerInner = ProcessManagerInner {
-                    running_pid: 0i32,
-                    ready_count: 0usize,
-                    suspended_count: 0usize,
-                    interrupted_count: 0usize,
-                    zombie_count: 0usize,
-                    next_pid: 1i32,
-                    interrupt_capable: interrupt_capable,
-                    number_buffered_messages: 0usize,
-                    ghost_ready: Ghost(Set::empty()),
-                    ghost_suspended: Ghost(Set::empty()),
-                    ghost_interrupted: Ghost(Set::empty()),
-                    ghost_zombies: Ghost(Set::empty()),
-                };
-                pm.spec_process_exists(0)
-            }),
+            pm.spec_process_exists(0),
     {
     }
 

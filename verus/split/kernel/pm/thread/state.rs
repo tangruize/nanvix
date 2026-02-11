@@ -81,6 +81,15 @@
 //! - Pin projection safety.
 
 use crate::kernel::pm::sys::tid::ThreadIdentifier;
+use crate::kernel::pm::process::manager::process_manager::{
+    seq_to_set,
+    lemma_seq_to_set_finite,
+    lemma_seq_to_set_len,
+    lemma_seq_to_set_contains_fwd,
+    lemma_seq_to_set_contains_rev,
+    lemma_seq_to_set_not_contains,
+    lemma_seq_to_set_remove,
+};
 use vstd::prelude::*;
 
 // Include specifications.
@@ -114,9 +123,10 @@ pub struct ThreadState {
     pub interrupt_reason: Option<int>,
     /// Number of locked mutexes held by this thread.
     pub locked_mutex_count: usize,
-    /// Ghost set of locked mutex addresses, faithfully modeling the
+    /// Concrete set of locked mutex addresses, faithfully modeling the
     /// original `BTreeMap<MutexAddress, MutexGuard>` per-key semantics.
-    pub locked_mutex_set: Ghost<Set<int>>,
+    /// Backed by `Vec<u64>`; the `View` maps to `Set<int>` via `seq_to_set`.
+    pub locked_mutex_set: Vec<u64>,
 }
 
 //==================================================================================================
@@ -167,7 +177,7 @@ impl ThreadState {
             user_tda: user_tda,
             interrupt_reason: None,
             locked_mutex_count: 0usize,
-            locked_mutex_set: Ghost(Set::empty()),
+            locked_mutex_set: Vec::new(),
         }
     }
 
@@ -302,14 +312,14 @@ impl ThreadState {
     /// The per-address frame condition proves non-interference: inserting
     /// one address does not affect membership of any other address,
     /// faithfully modeling `BTreeMap::insert` semantics.
-    pub fn store_mutex_guard(&mut self, address: Ghost<int>)
+    pub fn store_mutex_guard(&mut self, address: u64)
         requires
             old(self).wf(),
             old(self).locked_mutex_count < usize::MAX,
-            !old(self).spec_has_mutex(address@),
+            !old(self).spec_has_mutex(address as int),
         ensures
-            self.spec_has_mutex(address@),
-            forall|a: int| a != address@ ==>
+            self.spec_has_mutex(address as int),
+            forall|a: int| a != address as int ==>
                 self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
             !self.spec_drop_safe(),
@@ -320,8 +330,26 @@ impl ThreadState {
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.wf(),
     {
+        proof {
+            // Before push: self.locked_mutex_set@ is the old seq.
+            let old_seq: Seq<u64> = self.locked_mutex_set@;
+            // After push, the new seq is old_seq.push(address).
+            // seq_to_set(old_seq.push(address)) == seq_to_set(old_seq).insert(address as int).
+            assert(old_seq.push(address).drop_last() =~= old_seq);
+            // Prove no_duplicates after push.
+            if old_seq.contains(address) {
+                lemma_seq_to_set_contains_fwd(old_seq, address);
+            }
+            assert(!old_seq.contains(address));
+            assert(old_seq.push(address).no_duplicates());
+            // The new set contains address.
+            // seq_to_set(old_seq.push(address)) = seq_to_set(old_seq).insert(address as int).
+            // Prove len: since no_dups, len == seq len.
+            lemma_seq_to_set_len(old_seq.push(address));
+            lemma_seq_to_set_len(old_seq);
+        }
         self.locked_mutex_count = self.locked_mutex_count + 1;
-        self.locked_mutex_set = Ghost(self.locked_mutex_set@.insert(address@));
+        self.locked_mutex_set.push(address);
     }
 
     /// Takes a mutex guard, removing the address from the locked mutex set.
@@ -341,13 +369,13 @@ impl ThreadState {
     /// per-address frame condition proves non-interference: removing one
     /// address does not affect membership of any other address,
     /// faithfully modeling `BTreeMap::remove` semantics.
-    pub fn take_mutex_guard(&mut self, address: Ghost<int>)
+    pub fn take_mutex_guard(&mut self, address: u64)
         requires
             old(self).wf(),
-            old(self).spec_has_mutex(address@),
+            old(self).spec_has_mutex(address as int),
         ensures
-            !self.spec_has_mutex(address@),
-            forall|a: int| a != address@ ==>
+            !self.spec_has_mutex(address as int),
+            forall|a: int| a != address as int ==>
                 self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
             self.spec_id() == old(self).spec_id(),
@@ -357,8 +385,69 @@ impl ThreadState {
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.wf(),
     {
-        self.locked_mutex_count = self.locked_mutex_count - 1;
-        self.locked_mutex_set = Ghost(self.locked_mutex_set@.remove(address@));
+        // Save old sequence for proof reasoning after mutation.
+        let ghost old_seq: Seq<u64> = self.locked_mutex_set@;
+
+        proof {
+            lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
+        }
+        let mut i: usize = 0;
+        while i < self.locked_mutex_set.len()
+            invariant
+                i <= self.locked_mutex_set@.len(),
+                forall|j: int| 0 <= j < i as int ==> self.locked_mutex_set@[j] != address,
+                self.locked_mutex_set@.contains(address),
+                self.locked_mutex_set@ =~= old_seq,
+                old_seq =~= old(self).locked_mutex_set@,
+                old_seq.no_duplicates(),
+                old_seq.len() == old(self).locked_mutex_count as nat,
+                // Unchanged fields.
+                self.id == old(self).id,
+                self.kernel_stack == old(self).kernel_stack,
+                self.user_stack == old(self).user_stack,
+                self.user_tda == old(self).user_tda,
+                self.interrupt_reason == old(self).interrupt_reason,
+                self.locked_mutex_count == old(self).locked_mutex_count,
+            decreases self.locked_mutex_set@.len() - i,
+        {
+            if self.locked_mutex_set[i] == address {
+                // Found address at index i. Remove and return.
+                proof {
+                    assert(old_seq[i as int] == address);
+                    lemma_seq_to_set_remove(old_seq, i as int);
+                    // Count is > 0 because seq contains address.
+                    assert(old_seq.len() > 0);
+                    assert(self.locked_mutex_count > 0usize);
+                }
+                self.locked_mutex_set.remove(i);
+                self.locked_mutex_count = self.locked_mutex_count - 1;
+                proof {
+                    assert(self.locked_mutex_set@ =~= old_seq.remove(i as int));
+                    assert(seq_to_set(self.locked_mutex_set@)
+                        =~= seq_to_set(old_seq).remove(address as int));
+                    // wf: no_dups is preserved by remove, len matches count.
+                    assert(self.locked_mutex_set@.no_duplicates());
+                    assert(self.locked_mutex_set@.len()
+                        == self.locked_mutex_count as nat);
+                    // Frame: removing address preserves other memberships.
+                    assert forall|a: int| a != address as int implies
+                        self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
+                    by {
+                        assert(seq_to_set(old_seq).remove(address as int).contains(a)
+                            == seq_to_set(old_seq).contains(a));
+                    }
+                }
+                return;
+            }
+            i = i + 1;
+        }
+        // Unreachable: address is in the seq but not found at any index.
+        proof {
+            let witness: int = choose |k: int|
+                0 <= k < self.locked_mutex_set@.len()
+                && self.locked_mutex_set@[k] == address;
+            assert(false);
+        }
     }
 
     /// Checks whether the thread state is safe to drop.

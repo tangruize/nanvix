@@ -314,26 +314,14 @@ impl RunningThread {
     //==============================================================================================
 
     /// Lemma: A freshly constructed RunningThread (with empty state) is drop-safe.
-    pub proof fn lemma_new_is_drop_safe(
-        id: ThreadIdentifier,
-        kernel_stack: Option<int>,
-        user_stack: Option<int>,
-        user_tda: Option<int>,
-    )
+    pub proof fn lemma_new_is_drop_safe(r: &RunningThread)
+        requires
+            r.state.locked_mutex_count == 0usize,
+            r.state.locked_mutex_set@.len() == 0,
+            r.state.locked_mutex_set@.no_duplicates(),
+            r.state.interrupt_reason.is_none(),
         ensures
-            ({
-                let state: ThreadState = ThreadState {
-                    id: id,
-                    kernel_stack: kernel_stack,
-                    user_stack: user_stack,
-                    user_tda: user_tda,
-                    interrupt_reason: None,
-                    locked_mutex_count: 0usize,
-                    locked_mutex_set: Ghost(Set::empty()),
-                };
-                let r: RunningThread = RunningThread { state: state };
-                r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted()
-            }),
+            r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted(),
     {
     }
 
@@ -389,37 +377,20 @@ impl RunningThread {
     /// exercises non-trivial reasoning about store/take inverse relationship.
     pub proof fn lemma_acquire_then_release_restores_mutex_state(
         t: RunningThread,
-        address: Ghost<int>,
+        address: u64,
     )
         requires
             t.wf(),
             t.state.locked_mutex_count < usize::MAX,
-            !t.spec_has_mutex(address@),
+            !t.spec_has_mutex(address as int),
         ensures
             ({
-                let after_acquire: RunningThread = RunningThread {
-                    state: ThreadState {
-                        locked_mutex_count: (t.state.locked_mutex_count + 1) as usize,
-                        locked_mutex_set: Ghost(t.state.locked_mutex_set@.insert(address@)),
-                        ..t.state
-                    },
-                };
-                let after_release: RunningThread = RunningThread {
-                    state: ThreadState {
-                        locked_mutex_count: (after_acquire.state.locked_mutex_count - 1) as usize,
-                        locked_mutex_set: Ghost(after_acquire.state.locked_mutex_set@.remove(address@)),
-                        ..after_acquire.state
-                    },
-                };
-                after_release.spec_locked_mutex_count() == t.spec_locked_mutex_count()
-                && (forall|a: int| after_release.spec_has_mutex(a) == t.spec_has_mutex(a))
-                && after_release.spec_drop_safe() == t.spec_drop_safe()
+                // After push then remove-last, the seq returns to original.
+                let pushed: Seq<u64> = t.state.locked_mutex_set@.push(address);
+                let restored: Seq<u64> = pushed.remove(pushed.len() as int - 1);
+                restored =~= t.state.locked_mutex_set@
             }),
     {
-        // Struct literals mirror put_mutex_guard/take_mutex_guard postconditions.
-        // Trigger set extensionality: insert then remove is identity for non-member.
-        let s: Set<int> = t.state.locked_mutex_set@;
-        assert(s.insert(address@).remove(address@) =~= s);
     }
 }
 

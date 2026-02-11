@@ -58,12 +58,28 @@ if [ -n "$MODULE" ] && [[ ! "$MODULE" == *"::"* ]]; then
             FOUND_PATH=$(find "$VERUS_DIR" -path "*/${DIR_PART}/${FILE_PART}.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
         fi
     fi
+    if [ -z "$FOUND_PATH" ]; then
+        # Fallback: if second segment is "init" or "mod", search for mod.rs in a directory
+        # matching the first segment. e.g., virt_init -> */virt/mod.rs -> kernel::mm::virt
+        IFS='_' read -ra PARTS <<< "$MODULE"
+        if [ "${#PARTS[@]}" -eq 2 ] && { [ "${PARTS[1]}" = "init" ] || [ "${PARTS[1]}" = "mod" ]; }; then
+            FOUND_PATH=$(find "$VERUS_DIR" -path "*/${PARTS[0]}/mod.rs" -type f 2>/dev/null | head -1)
+        fi
+    fi
+    if [ -z "$FOUND_PATH" ]; then
+        # Fallback: search for mod.rs inside a directory matching the full module name.
+        # e.g., virt -> */virt/mod.rs
+        FOUND_PATH=$(find "$VERUS_DIR" -path "*/${MODULE}/mod.rs" -type f 2>/dev/null | head -1)
+    fi
     if [ -n "$FOUND_PATH" ]; then
         # Convert file path to module path.
         # e.g., /path/verus/split/kernel/pm/sys/pid.rs -> kernel::pm::sys::pid
+        # e.g., /path/verus/split/kernel/mm/virt/mod.rs -> kernel::mm::virt
         REL_PATH="${FOUND_PATH#$VERUS_DIR/}"
         REL_PATH="${REL_PATH%.rs}"
         FULL_MODULE=$(echo "$REL_PATH" | sed 's|/|::|g')
+        # Strip trailing ::mod for mod.rs files.
+        FULL_MODULE="${FULL_MODULE%::mod}"
         echo "Resolved module: $MODULE -> $FULL_MODULE"
         MODULE="$FULL_MODULE"
     fi

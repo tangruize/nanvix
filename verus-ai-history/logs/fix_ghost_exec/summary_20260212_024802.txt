@@ -1,0 +1,6 @@
+Fix Ghost-in-Exec Summary
+Date: 2026-02-12T02:48:02.409139
+Total ghost: 12 -> 0
+Fixed: 1, Partial: 0, Failed: 0
+
+kernel/pm/process/state/sleeping.rs: 12->0 verify:fail

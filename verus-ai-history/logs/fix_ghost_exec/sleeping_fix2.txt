@@ -1,0 +1,94 @@
+
+
+
+
+● Read verus/split/kernel/pm/process/state/sleeping.rs
+  └ 573 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.proof.rs
+  └ 263 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.spec.rs
+  └ 301 lines read
+
+Let me run the verification to see current errors.
+
+● Run verus verification
+  $ cd /home/ubuntu/nanvix/verus/split && ../verus/source/target-verus/release/verus --crate-type
+  lib lib.rs --verify-module kernel::pm::process::state::sleeping 2>&1 | head -120
+  └ 2 lines...
+
+● Find verus binary
+  $ which verus 2>/dev/null || find /home/ubuntu/nanvix/verus -name "verus" -type f 2>/dev/null |
+  head -5
+  └ 2 lines...
+
+● Run verus verification
+  $ cd /home/ubuntu/nanvix/verus/split && verus --crate-type lib lib.rs --verify-module
+  kernel::pm::process::state::sleeping 2>&1 | head -150
+  └ 151 lines...
+
+● See remaining errors
+  $ cd /home/ubuntu/nanvix/verus/split && verus --crate-type lib lib.rs --verify-module
+  kernel::pm::process::state::sleeping 2>&1 | tail -100
+  └ 101 lines...
+
+Now I understand all the errors. Let me fix the proof file systematically.
+
+● Grep
+"lemma_new_is_wf|lemma_new_wf|lemma_remove_at_removes_element|lemma_remove_at_length|lemma_remove_at
+_preserves_others|lemma_remove_at_no_duplicates|lemma_add_thread_result_has_ready|lemma_find_thread_
+not_found|lemma_find_thread_iff_has_thread|lemma_view_equality|lemma_spec_find_sleeping_index" in
+*.rs (/home/ubuntu/nanvix/verus/split)
+  └ 75 lines found
+
+Let me check a working proof file for pattern reference:
+
+● Read verus/split/kernel/pm/process/state/zombie.proof.rs lines 40-80
+  └ 45 lines read
+
+Now I have a clear picture of all needed changes. Let me rewrite the proof file:
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+11 -14)
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+3 -3)
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+9 -9)
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+3 -3)
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+2 -2)
+
+Now fix `lemma_view_equality` - remove `@` on pid fields since they're now plain `u64`:
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+1 -1)
+
+Now fix `RunnableProcess::lemma_new_wf`:
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+8 -15)
+
+Now fix `InterruptedProcess::lemma_new_wf`:
+
+● Edit verus/split/kernel/pm/process/state/sleeping.proof.rs (+7 -13)
+
+Now run verification again:
+
+● Run verus verification
+  $ cd /home/ubuntu/nanvix/verus/split && verus --crate-type lib lib.rs --verify-module
+  kernel::pm::process::state::sleeping 2>&1
+  └ 4 lines...
+
+0 errors, 21 verified. Let me verify the final state of the proof file:
+
+● Read verus/split/kernel/pm/process/state/sleeping.proof.rs
+  └ 247 lines read
+
+All 21 proofs verified with 0 errors.
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 47.008s
+Total session time:     2m 15.701s
+Total code changes:     +44 -60
+Breakdown by AI model:
+ claude-opus-4.6-fast    953.6k in, 9.7k out, 904.8k cached (Est. 9 Premium requests)

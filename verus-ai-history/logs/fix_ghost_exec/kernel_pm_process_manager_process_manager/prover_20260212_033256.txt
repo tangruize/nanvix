@@ -1,0 +1,45 @@
+=== Copilot Session ===
+Timestamp: 2026-02-12T03:32:56.296269
+Model: claude-opus-4.6-fast
+
+=== Prompt ===
+Fix Ghost-in-Exec issue in Verus verification file.
+
+## PROBLEM
+The exec file `verus/split/kernel/pm/process/manager/process_manager.rs` uses `Ghost<>` types as struct fields
+and in exec function signatures. This is WRONG because:
+- Exec code should use CONCRETE types matching the original source code
+- Ghost<> types are erased at compile time - they don't verify real executable behavior
+- Ghost<> should ONLY appear in: ghost parameters, ghost blocks, spec/proof files
+
+## SPECIFIC ISSUES IN THIS FILE
+4 Ghost<Set<int>> fields (ready, suspended, interrupted, zombies) should be concrete sets or equivalent.
+
+## WHAT TO DO
+1. Read the ORIGINAL source code below to understand the concrete types
+2. Read the CURRENT exec/spec/proof files below
+3. Modify the exec file (`verus/split/kernel/pm/process/manager/process_manager.rs`) to:
+   - Replace Ghost<> struct fields with CONCRETE types matching the original
+   - For types Verus can't handle directly (e.g., Arc, AtomicBool, complex enums),
+     use a simplified but CONCRETE representation (e.g., bool instead of AtomicBool,
+     u64 instead of Arc<...>, Vec<u64> instead of Option<NonEmptyVecDeque<Thread>>)
+   - Keep Ghost<> parameters that are purely for proof purposes (e.g., Ghost<CallerContext>)
+   - Move any abstract state that was in Ghost struct fields to the View type in spec.rs
+4. Update the spec file (`verus/split/kernel/pm/process/manager/process_manager.spec.rs`) as needed:
+   - The View type should map concrete exec fields to abstract spec state
+   - spec functions should reference the View type
+5. Update the proof file (`verus/split/kernel/pm/process/manager/process_manager.proof.rs`) as needed:
+   - Lemmas may need updates to work with the new concrete types
+6. PRESERVE all verification strength - do NOT weaken requires/ensures
+
+## CRITICAL RULES
+- Do NOT use `assume()` or add new `#[verifier::external_body]` annotations
+- Do NOT remove existing verified properties
+- Do NOT simplify ensures clauses just to make co
+... (truncated)
+
+=== Output ===
+
+=== End ===
+Duration: 0.0s
+Exit code: 1

@@ -1,0 +1,18 @@
+Fix Ghost-in-Exec Summary
+Date: 2026-02-12T01:48:58.608634
+Total ghost: 81 -> 0
+Fixed: 13, Partial: 0, Failed: 0
+
+kernel/pm/sync/spinlock.rs: 2->0 verify:fail
+kernel/pm/sync/mutex.rs: 2->0 verify:fail
+kernel/pm/sync/condvar.rs: 1->0 verify:fail
+kernel/kcall/scoreboard.rs: 1->0 verify:fail
+kernel/kcall/handler.rs: 3->0 verify:fail
+kernel/pm/process/state/process_state.rs: 3->0 verify:fail
+kernel/pm/process/state/zombie.rs: 3->0 verify:fail
+kernel/pm/process/state/sleeping.rs: 12->0 verify:fail
+kernel/pm/process/state/interrupted.rs: 10->0 verify:fail
+kernel/pm/process/state/runnable.rs: 18->0 verify:fail
+kernel/pm/process/state/running.rs: 21->0 verify:fail
+kernel/pm/process/manager/process_manager.rs: 4->0 verify:fail
+kernel/pm/process/manager/process_manager_unsafe.rs: 1->0 verify:fail

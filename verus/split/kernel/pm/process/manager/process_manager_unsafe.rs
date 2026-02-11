@@ -175,9 +175,9 @@ pub struct ProcessManagerUnsafeState {
     pub scheduler_freq: usize,
     /// Ghost flag for machine-checked divergence (T10).
     /// Set to true by exit()/exit_thread() to prevent post-exit reasoning.
-    /// wf() requires ghost_diverged@ == false, so after exit, no further
+    /// wf() requires ghost_diverged == false, so after exit, no further
     /// operations can be called on this state.
-    pub ghost_diverged: Ghost<bool>,
+    pub ghost_diverged: bool,
 }
 
 //==================================================================================================
@@ -215,7 +215,7 @@ impl ProcessManagerUnsafeState {
         let inner: ProcessManagerInner = ProcessManagerInner::new(interrupt_capable);
 
         proof {
-            ProcessManagerUnsafeState::lemma_init_is_wf(scheduler_freq, interrupt_capable);
+            ProcessManagerUnsafeState::lemma_init_is_wf(&inner, scheduler_freq);
         }
 
         ProcessManagerUnsafeState {
@@ -226,7 +226,7 @@ impl ProcessManagerUnsafeState {
             remaining_quantum: scheduler_freq,
             fpu_owner_tid: KERNEL_TID_RAW,
             scheduler_freq: scheduler_freq,
-            ghost_diverged: Ghost(false),
+            ghost_diverged: false,
         }
     }
 
@@ -620,7 +620,7 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             // Diverged: wf() no longer holds — no further operations possible.
-            self.ghost_diverged@ == true,
+            self.ghost_diverged == true,
             // System state for global invariant reasoning:
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
@@ -630,7 +630,7 @@ impl ProcessManagerUnsafeState {
                 ==> self.remaining_quantum == self.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
-        self.ghost_diverged = Ghost(true);
+        self.ghost_diverged = true;
     }
 
     /// Models `ProcessManager::exit()` error path.
@@ -683,7 +683,7 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             // Diverged: wf() no longer holds — no further operations possible.
-            self.ghost_diverged@ == true,
+            self.ghost_diverged == true,
             // System state for global invariant reasoning:
             self.inner == new_inner,
             self.scheduler_freq == old(self).scheduler_freq,
@@ -693,7 +693,7 @@ impl ProcessManagerUnsafeState {
                 ==> self.remaining_quantum == self.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
-        self.ghost_diverged = Ghost(true);
+        self.ghost_diverged = true;
     }
 
     /// Models `ProcessManager::exit_thread()` error path.
@@ -861,10 +861,7 @@ impl ProcessManagerUnsafeState {
         proof {
             self.lemma_recv_message_preserves_wf();
         }
-        self.inner = ProcessManagerInner {
-            number_buffered_messages: (self.inner.number_buffered_messages - 1) as usize,
-            ..self.inner
-        };
+        self.inner.number_buffered_messages = (self.inner.number_buffered_messages - 1) as usize;
     }
 
     /// Models `ProcessManager::try_recv()` when no message is available.

@@ -1,0 +1,461 @@
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:36:38
+    |
+ 36 |             Self::spec_no_duplicates(sleeping_ids),
+    |             ------------------------ ^^^^^^^^^^^^ expected `Seq<u64>`, found `Seq<int>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:176:22
+    |
+176 |     pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:37:38
+    |
+ 37 |             Self::spec_no_duplicates(zombie_ids),
+    |             ------------------------ ^^^^^^^^^^ expected `Seq<u64>`, found `Seq<int>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:176:22
+    |
+176 |     pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: arguments to this function are incorrect
+   --> kernel/pm/process/state/sleeping.proof.rs:38:13
+    |
+ 38 |             Self::spec_seqs_disjoint(sleeping_ids, zombie_ids),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: expected `Seq<u64>`, found `Seq<int>`
+   --> kernel/pm/process/state/sleeping.proof.rs:38:38
+    |
+ 38 |             Self::spec_seqs_disjoint(sleeping_ids, zombie_ids),
+    |                                      ^^^^^^^^^^^^
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: expected `Seq<u64>`, found `Seq<int>`
+   --> kernel/pm/process/state/sleeping.proof.rs:38:52
+    |
+ 38 |             Self::spec_seqs_disjoint(sleeping_ids, zombie_ids),
+    |                                                    ^^^^^^^^^^
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:182:22
+    |
+182 |     pub open spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^^ -----------  -----------
+
+error[E0308]: mismatched types
+  --> kernel/pm/process/state/sleeping.proof.rs:42:26
+   |
+42 |                     pid: Ghost(pid),
+   |                          ^^^^^^^^^^ expected `u64`, found `Ghost<int>`
+   |
+   = note: expected type `u64`
+            found struct `vstd::prelude::Ghost<vstd::prelude::int>`
+
+error[E0308]: mismatched types
+  --> kernel/pm/process/state/sleeping.proof.rs:43:42
+   |
+43 |                     sleeping_thread_ids: Ghost(sleeping_ids),
+   |                                          ^^^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+   |
+   = note: expected struct `std::vec::Vec<u64>`
+              found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+  --> kernel/pm/process/state/sleeping.proof.rs:44:40
+   |
+44 |                     zombie_thread_ids: Ghost(zombie_ids),
+   |                                        ^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+   |
+   = note: expected struct `std::vec::Vec<u64>`
+              found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0560]: struct `kernel::pm::process::state::sleeping::SleepingProcess` has no field named `sleeping_count`
+  --> kernel/pm/process/state/sleeping.proof.rs:45:21
+   |
+45 |                     sleeping_count: sleeping_ids.len() as u64,
+   |                     ^^^^^^^^^^^^^^ `kernel::pm::process::state::sleeping::SleepingProcess` does not have this field
+   |
+   = note: all struct fields are already assigned
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:72:64
+    |
+ 72 |             Self::spec_seq_contains(self.sleeping_thread_ids@, tid@),
+    |             -----------------------                            ^^^^ expected `u64`, found `int`
+    |             |
+    |             arguments to this function are incorrect
+    |
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:164:22
+    |
+164 |     pub open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^              --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:84:34
+    |
+ 84 |             Self::spec_remove_at(s, idx).len() == s.len() - 1,
+    |             -------------------- ^ expected `Seq<u64>`, found `Seq<int>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:169:22
+    |
+169 |     pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
+    |                      ^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:98:34
+    |
+ 98 |             Self::spec_remove_at(s, idx)[j] == if j < idx { s[j] } else { s[j + 1] },
+    |             -------------------- ^ expected `Seq<u64>`, found `Seq<int>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:169:22
+    |
+169 |     pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
+    |                      ^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:106:38
+    |
+106 |             Self::spec_no_duplicates(s),
+    |             ------------------------ ^ expected `Seq<u64>`, found `Seq<int>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:176:22
+    |
+176 |     pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:108:59
+    |
+108 |             Self::spec_no_duplicates(Self::spec_remove_at(s, idx)),
+    |                                      -------------------- ^ expected `Seq<u64>`, found `Seq<int>`
+    |                                      |
+    |                                      arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:169:22
+    |
+169 |     pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
+    |                      ^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:110:53
+    |
+110 |         let result: Seq<int> = Self::spec_remove_at(s, idx);
+    |                                -------------------- ^ expected `Seq<u64>`, found `Seq<int>`
+    |                                |
+    |                                arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:169:22
+    |
+169 |     pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
+    |                      ^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:110:32
+    |
+110 |         let result: Seq<int> = Self::spec_remove_at(s, idx);
+    |                     --------   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Seq<int>`, found `Seq<u64>`
+    |                     |
+    |                     expected due to this
+    |
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<u64>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:128:38
+    |
+128 |             Self::spec_no_duplicates(s),
+    |             ------------------------ ^ expected `Seq<u64>`, found `Seq<int>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:176:22
+    |
+176 |     pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:130:59
+    |
+130 |             !Self::spec_seq_contains(Self::spec_remove_at(s, idx), s[idx]),
+    |                                      -------------------- ^ expected `Seq<u64>`, found `Seq<int>`
+    |                                      |
+    |                                      arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:169:22
+    |
+169 |     pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
+    |                      ^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:130:68
+    |
+130 |             !Self::spec_seq_contains(Self::spec_remove_at(s, idx), s[idx]),
+    |              -----------------------                               ^^^^^^ expected `u64`, found `int`
+    |              |
+    |              arguments to this function are incorrect
+    |
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:164:22
+    |
+164 |     pub open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^              --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:132:53
+    |
+132 |         let result: Seq<int> = Self::spec_remove_at(s, idx);
+    |                                -------------------- ^ expected `Seq<u64>`, found `Seq<int>`
+    |                                |
+    |                                arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:169:22
+    |
+169 |     pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
+    |                      ^^^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:132:32
+    |
+132 |         let result: Seq<int> = Self::spec_remove_at(s, idx);
+    |                     --------   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Seq<int>`, found `Seq<u64>`
+    |                     |
+    |                     expected due to this
+    |
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<u64>`
+
+error[E0308]: arguments to this function are incorrect
+   --> kernel/pm/process/state/sleeping.proof.rs:135:12
+    |
+135 |         if Self::spec_seq_contains(result, val) {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^         --- expected `u64`, found `int`
+    |
+note: expected `Seq<u64>`, found `Seq<int>`
+   --> kernel/pm/process/state/sleeping.proof.rs:135:36
+    |
+135 |         if Self::spec_seq_contains(result, val) {
+    |                                    ^^^^^^
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:164:22
+    |
+164 |     pub open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^ -----------  --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:170:44
+    |
+170 |             !self.spec_has_sleeping_thread(tid),
+    |                   ------------------------ ^^^ expected `u64`, found `int`
+    |                   |
+    |                   arguments to this method are incorrect
+    |
+note: method defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:129:22
+    |
+129 |     pub open spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^        --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:171:42
+    |
+171 |             !self.spec_has_zombie_thread(tid),
+    |                   ---------------------- ^^^ expected `u64`, found `int`
+    |                   |
+    |                   arguments to this method are incorrect
+    |
+note: method defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:135:22
+    |
+135 |     pub open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
+    |                      ^^^^^^^^^^^^^^^^^^^^^^        --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:173:35
+    |
+173 |             self.spec_find_thread(tid) == None::<int>,
+    |                  ---------------- ^^^ expected `u64`, found `int`
+    |                  |
+    |                  arguments to this method are incorrect
+    |
+note: method defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:153:22
+    |
+153 |     pub open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
+    |                      ^^^^^^^^^^^^^^^^        --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:180:35
+    |
+180 |             self.spec_find_thread(tid).is_some() <==> self.spec_has_thread(tid),
+    |                  ---------------- ^^^ expected `u64`, found `int`
+    |                  |
+    |                  arguments to this method are incorrect
+    |
+note: method defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:153:22
+    |
+153 |     pub open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
+    |                      ^^^^^^^^^^^^^^^^        --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:180:76
+    |
+180 |             self.spec_find_thread(tid).is_some() <==> self.spec_has_thread(tid),
+    |                                                            --------------- ^^^ expected `u64`, found `int`
+    |                                                            |
+    |                                                            arguments to this method are incorrect
+    |
+note: method defined here
+   --> kernel/pm/process/state/sleeping.spec.rs:141:22
+    |
+141 |     pub open spec fn spec_has_thread(&self, tid: u64) -> bool {
+    |                      ^^^^^^^^^^^^^^^        --------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:218:26
+    |
+218 |                     pid: Ghost(pid),
+    |                          ^^^^^^^^^^ expected `u64`, found `Ghost<int>`
+    |
+    = note: expected type `u64`
+             found struct `vstd::prelude::Ghost<vstd::prelude::int>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:219:39
+    |
+219 |                     ready_thread_ids: Ghost(ready_ids),
+    |                                       ^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+    |
+    = note: expected struct `std::vec::Vec<u64>`
+               found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:220:45
+    |
+220 |                     interrupted_thread_ids: Ghost(interrupted_ids),
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+    |
+    = note: expected struct `std::vec::Vec<u64>`
+               found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:221:42
+    |
+221 |                     sleeping_thread_ids: Ghost(sleeping_ids),
+    |                                          ^^^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+    |
+    = note: expected struct `std::vec::Vec<u64>`
+               found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:222:40
+    |
+222 |                     zombie_thread_ids: Ghost(zombie_ids),
+    |                                        ^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+    |
+    = note: expected struct `std::vec::Vec<u64>`
+               found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:247:26
+    |
+247 |                     pid: Ghost(pid),
+    |                          ^^^^^^^^^^ expected `u64`, found `Ghost<int>`
+    |
+    = note: expected type `u64`
+             found struct `vstd::prelude::Ghost<vstd::prelude::int>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:248:45
+    |
+248 |                     interrupted_thread_ids: Ghost(interrupted_ids),
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+    |
+    = note: expected struct `std::vec::Vec<u64>`
+               found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:249:42
+    |
+249 |                     sleeping_thread_ids: Ghost(sleeping_ids),
+    |                                          ^^^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+    |
+    = note: expected struct `std::vec::Vec<u64>`
+               found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.proof.rs:250:40
+    |
+250 |                     zombie_thread_ids: Ghost(zombie_ids),
+    |                                        ^^^^^^^^^^^^^^^^^ expected `Vec<u64>`, found `Ghost<Seq<int>>`
+    |
+    = note: expected struct `std::vec::Vec<u64>`
+               found struct `vstd::prelude::Ghost<vstd::seq::Seq<vstd::prelude::int>>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/sleeping.rs:344:51
+    |
+344 |             Self::lemma_remove_at_removes_element(old_sleeping, found_idx);
+    |             ------------------------------------- ^^^^^^^^^^^^ expected `Seq<int>`, found `Seq<u64>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<u64>`
+note: associated function defined here
+   --> kernel/pm/process/state/sleeping.proof.rs:125:18
+    |
+125 |     pub proof fn lemma_remove_at_removes_element(s: Seq<int>, idx: int)
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ -----------
+
+error: aborting due to 35 previous errors
+
+Some errors have detailed explanations: E0308, E0560.
+For more information about an error, try `rustc --explain E0308`.

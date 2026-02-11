@@ -1,0 +1,6 @@
+Fix Ghost-in-Exec Summary
+Date: 2026-02-12T03:32:38.616016
+Total ghost: 21 -> 0
+Fixed: 1, Partial: 0, Failed: 0
+
+kernel/pm/process/state/running.rs: 21->0 verify:pass

@@ -1,0 +1,6 @@
+Fix Ghost-in-Exec Summary
+Date: 2026-02-12T03:33:24.594156
+Total ghost: 4 -> 4
+Fixed: 0, Partial: 0, Failed: 1
+
+kernel/pm/process/manager/process_manager.rs: 4->4 verify:pass

@@ -1,0 +1,91 @@
+
+
+
+
+● Read verus/split/kernel/pm/process/manager/process_manager_unsafe.rs
+  └ 1 line read
+
+● Glob "**/kernel/pm/process/manager/process_manager_unsafe*.rs" in /home/ubuntu/nanvix/verus/split
+  └ 3 files found
+
+● Grep "ghost_diverged" (/home/ubuntu/nanvix/verus/split/kernel/pm/process/manager)
+  └ 17 lines found
+
+● Read verus/split/kernel/pm/process/manager/process_manager_unsafe.rs lines 615-700
+  └ 91 lines read
+
+● Read verus/split/kernel/pm/process/manager/process_manager_unsafe.rs lines 170-240
+  └ 76 lines read
+
+● Read verus/split/kernel/pm/process/manager/process_manager_unsafe.proof.rs lines 45-70
+  └ 31 lines read
+
+● Read verus/split/kernel/pm/process/manager/process_manager_unsafe.spec.rs
+  └ 219 lines read
+
+Now I have a clear picture. Let me make all the changes:
+
+1. **Main file**: `Ghost<bool>` → `bool`, `Ghost(false)` → `false`, `Ghost(true)` → `true`
+2. **Spec file**: `self.ghost_diverged@` → `self.ghost_diverged`, update comments and view
+3. **Proof file**: `Ghost(false)` → `false`
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.proof.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.rs (+2 -2)
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.rs (+2 -2)
+
+Now let me also update the comments in the main file that reference `ghost_diverged@`:
+
+● Grep "ghost_diverged@"
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process/manager/process_manager_unsafe.rs)
+  └ 1 line found
+
+● Edit verus/split/kernel/pm/process/manager/process_manager_unsafe.rs (+1 -1)
+
+Now let me run the verification:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix/verus/split && ../verus/source/target-verus/release/verus --crate-type
+  lib lib.rs --verify-module kernel::pm::process::manager::process_manager_unsafe 2>&1 | tail -30
+  └ 2 lines...
+
+● Find verus binary
+  $ which verus 2>/dev/null || find /home/ubuntu/nanvix/verus -name "verus" -type f 2>/dev/null |
+  head -5
+  └ 2 lines...
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix/verus/split && verus --crate-type lib lib.rs --verify-module
+  kernel::pm::process::manager::process_manager_unsafe 2>&1 | tail -30
+  └ 4 lines...
+
+Verification passes with 40 verified, 0 errors.
+
+Let me also check there are no remaining `ghost_diverged` references using `Ghost` or `@` in these files:
+
+● Grep "ghost_diverged.*Ghost|Ghost.*ghost_diverged|ghost_diverged@"
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process/manager)
+  └ No matches found
+
+All `Ghost` wrappers and `@` view operators on `ghost_diverged` have been removed.
+
+Fixed the Ghost-in-Exec bug across 3 files with 0 verification errors. Changed `ghost_diverged: Ghost<bool>` → `bool`, updated all accesses (`Ghost(false)` → `false`, `Ghost(true)` → `true`, `ghost_diverged@` → `ghost_diverged`), and confirmed 40/40 Verus verifications pass.
+
+
+Total usage est:        9 Premium requests
+API time spent:         51s
+Total session time:     1m 8.72s
+Total code changes:     +11 -11
+Breakdown by AI model:
+ claude-opus-4.6-fast    385.1k in, 3.6k out, 361.1k cached (Est. 9 Premium requests)

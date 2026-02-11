@@ -1,0 +1,6 @@
+Fix Ghost-in-Exec Summary
+Date: 2026-02-12T01:53:49.823938
+Total ghost: 2 -> 0
+Fixed: 1, Partial: 0, Failed: 0
+
+kernel/pm/sync/mutex.rs: 2->0 verify:pass

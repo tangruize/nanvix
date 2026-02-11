@@ -1,0 +1,176 @@
+=== Copilot Session ===
+Timestamp: 2026-02-12T02:28:08.918502
+Model: claude-opus-4.6-fast
+
+=== Prompt ===
+Fix Ghost-in-Exec issue in Verus verification file.
+
+## PROBLEM
+The exec file `verus/split/kernel/pm/process/state/zombie.rs` uses `Ghost<>` types as struct fields
+and in exec function signatures. This is WRONG because:
+- Exec code should use CONCRETE types matching the original source code
+- Ghost<> types are erased at compile time - they don't verify real executable behavior
+- Ghost<> should ONLY appear in: ghost parameters, ghost blocks, spec/proof files
+
+## SPECIFIC ISSUES IN THIS FILE
+Ghost<int> pid, Ghost<Seq<int>> zombie_thread_ids, Ghost<int> status should all be concrete types.
+
+## WHAT TO DO
+1. Read the ORIGINAL source code below to understand the concrete types
+2. Read the CURRENT exec/spec/proof files below
+3. Modify the exec file (`verus/split/kernel/pm/process/state/zombie.rs`) to:
+   - Replace Ghost<> struct fields with CONCRETE types matching the original
+   - For types Verus can't handle directly (e.g., Arc, AtomicBool, complex enums),
+     use a simplified but CONCRETE representation (e.g., bool instead of AtomicBool,
+     u64 instead of Arc<...>, Vec<u64> instead of Option<NonEmptyVecDeque<Thread>>)
+   - Keep Ghost<> parameters that are purely for proof purposes (e.g., Ghost<CallerContext>)
+   - Move any abstract state that was in Ghost struct fields to the View type in spec.rs
+4. Update the spec file (`verus/split/kernel/pm/process/state/zombie.spec.rs`) as needed:
+   - The View type should map concrete exec fields to abstract spec state
+   - spec functions should reference the View type
+5. Update the proof file (`verus/split/kernel/pm/process/state/zombie.proof.rs`) as needed:
+   - Lemmas may need updates to work with the new concrete types
+6. PRESERVE all verification strength - do NOT weaken requires/ensures
+
+## CRITICAL RULES
+- Do NOT use `assume()` or add new `#[verifier::external_body]` annotations
+- Do NOT remove existing verified properties
+- Do NOT simplify ensures clauses just to make conversion easier
+- Ghost<> as FUNCTION PARAMETERS f
+... (truncated)
+
+=== Output ===
+
+
+
+
+● Read verus/split/kernel/pm/process/state/zombie.rs
+  └ 324 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.spec.rs
+  └ 361 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.proof.rs
+  └ 359 lines read
+
+Now let me check existing patterns in other Verus files to understand how concrete types are used, and check the verification setup.
+
+● Find verus binary location
+  $ cd /home/ubuntu/nanvix/verus/split && ls -la verus 2>/dev/null || which verus 2>/dev/null ||
+  find / -name "verus" -type f 2>/dev/null | head -5
+  └ 2 lines...
+
+● Explore
+  ● Read verus/split/kernel/pm/clock.rs lines 1-80
+    └ 85 lines read
+  ● Read verus/split/kernel/pm/clock.spec.rs
+    └ 335 lines read
+
+Now I have a clear understanding of the codebase patterns. Let me create my plan and implement the changes.
+
+● Create ~/.copilot/session-state/83687d89-0c84-435b-b50b-8a9cd92d365d/plan.md (+19)
+
+Now let me apply all edits to the three files. Starting with the exec file:
+
+● Edit verus/split/kernel/pm/process/state/zombie.rs (+15 -17)
+
+● Edit verus/split/kernel/pm/process/state/zombie.rs (+4 -4)
+
+● Edit verus/split/kernel/pm/process/state/zombie.rs (+10 -10)
+
+● Edit verus/split/kernel/pm/process/state/zombie.rs (+6 -6)
+
+● Edit verus/split/kernel/pm/process/state/zombie.rs (+7 -11)
+
+● Edit verus/split/kernel/pm/process/state/zombie.rs (+8 -8)
+
+Now update the spec file:
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+7 -6)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+3 -3)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+4 -4)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+5 -5)
+
+Now update the integration obligation specs:
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+1 -1)
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+3 -3)
+
+Now update the View implementation:
+
+● Edit verus/split/kernel/pm/process/state/zombie.spec.rs (+2 -2)
+
+Now update the proof file. The construction lemmas need the most work since they construct ZombieProcess in proof mode:
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+19 -29)
+
+Now update the bury_matches_view lemma (references to `self.pid@` and `self.status@`):
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+2 -2)
+
+Now update the find_thread lemmas (change `int` to `u64`, `Some(0int)` to `Some(0u64)`, `None::<int>` to `None::<u64>`):
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+5 -5)
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+5 -5)
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+3 -3)
+
+Now update the integration obligation lemmas:
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+2 -2)
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+11 -11)
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+1 -1)
+
+Now update the view equality lemma:
+
+● Edit verus/split/kernel/pm/process/state/zombie.proof.rs (+2 -2)
+
+Now let me verify the files look correct and run verification:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix/verus/split && verus --crate-type lib lib.rs --verify-module
+  kernel::pm::process::state::zombie 2>&1
+  └ 4 lines...
+
+All 17 verification conditions pass with 0 errors. Let me verify the final state of each file:
+
+● Check no Ghost struct fields remain
+  $ cd /home/ubuntu/nanvix && grep -n "Ghost<" verus/split/kernel/pm/process/state/zombie.rs
+  verus/split/kernel/pm/process/state/zombie.spec.rs
+  verus/split/kernel/pm/process/state/zombie.proof.rs | grep -v "^.*:.*//.*Ghost" | head -30
+  └ 3 lines...
+
+The only remaining `Ghost<>` usages are in function return types for `find_thread`/`find_thread_mut`, which is correct — these model `Option<ThreadRef>` reference returns that Verus can't express concretely. All struct fields are now concrete.
+
+● Verify struct fields are concrete
+  $ cd /home/ubuntu/nanvix && grep -A5 "pub struct ZombieProcess"
+  verus/split/kernel/pm/process/state/zombie.rs
+  └ 7 lines...
+
+
+Total usage est:        9 Premium requests
+API time spent:         7m 43.557s
+Total session time:     8m 11.307s
+Total code changes:     +148 -144
+Breakdown by AI model:
+ claude-opus-4.6-fast    2.9m in, 41.3k out, 2.8m cached (Est. 9 Premium requests)
+ claude-haiku-4.5        81.6k in, 3.2k out, 49.7k cached (Est. 0 Premium requests)
+
+=== End ===
+Duration: 492.7s
+Exit code: 0

@@ -31,40 +31,34 @@ impl ProcessManagerUnsafeState {
     //==============================================================================================
 
     /// Lemma: A newly initialized ProcessManagerUnsafeState is well-formed.
-    pub proof fn lemma_init_is_wf(scheduler_freq: usize, interrupt_capable: bool)
+    ///
+    /// The inner PM must already satisfy initial conditions (as ensured by
+    /// `ProcessManagerInner::new()`).
+    pub proof fn lemma_init_is_wf(
+        inner: &ProcessManagerInner,
+        scheduler_freq: usize,
+    )
         requires
             scheduler_freq > 0,
             scheduler_freq <= usize::MAX,
+            inner.wf(),
+            inner.spec_running_pid() == 0,
+            inner.number_buffered_messages == 0,
         ensures
             ({
-                let inner: ProcessManagerInner = ProcessManagerInner {
-                    running_pid: 0i32,
-                    ready_count: 0usize,
-                    suspended_count: 0usize,
-                    interrupted_count: 0usize,
-                    zombie_count: 0usize,
-                    next_pid: 1i32,
-                    interrupt_capable: interrupt_capable,
-                    number_buffered_messages: 0usize,
-                    ghost_ready: Ghost(Set::empty()),
-                    ghost_suspended: Ghost(Set::empty()),
-                    ghost_interrupted: Ghost(Set::empty()),
-                    ghost_zombies: Ghost(Set::empty()),
-                };
                 let state: ProcessManagerUnsafeState = ProcessManagerUnsafeState {
                     initialized: true,
-                    inner: inner,
+                    inner: *inner,
                     current_pid: 0i32,
                     current_tid: 0i32,
                     remaining_quantum: scheduler_freq,
                     fpu_owner_tid: 0i32,
                     scheduler_freq: scheduler_freq,
-                    ghost_diverged: Ghost(false),
+                    ghost_diverged: false,
                 };
                 state.wf()
             }),
     {
-        ProcessManagerInner::lemma_new_is_wf(interrupt_capable);
     }
 
     //==============================================================================================

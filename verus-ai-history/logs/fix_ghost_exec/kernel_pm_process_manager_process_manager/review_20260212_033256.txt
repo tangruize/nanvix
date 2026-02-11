@@ -1,0 +1,87 @@
+=== Copilot Session ===
+Timestamp: 2026-02-12T03:33:04.914927
+Model: claude-opus-4.6-fast
+
+=== Prompt ===
+Review the Ghost-in-Exec fix for `verus/split/kernel/pm/process/manager/process_manager.rs`.
+
+## REVIEW CRITERIA
+1. Are ALL struct fields in the exec file concrete (not Ghost<>)?
+   - Ghost<> as function parameters for proof is OK
+   - Tracked<Token> patterns are OK
+   - But Ghost<> as STRUCT FIELDS is NOT OK
+2. Do the concrete types match the original source semantics?
+3. Are verification properties preserved (not weakened)?
+4. Does it pass verus verification?
+5. Were any `assume()` or `external_body` annotations added?
+
+## FILES TO REVIEW
+
+### Original Source (src/kernel/src/pm/process/manager/mod.rs)
+```rust
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+mod r#unsafe;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::{
+    event::EventOwnership,
+    hal::{
+        self,
+        arch::ContextInformation,
+        io::{
+            AnyIoPort,
+            IoMemoryRegion,
+            IoPortWidth,
+        },
+        mem::{
+            AccessPermission,
+            Address,
+            PageAligned,
+            VirtualAddress,
+        },
+    },
+    mm::{
+        elf::Elf32Fhdr,
+        kstack::KernelStack,
+        ustack::UserStack,
+        VirtMemoryManager,
+        Vmem,
+    },
+    pm::{
+        clock,
+        process::state::{
+            InterruptedProcess,
+            ProcessRef,
+            ProcessRefMut,
+            ProcessState,
+            RunnableProcess,
+            RunningProcess,
+            SleepingProcess,
+            ZombieProcess,
+        },
+        sync::{
+            condvar::Condvar,
+            mutex::{
+                Mutex,
+                MutexGuard,
+            },
+        },
+        thread::{
+            InterruptReason,
+            ReadyThread,
+            ThreadManager,
+            ThreadRef,
+            ThreadRefMut,
+            ZombieThre
+... (truncated)
+
+=== Output ===
+
+=== End ===
+Duration: 0.0s
+Exit code: 1

@@ -64,6 +64,410 @@
 
 use vstd::prelude::*;
 
+//==================================================================================================
+// PidSet: Concrete Process ID Collection
+//==================================================================================================
+
+verus! {
+
+/// Converts a sequence of u64 PIDs to a set of int PIDs.
+///
+/// # Description
+///
+/// Recursive spec function that maps a concrete `Seq<u64>` to an abstract `Set<int>`,
+/// enabling the use of concrete `Vec<u64>` storage while preserving set-based reasoning.
+pub open spec fn seq_to_set(s: Seq<u64>) -> Set<int>
+    decreases s.len(),
+{
+    if s.len() == 0 {
+        Set::empty()
+    } else {
+        seq_to_set(s.drop_last()).insert(s.last() as int)
+    }
+}
+
+/// Concrete set of process IDs, backed by `Vec<u64>`.
+///
+/// # Description
+///
+/// Replaces `Ghost<Set<int>>` with a runtime-observable collection.
+/// The `View` implementation maps the underlying `Vec<u64>` to `Set<int>`
+/// via `seq_to_set`, so all existing spec predicates continue to work unchanged.
+pub struct PidSet {
+    /// Storage for PIDs. Must have no duplicate entries.
+    pub pids: Vec<u64>,
+}
+
+impl View for PidSet {
+    type V = Set<int>;
+
+    open spec fn view(&self) -> Set<int> {
+        seq_to_set(self.pids@)
+    }
+}
+
+impl PidSet {
+    /// Spec: the underlying storage has no duplicate entries.
+    pub open spec fn no_dups(&self) -> bool {
+        self.pids@.no_duplicates()
+    }
+
+    /// Creates an empty PidSet.
+    pub fn empty() -> (result: Self)
+        ensures
+            result@ =~= Set::<int>::empty(),
+            result.no_dups(),
+    {
+        PidSet { pids: Vec::new() }
+    }
+
+    /// Inserts a PID into the set.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: PID to insert (must not already be present).
+    pub fn pid_insert(&mut self, pid: u64)
+        requires
+            !old(self)@.contains(pid as int),
+            old(self).no_dups(),
+        ensures
+            self@ =~= old(self)@.insert(pid as int),
+            self.no_dups(),
+    {
+        proof {
+            // push(v) gives s.push(v), and seq_to_set(s.push(v))
+            // = seq_to_set(s).insert(v as int) by definition
+            // (since s.push(v).drop_last() == s and s.push(v).last() == v).
+            assert(self.pids@.push(pid).drop_last() =~= self.pids@);
+            // no_duplicates: pid not in old seq (from contains/no_dups).
+            // Proof by contradiction: if pid were in seq, then pid as int
+            // would be in the set (by contains_fwd), contradicting precondition.
+            if self.pids@.contains(pid) {
+                lemma_seq_to_set_contains_fwd(self.pids@, pid);
+            }
+            assert(!self.pids@.contains(pid));
+            // After push, no_duplicates holds since pid wasn't in old seq.
+            assert(self.pids@.push(pid).no_duplicates());
+        }
+        self.pids.push(pid);
+    }
+
+    /// Removes a PID from the set.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: PID to remove (must be present).
+    pub fn pid_remove(&mut self, pid: u64)
+        requires
+            old(self)@.contains(pid as int),
+            old(self).no_dups(),
+        ensures
+            self@ =~= old(self)@.remove(pid as int),
+            self.no_dups(),
+    {
+        let idx: usize = self.find_index(pid);
+        proof {
+            lemma_seq_to_set_remove(self.pids@, idx as int);
+        }
+        self.pids.remove(idx);
+    }
+
+    /// Finds the index of a PID in the underlying Vec.
+    fn find_index(&self, pid: u64) -> (idx: usize)
+        requires
+            self@.contains(pid as int),
+            self.no_dups(),
+        ensures
+            idx < self.pids@.len(),
+            self.pids@[idx as int] == pid,
+    {
+        proof {
+            lemma_seq_to_set_contains_rev(self.pids@, pid);
+        }
+        let mut i: usize = 0;
+        while i < self.pids.len()
+            invariant
+                i <= self.pids@.len(),
+                forall |j: int| 0 <= j < i as int ==> self.pids@[j] != pid,
+                self.pids@.contains(pid),
+            decreases self.pids@.len() - i,
+        {
+            if self.pids[i] == pid {
+                return i;
+            }
+            i = i + 1;
+        }
+        proof {
+            // Contradiction: pid is in seq (contains) but not found at any index.
+            let witness: int = choose |k: int| 0 <= k < self.pids@.len() && self.pids@[k] == pid;
+            assert(false);
+        }
+        0
+    }
+
+    /// Clears all PIDs from the set.
+    pub fn pid_clear(&mut self)
+        ensures
+            self@ =~= Set::<int>::empty(),
+            self.no_dups(),
+    {
+        self.pids.clear();
+    }
+
+    /// Absorbs all PIDs from another PidSet into this one.
+    ///
+    /// # Parameters
+    ///
+    /// - `other`: PidSet to drain. Will be empty after the call.
+    pub fn absorb(&mut self, other: &mut PidSet)
+        requires
+            old(self)@.disjoint(old(other)@),
+            old(self).no_dups(),
+            old(other).no_dups(),
+        ensures
+            self@ =~= old(self)@.union(old(other)@),
+            other@ =~= Set::<int>::empty(),
+            self.no_dups(),
+            other.no_dups(),
+    {
+        proof {
+            lemma_seq_to_set_append(self.pids@, other.pids@);
+            lemma_seq_no_dups_append(self.pids@, other.pids@);
+        }
+        self.pids.append(&mut other.pids);
+    }
+}
+
+//==================================================================================================
+// seq_to_set Proof Lemmas
+//==================================================================================================
+
+/// Lemma: seq_to_set of any sequence is finite.
+pub proof fn lemma_seq_to_set_finite(s: Seq<u64>)
+    ensures
+        seq_to_set(s).finite(),
+    decreases s.len(),
+{
+    if s.len() > 0 {
+        lemma_seq_to_set_finite(s.drop_last());
+    }
+}
+
+/// Lemma: seq_to_set length equals seq length when no duplicates.
+pub proof fn lemma_seq_to_set_len(s: Seq<u64>)
+    requires
+        s.no_duplicates(),
+    ensures
+        seq_to_set(s).finite(),
+        seq_to_set(s).len() == s.len(),
+    decreases s.len(),
+{
+    lemma_seq_to_set_finite(s);
+    if s.len() > 0 {
+        let s0: Seq<u64> = s.drop_last();
+        let v: u64 = s.last();
+        assert(s0.no_duplicates());
+        lemma_seq_to_set_len(s0);
+        lemma_seq_to_set_not_contains(s0, v);
+        assert(!seq_to_set(s0).contains(v as int));
+        lemma_seq_to_set_finite(s0);
+    }
+}
+
+/// Lemma: an element in the seq is in the set.
+pub proof fn lemma_seq_to_set_contains_fwd(s: Seq<u64>, v: u64)
+    requires
+        s.contains(v),
+    ensures
+        seq_to_set(s).contains(v as int),
+    decreases s.len(),
+{
+    if s.len() > 0 {
+        if s.last() == v {
+            // v is the last element; it's inserted directly.
+        } else {
+            // v must be in drop_last.
+            // Witness: s.contains(v) gives us an index k where s[k] == v.
+            // Since s.last() != v, k < s.len() - 1, so drop_last()[k] == v.
+            let k: int = choose |k: int| 0 <= k < s.len() && s[k] == v;
+            assert(k < s.len() - 1);
+            assert(s.drop_last()[k] == v);
+            lemma_seq_to_set_contains_fwd(s.drop_last(), v);
+        }
+    }
+}
+
+/// Lemma: an element in the set comes from the seq.
+pub proof fn lemma_seq_to_set_contains_rev(s: Seq<u64>, v: u64)
+    ensures
+        seq_to_set(s).contains(v as int) ==> s.contains(v),
+    decreases s.len(),
+{
+    if s.len() > 0 {
+        lemma_seq_to_set_contains_rev(s.drop_last(), v);
+    }
+}
+
+/// Lemma: if v is NOT in the seq, then v as int is NOT in the set.
+pub proof fn lemma_seq_to_set_not_contains(s: Seq<u64>, v: u64)
+    requires
+        !s.contains(v),
+    ensures
+        !seq_to_set(s).contains(v as int),
+    decreases s.len(),
+{
+    if s.len() > 0 {
+        lemma_seq_to_set_not_contains(s.drop_last(), v);
+        // s.last() != v (since v not in s), so insert(s.last() as int)
+        // doesn't add v as int to the set.
+        // Need: s.last() as int != v as int when s.last() != v.
+        // This holds because as int is injective on u64.
+        assert(s.last() != v ==> s.last() as int != v as int);
+    }
+}
+
+/// Lemma: seq_to_set after removing element at index i equals set minus that element.
+pub proof fn lemma_seq_to_set_remove(s: Seq<u64>, i: int)
+    requires
+        s.no_duplicates(),
+        0 <= i < s.len(),
+    ensures
+        seq_to_set(s.remove(i)) =~= seq_to_set(s).remove(s[i] as int),
+        s.remove(i).no_duplicates(),
+    decreases s.len(),
+{
+    if s.len() == 1 {
+        assert(s.remove(i) =~= Seq::<u64>::empty());
+        assert(i == 0int);
+        // seq_to_set(s) unfolds: s.drop_last() is empty, s.last() == s[0].
+        assert(s.drop_last() =~= Seq::<u64>::empty());
+        assert(s.last() == s[0]);
+        // seq_to_set(s) = seq_to_set(empty).insert(s[0] as int) = Set::empty().insert(s[0] as int).
+        let the_set: Set<int> = Set::<int>::empty().insert(s[0] as int);
+        // the_set.remove(s[0] as int) == Set::empty().
+        assert(the_set.contains(s[0] as int));
+        assert forall |x: int| !the_set.remove(s[0] as int).contains(x) by {
+            if x == s[0] as int {
+                // Removed explicitly.
+            } else {
+                // x != s[0] as int, so x not in {s[0] as int} anyway.
+                assert(!Set::<int>::empty().contains(x));
+            }
+        }
+        assert(the_set.remove(s[0] as int) =~= Set::<int>::empty());
+    } else if i == s.len() - 1 {
+        // Removing the last element.
+        assert(s.remove(i) =~= s.drop_last());
+        // seq_to_set(s) = seq_to_set(s.drop_last()).insert(s.last() as int)
+        // seq_to_set(s).remove(s[i] as int) = seq_to_set(s.drop_last())
+        // since s[i] = s.last() and s.last() not in s.drop_last() (no_dups).
+        lemma_seq_to_set_not_contains(s.drop_last(), s.last());
+        lemma_seq_to_set_finite(s.drop_last());
+    } else {
+        // i < s.len() - 1: removing a non-last element.
+        let s0: Seq<u64> = s.drop_last();
+        let v: u64 = s.last();
+        // s.remove(i).drop_last() == s.drop_last().remove(i)
+        assert(s.remove(i).drop_last() =~= s0.remove(i));
+        // s.remove(i).last() == s.last()
+        assert(s.remove(i).last() == v);
+        // By IH on s.drop_last():
+        assert(s0.no_duplicates());
+        lemma_seq_to_set_remove(s0, i);
+        // seq_to_set(s0.remove(i)) =~= seq_to_set(s0).remove(s0[i] as int)
+        assert(s0[i] == s[i]);  // since i < s.len() - 1
+        // seq_to_set(s.remove(i))
+        // = seq_to_set(s.remove(i).drop_last()).insert(s.remove(i).last() as int)
+        // = seq_to_set(s0.remove(i)).insert(v as int)
+        // = seq_to_set(s0).remove(s[i] as int).insert(v as int)
+        // And seq_to_set(s).remove(s[i] as int)
+        // = seq_to_set(s0).insert(v as int).remove(s[i] as int)
+        // These are equal when v as int != s[i] as int (which holds by no_dups).
+        assert(v != s[i]);
+        assert(v as int != s[i] as int);
+        // Set identity: A.remove(x).insert(y) =~= A.insert(y).remove(x) when x != y.
+        let base: Set<int> = seq_to_set(s0);
+        lemma_seq_to_set_finite(s0);
+        assert(base.remove(s[i] as int).insert(v as int) =~=
+               base.insert(v as int).remove(s[i] as int));
+    }
+}
+
+/// Lemma: seq_to_set of concatenation equals union of seq_to_sets.
+pub proof fn lemma_seq_to_set_append(a: Seq<u64>, b: Seq<u64>)
+    ensures
+        seq_to_set(a + b) =~= seq_to_set(a).union(seq_to_set(b)),
+    decreases b.len(),
+{
+    if b.len() == 0 {
+        assert(a + b =~= a);
+        assert(seq_to_set(b) =~= Set::<int>::empty());
+        assert(seq_to_set(a).union(Set::<int>::empty()) =~= seq_to_set(a));
+    } else {
+        let b0: Seq<u64> = b.drop_last();
+        let v: u64 = b.last();
+        // (a + b).drop_last() == a + b.drop_last()
+        assert((a + b).drop_last() =~= a + b0);
+        // (a + b).last() == b.last()
+        assert((a + b).last() == v);
+        // By IH:
+        lemma_seq_to_set_append(a, b0);
+        // seq_to_set(a + b0) =~= seq_to_set(a).union(seq_to_set(b0))
+        // seq_to_set(a + b)
+        // = seq_to_set((a + b).drop_last()).insert((a + b).last() as int)
+        // = seq_to_set(a + b0).insert(v as int)
+        // = seq_to_set(a).union(seq_to_set(b0)).insert(v as int)
+        // seq_to_set(b) = seq_to_set(b0).insert(v as int)
+        // seq_to_set(a).union(seq_to_set(b))
+        // = seq_to_set(a).union(seq_to_set(b0).insert(v as int))
+        // = seq_to_set(a).union(seq_to_set(b0)).insert(v as int)
+        // [union distributes over insert: A.union(B.insert(x)) = A.union(B).insert(x)]
+        assert(seq_to_set(a).union(seq_to_set(b0)).insert(v as int) =~=
+               seq_to_set(a).union(seq_to_set(b0).insert(v as int)));
+    }
+}
+
+/// Lemma: appending two no-dup seqs with disjoint sets preserves no-duplicates.
+pub proof fn lemma_seq_no_dups_append(a: Seq<u64>, b: Seq<u64>)
+    requires
+        a.no_duplicates(),
+        b.no_duplicates(),
+        seq_to_set(a).disjoint(seq_to_set(b)),
+    ensures
+        (a + b).no_duplicates(),
+{
+    assert forall |i: int, j: int|
+        0 <= i < (a + b).len() && 0 <= j < (a + b).len() && i != j
+    implies (a + b)[i] != (a + b)[j] by {
+        if i < a.len() && j < a.len() {
+            // Both in a: no_duplicates of a.
+        } else if i >= a.len() && j >= a.len() {
+            // Both in b: no_duplicates of b.
+            assert((a + b)[i] == b[i - a.len()]);
+            assert((a + b)[j] == b[j - a.len()]);
+        } else {
+            // One in a, one in b: disjointness.
+            if i < a.len() {
+                assert((a + b)[i] == a[i]);
+                assert((a + b)[j] == b[j - a.len()]);
+                lemma_seq_to_set_contains_fwd(a, a[i]);
+                lemma_seq_to_set_contains_fwd(b, b[j - a.len()]);
+                assert(seq_to_set(a).contains(a[i] as int));
+                assert(seq_to_set(b).contains(b[j - a.len()] as int));
+            } else {
+                assert((a + b)[i] == b[i - a.len()]);
+                assert((a + b)[j] == a[j]);
+                lemma_seq_to_set_contains_fwd(b, b[i - a.len()]);
+                lemma_seq_to_set_contains_fwd(a, a[j]);
+                assert(seq_to_set(b).contains(b[i - a.len()] as int));
+                assert(seq_to_set(a).contains(a[j] as int));
+            }
+        }
+    }
+}
+
+} // verus! (PidSet block)
+
 // Include specifications.
 include!("process_manager.spec.rs");
 
@@ -94,14 +498,14 @@ pub struct ProcessManagerInner {
     pub interrupt_capable: bool,
     /// Number of buffered IPC messages (not yet consumed).
     pub number_buffered_messages: usize,
-    /// Ghost: set of PIDs in the ready queue.
-    pub ghost_ready: Ghost<Set<int>>,
-    /// Ghost: set of PIDs in the suspended queue.
-    pub ghost_suspended: Ghost<Set<int>>,
-    /// Ghost: set of PIDs in the interrupted queue.
-    pub ghost_interrupted: Ghost<Set<int>>,
-    /// Ghost: set of PIDs in the zombie queue.
-    pub ghost_zombies: Ghost<Set<int>>,
+    /// Concrete set of PIDs in the ready queue.
+    pub ghost_ready: PidSet,
+    /// Concrete set of PIDs in the suspended queue.
+    pub ghost_suspended: PidSet,
+    /// Concrete set of PIDs in the interrupted queue.
+    pub ghost_interrupted: PidSet,
+    /// Concrete set of PIDs in the zombie queue.
+    pub ghost_zombies: PidSet,
 }
 
 //==================================================================================================
@@ -136,10 +540,10 @@ impl ProcessManagerInner {
             next_pid: 1i32,
             interrupt_capable,
             number_buffered_messages: 0usize,
-            ghost_ready: Ghost(Set::empty()),
-            ghost_suspended: Ghost(Set::empty()),
-            ghost_interrupted: Ghost(Set::empty()),
-            ghost_zombies: Ghost(Set::empty()),
+            ghost_ready: PidSet::empty(),
+            ghost_suspended: PidSet::empty(),
+            ghost_interrupted: PidSet::empty(),
+            ghost_zombies: PidSet::empty(),
         }
     }
 
@@ -246,7 +650,7 @@ impl ProcessManagerInner {
                 <= (pid + 1) as int);
         }
 
-        self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
+        self.ghost_ready.pid_insert(pid as u64);
         self.ready_count = self.ready_count + 1;
         self.next_pid = pid + 1;
 
@@ -286,9 +690,8 @@ impl ProcessManagerInner {
             self.lemma_kernel_alive_after_schedule(chosen_next as int);
         }
 
-        self.ghost_ready = Ghost(
-            self.ghost_ready@.insert(old_running as int).remove(chosen_next as int)
-        );
+        self.ghost_ready.pid_insert(old_running as u64);
+        self.ghost_ready.pid_remove(chosen_next as u64);
         self.running_pid = chosen_next;
     }
 
@@ -321,8 +724,8 @@ impl ProcessManagerInner {
     {
         let old_running: i32 = self.running_pid;
 
-        self.ghost_suspended = Ghost(self.ghost_suspended@.insert(old_running as int));
-        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
+        self.ghost_suspended.pid_insert(old_running as u64);
+        self.ghost_ready.pid_remove(chosen_next as u64);
         self.running_pid = chosen_next;
         self.suspended_count = self.suspended_count + 1;
         self.ready_count = self.ready_count - 1;
@@ -358,9 +761,8 @@ impl ProcessManagerInner {
             self.lemma_kernel_alive_after_schedule(chosen_next as int);
         }
 
-        self.ghost_ready = Ghost(
-            self.ghost_ready@.insert(old_running as int).remove(chosen_next as int)
-        );
+        self.ghost_ready.pid_insert(old_running as u64);
+        self.ghost_ready.pid_remove(chosen_next as u64);
         self.running_pid = chosen_next;
     }
 
@@ -393,8 +795,8 @@ impl ProcessManagerInner {
     {
         let old_running: i32 = self.running_pid;
 
-        self.ghost_zombies = Ghost(self.ghost_zombies@.insert(old_running as int));
-        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
+        self.ghost_zombies.pid_insert(old_running as u64);
+        self.ghost_ready.pid_remove(chosen_next as u64);
         self.running_pid = chosen_next;
         self.zombie_count = self.zombie_count + 1;
         self.ready_count = self.ready_count - 1;
@@ -437,9 +839,8 @@ impl ProcessManagerInner {
             self.lemma_kernel_alive_after_schedule(chosen_next as int);
         }
 
-        self.ghost_ready = Ghost(
-            self.ghost_ready@.insert(old_running as int).remove(chosen_next as int)
-        );
+        self.ghost_ready.pid_insert(old_running as u64);
+        self.ghost_ready.pid_remove(chosen_next as u64);
         self.running_pid = chosen_next;
     }
 
@@ -468,8 +869,8 @@ impl ProcessManagerInner {
     {
         let old_running: i32 = self.running_pid;
 
-        self.ghost_suspended = Ghost(self.ghost_suspended@.insert(old_running as int));
-        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
+        self.ghost_suspended.pid_insert(old_running as u64);
+        self.ghost_ready.pid_remove(chosen_next as u64);
         self.running_pid = chosen_next;
         self.suspended_count = self.suspended_count + 1;
         self.ready_count = self.ready_count - 1;
@@ -500,8 +901,8 @@ impl ProcessManagerInner {
     {
         let old_running: i32 = self.running_pid;
 
-        self.ghost_zombies = Ghost(self.ghost_zombies@.insert(old_running as int));
-        self.ghost_ready = Ghost(self.ghost_ready@.remove(chosen_next as int));
+        self.ghost_zombies.pid_insert(old_running as u64);
+        self.ghost_ready.pid_remove(chosen_next as u64);
         self.running_pid = chosen_next;
         self.zombie_count = self.zombie_count + 1;
         self.ready_count = self.ready_count - 1;
@@ -529,8 +930,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
             self.interrupt_capable == old(self).interrupt_capable,
     {
-        self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
-        self.ghost_ready = Ghost(self.ghost_ready@.insert(pid as int));
+        self.ghost_suspended.pid_remove(pid as u64);
+        self.ghost_ready.pid_insert(pid as u64);
         self.suspended_count = self.suspended_count - 1;
         self.ready_count = self.ready_count + 1;
     }
@@ -561,8 +962,7 @@ impl ProcessManagerInner {
             Self::lemma_union_disjoint_len(self.ghost_ready@, self.ghost_interrupted@);
         }
 
-        self.ghost_ready = Ghost(self.ghost_ready@.union(self.ghost_interrupted@));
-        self.ghost_interrupted = Ghost(Set::empty());
+        self.ghost_ready.absorb(&mut self.ghost_interrupted);
         self.ready_count = self.ready_count + self.interrupted_count;
         self.interrupted_count = 0;
     }
@@ -590,8 +990,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
             self.interrupt_capable == old(self).interrupt_capable,
     {
-        self.ghost_ready = Ghost(self.ghost_ready@.remove(pid as int));
-        self.ghost_zombies = Ghost(self.ghost_zombies@.insert(pid as int));
+        self.ghost_ready.pid_remove(pid as u64);
+        self.ghost_zombies.pid_insert(pid as u64);
         self.ready_count = self.ready_count - 1;
         self.zombie_count = self.zombie_count + 1;
     }
@@ -646,8 +1046,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
             self.interrupt_capable == old(self).interrupt_capable,
     {
-        self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
-        self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
+        self.ghost_suspended.pid_remove(pid as u64);
+        self.ghost_interrupted.pid_insert(pid as u64);
         self.suspended_count = self.suspended_count - 1;
         self.interrupted_count = self.interrupted_count + 1;
     }
@@ -674,7 +1074,7 @@ impl ProcessManagerInner {
             !self.spec_process_exists(pid as int),
             self.interrupt_capable == old(self).interrupt_capable,
     {
-        self.ghost_zombies = Ghost(self.ghost_zombies@.remove(pid as int));
+        self.ghost_zombies.pid_remove(pid as u64);
         self.zombie_count = self.zombie_count - 1;
     }
 
@@ -811,8 +1211,8 @@ impl ProcessManagerInner {
             self.number_buffered_messages == old(self).number_buffered_messages,
             self.interrupt_capable == old(self).interrupt_capable,
     {
-        self.ghost_suspended = Ghost(self.ghost_suspended@.remove(pid as int));
-        self.ghost_interrupted = Ghost(self.ghost_interrupted@.insert(pid as int));
+        self.ghost_suspended.pid_remove(pid as u64);
+        self.ghost_interrupted.pid_insert(pid as u64);
         self.suspended_count = self.suspended_count - 1;
         self.interrupted_count = self.interrupted_count + 1;
     }

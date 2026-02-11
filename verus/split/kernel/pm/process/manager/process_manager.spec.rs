@@ -303,11 +303,23 @@ impl ProcessManagerInner {
         && (self.number_buffered_messages as int) < usize::MAX as int
     }
 
+    /// Spec function: PidSet backing vectors have no duplicate entries.
+    ///
+    /// This invariant ensures that `seq_to_set` preserves cardinality,
+    /// which is required for `spec_counts_match` to hold.
+    pub open spec fn spec_no_dups(&self) -> bool {
+        self.ghost_ready.no_dups()
+        && self.ghost_suspended.no_dups()
+        && self.ghost_interrupted.no_dups()
+        && self.ghost_zombies.no_dups()
+    }
+
     /// Well-formedness invariant for the process manager.
     ///
     /// Encodes all structural invariants that must hold at all times.
     pub open spec fn wf(&self) -> bool {
-        self.spec_sets_finite()
+        self.spec_no_dups()
+        && self.spec_sets_finite()
         && self.spec_counts_match()
         && self.spec_queues_disjoint()
         && self.spec_running_exclusive()
