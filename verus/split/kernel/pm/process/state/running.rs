@@ -30,12 +30,12 @@
 //! ## Verification Model
 //!
 //! The original `RunningProcess` contains complex kernel types. For verification:
-//! - `Box<ProcessState>` -> PID (int, identity tracking only).
-//! - `RunningThread` -> ghost int (thread ID).
-//! - `Option<NonEmptyVecDeque<T>>` -> `Seq<int>` (empty = None, non-empty = Some).
+//! - `Box<ProcessState>` -> PID (u64, identity tracking only).
+//! - `RunningThread` -> u64 (thread ID).
+//! - `Option<NonEmptyVecDeque<T>>` -> `Vec<u64>` (empty = None, non-empty = Some).
 //! - `ContextInformation*` -> elided (HAL boundary).
 //! - `Condvar` -> elided (sync primitive boundary).
-//! - `ExitStatus` -> int.
+//! - `ExitStatus` -> u64.
 //! - `alarm: Option<SystemTime>` -> elided. Does not affect state machine logic.
 //!
 //! ## Trust Boundary
@@ -66,7 +66,8 @@
 //! ## Oracle Parameters
 //!
 //! `wakeup()` and `try_join_thread()` take oracle parameters (`found: bool`, `tag: u8`)
-//! because ghost `Seq::contains()` cannot be evaluated at exec time. The preconditions
+//! because the exec-level search through concrete `Vec<u64>` would require loop
+//! invariants at every call site. The preconditions
 //! (`found == spec_seq_contains(...)`, `tag == spec_try_join_thread(tid)`) are verified
 //! by Verus at every call site. **All callers of these functions must be verified
 //! (not `external_body` or `assume`) for the oracle contracts to hold.** If a caller
@@ -94,6 +95,15 @@
 //! All struct fields are `pub` for Verus proof ergonomics (spec access, direct
 //! construction in lemmas). The original has private fields with getter/setter
 //! methods. This visibility difference has no functional impact on verification.
+//!
+//! ## Concrete Types
+//!
+//! All struct fields use concrete types matching simplified representations of
+//! the original kernel types:
+//! - `Box<ProcessState>` → `u64` (PID).
+//! - `RunningThread` → `u64` (thread ID).
+//! - `Option<NonEmptyVecDeque<T>>` → `Vec<u64>` (thread ID list).
+//! - `ExitStatus` → `u64`.
 
 use vstd::prelude::*;
 
@@ -106,27 +116,114 @@ include!("running.proof.rs");
 verus! {
 
 //==================================================================================================
+// Helper Functions
+//==================================================================================================
+
+/// Appends all elements from `src` to `dst`.
+fn vec_push_all(dst: &mut Vec<u64>, src: &Vec<u64>)
+    ensures
+        dst@ =~= old(dst)@.add(src@),
+{
+    let src_len: usize = src.len();
+    let mut i: usize = 0;
+    while i < src_len
+        invariant
+            0 <= i <= src_len,
+            src_len == src@.len(),
+            dst@ =~= old(dst)@.add(src@.subrange(0, i as int)),
+        decreases src_len - i,
+    {
+        dst.push(src[i]);
+        proof {
+            assert(src@.subrange(0, i as int).push(src@[i as int])
+                =~= src@.subrange(0, (i + 1) as int));
+        }
+        i = i + 1;
+    }
+    proof {
+        assert(src@.subrange(0, src_len as int) =~= src@);
+    }
+}
+
+/// Creates a new Vec with the element at `skip` removed.
+fn vec_remove_at(v: &Vec<u64>, skip: usize) -> (result: Vec<u64>)
+    requires
+        skip < v@.len(),
+    ensures
+        result@ =~= v@.subrange(0, skip as int).add(
+            v@.subrange(skip as int + 1, v@.len() as int)),
+{
+    let mut result: Vec<u64> = Vec::new();
+    let len: usize = v.len();
+    let mut i: usize = 0;
+    while i < skip
+        invariant
+            0 <= i <= skip,
+            skip < len,
+            len == v@.len(),
+            result@ =~= v@.subrange(0, i as int),
+        decreases skip - i,
+    {
+        result.push(v[i]);
+        proof {
+            assert(v@.subrange(0, i as int).push(v@[i as int])
+                =~= v@.subrange(0, (i + 1) as int));
+        }
+        i = i + 1;
+    }
+    proof {
+        assert(v@.subrange(skip as int + 1, (skip + 1) as int).len() == 0);
+        assert(v@.subrange(0, skip as int).add(
+            v@.subrange(skip as int + 1, (skip + 1) as int))
+            =~= v@.subrange(0, skip as int));
+    }
+    i = skip + 1;
+    while i < len
+        invariant
+            skip < len,
+            len == v@.len(),
+            skip as int + 1 <= i as int,
+            i <= len,
+            result@ =~= v@.subrange(0, skip as int).add(
+                v@.subrange(skip as int + 1, i as int)),
+        decreases len - i,
+    {
+        result.push(v[i]);
+        proof {
+            assert(v@.subrange(skip as int + 1, i as int).push(v@[i as int])
+                =~= v@.subrange(skip as int + 1, (i + 1) as int));
+            assert(v@.subrange(0, skip as int).add(
+                v@.subrange(skip as int + 1, i as int)).push(v@[i as int])
+                =~= v@.subrange(0, skip as int).add(
+                    v@.subrange(skip as int + 1, (i + 1) as int)));
+        }
+        i = i + 1;
+    }
+    result
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
 /// A process that is currently running.
 ///
 /// Verification model of `src/kernel/src/pm/process/state/running.rs::RunningProcess`.
-/// Thread collections are modeled as ghost sequences of thread IDs.
-/// Exec-level counters track ghost sequence lengths for branch decisions.
+/// Thread collections are modeled as concrete Vec of thread IDs.
+/// Exec-level counters track Vec lengths for efficient branch decisions.
 pub struct RunningProcess {
     /// Process identifier (from the inner ProcessState).
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Running thread ID.
-    pub running_thread_id: Ghost<int>,
-    /// Ghost sequence of ready thread IDs.
-    pub ready_thread_ids: Ghost<Seq<int>>,
-    /// Ghost sequence of interrupted thread IDs.
-    pub interrupted_thread_ids: Ghost<Seq<int>>,
-    /// Ghost sequence of sleeping thread IDs.
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
-    /// Ghost sequence of zombie thread IDs.
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub running_thread_id: u64,
+    /// Concrete vector of ready thread IDs.
+    pub ready_thread_ids: Vec<u64>,
+    /// Concrete vector of interrupted thread IDs.
+    pub interrupted_thread_ids: Vec<u64>,
+    /// Concrete vector of sleeping thread IDs.
+    pub sleeping_thread_ids: Vec<u64>,
+    /// Concrete vector of zombie thread IDs.
+    pub zombie_thread_ids: Vec<u64>,
     /// Exec-level count of ready threads.
     pub ready_count: u64,
     /// Exec-level count of interrupted threads.
@@ -142,15 +239,15 @@ pub struct RunningProcess {
 /// Models `RunnableProcess` from the sibling module.
 pub struct RunnableProcess {
     /// Process identifier.
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Ready thread IDs (non-empty).
-    pub ready_thread_ids: Ghost<Seq<int>>,
+    pub ready_thread_ids: Vec<u64>,
     /// Interrupted thread IDs.
-    pub interrupted_thread_ids: Ghost<Seq<int>>,
+    pub interrupted_thread_ids: Vec<u64>,
     /// Sleeping thread IDs.
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
+    pub sleeping_thread_ids: Vec<u64>,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 /// A process that is sleeping (boundary model).
@@ -158,11 +255,11 @@ pub struct RunnableProcess {
 /// Models `SleepingProcess` from the sibling module.
 pub struct SleepingProcess {
     /// Process identifier.
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Sleeping thread IDs (non-empty).
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
+    pub sleeping_thread_ids: Vec<u64>,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 /// A process that was interrupted (boundary model).
@@ -172,13 +269,13 @@ pub struct SleepingProcess {
 /// sleeping threads through `from_sleeping()` and `resume()`.
 pub struct InterruptedProcess {
     /// Process identifier.
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Ghost<Seq<int>>,
+    pub interrupted_thread_ids: Vec<u64>,
     /// Sleeping thread IDs (carried through resume).
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
+    pub sleeping_thread_ids: Vec<u64>,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 /// A process that has terminated (boundary model).
@@ -186,11 +283,11 @@ pub struct InterruptedProcess {
 /// Models `ZombieProcess` from the sibling module.
 pub struct ZombieProcess {
     /// Process identifier.
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Zombie thread IDs (non-empty).
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub zombie_thread_ids: Vec<u64>,
     /// Exit status.
-    pub status: Ghost<int>,
+    pub status: u64,
 }
 
 /// Result of `RunningProcess::schedule()`.
@@ -298,12 +395,12 @@ impl RunningProcess {
     ///
     /// A new, well-formed RunningProcess.
     pub fn new(
-        pid: Ghost<int>,
-        running_tid: Ghost<int>,
-        ready_ids: Ghost<Seq<int>>,
-        interrupted_ids: Ghost<Seq<int>>,
-        sleeping_ids: Ghost<Seq<int>>,
-        zombie_ids: Ghost<Seq<int>>,
+        pid: u64,
+        running_tid: u64,
+        ready_ids: Vec<u64>,
+        interrupted_ids: Vec<u64>,
+        sleeping_ids: Vec<u64>,
+        zombie_ids: Vec<u64>,
         ready_count: u64,
         interrupted_count: u64,
         sleeping_count: u64,
@@ -315,8 +412,8 @@ impl RunningProcess {
             sleeping_count as nat == sleeping_ids@.len(),
             zombie_count as nat == zombie_ids@.len(),
         ensures
-            result.spec_pid() == pid@,
-            result.spec_running_thread_id() == running_tid@,
+            result.spec_pid() == pid,
+            result.spec_running_thread_id() == running_tid,
             result.spec_ready_count() == ready_ids@.len(),
             result.spec_interrupted_count() == interrupted_ids@.len(),
             result.spec_sleeping_count() == sleeping_ids@.len(),
@@ -343,12 +440,12 @@ impl RunningProcess {
     ///
     /// # Returns
     ///
-    /// The ghost thread identifier of the running thread.
-    pub fn get_tid(&self) -> (result: Ghost<int>)
+    /// The thread identifier of the running thread.
+    pub fn get_tid(&self) -> (result: u64)
         ensures
-            result@ == self.spec_running_thread_id(),
+            result == self.spec_running_thread_id(),
     {
-        Ghost(self.running_thread_id@)
+        self.running_thread_id
     }
 
     /// Returns the process state (modeled as PID).
@@ -362,9 +459,9 @@ impl RunningProcess {
     ///
     /// The process identifier.
     #[verifier::external_body]
-    pub fn state(&self) -> (result: Ghost<int>)
+    pub fn state(&self) -> (result: u64)
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
     {
         unimplemented!()
     }
@@ -374,16 +471,16 @@ impl RunningProcess {
     /// Models the original `RunningProcess::state_mut()`.
     /// The original returns `&mut ProcessState`, which permits mutation of
     /// ProcessState fields. Since we model ProcessState only as a PID, we
-    /// return Ghost<int>. Callers must ensure `mutation_frame_preserved()`
+    /// return u64. Callers must ensure `mutation_frame_preserved()`
     /// holds after any mutation (PID and all thread lists unchanged).
     ///
     /// # Returns
     ///
-    /// The process identifier (as a ghost value).
+    /// The process identifier.
     #[verifier::external_body]
-    pub fn state_mut(&mut self) -> (result: Ghost<int>)
+    pub fn state_mut(&mut self) -> (result: u64)
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
             // Frame: mutation through state_mut does not change modeled fields.
             self.spec_pid() == old(self).spec_pid(),
             self.spec_running_thread_id() == old(self).spec_running_thread_id(),
@@ -401,16 +498,16 @@ impl RunningProcess {
     /// Models the original `RunningProcess::running_mut()`.
     /// The original returns `&mut RunningThread`, which permits mutation of
     /// RunningThread fields (e.g., priority). Since we model RunningThread
-    /// only as a thread ID, we return Ghost<int>. Callers must preserve the
+    /// only as a thread ID, we return u64. Callers must preserve the
     /// running thread's ID and all structural invariants.
     ///
     /// # Returns
     ///
-    /// The running thread identifier (as a ghost value).
+    /// The running thread identifier.
     #[verifier::external_body]
-    pub fn running_mut(&mut self) -> (result: Ghost<int>)
+    pub fn running_mut(&mut self) -> (result: u64)
         ensures
-            result@ == self.spec_running_thread_id(),
+            result == self.spec_running_thread_id(),
             // Frame: mutation through running_mut does not change modeled fields.
             self.spec_pid() == old(self).spec_pid(),
             self.spec_running_thread_id() == old(self).spec_running_thread_id(),
@@ -439,28 +536,26 @@ impl RunningProcess {
     ///
     /// The `tag` parameter is required because this function performs exec-level
     /// mutation (zombie_count decrement, zombie_thread_ids update) that requires
-    /// an exec-level branch decision. All thread collections in the verification
-    /// model are ghost (`Ghost<Seq<int>>`), so `Seq::contains()` cannot be
-    /// evaluated at exec time. The precondition `tag == spec_try_join_thread(tid)`
+    /// an exec-level branch decision. The precondition `tag == spec_try_join_thread(tid)`
     /// is verified by Verus at every call site, ensuring callers cannot pass
     /// inconsistent values. In the original code, the search is performed by
     /// iterating over `NonEmptyVecDeque` collections.
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to join.
+    /// - `tid`: Thread identifier to join.
     /// - `tag`: Oracle — the join result. Must equal `spec_try_join_thread(tid)`.
     ///
     /// # Returns
     ///
     /// The result tag.
-    pub fn try_join_thread(&mut self, tid: Ghost<int>, tag: u8) -> (result: u8)
+    pub fn try_join_thread(&mut self, tid: u64, tag: u8) -> (result: u8)
         requires
             old(self).wf(),
-            tag as int == old(self).spec_try_join_thread(tid@),
+            tag as int == old(self).spec_try_join_thread(tid),
         ensures
             result == tag,
-            result as int == old(self).spec_try_join_thread(tid@),
+            result as int == old(self).spec_try_join_thread(tid),
             // PID and running thread unchanged.
             self.spec_pid() == old(self).spec_pid(),
             self.spec_running_thread_id() == old(self).spec_running_thread_id(),
@@ -473,7 +568,11 @@ impl RunningProcess {
             self.sleeping_count == old(self).sleeping_count,
             // Zombie list: removed on success, unchanged otherwise.
             (tag == JOIN_TAG_ZOMBIE) ==> (
-                self.zombie_thread_ids@ == old(self).spec_try_join_zombie_post(tid@)
+                (exists|idx: int|
+                    0 <= idx < old(self).zombie_thread_ids@.len()
+                    && old(self).zombie_thread_ids@[idx] == tid
+                    && self.zombie_thread_ids@ ==
+                        Self::spec_remove_at(old(self).zombie_thread_ids@, idx))
                 && self.zombie_count as nat == old(self).spec_zombie_count() - 1
             ),
             (tag != JOIN_TAG_ZOMBIE) ==> (
@@ -484,30 +583,81 @@ impl RunningProcess {
     {
         if tag == JOIN_TAG_ZOMBIE {
             // Zombie found — remove it from the zombie list.
-            // Construct the new zombie list to exactly match spec_try_join_zombie_post.
             proof {
-                assert(old(self).spec_has_zombie_thread(tid@));
+                assert(old(self).spec_has_zombie_thread(tid));
                 assert(old(self).zombie_thread_ids@.len() > 0);
                 assert(old(self).zombie_count > 0);
             }
 
-            // Use the spec function directly to define the new zombie list.
-            // This guarantees structural equality with the postcondition.
-            let ghost new_zombie_ids: Seq<int> =
-                old(self).spec_try_join_zombie_post(tid@);
-
-            proof {
-                // Prove the length is correct.
-                // spec_try_join_zombie_post uses choose + spec_remove_at.
-                let idx: int = choose|i: int|
-                    0 <= i < old(self).zombie_thread_ids@.len()
-                    && old(self).zombie_thread_ids@[i] == tid@;
-                Self::lemma_remove_at_length(old(self).zombie_thread_ids@, idx);
-                assert(new_zombie_ids.len() == old(self).zombie_thread_ids@.len() - 1);
+            // Find the first occurrence of tid using a flag (no break).
+            let zlen: usize = self.zombie_thread_ids.len();
+            let mut idx: usize = 0;
+            let mut found_it: bool = false;
+            while idx < zlen && !found_it
+                invariant
+                    0 <= idx <= zlen,
+                    zlen == old(self).zombie_thread_ids@.len(),
+                    self.zombie_thread_ids@ =~= old(self).zombie_thread_ids@,
+                    !found_it ==> forall|j: int| 0 <= j < idx as int
+                        ==> self.zombie_thread_ids@[j] != tid,
+                    found_it ==> (
+                        idx < zlen
+                        && self.zombie_thread_ids@[idx as int] == tid
+                        && forall|j: int| 0 <= j < idx as int
+                            ==> self.zombie_thread_ids@[j] != tid
+                    ),
+                    Self::spec_seq_contains(old(self).zombie_thread_ids@, tid),
+                    self.pid == old(self).pid,
+                    self.running_thread_id == old(self).running_thread_id,
+                    self.ready_thread_ids@ =~= old(self).ready_thread_ids@,
+                    self.interrupted_thread_ids@ =~= old(self).interrupted_thread_ids@,
+                    self.sleeping_thread_ids@ =~= old(self).sleeping_thread_ids@,
+                    self.ready_count == old(self).ready_count,
+                    self.interrupted_count == old(self).interrupted_count,
+                    self.sleeping_count == old(self).sleeping_count,
+                    self.zombie_count == old(self).zombie_count,
+                decreases zlen - idx, if found_it { 0int } else { 1int },
+            {
+                if self.zombie_thread_ids[idx] == tid {
+                    found_it = true;
+                } else {
+                    idx = idx + 1;
+                }
             }
 
-            self.zombie_thread_ids = Ghost(new_zombie_ids);
+            proof {
+                // After loop: found_it must be true (otherwise all elements != tid,
+                // contradicting spec_seq_contains).
+                if !found_it {
+                    assert(idx >= zlen);
+                    assert(forall|j: int| 0 <= j < zlen as int
+                        ==> self.zombie_thread_ids@[j] != tid);
+                    // This contradicts spec_seq_contains.
+                    assert(false);
+                }
+                assert(found_it);
+                assert(idx < zlen);
+                assert(self.zombie_thread_ids@[idx as int] == tid);
+            }
+
+            let new_zombies: Vec<u64> = vec_remove_at(&self.zombie_thread_ids, idx);
+
+            proof {
+                // Prove the new zombie list length.
+                let s: Seq<u64> = old(self).zombie_thread_ids@;
+                Self::lemma_remove_at_length(s, idx as int);
+            }
+
+            self.zombie_thread_ids = new_zombies;
             self.zombie_count = self.zombie_count - 1;
+
+            proof {
+                // Witness for the existential in ensures.
+                assert(0 <= idx as int && (idx as int) < old(self).zombie_thread_ids@.len());
+                assert(old(self).zombie_thread_ids@[idx as int] == tid);
+                assert(self.zombie_thread_ids@ =~=
+                    Self::spec_remove_at(old(self).zombie_thread_ids@, idx as int));
+            }
 
             JOIN_TAG_ZOMBIE
         } else {
@@ -528,21 +678,18 @@ impl RunningProcess {
     /// - `Some(4)`: zombie thread.
     /// - `None`: not found.
     ///
-    /// No oracle parameter needed: the result is computed directly from the
-    /// spec function via `Ghost(...)`, which is evaluated at verification time.
-    ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
     /// The ghost list variant.
-    pub fn find_thread(&self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<int>>)
         ensures
-            result@ == self.spec_find_thread(tid@),
+            result@ == self.spec_find_thread(tid),
     {
-        Ghost(self.spec_find_thread(tid@))
+        Ghost(self.spec_find_thread(tid))
     }
 
     /// Finds a thread by its identifier (mutable variant).
@@ -555,16 +702,16 @@ impl RunningProcess {
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
     /// The ghost list variant.
-    pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread_mut(&mut self, tid: u64) -> (result: Ghost<Option<int>>)
         requires
             old(self).wf(),
         ensures
-            result@ == old(self).spec_find_thread(tid@),
+            result@ == old(self).spec_find_thread(tid),
             // Frame: find_thread_mut does not change any modeled fields.
             self.spec_pid() == old(self).spec_pid(),
             self.spec_running_thread_id() == old(self).spec_running_thread_id(),
@@ -574,7 +721,7 @@ impl RunningProcess {
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf() == old(self).wf(),
     {
-        Ghost(old(self).spec_find_thread(tid@))
+        Ghost(old(self).spec_find_thread(tid))
     }
 
     /// Transitions to a RunnableProcess by scheduling the running thread.
@@ -596,7 +743,7 @@ impl RunningProcess {
             result.process.ready_thread_ids@.len() == self.spec_ready_count() + 1,
             // Content: ready list is old ready + running thread appended.
             result.process.ready_thread_ids@ ==
-                self.ready_thread_ids@.push(self.running_thread_id@),
+                self.ready_thread_ids@.push(self.running_thread_id),
             // Other lists preserved.
             result.process.interrupted_thread_ids@ == self.interrupted_thread_ids@,
             result.process.sleeping_thread_ids@ == self.sleeping_thread_ids@,
@@ -604,20 +751,25 @@ impl RunningProcess {
             // Result is well-formed (non-empty ready list).
             result.process.wf(),
     {
-        let ghost new_ready_ids: Seq<int> = self.ready_thread_ids@.push(self.running_thread_id@);
+        let RunningProcess {
+            pid, running_thread_id, mut ready_thread_ids, interrupted_thread_ids,
+            sleeping_thread_ids, zombie_thread_ids, ready_count, interrupted_count,
+            sleeping_count, zombie_count,
+        } = self;
+
+        ready_thread_ids.push(running_thread_id);
 
         proof {
-            assert(new_ready_ids.len() == self.ready_thread_ids@.len() + 1);
-            assert(new_ready_ids.len() >= 1);
+            assert(ready_thread_ids@.len() >= 1);
         }
 
         ScheduleResult {
             process: RunnableProcess {
-                pid: Ghost(self.pid@),
-                ready_thread_ids: Ghost(new_ready_ids),
-                interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
-                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                pid,
+                ready_thread_ids,
+                interrupted_thread_ids,
+                sleeping_thread_ids,
+                zombie_thread_ids,
             },
         }
     }
@@ -656,13 +808,13 @@ impl RunningProcess {
                     && (self.spec_ready_count() > 0 ==> {
                         rp.ready_thread_ids@ == self.ready_thread_ids@
                         && rp.sleeping_thread_ids@ ==
-                            self.sleeping_thread_ids@.push(self.running_thread_id@)
+                            self.sleeping_thread_ids@.push(self.running_thread_id)
                         && rp.interrupted_thread_ids@ == self.interrupted_thread_ids@
                     })
                     // Interrupted branch: details from strengthened interrupted_resume().
                     && (self.spec_ready_count() == 0 && self.spec_interrupted_count() > 0 ==> {
                         rp.sleeping_thread_ids@ ==
-                            self.sleeping_thread_ids@.push(self.running_thread_id@)
+                            self.sleeping_thread_ids@.push(self.running_thread_id)
                         && rp.ready_thread_ids@.len() == 1
                         && rp.ready_thread_ids@[0] == self.interrupted_thread_ids@[0]
                         && rp.interrupted_thread_ids@ ==
@@ -678,7 +830,7 @@ impl RunningProcess {
                     && self.spec_interrupted_count() == 0
                     // Sleeping list content: old sleeping + running thread.
                     && sp.sleeping_thread_ids@ ==
-                        self.sleeping_thread_ids@.push(self.running_thread_id@)
+                        self.sleeping_thread_ids@.push(self.running_thread_id)
                     && sp.sleeping_thread_ids@.len() ==
                         self.spec_sleeping_count() + 1
                     // Zombie threads preserved.
@@ -686,35 +838,39 @@ impl RunningProcess {
                 },
             },
     {
-        let ghost new_sleeping_ids: Seq<int> =
-            self.sleeping_thread_ids@.push(self.running_thread_id@);
+        let RunningProcess {
+            pid, running_thread_id, ready_thread_ids, interrupted_thread_ids,
+            mut sleeping_thread_ids, zombie_thread_ids, ready_count, interrupted_count,
+            sleeping_count, zombie_count,
+        } = self;
+
+        sleeping_thread_ids.push(running_thread_id);
 
         proof {
-            assert(new_sleeping_ids.len() == self.sleeping_thread_ids@.len() + 1);
-            assert(new_sleeping_ids.len() >= 1);
+            assert(sleeping_thread_ids@.len() >= 1);
         }
 
         // Check if there are ready threads.
-        if self.ready_count > 0 {
+        if ready_count > 0 {
             return SleepResult::Runnable(RunnableProcess {
-                pid: Ghost(self.pid@),
-                ready_thread_ids: Ghost(self.ready_thread_ids@),
-                interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
-                sleeping_thread_ids: Ghost(new_sleeping_ids),
-                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                pid,
+                ready_thread_ids,
+                interrupted_thread_ids,
+                sleeping_thread_ids,
+                zombie_thread_ids,
             });
         }
 
         // Check if there are interrupted threads.
-        if self.interrupted_count > 0 {
+        if interrupted_count > 0 {
             proof {
-                assert(self.interrupted_thread_ids@.len() >= 1);
+                assert(interrupted_thread_ids@.len() >= 1);
             }
             let ip: InterruptedProcess = InterruptedProcess {
-                pid: Ghost(self.pid@),
-                interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
-                sleeping_thread_ids: Ghost(new_sleeping_ids),
-                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+                pid,
+                interrupted_thread_ids,
+                sleeping_thread_ids,
+                zombie_thread_ids,
             };
             let rp: RunnableProcess = interrupted_resume(ip);
             return SleepResult::Runnable(rp);
@@ -722,9 +878,9 @@ impl RunningProcess {
 
         // No ready or interrupted threads — become sleeping.
         SleepResult::Sleeping(SleepingProcess {
-            pid: Ghost(self.pid@),
-            sleeping_thread_ids: Ghost(new_sleeping_ids),
-            zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+            pid,
+            sleeping_thread_ids,
+            zombie_thread_ids,
         })
     }
 
@@ -747,7 +903,7 @@ impl RunningProcess {
     /// # Returns
     ///
     /// ExitResult indicating the resulting process state.
-    pub fn exit(self, status: Ghost<int>) -> (result: ExitResult)
+    pub fn exit(self, status: u64) -> (result: ExitResult)
         requires
             self.wf(),
         ensures
@@ -762,7 +918,7 @@ impl RunningProcess {
                     && rp.zombie_thread_ids@.len() ==
                         1 + self.spec_ready_count() + self.spec_zombie_count()
                     && rp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id@).add(
+                        self.zombie_thread_ids@.push(self.running_thread_id).add(
                             self.ready_thread_ids@)
                     // No sleeping threads remain (all were converted to interrupted).
                     && rp.sleeping_thread_ids@.len() == 0
@@ -779,7 +935,7 @@ impl RunningProcess {
                 ExitResult::Zombie(zp) => {
                     zp.spec_pid() == self.spec_pid()
                     && zp.wf()
-                    && zp.spec_status() == status@
+                    && zp.spec_status() == status
                     // Branch: no interrupted or sleeping threads.
                     && self.spec_interrupted_count() == 0
                     && self.spec_sleeping_count() == 0
@@ -787,52 +943,51 @@ impl RunningProcess {
                     && zp.zombie_thread_ids@.len() ==
                         1 + self.spec_ready_count() + self.spec_zombie_count()
                     && zp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id@).add(
+                        self.zombie_thread_ids@.push(self.running_thread_id).add(
                             self.ready_thread_ids@)
                 },
             },
     {
+        let RunningProcess {
+            pid, running_thread_id, ready_thread_ids, mut interrupted_thread_ids,
+            sleeping_thread_ids, mut zombie_thread_ids, ready_count, interrupted_count,
+            sleeping_count, zombie_count,
+        } = self;
+
         // Running thread becomes zombie. Original: push_back onto existing zombies.
+        zombie_thread_ids.push(running_thread_id);
         // All ready threads become zombies. Original: append ready zombies after.
-        // Ordering: [original_zombies..., running_zombie, ready_zombies...]
-        let ghost new_zombie_ids: Seq<int> =
-            self.zombie_thread_ids@.push(self.running_thread_id@).add(self.ready_thread_ids@);
+        vec_push_all(&mut zombie_thread_ids, &ready_thread_ids);
 
         proof {
-            assert(new_zombie_ids.len() ==
-                1 + self.ready_thread_ids@.len() + self.zombie_thread_ids@.len());
-            assert(new_zombie_ids.len() >= 1);
+            assert(zombie_thread_ids@.len() >= 1);
         }
 
         // Sleeping threads become interrupted.
-        let ghost new_interrupted_ids: Seq<int> =
-            self.interrupted_thread_ids@.add(self.sleeping_thread_ids@);
+        vec_push_all(&mut interrupted_thread_ids, &sleeping_thread_ids);
 
-        if self.interrupted_count > 0 || self.sleeping_count > 0 {
+        if interrupted_count > 0 || sleeping_count > 0 {
             proof {
-                assert(new_interrupted_ids.len() ==
-                    self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
-                assert(new_interrupted_ids.len() >= 1);
+                assert(interrupted_thread_ids@.len() >= 1);
             }
             // In the original, self.sleeping_threads was already taken (line 208),
             // so InterruptedProcess::from_sleeping gets None for sleeping. We model
             // this faithfully with empty sleeping_thread_ids.
             let ip: InterruptedProcess = InterruptedProcess {
-                pid: Ghost(self.pid@),
-                interrupted_thread_ids: Ghost(new_interrupted_ids),
-                sleeping_thread_ids: Ghost(Seq::empty()),
-                zombie_thread_ids: Ghost(new_zombie_ids),
+                pid,
+                interrupted_thread_ids,
+                sleeping_thread_ids: Vec::new(),
+                zombie_thread_ids,
             };
             let rp: RunnableProcess = interrupted_resume(ip);
             ExitResult::Runnable(rp)
         } else {
             proof {
-                assert(self.interrupted_thread_ids@.len() == 0);
-                assert(self.sleeping_thread_ids@.len() == 0);
+                assert(interrupted_thread_ids@.len() == 0);
             }
             ExitResult::Zombie(ZombieProcess {
-                pid: Ghost(self.pid@),
-                zombie_thread_ids: Ghost(new_zombie_ids),
+                pid,
+                zombie_thread_ids,
                 status,
             })
         }
@@ -861,7 +1016,7 @@ impl RunningProcess {
     /// # Returns
     ///
     /// ExitThreadResult indicating the resulting process state.
-    pub fn exit_thread(self, status: Ghost<int>) -> (result: ExitThreadResult)
+    pub fn exit_thread(self, status: u64) -> (result: ExitThreadResult)
         requires
             self.wf(),
         ensures
@@ -872,7 +1027,7 @@ impl RunningProcess {
                     && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
                     // Zombie list includes the exited running thread.
                     && rp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id@)
+                        self.zombie_thread_ids@.push(self.running_thread_id)
                     && rp.zombie_thread_ids@.len() == 1 + self.spec_zombie_count()
                     // Ready branch: content preserved.
                     && (self.spec_ready_count() > 0 ==> {
@@ -900,68 +1055,72 @@ impl RunningProcess {
                     && sp.sleeping_thread_ids@ == self.sleeping_thread_ids@
                     // Zombie list includes the exited running thread.
                     && sp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id@)
+                        self.zombie_thread_ids@.push(self.running_thread_id)
                 },
                 ExitThreadResult::Zombie(zp) => {
                     zp.spec_pid() == self.spec_pid()
                     && zp.wf()
-                    && zp.spec_status() == status@
+                    && zp.spec_status() == status
                     && self.spec_ready_count() == 0
                     && self.spec_interrupted_count() == 0
                     && self.spec_sleeping_count() == 0
                     // Zombie list includes the running thread + original zombie.
                     && zp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id@)
+                        self.zombie_thread_ids@.push(self.running_thread_id)
                     && zp.zombie_thread_ids@.len() == 1 + self.spec_zombie_count()
                 },
             },
     {
+        let RunningProcess {
+            pid, running_thread_id, ready_thread_ids, interrupted_thread_ids,
+            sleeping_thread_ids, mut zombie_thread_ids, ready_count, interrupted_count,
+            sleeping_count, zombie_count,
+        } = self;
+
         // Running thread becomes zombie.
-        let ghost new_zombie_ids: Seq<int> =
-            self.zombie_thread_ids@.push(self.running_thread_id@);
+        zombie_thread_ids.push(running_thread_id);
 
         proof {
-            assert(new_zombie_ids.len() == self.zombie_thread_ids@.len() + 1);
-            assert(new_zombie_ids.len() >= 1);
+            assert(zombie_thread_ids@.len() >= 1);
         }
 
-        if self.ready_count > 0 {
+        if ready_count > 0 {
             return ExitThreadResult::Runnable(RunnableProcess {
-                pid: Ghost(self.pid@),
-                ready_thread_ids: Ghost(self.ready_thread_ids@),
-                interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
-                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-                zombie_thread_ids: Ghost(new_zombie_ids),
+                pid,
+                ready_thread_ids,
+                interrupted_thread_ids,
+                sleeping_thread_ids,
+                zombie_thread_ids,
             });
         }
 
-        if self.interrupted_count > 0 {
+        if interrupted_count > 0 {
             proof {
-                assert(self.interrupted_thread_ids@.len() >= 1);
+                assert(interrupted_thread_ids@.len() >= 1);
             }
             // Historical: original passed self.zombie.take() (=None) here. Now fixed in source.
-            // We correctly pass new_zombie_ids (includes exited thread).
+            // We correctly pass zombie_thread_ids (includes exited thread).
             let ip: InterruptedProcess = InterruptedProcess {
-                pid: Ghost(self.pid@),
-                interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
-                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-                zombie_thread_ids: Ghost(new_zombie_ids),
+                pid,
+                interrupted_thread_ids,
+                sleeping_thread_ids,
+                zombie_thread_ids,
             };
             let rp: RunnableProcess = interrupted_resume(ip);
             return ExitThreadResult::Runnable(rp);
         }
 
-        if self.sleeping_count > 0 {
+        if sleeping_count > 0 {
             return ExitThreadResult::Sleeping(SleepingProcess {
-                pid: Ghost(self.pid@),
-                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-                zombie_thread_ids: Ghost(new_zombie_ids),
+                pid,
+                sleeping_thread_ids,
+                zombie_thread_ids,
             });
         }
 
         ExitThreadResult::Zombie(ZombieProcess {
-            pid: Ghost(self.pid@),
-            zombie_thread_ids: Ghost(new_zombie_ids),
+            pid,
+            zombie_thread_ids,
             status,
         })
     }
@@ -975,26 +1134,24 @@ impl RunningProcess {
     ///
     /// The `found` parameter is required because this function performs exec-level
     /// mutation (ready_count increment, sleeping_count decrement) that requires
-    /// an exec-level branch decision. All thread collections in the verification
-    /// model are ghost (`Ghost<Seq<int>>`), so `Seq::contains()` cannot be
-    /// evaluated at exec time. The precondition `found == spec_seq_contains(...)`
+    /// an exec-level branch decision. The precondition `found == spec_seq_contains(...)`
     /// is verified by Verus at every call site, ensuring callers cannot pass
     /// inconsistent values. In the original code, the search is performed by
     /// `NonEmptyVecDeque::remove_if()`.
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread ID to wake up.
+    /// - `tid`: Thread ID to wake up.
     /// - `found`: Oracle — whether the thread is in the sleeping list.
     ///   Must equal `spec_seq_contains(sleeping_thread_ids, tid)`.
     ///
     /// # Returns
     ///
     /// Ok with updated state if found, Err with unchanged state if not found.
-    pub fn wakeup(self, tid: Ghost<int>, found: bool) -> (result: Result<RunningProcess, RunningProcess>)
+    pub fn wakeup(self, tid: u64, found: bool) -> (result: Result<RunningProcess, RunningProcess>)
         requires
             self.wf(),
-            found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid@),
+            found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid),
             self.ready_count < u64::MAX,
         ensures
             match result {
@@ -1007,10 +1164,10 @@ impl RunningProcess {
                     && r.spec_interrupted_count() == self.spec_interrupted_count()
                     && r.spec_zombie_count() == self.spec_zombie_count()
                     // Content: ready list gets the woken thread appended.
-                    && r.ready_thread_ids@ == self.ready_thread_ids@.push(tid@)
+                    && r.ready_thread_ids@ == self.ready_thread_ids@.push(tid)
                     // Sleeping list has the found thread removed.
                     && (exists|idx: int| 0 <= idx < self.sleeping_thread_ids@.len()
-                        && self.sleeping_thread_ids@[idx] == tid@
+                        && self.sleeping_thread_ids@[idx] == tid
                         && r.sleeping_thread_ids@ ==
                             Self::spec_remove_at(self.sleeping_thread_ids@, idx))
                     // Other lists preserved exactly.
@@ -1036,64 +1193,91 @@ impl RunningProcess {
             },
     {
         if !found {
-            return Err(RunningProcess {
-                pid: Ghost(self.pid@),
-                running_thread_id: Ghost(self.running_thread_id@),
-                ready_thread_ids: Ghost(self.ready_thread_ids@),
-                interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
-                sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-                zombie_thread_ids: Ghost(self.zombie_thread_ids@),
-                ready_count: self.ready_count,
-                interrupted_count: self.interrupted_count,
-                sleeping_count: self.sleeping_count,
-                zombie_count: self.zombie_count,
-            });
+            return Err(self);
         }
 
-        // Derive the index via proof using `choose`.
-        let ghost found_idx: int = choose|i: int|
-            0 <= i < self.sleeping_thread_ids@.len()
-            && self.sleeping_thread_ids@[i] == tid@;
+        let RunningProcess {
+            pid, running_thread_id, mut ready_thread_ids, interrupted_thread_ids,
+            sleeping_thread_ids, zombie_thread_ids, ready_count, interrupted_count,
+            sleeping_count, zombie_count,
+        } = self;
 
         proof {
-            self.lemma_spec_find_thread_index(tid);
             // Derive sleeping_count > 0 from wf() and found == spec_seq_contains.
-            self.lemma_wf_and_found_implies_sleeping_positive(tid@);
+            assert(sleeping_thread_ids@.len() > 0);
+            assert(sleeping_count > 0);
         }
 
-        let ghost new_ready_ids: Seq<int> = self.ready_thread_ids@.push(tid@);
-        let ghost new_sleeping_ids: Seq<int> =
-            self.sleeping_thread_ids@.subrange(0, found_idx)
-                .add(self.sleeping_thread_ids@.subrange(
-                    found_idx + 1,
-                    self.sleeping_thread_ids@.len() as int,
-                ));
+        // Find the first occurrence of tid in sleeping_thread_ids.
+        let slen: usize = sleeping_thread_ids.len();
+        let mut idx: usize = 0;
+        let mut found_it: bool = false;
+        while idx < slen && !found_it
+            invariant
+                0 <= idx <= slen,
+                slen == sleeping_thread_ids@.len(),
+                !found_it ==> forall|j: int| 0 <= j < idx as int
+                    ==> sleeping_thread_ids@[j] != tid,
+                found_it ==> (
+                    idx < slen
+                    && sleeping_thread_ids@[idx as int] == tid
+                    && forall|j: int| 0 <= j < idx as int
+                        ==> sleeping_thread_ids@[j] != tid
+                ),
+                Self::spec_seq_contains(sleeping_thread_ids@, tid),
+            decreases slen - idx, if found_it { 0int } else { 1int },
+        {
+            if sleeping_thread_ids[idx] == tid {
+                found_it = true;
+            } else {
+                idx = idx + 1;
+            }
+        }
+
+        proof {
+            // After loop: found_it must be true.
+            if !found_it {
+                assert(idx >= slen);
+                assert(forall|j: int| 0 <= j < slen as int
+                    ==> sleeping_thread_ids@[j] != tid);
+                assert(false);
+            }
+            assert(found_it);
+            assert(idx < slen);
+            assert(sleeping_thread_ids@[idx as int] == tid);
+        }
+
+        // Remove tid from sleeping list.
+        let new_sleeping: Vec<u64> = vec_remove_at(&sleeping_thread_ids, idx);
 
         proof {
             // Prove new sleeping length.
-            let s: Seq<int> = self.sleeping_thread_ids@;
-            let idx: int = found_idx;
-            let left: Seq<int> = s.subrange(0, idx);
-            let right: Seq<int> = s.subrange(idx + 1, s.len() as int);
+            let s: Seq<u64> = sleeping_thread_ids@;
+            let left: Seq<u64> = s.subrange(0, idx as int);
+            let right: Seq<u64> = s.subrange(idx as int + 1, s.len() as int);
             assert(left.len() == idx as nat);
             assert(right.len() == (s.len() - idx as nat - 1) as nat);
             assert(left.add(right).len() == (s.len() - 1) as nat);
+        }
 
-            // Prove new ready length.
-            assert(new_ready_ids.len() == self.ready_thread_ids@.len() + 1);
+        // Push tid onto ready.
+        ready_thread_ids.push(tid);
+
+        proof {
+            assert(ready_thread_ids@.len() == ready_count as int + 1);
         }
 
         Ok(RunningProcess {
-            pid: Ghost(self.pid@),
-            running_thread_id: Ghost(self.running_thread_id@),
-            ready_thread_ids: Ghost(new_ready_ids),
-            interrupted_thread_ids: Ghost(self.interrupted_thread_ids@),
-            sleeping_thread_ids: Ghost(new_sleeping_ids),
-            zombie_thread_ids: Ghost(self.zombie_thread_ids@),
-            ready_count: self.ready_count + 1,
-            interrupted_count: self.interrupted_count,
-            sleeping_count: self.sleeping_count - 1,
-            zombie_count: self.zombie_count,
+            pid,
+            running_thread_id,
+            ready_thread_ids,
+            interrupted_thread_ids,
+            sleeping_thread_ids: new_sleeping,
+            zombie_thread_ids,
+            ready_count: ready_count + 1,
+            interrupted_count,
+            sleeping_count: sleeping_count - 1,
+            zombie_count,
         })
     }
 }
