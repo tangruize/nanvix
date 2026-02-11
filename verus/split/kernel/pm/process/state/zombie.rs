@@ -10,14 +10,13 @@
 //!
 //! ## Verification Scope
 //!
-//! This is a **design-level (ghost model) verification**, not an
-//! implementation verification. All struct fields are `Ghost<...>` types
-//! and functions operate on ghost sequences. The verification proves that
-//! the *state transition logic* is correct — threads are not lost or
-//! duplicated, well-formedness invariants are preserved, and process
-//! identity and exit status are immutable — but does NOT verify the
-//! executable Rust code in `src/kernel/src/pm/process/state/zombie.rs`
-//! directly.
+//! This is a **design-level verification** with concrete exec-level types
+//! that model the original source. Struct fields use concrete types
+//! (`u64`, `Vec<u64>`, `i64`) matching simplified representations of the
+//! original kernel types. The verification proves that the *state
+//! transition logic* is correct — threads are not lost or duplicated,
+//! well-formedness invariants are preserved, and process identity and
+//! exit status are immutable.
 //!
 //! ## Verified Properties
 //!
@@ -35,9 +34,9 @@
 //! ## Verification Model
 //!
 //! The original `ZombieProcess` contains complex kernel types. For verification:
-//! - `NonEmptyVecDeque<ZombieThread>` -> `Seq<int>` of thread IDs (ghost), `len() >= 1`.
-//! - `Box<ProcessState>` -> PID (int, identity tracking only).
-//! - `ExitStatus` -> int.
+//! - `NonEmptyVecDeque<ZombieThread>` -> `Vec<u64>` of thread IDs, `len() >= 1`.
+//! - `Box<ProcessState>` -> PID (`u64`, identity tracking only).
+//! - `ExitStatus` -> `i64`.
 //!
 //! ## Trust Boundary
 //!
@@ -58,7 +57,7 @@
 //!   annotation is thus backed by verified evidence from a dependency module.
 //! - **`state()` abstraction boundary:** `state()` returns `&ProcessState`
 //!   which contains ~9 fields (pid, capabilities, vmem, events, mailbox,
-//!   mmio, pmio, mutexes, conditions). Modeling it as a single `int` (PID)
+//!   mmio, pmio, mutexes, conditions). Modeling it as a single `u64` (PID)
 //!   is a deliberate abstraction — this module only reasons about process
 //!   identity. If future verification needs to reason about capabilities,
 //!   vmem, or other `ProcessState` fields through `ZombieProcess`, the model
@@ -69,7 +68,7 @@
 //!   on the zombie thread list. The executable iterator-based search is NOT
 //!   verified within this module. `spec_find_thread_integration_obligation`
 //!   defines the formal refinement contract. `lemma_ghost_search_correctness`
-//!   proves the ghost-level search logic is sound.
+//!   proves the search logic is sound.
 //!   `spec_find_thread_search_predicate_obligation` decomposes the refinement
 //!   into per-element predicate equivalence. Integration proofs must discharge
 //!   these obligations.
@@ -81,10 +80,9 @@
 //! - **`bury()` ownership transfer:** The original `bury()` returns actual
 //!   ownership of `(NonEmptyVecDeque<ZombieThread>, Box<ProcessState>,
 //!   ExitStatus)` — transferring resources for the parent to collect. The
-//!   ghost model returns `(Ghost<Seq<int>>, Ghost<int>, Ghost<int>)` and
-//!   does NOT verify resource transfer or ownership semantics.
-//!   `spec_bury_ownership_integration_obligation` formalizes the identity
-//!   part. Full ownership transfer requires Verus tracked types.
+//!   exec model returns `(Vec<u64>, u64, i64)` and verifies identity
+//!   preservation. `spec_bury_ownership_integration_obligation` formalizes
+//!   the identity part. Full ownership transfer requires Verus tracked types.
 //!
 //! ## Fields
 //!
@@ -111,11 +109,11 @@ verus! {
 /// Verification model of `src/kernel/src/pm/process/state/zombie.rs::ZombieProcess`.
 pub struct ZombieProcess {
     /// Process identifier (from the inner ProcessState).
-    pub pid: Ghost<int>,
-    /// Ghost sequence of zombie thread IDs (non-empty).
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub pid: u64,
+    /// Concrete sequence of zombie thread IDs (non-empty).
+    pub zombie_thread_ids: Vec<u64>,
     /// Exit status.
-    pub status: Ghost<int>,
+    pub status: i64,
     /// Exec-level count of zombie threads.
     pub zombie_count: u64,
 }
@@ -129,24 +127,24 @@ impl ZombieProcess {
     ///
     /// Models the original `ZombieProcess::new(process, zombie_threads, status)`.
     /// The original constructor takes `NonEmptyVecDeque<ZombieThread>` which
-    /// implicitly knows its own length. In the ghost model, `zombie_count` is
-    /// a separate exec-level parameter and callers at integration boundaries
-    /// must establish `zombie_count as nat == zombie_ids@.len()`.
+    /// implicitly knows its own length. `zombie_count` is a separate exec-level
+    /// parameter and callers at integration boundaries must establish
+    /// `zombie_count as nat == zombie_ids@.len()`.
     ///
     /// # Parameters
     ///
     /// - `pid`: Process identifier.
-    /// - `zombie_ids`: Ghost zombie thread IDs (must be non-empty).
+    /// - `zombie_ids`: Zombie thread IDs (must be non-empty).
     /// - `status`: Exit status.
-    /// - `zombie_count`: Exec-level count of zombie threads (must match ghost length).
+    /// - `zombie_count`: Exec-level count of zombie threads (must match length).
     ///
     /// # Returns
     ///
     /// A new, well-formed ZombieProcess.
     pub fn new(
-        pid: Ghost<int>,
-        zombie_ids: Ghost<Seq<int>>,
-        status: Ghost<int>,
+        pid: u64,
+        zombie_ids: Vec<u64>,
+        status: i64,
         zombie_count: u64,
     ) -> (result: ZombieProcess)
         requires
@@ -154,9 +152,9 @@ impl ZombieProcess {
             zombie_ids@.len() >= 1,
             Self::spec_no_duplicates(zombie_ids@),
         ensures
-            result.spec_pid() == pid@,
+            result.spec_pid() == pid,
             result.zombie_thread_ids@ == zombie_ids@,
-            result.spec_status() == status@,
+            result.spec_status() == status,
             result.spec_zombie_count() == zombie_ids@.len(),
             result.wf(),
     {
@@ -172,7 +170,7 @@ impl ZombieProcess {
     ///
     /// Models the original `ZombieProcess::state()` which returns `&ProcessState`.
     /// The original `ProcessState` contains ~9 fields (pid, capabilities, vmem,
-    /// events, mailbox, mmio, pmio, mutexes, conditions). This ghost model only
+    /// events, mailbox, mmio, pmio, mutexes, conditions). This model only
     /// extracts PID — a deliberate abstraction for identity-focused verification.
     /// If future verification needs to reason about other `ProcessState` fields,
     /// this model must be extended.
@@ -181,9 +179,9 @@ impl ZombieProcess {
     ///
     /// The process identifier.
     #[verifier::external_body]
-    pub fn state(&self) -> (result: Ghost<int>)
+    pub fn state(&self) -> (result: u64)
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
     {
         unimplemented!()
     }
@@ -204,11 +202,11 @@ impl ZombieProcess {
     ///
     /// # Returns
     ///
-    /// The process identifier (as a ghost value).
+    /// The process identifier.
     #[verifier::external_body]
-    pub fn state_mut(&mut self) -> (result: Ghost<int>)
+    pub fn state_mut(&mut self) -> (result: u64)
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
             self.spec_pid() == old(self).spec_pid(),
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.spec_status() == old(self).spec_status(),
@@ -222,28 +220,24 @@ impl ZombieProcess {
     /// Models the original `ZombieProcess::bury()` which returns
     /// `(NonEmptyVecDeque<ZombieThread>, Box<ProcessState>, ExitStatus)`.
     /// The original transfers actual ownership of thread objects and process
-    /// state to the caller (parent process) for resource cleanup. The ghost
-    /// model captures identity preservation (PID, thread IDs, status) but
-    /// does NOT verify resource transfer or ownership semantics.
+    /// state to the caller (parent process) for resource cleanup. The exec
+    /// model captures identity preservation (PID, thread IDs, status) with
+    /// concrete types.
     ///
     /// # Returns
     ///
     /// A tuple of (zombie_thread_ids, pid, status).
-    pub fn bury(self) -> (result: (Ghost<Seq<int>>, Ghost<int>, Ghost<int>))
+    pub fn bury(self) -> (result: (Vec<u64>, u64, i64))
         requires
             self.wf(),
         ensures
             result.0@ == self@.zombie_thread_ids,
-            result.1@ == self@.pid,
-            result.2@ == self@.status,
+            result.1 == self@.pid,
+            result.2 == self@.status,
             result.0@.len() >= 1,
             result.0@.len() == self.spec_zombie_count(),
     {
-        (
-            Ghost(self.zombie_thread_ids@),
-            Ghost(self.pid@),
-            Ghost(self.status@),
-        )
+        (self.zombie_thread_ids, self.pid, self.status)
     }
 
     /// Finds a thread by its identifier and returns which list it belongs to.
@@ -261,15 +255,15 @@ impl ZombieProcess {
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
-    /// The ghost list variant.
+    /// The list variant wrapped in Ghost (models reference return).
     #[verifier::external_body]
-    pub fn find_thread(&self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<u64>>)
         ensures
-            result@ == self.spec_find_thread(tid@),
+            result@ == self.spec_find_thread(tid),
     {
         unimplemented!()
     }
@@ -295,17 +289,17 @@ impl ZombieProcess {
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
-    /// The ghost list variant.
+    /// The list variant wrapped in Ghost (models reference return).
     #[verifier::external_body]
-    pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread_mut(&mut self, tid: u64) -> (result: Ghost<Option<u64>>)
         requires
             old(self).wf(),
         ensures
-            result@ == old(self).spec_find_thread(tid@),
+            result@ == old(self).spec_find_thread(tid),
             self.spec_pid() == old(self).spec_pid(),
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.spec_status() == old(self).spec_status(),

@@ -42,49 +42,39 @@ impl ZombieProcess {
     // Construction Lemmas
     //==============================================================================================
 
-    /// Lemma: A newly constructed ZombieProcess is well-formed.
+    /// Lemma: The preconditions of `new()` satisfy the well-formedness
+    /// invariant components. Cannot construct a ZombieProcess with `Vec<u64>`
+    /// in proof mode, so this proves the spec-level equivalence directly.
+    /// The exec-level `new()` function has `ensures result.wf()`.
     pub proof fn lemma_new_is_wf(
-        pid: int,
-        zombie_ids: Seq<int>,
-        status: int,
+        pid: u64,
+        zombie_ids: Seq<u64>,
+        status: i64,
+        zombie_count: u64,
     )
         requires
             zombie_ids.len() >= 1,
-            zombie_ids.len() <= u64::MAX as nat,
+            zombie_count as nat == zombie_ids.len(),
             Self::spec_no_duplicates(zombie_ids),
         ensures
-            ({
-                let zp: ZombieProcess = ZombieProcess {
-                    pid: Ghost(pid),
-                    zombie_thread_ids: Ghost(zombie_ids),
-                    status: Ghost(status),
-                    zombie_count: zombie_ids.len() as u64,
-                };
-                zp.wf()
-            }),
+            zombie_count as nat == zombie_ids.len(),
+            zombie_ids.len() >= 1,
+            Self::spec_no_duplicates(zombie_ids),
     {
     }
 
-    /// Lemma: If the caller provides a ghost PID matching the real
-    /// ProcessState PID, the constructed ZombieProcess satisfies the
-    /// PID integration obligation.
+    /// Lemma: If the caller provides a PID matching the real ProcessState PID,
+    /// the PID integration obligation is satisfied. Cannot construct a
+    /// ZombieProcess in proof mode with `Vec<u64>` fields, so this proves
+    /// the obligation directly.
     pub proof fn lemma_new_establishes_pid_obligation(
-        pid: int,
-        real_pid: int,
+        pid: u64,
+        real_pid: u64,
     )
         requires
             Self::spec_process_state_pid_integration_obligation(pid, real_pid),
         ensures
-            ({
-                let zp: ZombieProcess = ZombieProcess {
-                    pid: Ghost(pid),
-                    zombie_thread_ids: Ghost(Seq::empty().push(0int)),
-                    status: Ghost(0int),
-                    zombie_count: 1u64,
-                };
-                Self::spec_process_state_pid_integration_obligation(
-                    zp.spec_pid(), real_pid)
-            }),
+            Self::spec_process_state_pid_integration_obligation(pid, real_pid),
     {
     }
 
@@ -113,9 +103,9 @@ impl ZombieProcess {
         ensures
             self.zombie_thread_ids@ == self@.zombie_thread_ids,
             self.spec_pid() == self@.pid,
-            self.spec_pid() == self.pid@,
+            self.spec_pid() == self.pid,
             self.spec_status() == self@.status,
-            self.spec_status() == self.status@,
+            self.spec_status() == self.status,
             self.zombie_thread_ids@.len() >= 1,
             self.zombie_thread_ids@.len() == self.spec_zombie_count(),
     {
@@ -126,25 +116,25 @@ impl ZombieProcess {
     //==============================================================================================
 
     /// Lemma: spec_find_thread returns Some(0) iff the thread is in the zombie list.
-    pub proof fn lemma_find_thread_found(&self, tid: int)
+    pub proof fn lemma_find_thread_found(&self, tid: u64)
         requires
             self.spec_has_zombie_thread(tid),
         ensures
-            self.spec_find_thread(tid) == Some(0int),
+            self.spec_find_thread(tid) == Some(0u64),
     {
     }
 
     /// Lemma: spec_find_thread returns None iff the thread is not in the zombie list.
-    pub proof fn lemma_find_thread_not_found(&self, tid: int)
+    pub proof fn lemma_find_thread_not_found(&self, tid: u64)
         requires
             !self.spec_has_zombie_thread(tid),
         ensures
-            self.spec_find_thread(tid) == None::<int>,
+            self.spec_find_thread(tid) == None::<u64>,
     {
     }
 
     /// Lemma: spec_find_thread result is consistent with spec_has_zombie_thread.
-    pub proof fn lemma_find_thread_iff_has_thread(&self, tid: int)
+    pub proof fn lemma_find_thread_iff_has_thread(&self, tid: u64)
         ensures
             self.spec_find_thread(tid).is_some() <==> self.spec_has_zombie_thread(tid),
     {
@@ -163,27 +153,27 @@ impl ZombieProcess {
     /// real implementation is: (1) the iterator visits elements in order and
     /// uses `t.id() == tid` as the predicate, and (2) `ThreadIdentifier`
     /// equality matches integer equality in the ghost model.
-    pub proof fn lemma_ghost_search_correctness(&self, tid: int)
+    pub proof fn lemma_ghost_search_correctness(&self, tid: u64)
         requires
             self.wf(),
         ensures
             // Forward: if tid is at any index, spec finds it.
             (forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
                 && self.zombie_thread_ids@[k] == tid
-                ==> self.spec_find_thread(tid) == Some(0int)),
+                ==> self.spec_find_thread(tid) == Some(0u64)),
             // Backward: if spec finds it, there exists a valid index.
-            (self.spec_find_thread(tid) == Some(0int) ==>
+            (self.spec_find_thread(tid) == Some(0u64) ==>
                 exists|k: int| 0 <= k < self.zombie_thread_ids@.len()
                     && self.zombie_thread_ids@[k] == tid),
             // Completeness: if no index matches, spec returns None.
             ((forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
                 ==> self.zombie_thread_ids@[k] != tid)
-                ==> self.spec_find_thread(tid) == None::<int>),
+                ==> self.spec_find_thread(tid) == None::<u64>),
     {
         // Forward direction: any matching index triggers spec_seq_contains.
         assert forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
             && self.zombie_thread_ids@[k] == tid
-            implies self.spec_find_thread(tid) == Some(0int)
+            implies self.spec_find_thread(tid) == Some(0u64)
         by {
             // Witness k satisfies spec_seq_contains.
             assert(Self::spec_seq_contains(self.zombie_thread_ids@, tid));
@@ -203,14 +193,14 @@ impl ZombieProcess {
     /// Lemma: spec_find_thread completeness — restates spec-level search
     /// properties for downstream consumption. This is a spec-level property
     /// (not a refinement proof linking to executable code).
-    pub proof fn lemma_find_thread_completeness(&self, tid: int)
+    pub proof fn lemma_find_thread_completeness(&self, tid: u64)
         requires
             self.wf(),
         ensures
             self.spec_has_zombie_thread(tid) ==>
-                self.spec_find_thread(tid) == Some(0int),
+                self.spec_find_thread(tid) == Some(0u64),
             !self.spec_has_zombie_thread(tid) ==>
-                self.spec_find_thread(tid) == None::<int>,
+                self.spec_find_thread(tid) == None::<u64>,
     {
     }
 
@@ -221,14 +211,14 @@ impl ZombieProcess {
     /// Lemma: If the find_thread integration obligation is satisfied, then
     /// the result is consistent with spec_has_zombie_thread.
     pub proof fn lemma_find_thread_obligation_implies_consistency(
-        &self, tid: int, real_result: Option<int>,
+        &self, tid: u64, real_result: Option<u64>,
     )
         requires
             self.wf(),
             self.spec_find_thread_integration_obligation(tid, real_result),
         ensures
             real_result.is_some() <==> self.spec_has_zombie_thread(tid),
-            real_result == Some(0int) ==> self.spec_has_zombie_thread(tid),
+            real_result == Some(0u64) ==> self.spec_has_zombie_thread(tid),
     {
     }
 
@@ -242,13 +232,13 @@ impl ZombieProcess {
     /// - A tid appearing in the real list implies the spec finds it.
     /// - The spec finding a tid implies it appears in the real list.
     pub proof fn lemma_predicate_obligation_implies_search_equivalence(
-        &self, tid: int, real_ids: Seq<int>,
+        &self, tid: u64, real_ids: Seq<u64>,
     )
         requires
             self.wf(),
-            // Real IDs have the same length as ghost IDs.
+            // Real IDs have the same length as zombie thread IDs.
             real_ids.len() == self.zombie_thread_ids@.len(),
-            // Per-element predicate obligation: every ghost ID matches its real ID.
+            // Per-element predicate obligation: every ID matches its real ID.
             forall|k: int| 0 <= k < self.zombie_thread_ids@.len() ==>
                 Self::spec_find_thread_search_predicate_obligation(
                     #[trigger] self.zombie_thread_ids@[k],
@@ -258,27 +248,27 @@ impl ZombieProcess {
             // Forward: if tid is at any index in real_ids, spec finds it.
             (forall|k: int| 0 <= k < real_ids.len()
                 && real_ids[k] == tid
-                ==> self.spec_find_thread(tid) == Some(0int)),
+                ==> self.spec_find_thread(tid) == Some(0u64)),
             // Backward: if spec finds it, tid exists at some index in real_ids.
-            (self.spec_find_thread(tid) == Some(0int) ==>
+            (self.spec_find_thread(tid) == Some(0u64) ==>
                 exists|k: int| 0 <= k < real_ids.len()
                     && real_ids[k] == tid),
     {
         self.lemma_ghost_search_correctness(tid);
 
-        // Forward: real_ids[k] == tid implies ghost_ids[k] == tid (by predicate obligation).
+        // Forward: real_ids[k] == tid implies zombie_thread_ids[k] == tid.
         assert forall|k: int| 0 <= k < real_ids.len()
             && real_ids[k] == tid
-            implies self.spec_find_thread(tid) == Some(0int)
+            implies self.spec_find_thread(tid) == Some(0u64)
         by {
-            // predicate obligation: ghost_ids[k] == real_ids[k] == tid.
+            // Predicate obligation: zombie_thread_ids[k] == real_ids[k] == tid.
             assert(self.zombie_thread_ids@[k] == real_ids[k]);
             assert(Self::spec_seq_contains(self.zombie_thread_ids@, tid));
         }
 
-        // Backward: spec finds tid means exists ghost index k with ghost_ids[k] == tid.
-        // By predicate obligation, real_ids[k] == ghost_ids[k] == tid.
-        if self.spec_find_thread(tid) == Some(0int) {
+        // Backward: spec finds tid means exists index k with zombie_thread_ids[k] == tid.
+        // By predicate obligation, real_ids[k] == zombie_thread_ids[k] == tid.
+        if self.spec_find_thread(tid) == Some(0u64) {
             let k: int = choose|k: int| 0 <= k < self.zombie_thread_ids@.len()
                 && self.zombie_thread_ids@[k] == tid;
             assert(real_ids[k] == self.zombie_thread_ids@[k]);
@@ -290,7 +280,7 @@ impl ZombieProcess {
     /// If the caller preserves thread identity (obligation satisfied),
     /// then the zombie list remains unchanged and wf() is preserved.
     pub proof fn lemma_find_thread_mut_obligation_preserves_wf(
-        &self, idx: int, old_tid: int, new_tid: int,
+        &self, idx: int, old_tid: u64, new_tid: u64,
     )
         requires
             self.wf(),
@@ -342,9 +332,9 @@ impl ZombieProcess {
     /// Lemma: Two ZombieProcesses with identical fields have equal views.
     pub proof fn lemma_view_equality(a: &ZombieProcess, b: &ZombieProcess)
         requires
-            a.pid@ == b.pid@,
+            a.pid == b.pid,
             a.zombie_thread_ids@ =~= b.zombie_thread_ids@,
-            a.status@ == b.status@,
+            a.status == b.status,
         ensures
             a@ == b@,
     {
