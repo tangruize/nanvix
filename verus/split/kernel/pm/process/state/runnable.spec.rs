@@ -8,13 +8,13 @@
 // ## Verification Model
 //
 // RunnableProcess manages process-level thread scheduling. For verification:
-// - Thread lists are modeled as `Seq<int>` of abstract thread IDs.
+// - Thread lists are modeled as `Vec<i64>` with view `Seq<i64>` of abstract thread IDs.
 // - `ready_admission_times` tracks admission times paired with ready thread IDs.
-// - `Option<NonEmptyVecDeque<T>>` is modeled as `Seq<int>`:
-//   - `Seq::empty()` represents `None` (no threads in that state).
-//   - `Seq` with `len() >= 1` represents `Some(non_empty_deque)`.
+// - `Option<NonEmptyVecDeque<T>>` is modeled as `Vec<i64>`:
+//   - Empty Vec represents `None` (no threads in that state).
+//   - Vec with `len() >= 1` represents `Some(non_empty_deque)`.
 //   This is a sound isomorphism because `NonEmptyVecDeque` always has `len() >= 1`,
-//   and `wf()` enforces `ready_thread_ids.len() >= 1`. The verification checks
+//   and `wf()` enforces `ready_thread_ids@.len() >= 1`. The verification checks
 //   correct lengths at all transition boundaries.
 // - `Box<ProcessState>` is transparent (modeled as ProcessState directly).
 // - `ProcessState` uses the verified dependency's `spec_pid()`.
@@ -22,7 +22,7 @@
 //
 // ## Key Invariants
 //
-// - A RunnableProcess always has at least one ready thread (`ready_thread_ids.len() >= 1`).
+// - A RunnableProcess always has at least one ready thread (`ready_thread_ids@.len() >= 1`).
 // - Process identity (PID) is immutable across all operations.
 // - Ready thread IDs and admission times sequences have matching lengths.
 // - All admission times are non-negative.
@@ -46,7 +46,7 @@
 //   These are hardware abstraction layer types whose values are produced by
 //   architecture-specific code (context switching, TDA setup). They carry no
 //   protocol-level invariants relevant to process state verification.
-// - `InterruptReason` from run() return is modeled as abstract int tag.
+// - `InterruptReason` from run() return is modeled as i64 tag.
 // - `UserTda` (user thread data area) from run() return is omitted (HAL boundary).
 //
 // ## Exec Coverage Notes
@@ -64,30 +64,25 @@
 //   references into internal collections. Modeled spec-only via `spec_find_thread`.
 //   Callers of these functions should independently verify the correctness of
 //   the returned reference's properties against the `spec_find_thread` model.
-// - `earliest_admission_time()`: Returns `SystemTime` which maps to ghost `int`.
+// - `earliest_admission_time()`: Returns `SystemTime` which maps to `i64`.
 //   Modeled via `spec_earliest_admission_time()` with proven bounds.
 //   The original has a fallback `unwrap_or(clock::now())` for the case when the
 //   iterator returns no minimum. This fallback is dead code given the
 //   `NonEmptyVecDeque` invariant (the ready list always has at least one element).
 //   The spec model correctly omits this unreachable fallback.
 //
-// ## Oracle Parameter Justification
+// ## Oracle Parameter Notes
 //
-// `terminate()` no longer requires an oracle parameter. The branch decision
+// `terminate()` does not require an oracle parameter. The branch decision
 // is computed from exec-level counters (`interrupted_count`, `sleeping_count`)
-// that are tied to ghost sequence lengths by the `wf()` invariant.
+// that are tied to concrete vector lengths by the `wf()` invariant.
 //
-// `wakeup()` retains a `found: bool` oracle parameter because:
-// - The branch decision depends on whether a specific thread ID exists in
-//   the ghost sleeping list (`Seq::contains()` is spec-only).
-// - There is no exec-level data structure to search — the sleeping list is
-//   entirely ghost. The precondition `found == spec_seq_contains(...)` ties
-//   the oracle to ghost state, so the branch is fully constrained.
-// - The search *index* is derived internally via proof-level `choose`,
-//   so only the boolean remains as oracle.
+// `wakeup()` no longer requires a `found: bool` oracle parameter because
+// the sleeping list is now a concrete `Vec<i64>` that can be searched at
+// exec level. The search is performed by `vec_search()`.
 //
-// `run()` has no oracle parameters. The min-index is derived internally
-// via `lemma_earliest_ready_index_bounds`.
+// `run()` has no oracle parameters. The min-index is computed by a concrete
+// exec-level loop and proven to match `spec_earliest_ready_index()`.
 
 use vstd::prelude::*;
 
@@ -103,15 +98,15 @@ pub struct RunnableProcessView {
     /// Process identifier value.
     pub pid: int,
     /// Sequence of ready thread IDs (non-empty).
-    pub ready_thread_ids: Seq<int>,
+    pub ready_thread_ids: Seq<i64>,
     /// Sequence of ready thread admission times, parallel to ready_thread_ids.
-    pub ready_admission_times: Seq<int>,
+    pub ready_admission_times: Seq<i64>,
     /// Sequence of interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Seq<int>,
+    pub interrupted_thread_ids: Seq<i64>,
     /// Sequence of sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<int>,
+    pub sleeping_thread_ids: Seq<i64>,
     /// Sequence of zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<i64>,
 }
 
 /// Abstract view of a RunningProcess (boundary type).
@@ -120,17 +115,17 @@ pub struct RunningProcessView {
     /// Process identifier value.
     pub pid: int,
     /// The running thread ID.
-    pub running_thread_id: int,
+    pub running_thread_id: i64,
     /// Ready thread IDs (may be empty).
-    pub ready_thread_ids: Seq<int>,
+    pub ready_thread_ids: Seq<i64>,
     /// Interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Seq<int>,
+    pub interrupted_thread_ids: Seq<i64>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<int>,
+    pub sleeping_thread_ids: Seq<i64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<i64>,
     /// Interrupt reason (unconstrained at this abstraction level).
-    pub interrupt_reason: int,
+    pub interrupt_reason: i64,
 }
 
 /// Abstract view of an InterruptedProcess (boundary type).
@@ -139,9 +134,9 @@ pub struct InterruptedProcessView {
     /// Process identifier value.
     pub pid: int,
     /// Interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Seq<int>,
+    pub interrupted_thread_ids: Seq<i64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<i64>,
 }
 
 /// Abstract view of a ZombieProcess (boundary type).
@@ -150,9 +145,9 @@ pub struct ZombieProcessView {
     /// Process identifier value.
     pub pid: int,
     /// Zombie thread IDs (non-empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<i64>,
     /// Exit status.
-    pub status: int,
+    pub status: i64,
 }
 
 //==================================================================================================
@@ -167,6 +162,14 @@ pub struct ZombieProcessView {
 /// validates this constant against the actual `ErrorCode::Interrupted` value.
 /// If the error code numbering changes, this must be updated accordingly.
 pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 4 }
+
+/// Concrete exit status for interrupted processes (i64 version).
+/// Used in exec code where the spec `int` version cannot be used.
+pub fn EXIT_STATUS_INTERRUPTED_I64() -> (result: i64)
+    ensures result as int == EXIT_STATUS_INTERRUPTED(),
+{
+    4i64
+}
 
 //==================================================================================================
 // Spec Functions: RunnableProcess
@@ -207,33 +210,33 @@ impl RunnableProcess {
     }
 
     /// Spec function: returns the i-th ready thread ID.
-    pub open spec fn spec_ready_thread_id(&self, i: int) -> int
+    pub open spec fn spec_ready_thread_id(&self, i: int) -> i64
         recommends 0 <= i < self.ready_thread_ids@.len()
     {
         self.ready_thread_ids@[i]
     }
 
     /// Spec function: returns the i-th ready thread admission time.
-    pub open spec fn spec_ready_admission_time(&self, i: int) -> int
+    pub open spec fn spec_ready_admission_time(&self, i: int) -> i64
         recommends 0 <= i < self.ready_admission_times@.len()
     {
         self.ready_admission_times@[i]
     }
 
     /// Spec function: checks if a thread ID is in the ready list.
-    pub open spec fn spec_has_ready_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_ready_thread(&self, tid: i64) -> bool {
         exists|i: int| 0 <= i < self.ready_thread_ids@.len()
             && self.ready_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in the sleeping list.
-    pub open spec fn spec_has_sleeping_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_sleeping_thread(&self, tid: i64) -> bool {
         exists|i: int| 0 <= i < self.sleeping_thread_ids@.len()
             && self.sleeping_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in any list.
-    pub open spec fn spec_has_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_thread(&self, tid: i64) -> bool {
         self.spec_has_ready_thread(tid)
         || self.spec_has_sleeping_thread(tid)
         || self.spec_has_interrupted_thread(tid)
@@ -241,13 +244,13 @@ impl RunnableProcess {
     }
 
     /// Spec function: checks if a thread ID is in the interrupted list.
-    pub open spec fn spec_has_interrupted_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_interrupted_thread(&self, tid: i64) -> bool {
         exists|i: int| 0 <= i < self.interrupted_thread_ids@.len()
             && self.interrupted_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in the zombie list.
-    pub open spec fn spec_has_zombie_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_zombie_thread(&self, tid: i64) -> bool {
         exists|i: int| 0 <= i < self.zombie_thread_ids@.len()
             && self.zombie_thread_ids@[i] == tid
     }
@@ -264,9 +267,9 @@ impl RunnableProcess {
     /// - `Some(2)` if found in sleeping threads.
     /// - `Some(3)` if found in zombie threads.
     ///
-    /// The search order matches the original: ready → interrupted → sleeping → zombie.
+    /// The search order matches the original: ready -> interrupted -> sleeping -> zombie.
     /// This models the exhaustive search and correct variant selection.
-    pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+    pub open spec fn spec_find_thread(&self, tid: i64) -> Option<int> {
         if self.spec_has_ready_thread(tid) {
             Some(0int)
         } else if self.spec_has_interrupted_thread(tid) {
@@ -281,21 +284,20 @@ impl RunnableProcess {
     }
 
     /// Spec helper: checks if a sequence contains a given value.
-    /// Used for searching thread lists without oracle parameters.
-    pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
+    pub open spec fn spec_seq_contains(s: Seq<i64>, tid: i64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
     /// Spec helper: computes the sequence resulting from removing index `idx`
     /// from sequence `s`.
-    pub open spec fn spec_remove_at(s: Seq<int>, idx: int) -> Seq<int>
+    pub open spec fn spec_remove_at(s: Seq<i64>, idx: int) -> Seq<i64>
         recommends 0 <= idx < s.len()
     {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
     /// Spec function: recursively finds the index of minimum in `s[0..n]`.
-    pub open spec fn spec_min_index_rec(s: Seq<int>, n: int) -> int
+    pub open spec fn spec_min_index_rec(s: Seq<i64>, n: int) -> int
         recommends 1 <= n <= s.len()
         decreases n
     {
@@ -322,7 +324,7 @@ impl RunnableProcess {
     }
 
     /// Spec function: returns the earliest admission time among ready threads.
-    pub open spec fn spec_earliest_admission_time(&self) -> int
+    pub open spec fn spec_earliest_admission_time(&self) -> i64
         recommends self.ready_thread_ids@.len() > 0
     {
         self.ready_admission_times@[self.spec_earliest_ready_index()]
@@ -334,7 +336,7 @@ impl RunnableProcess {
     /// - There is at least one ready thread (modeling NonEmptyVecDeque).
     /// - Ready thread IDs and admission times sequences have equal length.
     /// - All admission times are non-negative.
-    /// - Exec-level counters match ghost sequence lengths.
+    /// - Exec-level counters match concrete vector lengths.
     ///
     /// Note: Thread ID uniqueness/disjointness across lists is NOT enforced here.
     /// In the original code, Rust's ownership type system ensures a thread struct
@@ -350,14 +352,14 @@ impl RunnableProcess {
         &&& self.ready_thread_ids@.len() == self.ready_admission_times@.len()
         // Admission times are non-negative.
         &&& forall|i: int| 0 <= i < self.ready_admission_times@.len()
-                ==> #[trigger] self.ready_admission_times@[i] >= 0
-        // Exec counters match ghost sequence lengths.
+                ==> #[trigger] self.ready_admission_times@[i] >= 0i64
+        // Exec counters match concrete vector lengths.
         &&& self.interrupted_count as nat == self.interrupted_thread_ids@.len()
         &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
     }
 
     /// Spec helper: checks whether two sequences share no common elements.
-    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+    pub open spec fn spec_seqs_disjoint(a: Seq<i64>, b: Seq<i64>) -> bool {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
@@ -391,12 +393,12 @@ impl RunnableProcess {
 impl RunningProcess {
     /// Spec function: returns the process identifier value.
     pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+        self.pid.spec_value()
     }
 
     /// Spec function: returns the running thread ID.
-    pub open spec fn spec_running_thread_id(&self) -> int {
-        self.running_thread_id@
+    pub open spec fn spec_running_thread_id(&self) -> i64 {
+        self.running_thread_id
     }
 
     /// Spec function: well-formedness predicate.
@@ -422,7 +424,7 @@ impl RunningProcess {
 impl InterruptedProcess {
     /// Spec function: returns the process identifier value.
     pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+        self.pid.spec_value()
     }
 
     /// Spec function: well-formedness predicate.
@@ -438,12 +440,12 @@ impl InterruptedProcess {
 impl ZombieProcess {
     /// Spec function: returns the process identifier value.
     pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+        self.pid.spec_value()
     }
 
     /// Spec function: returns the exit status.
     pub open spec fn spec_status(&self) -> int {
-        self.status@
+        self.status as int
     }
 
     /// Spec function: well-formedness predicate.
@@ -476,13 +478,13 @@ impl View for RunningProcess {
 
     open spec fn view(&self) -> RunningProcessView {
         RunningProcessView {
-            pid: self.pid@,
-            running_thread_id: self.running_thread_id@,
+            pid: self.pid.spec_value(),
+            running_thread_id: self.running_thread_id,
             ready_thread_ids: self.ready_thread_ids@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
-            interrupt_reason: self.interrupt_reason@,
+            interrupt_reason: self.interrupt_reason,
         }
     }
 }
@@ -492,7 +494,7 @@ impl View for InterruptedProcess {
 
     open spec fn view(&self) -> InterruptedProcessView {
         InterruptedProcessView {
-            pid: self.pid@,
+            pid: self.pid.spec_value(),
             interrupted_thread_ids: self.interrupted_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
         }
@@ -504,9 +506,9 @@ impl View for ZombieProcess {
 
     open spec fn view(&self) -> ZombieProcessView {
         ZombieProcessView {
-            pid: self.pid@,
+            pid: self.pid.spec_value(),
             zombie_thread_ids: self.zombie_thread_ids@,
-            status: self.status@,
+            status: self.status,
         }
     }
 }
