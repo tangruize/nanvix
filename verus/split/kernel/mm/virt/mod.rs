@@ -172,10 +172,10 @@
 //!
 //! 3. **Sort Correctness**: The `sort_regions_by_start` function is an
 //!    `external_body` trusting the standard library's `Vec::sort_by`.
-//!    Sort correctness (stable, produces sorted output, preserves elements)
-//!    is not formally verified. The `validate_regions` call after sort
-//!    verifies the sorted+non-overlapping postcondition, providing a
-//!    runtime check even if sort were buggy.
+//!    A permutation postcondition (`to_multiset` equality) ensures the output
+//!    is a rearrangement of the input. Sort stability is not verified. The
+//!    `validate_regions` call after sort verifies the sorted+non-overlapping
+//!    postcondition, providing a runtime check even if sort were buggy.
 //!
 //! 4. **PageTableStorage PTE Contents**: The `Deref`/`DerefMut` external_body
 //!    specs only assert slice length (1024 entries). Reasoning about individual
@@ -680,13 +680,21 @@ pub fn page_table_map_page(vaddr: usize, paddr: usize)
 ///
 /// Models the runtime overlap detection from the original `init()`.
 /// The original detects overlaps by comparing page table bases during
-/// iteration (the `Ordering::Less` branch). This function verifies the
-/// equivalent check: regions must be sorted by start address and
+/// iteration (the `Ordering::Less` branch). This function verifies a
+/// stricter check: regions must be sorted by start address and
 /// non-overlapping (end_i <= start_{i+1}).
 ///
-/// This proves that the runtime validation correctly identifies valid
-/// inputs, bridging the gap between `init()`'s preconditions and the
-/// original's runtime error detection.
+/// ## Overlap Semantics vs. Original
+///
+/// The original only detects overlaps when page-table bases decrease
+/// (crossing a 4 MB boundary in the wrong order). Our check is stricter:
+/// we reject any region overlap, even within the same 4 MB page-table
+/// base. This is intentionally more conservative because overlapping
+/// regions within the same base would double-map virtual pages to
+/// potentially different physical addresses — a correctness bug the
+/// original silently allows. Our stricter check subsumes the original's
+/// error detection (region overlap implies pgtab base disorder for
+/// sorted inputs) and also catches the intra-base overlap case.
 ///
 /// # Parameters
 ///
@@ -834,6 +842,20 @@ pub fn init_checked(regions: &Vec<MemRegion>) -> (result: InitResult)
                         mappings@[k].vaddr, mappings@[k].region_start, mappings@[k].is_mmio)
                 &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
                     (!mappings@[k].is_mmio ==> mappings@[k].paddr == mappings@[k].vaddr)
+                // Alignment: all mapped vaddrs are page-aligned.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    mappings@[k].vaddr % INIT_PAGE_SIZE as int == 0
+                // Alignment: all mapped paddrs are page-aligned.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    mappings@[k].paddr % INIT_PAGE_SIZE as int == 0
+                // No double-mapping: all mapped vaddrs are strictly increasing.
+                &&& forall|i: int, j: int|
+                    #![trigger mappings@[i], mappings@[j]]
+                    0 <= i < j < mappings@.len() ==>
+                    mappings@[i].vaddr < mappings@[j].vaddr
+                // Permissions: all mappings have init-time permission attributes.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    spec_has_init_permissions(mappings@[k])
             },
             _ => false,
         },
@@ -959,6 +981,7 @@ pub fn merge_regions(vregions: &Vec<MemRegion>, mmio_regions: &Vec<MemRegion>) -
 /// Standard library sort is a well-tested operation; its correctness is
 /// assumed. The postconditions assert:
 /// - Same length (no elements added/removed).
+/// - Permutation: output is a rearrangement of input (multiset equality).
 /// - Region properties preserved (validity, alignment, memory bounds).
 /// - Sorted by start address.
 ///
@@ -976,6 +999,8 @@ pub fn sort_regions_by_start(regions: &mut Vec<MemRegion>)
             old(regions)[i].spec_end() <= INIT_MEMORY_SIZE as int,
     ensures
         regions.len() == old(regions).len(),
+        // Permutation: output is a rearrangement of input elements.
+        regions@.to_multiset() =~= old(regions)@.to_multiset(),
         forall|i: int| #![auto] 0 <= i < regions.len() as int ==>
             regions[i].spec_is_valid(),
         forall|i: int| #![auto] 0 <= i < regions.len() as int ==>
@@ -1033,12 +1058,35 @@ pub fn init_full(vregions: &Vec<MemRegion>, mmio_regions: &Vec<MemRegion>) -> (r
     ensures
         result.spec_is_ok() ==> match result {
             InitResult::Ok { bases, mappings } => {
+                // Base alignment.
                 &&& forall|i: int| #![auto] 0 <= i < bases.len() as int ==>
                     bases[i] as int % INIT_PGTAB_ALIGNMENT as int == 0
+                // Bases are strictly increasing.
                 &&& forall|i: int, j: int|
                     #![trigger bases[i], bases[j]]
                     0 <= i < j < bases.len() as int ==>
                     (bases[i] as int) < (bases[j] as int)
+                // Mapping correctness: paddr matches spec_init_paddr.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    mappings@[k].paddr == spec_init_paddr(
+                        mappings@[k].vaddr, mappings@[k].region_start, mappings@[k].is_mmio)
+                // Identity mapping: non-MMIO pages have paddr == vaddr.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    (!mappings@[k].is_mmio ==> mappings@[k].paddr == mappings@[k].vaddr)
+                // Alignment: all mapped vaddrs are page-aligned.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    mappings@[k].vaddr % INIT_PAGE_SIZE as int == 0
+                // Alignment: all mapped paddrs are page-aligned.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    mappings@[k].paddr % INIT_PAGE_SIZE as int == 0
+                // No double-mapping: all mapped vaddrs are strictly increasing.
+                &&& forall|i: int, j: int|
+                    #![trigger mappings@[i], mappings@[j]]
+                    0 <= i < j < mappings@.len() ==>
+                    mappings@[i].vaddr < mappings@[j].vaddr
+                // Permissions: all mappings have init-time permission attributes.
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    spec_has_init_permissions(mappings@[k])
             },
             _ => false,
         },
