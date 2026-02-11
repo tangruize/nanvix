@@ -7,7 +7,7 @@
   "completed": false,
   "final_grades": {
     "claude": "A",
-    "gpt": "C",
+    "gpt": "B-",
     "gemini": "B-"
   }
 }
