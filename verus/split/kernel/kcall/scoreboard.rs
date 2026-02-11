@@ -74,7 +74,7 @@
 //! | `ScoreBoard::handle()`    | `handle()`/`try_handle()`| With and without error path.    |
 //! | `ScoreBoard::handled()`   | `handled()`             | Direct mapping.                  |
 //! | *(no original)*           | `get_args()`            | Reference access after handle(). |
-//! | *(no original)*           | `completed_cycles`      | Ghost<nat> verification counter. |
+//! | *(no original)*           | `completed_cycles`      | Concrete u64 verification counter. |
 //! | `impl Debug for KcallArgs`| *(not modeled)*         | Formatting; out of scope.        |
 //! | `pub fn init()`           | *(not modeled)*         | Logging wrapper; out of scope.   |
 //!
@@ -101,9 +101,9 @@
 //!   liveness-critical error path documented in T5.
 //! - `KcallResult` uses `is_success: bool` + `value: i64` (original uses an enum
 //!   with `Success(KcallSuccess(i64))` / `Error(KcallError(i32))`).
-//! - `completed_cycles: Ghost<nat>` is verification-only ghost state. The original
-//!   has no cycle counter. This field tracks protocol progress for inductive proofs.
-//!   As a ghost field, it is erased at runtime and introduces no semantic divergence.
+//! - `completed_cycles: u64` is verification-only state. The original has no cycle
+//!   counter. This field tracks protocol progress for inductive proofs. An overflow
+//!   guard (`completed_cycles < u64::MAX`) is required before incrementing.
 //! - `ScoreBoardSlot` models the `Option<ScoreBoard>` global pattern as a regular
 //!   struct with an `initialized` flag, avoiding `static mut` and `unsafe`.
 //!   Supports idempotent re-initialization matching the original's overwrite behavior.
@@ -305,9 +305,8 @@ pub struct ScoreBoard {
     /// Current protocol phase.
     pub phase: ScoreBoardPhase,
     /// Count of completed cycles (verification-only; no original counterpart).
-    /// Ghost field: exists only at the spec level, erased at runtime.
-    /// Uses `Ghost<nat>` so no overflow guard is needed (nat is unbounded).
-    pub completed_cycles: Ghost<nat>,
+    /// Concrete u64 counter; overflow guard required before incrementing.
+    pub completed_cycles: u64,
 }
 
 //==================================================================================================
@@ -435,7 +434,7 @@ impl ScoreBoard {
             !result.locked,
             result.dispatched_value == 0,
             result.handled_value == 0,
-            result.completed_cycles@ == 0nat,
+            result.completed_cycles == 0u64,
             result@ == ScoreBoard::spec_initial_view(),
     {
         ScoreBoard {
@@ -453,7 +452,7 @@ impl ScoreBoard {
             },
             result: KcallResult::ok(),
             phase: ScoreBoardPhase::Idle,
-            completed_cycles: Ghost(0nat),
+            completed_cycles: 0u64,
         }
     }
 
@@ -722,6 +721,7 @@ impl ScoreBoard {
         requires
             old(self).wf(),
             old(self).spec_is_handled(),
+            old(self).completed_cycles < u64::MAX,
         ensures
             self.wf(),
             self.spec_is_idle(),
@@ -732,12 +732,12 @@ impl ScoreBoard {
             result@ == old(self).result@,
             result.wf(),
             self@ == ScoreBoard::spec_complete_dispatch(old(self)@),
-            self.completed_cycles@ == old(self).completed_cycles@ + 1,
+            self.completed_cycles as nat == old(self).completed_cycles as nat + 1,
     {
         let ret: KcallResult = KcallResult { is_success: self.result.is_success, value: self.result.value };
         self.handled_value = 0;
         self.locked = false;
-        self.completed_cycles = Ghost(self.completed_cycles@ + 1);
+        self.completed_cycles = self.completed_cycles + 1;
         self.phase = ScoreBoardPhase::Idle;
         ret
     }
@@ -805,6 +805,7 @@ impl ScoreBoard {
             old(self).spec_is_idle(),
             ret.wf(),
             handler_progress <= 2,
+            old(self).completed_cycles < u64::MAX,
         ensures
             // Case 1: Lock failure — state preserved.
             !lock_acquired ==> (
@@ -822,7 +823,7 @@ impl ScoreBoard {
                 && self.result@ == old(self).result@
                 && self.dispatched_value == 0
                 && self.handled_value == 0
-                && self.completed_cycles@ == old(self).completed_cycles@
+                && self.completed_cycles as nat == old(self).completed_cycles as nat
             ),
             // Case 3a: Down interrupted, handler hasn't started (Signaled).
             (lock_acquired && !up_failed && down_interrupted && handler_progress == 0) ==> (
@@ -833,7 +834,7 @@ impl ScoreBoard {
                 && self.result@ == old(self).result@
                 && self.dispatched_value == 1
                 && self.handled_value == 0
-                && self.completed_cycles@ == old(self).completed_cycles@
+                && self.completed_cycles as nat == old(self).completed_cycles as nat
             ),
             // Case 3b: Down interrupted, handler consumed signal (Dispatched).
             (lock_acquired && !up_failed && down_interrupted && handler_progress == 1) ==> (
@@ -844,7 +845,7 @@ impl ScoreBoard {
                 && self.result@ == old(self).result@
                 && self.dispatched_value == 0
                 && self.handled_value == 0
-                && self.completed_cycles@ == old(self).completed_cycles@
+                && self.completed_cycles as nat == old(self).completed_cycles as nat
             ),
             // Case 3c: Down interrupted, handler finished (Handled).
             (lock_acquired && !up_failed && down_interrupted && handler_progress == 2) ==> (
@@ -855,7 +856,7 @@ impl ScoreBoard {
                 && self.result@ == ret@
                 && self.dispatched_value == 0
                 && self.handled_value == 1
-                && self.completed_cycles@ == old(self).completed_cycles@
+                && self.completed_cycles as nat == old(self).completed_cycles as nat
             ),
             // Case 4: Success — full cycle completed, result returned.
             (lock_acquired && !up_failed && !down_interrupted) ==> (
@@ -863,7 +864,7 @@ impl ScoreBoard {
                 && self.wf()
                 && self.spec_is_idle()
                 && !self.locked
-                && self.completed_cycles@ == old(self).completed_cycles@ + 1
+                && self.completed_cycles as nat == old(self).completed_cycles as nat + 1
                 && self@ == ScoreBoard::spec_dispatch_success(old(self)@, args@, ret@)
             ),
     {
@@ -916,7 +917,7 @@ impl ScoreBoard {
         };
         self.handled_value = 0;
         self.locked = false;
-        self.completed_cycles = Ghost(self.completed_cycles@ + 1);
+        self.completed_cycles = self.completed_cycles + 1;
         self.phase = ScoreBoardPhase::Idle;
         DispatchOutcome::Success(dispatch_result)
     }
@@ -1035,7 +1036,7 @@ impl ScoreBoardSlot {
             self.board.wf(),
             self.board.spec_is_idle(),
             !self.board.locked,
-            self.board.completed_cycles@ == 0nat,
+            self.board.completed_cycles == 0u64,
     {
         self.board = ScoreBoard::new();
         self.initialized = true;

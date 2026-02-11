@@ -150,7 +150,7 @@ impl View for ScoreBoard {
             locked: self.locked,
             dispatched_value: self.dispatched_value as nat,
             handled_value: self.handled_value as nat,
-            completed_cycles: self.completed_cycles@,
+            completed_cycles: self.completed_cycles as nat,
         }
     }
 }
