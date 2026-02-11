@@ -1,0 +1,38 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 23:00:39 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+  --> kernel/mm/virt/mod.spec.rs:94:5
+   |
+94 | pub open spec fn spec_mmio_paddr(region_start: int) -> int;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: verifying module kernel::mm::virt
+
+note: verifying module kernel::mm::virt::kpage
+
+note: verifying module kernel::mm::virt::vmem
+
+error: loop must have a decreases clause
+   --> kernel/mm/virt/mod.rs:556:5
+    |
+556 |     while idx < page_count
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function
+
+error: aborting due to 1 previous error; 1 warning emitted
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:0, errors:0)
