@@ -1,0 +1,265 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 23:04:30 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+warning: uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`
+         this will become a hard error in the future
+  --> kernel/mm/virt/mod.spec.rs:94:5
+   |
+94 | pub open spec fn spec_mmio_paddr(region_start: int) -> int;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: expected `,`
+   --> kernel/mm/virt/mod.rs:651:61
+    |
+651 | ...                   all_bases[i] as int < curr_base as int);
+    |                                                       ^^
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+  --> kernel/mm/virt/mod.spec.rs:32:28
+   |
+32 |     spec_align_down(vaddr, INIT_PGTAB_ALIGNMENT as int)
+   |                            ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+  --> kernel/mm/virt/mod.spec.rs:45:16
+   |
+45 |         size % INIT_PAGE_SIZE as int == 0,
+   |                ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+  --> kernel/mm/virt/mod.spec.rs:47:12
+   |
+47 |     size / INIT_PAGE_SIZE as int
+   |            ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+  --> kernel/mm/virt/mod.spec.rs:53:28
+   |
+53 |     region_start + index * INIT_PAGE_SIZE as int
+   |                            ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `MemRegion` in this scope
+   --> kernel/mm/virt/mod.spec.rs:115:6
+    |
+115 | impl MemRegion {
+    |      ^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.spec.rs:133:29
+    |
+133 |         self.start as int % INIT_PAGE_SIZE as int == 0
+    |                             ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.spec.rs:134:31
+    |
+134 |         && self.size as int % INIT_PAGE_SIZE as int == 0
+    |                               ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.spec.rs:139:28
+    |
+139 |         self.size as int / INIT_PAGE_SIZE as int
+    |                            ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `MemRegion` in this scope
+   --> kernel/mm/virt/mod.spec.rs:156:49
+    |
+156 |     pub open spec fn spec_before(&self, other: &MemRegion) -> bool {
+    |                                                 ^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `MemRegion` in this scope
+   --> kernel/mm/virt/mod.spec.rs:175:22
+    |
+175 |     pub regions: Seq<MemRegion>,
+    |                      ^^^^^^^^^ not found in this scope
+    |
+help: you might be missing a type parameter
+    |
+173 | pub struct VirtInitView<MemRegion> {
+    |                        +++++++++++
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+   --> kernel/mm/virt/mod.spec.rs:210:40
+    |
+210 |             self.page_table_bases[i] % INIT_PGTAB_ALIGNMENT as int == 0
+    |                                        ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.spec.rs:228:6
+    |
+228 |     (INIT_PAGE_SIZE as int) / 4  // sizeof::<u32>() == 4
+    |      ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `PageTableStorage` in this scope
+   --> kernel/mm/virt/mod.spec.rs:232:6
+    |
+232 | impl PageTableStorage {
+    |      ^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+   --> kernel/mm/virt/mod.spec.rs:291:21
+    |
+291 |     &&& last_base % INIT_PGTAB_ALIGNMENT as int == 0
+    |                     ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+   --> kernel/mm/virt/mod.spec.rs:296:30
+    |
+296 |             pgtab_bases[i] % INIT_PGTAB_ALIGNMENT as int == 0
+    |                              ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+   --> kernel/mm/virt/mod.proof.rs:127:47
+    |
+127 |         Self::lemma_align_down_monotone(a, b, INIT_PGTAB_ALIGNMENT as int);
+    |                                               ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+   --> kernel/mm/virt/mod.proof.rs:136:38
+    |
+136 |             spec_pgtab_base(vaddr) % INIT_PGTAB_ALIGNMENT as int == 0,
+    |                                      ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+   --> kernel/mm/virt/mod.proof.rs:138:47
+    |
+138 |         Self::lemma_align_down_aligned(vaddr, INIT_PGTAB_ALIGNMENT as int);
+    |                                               ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PGTAB_ALIGNMENT` in this scope
+   --> kernel/mm/virt/mod.proof.rs:149:42
+    |
+149 |         Self::lemma_align_down_le(vaddr, INIT_PGTAB_ALIGNMENT as int);
+    |                                          ^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:166:21
+    |
+166 |             start % INIT_PAGE_SIZE as int == 0,
+    |                     ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:167:20
+    |
+167 |             size % INIT_PAGE_SIZE as int == 0,
+    |                    ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:168:29
+    |
+168 |             0 <= i < size / INIT_PAGE_SIZE as int,
+    |                             ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:171:44
+    |
+171 |             spec_nth_page_addr(start, i) % INIT_PAGE_SIZE as int == 0,
+    |                                            ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:173:23
+    |
+173 |         let ps: int = INIT_PAGE_SIZE as int;
+    |                       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:199:23
+    |
+199 |         let ps: int = INIT_PAGE_SIZE as int;
+    |                       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:234:20
+    |
+234 |             size % INIT_PAGE_SIZE as int == 0,
+    |                    ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:235:13
+    |
+235 |             INIT_PAGE_SIZE > 1,
+    |             ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:239:46
+    |
+239 |             spec_nth_page_addr(start, size / INIT_PAGE_SIZE as int - 1)
+    |                                              ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:242:21
+    |
+242 |             size == INIT_PAGE_SIZE as int ==> start < spec_loop_end(start, size),
+    |                     ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:244:23
+    |
+244 |         let ps: int = INIT_PAGE_SIZE as int;
+    |                       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:301:21
+    |
+301 |             vaddr % INIT_PAGE_SIZE as int == 0,
+    |                     ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:344:23
+    |
+344 |             a_start % INIT_PAGE_SIZE as int == 0,
+    |                       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:345:22
+    |
+345 |             a_size % INIT_PAGE_SIZE as int == 0,
+    |                      ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:346:23
+    |
+346 |             b_start % INIT_PAGE_SIZE as int == 0,
+    |                       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:347:22
+    |
+347 |             b_size % INIT_PAGE_SIZE as int == 0,
+    |                      ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:348:31
+    |
+348 |             0 <= i < a_size / INIT_PAGE_SIZE as int,
+    |                               ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:349:31
+    |
+349 |             0 <= j < b_size / INIT_PAGE_SIZE as int,
+    |                               ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `INIT_PAGE_SIZE` in this scope
+   --> kernel/mm/virt/mod.proof.rs:356:23
+    |
+356 |         let ps: int = INIT_PAGE_SIZE as int;
+    |                       ^^^^^^^^^^^^^^ not found in this scope
+
+error: aborting due to 39 previous errors; 1 warning emitted
+
+Some errors have detailed explanations: E0412, E0425.
+For more information about an error, try `rustc --explain E0412`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:0, errors:0)
