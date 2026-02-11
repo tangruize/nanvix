@@ -645,10 +645,12 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
                     // So curr_base > all existing all_bases elements.
                     // When last_base is None, all_bases is empty, so trivially fine.
                     if last_base.is_some() {
-                        assert(curr_base as int > last_base.unwrap() as int);
+                        let cb: int = curr_base as int;
+                        let lb: int = last_base.unwrap() as int;
+                        assert(cb > lb);
                         assert(forall|i: int| #![auto]
                             0 <= i < all_bases.len() as int ==>
-                            all_bases[i] as int < curr_base as int);
+                            (all_bases[i] as int) < cb);
                     }
                 }
                 all_bases.push(curr_base);
@@ -657,16 +659,17 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             // curr_base >= all existing all_bases elements (which are <= prev).
             // If we pushed, curr_base is in all_bases and equals itself.
             proof {
+                let cb: int = curr_base as int;
                 if last_base.is_some() {
                     // curr_base >= last_base.unwrap() >= all old elements.
                     // If pushed, new element is curr_base, and curr_base >= curr_base.
                     assert(forall|i: int| #![auto]
                         0 <= i < all_bases.len() as int ==>
-                        all_bases[i] as int <= curr_base as int);
+                        (all_bases[i] as int) <= cb);
                 } else {
                     // First element pushed. all_bases has exactly one element.
                     assert(all_bases.len() == 1);
-                    assert(all_bases[0] as int == curr_base as int);
+                    assert(all_bases[0] as int == cb);
                 }
             }
             last_base = Some(curr_base);
