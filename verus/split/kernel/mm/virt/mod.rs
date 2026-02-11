@@ -57,6 +57,12 @@
 //!     with verified-correct arguments (alignment, identity/MMIO correctness).
 //!     The actual PTE write is a HAL-level operation at the `external_body`
 //!     boundary.
+//! 13. **Input Validation**: The `validate_regions` function verifies the runtime
+//!     overlap detection from the original `init()`. It proves both soundness
+//!     (if validation passes, regions are sorted and non-overlapping) and
+//!     completeness (if regions are sorted and non-overlapping, validation passes).
+//!     The `init_checked` wrapper composes validation with init, modeling the
+//!     original's `Result` return: `Ok` on valid input, `OverlapError` on overlap.
 //!
 //! ## Verification Boundary
 //!
@@ -601,6 +607,169 @@ pub fn page_table_map_page(vaddr: usize, paddr: usize)
         paddr as int % INIT_PAGE_SIZE as int == 0,
 {
     // HAL-level unsafe PTE write - intentionally unimplemented in model.
+}
+
+
+/// Validates that memory regions are sorted and non-overlapping.
+///
+/// # Description
+///
+/// Models the runtime overlap detection from the original `init()`.
+/// The original detects overlaps by comparing page table bases during
+/// iteration (the `Ordering::Less` branch). This function verifies the
+/// equivalent check: regions must be sorted by start address and
+/// non-overlapping (end_i <= start_{i+1}).
+///
+/// This proves that the runtime validation correctly identifies valid
+/// inputs, bridging the gap between `init()`'s preconditions and the
+/// original's runtime error detection.
+///
+/// # Parameters
+///
+/// - `regions`: Memory regions to validate.
+///
+/// # Returns
+///
+/// `true` if regions are sorted and non-overlapping.
+pub fn validate_regions(regions: &Vec<MemRegion>) -> (result: bool)
+    requires
+        forall|i: int| #![auto] 0 <= i < regions.len() as int ==>
+            regions[i].spec_is_valid(),
+    ensures
+        // Soundness: if validation passes, the sorted/non-overlapping properties hold.
+        result ==> forall|i: int, j: int|
+            #![trigger regions[i], regions[j]]
+            0 <= i < j < regions.len() as int ==>
+            regions[i].spec_start() <= regions[j].spec_start(),
+        result ==> forall|i: int, j: int|
+            #![trigger regions[i], regions[j]]
+            0 <= i < j < regions.len() as int ==>
+            regions[i].spec_end() <= regions[j].spec_start(),
+        // Completeness: if regions are sorted and non-overlapping, validation passes.
+        (forall|i: int| #![auto] 0 <= i < regions.len() as int - 1 ==>
+            regions[i].spec_end() <= regions[i + 1].spec_start())
+            ==> result,
+{
+    if regions.len() <= 1 {
+        return true;
+    }
+    let mut i: usize = 0;
+    while i < regions.len() - 1
+        invariant
+            0 <= i <= regions.len() - 1,
+            regions.len() > 1,
+            forall|k: int| #![auto] 0 <= k < regions.len() as int ==>
+                regions[k].spec_is_valid(),
+            // All checked pairs so far satisfy the ordering.
+            forall|k: int| #![auto] 0 <= k < i as int ==>
+                regions[k].spec_end() <= regions[k + 1].spec_start(),
+            // Transitivity: checked pairs imply full sorted + non-overlapping.
+            forall|a: int, b: int|
+                #![trigger regions[a], regions[b]]
+                0 <= a < b <= i as int ==>
+                regions[a].spec_end() <= regions[b].spec_start(),
+            forall|a: int, b: int|
+                #![trigger regions[a], regions[b]]
+                0 <= a < b <= i as int ==>
+                regions[a].spec_start() <= regions[b].spec_start(),
+        decreases regions.len() - 1 - i,
+    {
+        if regions[i].start + regions[i].size > regions[i + 1].start {
+            return false;
+        }
+        proof {
+            // Establish transitivity for new index.
+            assert(regions[i as int].spec_end() <= regions[i as int + 1].spec_start());
+            assert forall|a: int, b: int|
+                #![trigger regions[a], regions[b]]
+                0 <= a < b <= i as int + 1
+            implies
+                regions[a].spec_end() <= regions[b].spec_start()
+            by {
+                if b == i as int + 1 {
+                    if a < i as int {
+                        assert(regions[a].spec_end() <= regions[a + 1].spec_start());
+                        assert(regions[a + 1].spec_start() <= regions[a + 1].spec_end());
+                    }
+                }
+            }
+            assert forall|a: int, b: int|
+                #![trigger regions[a], regions[b]]
+                0 <= a < b <= i as int + 1
+            implies
+                regions[a].spec_start() <= regions[b].spec_start()
+            by {
+                if b == i as int + 1 {
+                    if a < i as int {
+                        assert(regions[a].spec_end() <= regions[a + 1].spec_start());
+                    }
+                }
+            }
+        }
+        i = i + 1;
+    }
+    true
+}
+
+
+/// Checked init that validates inputs and returns a result type.
+///
+/// # Description
+///
+/// Composes `validate_regions` and `init` to model the original `init()`
+/// function's complete behavior including runtime error detection:
+/// - If regions are sorted and non-overlapping: performs initialization
+///   and returns `InitResult::Ok` with all verified postconditions.
+/// - If regions overlap: returns `InitResult::OverlapError`, modeling the
+///   original's `Err(Error::new(...))` return on `Ordering::Less`.
+///
+/// This function has NO precondition on region ordering (only validity,
+/// alignment, and memory bounds), proving that the runtime check correctly
+/// guards the init algorithm.
+///
+/// # Parameters
+///
+/// - `regions`: Memory regions (need not be sorted or non-overlapping).
+///
+/// # Returns
+///
+/// `InitResult::Ok` with verified page table bases and ghost mappings on
+/// success, or `InitResult::OverlapError` on overlap detection.
+pub fn init_checked(regions: &Vec<MemRegion>) -> (result: InitResult)
+    requires
+        forall|i: int| #![auto] 0 <= i < regions.len() as int ==>
+            regions[i].spec_is_valid(),
+        forall|i: int| #![auto] 0 <= i < regions.len() as int ==>
+            regions[i].start as int % INIT_PAGE_SIZE as int == 0
+            && regions[i].size as int % INIT_PAGE_SIZE as int == 0,
+        forall|i: int| #![auto] 0 <= i < regions.len() as int ==>
+            regions[i].spec_end() <= INIT_MEMORY_SIZE as int,
+    ensures
+        // On success, all init postconditions hold.
+        result.spec_is_ok() ==> match result {
+            InitResult::Ok { bases, mappings } => {
+                &&& forall|i: int| #![auto] 0 <= i < bases.len() as int ==>
+                    bases[i] as int % INIT_PGTAB_ALIGNMENT as int == 0
+                &&& forall|i: int, j: int|
+                    #![trigger bases[i], bases[j]]
+                    0 <= i < j < bases.len() as int ==>
+                    (bases[i] as int) < (bases[j] as int)
+                &&& mappings@.len() == spec_total_pages(regions@, regions.len() as int)
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    mappings@[k].paddr == spec_init_paddr(
+                        mappings@[k].vaddr, mappings@[k].region_start, mappings@[k].is_mmio)
+                &&& forall|k: int| #![auto] 0 <= k < mappings@.len() ==>
+                    (!mappings@[k].is_mmio ==> mappings@[k].paddr == mappings@[k].vaddr)
+            },
+            _ => false,
+        },
+{
+    if validate_regions(regions) {
+        let (bases, mappings): (Vec<usize>, Ghost<Seq<PageMapping>>) = init(regions);
+        InitResult::Ok { bases, mappings }
+    } else {
+        InitResult::OverlapError
+    }
 }
 
 

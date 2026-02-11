@@ -231,6 +231,31 @@ impl PgtabDecision {
 }
 
 //==================================================================================================
+// Init Result Type
+//==================================================================================================
+
+/// Result type for checked initialization.
+///
+/// # Description
+///
+/// Models the `Result<LinkedList<...>, Error>` return type from the original
+/// `init()`. The `Ok` variant carries the page table bases and ghost mappings.
+/// The `OverlapError` variant models the `Ordering::Less` error path.
+pub enum InitResult {
+    /// Successful initialization with page table bases and ghost mappings.
+    Ok { bases: Vec<usize>, mappings: Ghost<Seq<PageMapping>> },
+    /// Error: overlapping memory regions detected at runtime.
+    OverlapError,
+}
+
+impl InitResult {
+    /// Spec: the result is successful.
+    pub open spec fn spec_is_ok(&self) -> bool {
+        matches!(*self, InitResult::Ok { .. })
+    }
+}
+
+//==================================================================================================
 // Init Mapping Coverage Spec
 //==================================================================================================
 
