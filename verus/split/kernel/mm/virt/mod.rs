@@ -575,17 +575,17 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             last_base.is_some() ==> forall|i: int| #![auto]
                 0 <= i < all_bases.len() as int ==>
                 all_bases[i] as int <= last_base.unwrap() as int,
+            // When last_base is None, all_bases is empty.
+            last_base.is_none() ==> all_bases.len() == 0,
+            // Cross-region: last_base <= pgtab_base of the next region to process.
+            last_base.is_some() && r_idx < regions.len() as int ==>
+                last_base.unwrap() as int
+                    <= spec_pgtab_base(regions[r_idx as int].spec_start()),
         decreases regions.len() - r_idx,
     {
         let region: &MemRegion = &regions[r_idx];
         let page_count: usize = compute_region_page_count(region.size);
         let mut p_idx: usize = 0;
-
-        // Prove: if last_base is Some, then pgtab_base(region.start) >= last_base.
-        // This comes from the region ordering and monotonicity of pgtab_base.
-        // After the previous region, last_base = pgtab_base(prev_region_last_page).
-        // prev_region_last_page < prev_region.end <= region.start.
-        // By monotonicity, pgtab_base(prev_last_page) <= pgtab_base(region.start).
 
         while p_idx < page_count
             invariant
@@ -610,11 +610,17 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
                 last_base.is_some() ==> forall|i: int| #![auto]
                     0 <= i < all_bases.len() as int ==>
                     all_bases[i] as int <= last_base.unwrap() as int,
+                // When last_base is None, all_bases is empty.
+                last_base.is_none() ==> all_bases.len() == 0,
                 // After first page, last_base is Some.
                 p_idx > 0 ==> last_base.is_some(),
                 // last_base tracks the pgtab base of the previous page.
                 p_idx > 0 ==> last_base.unwrap() as int == spec_pgtab_base(
                     spec_nth_page_addr(region.start as int, (p_idx - 1) as int)),
+                // For p_idx == 0: if last_base is Some, it's <= this region's first pgtab base.
+                p_idx == 0 && last_base.is_some() ==>
+                    last_base.unwrap() as int
+                        <= spec_pgtab_base(region.spec_start()),
             decreases page_count - p_idx,
         {
             proof {
@@ -626,11 +632,14 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             let curr_base: usize = compute_pgtab_base(vaddr);
 
             proof {
-                // Prove monotonicity: if last_base is Some, curr_base >= last_base.
+                // Prove monotonicity: curr_base >= last_base (when present).
                 if p_idx > 0 {
+                    // For subsequent pages: monotonicity within region.
                     VirtProofs::lemma_consecutive_pages_ordered_bases(
                         region.start as int, (p_idx - 1) as int, p_idx as int);
                 }
+                // For p_idx == 0: last_base <= spec_pgtab_base(region.start) = curr_base
+                // follows from the loop invariant for p_idx == 0.
             }
 
             let should_add: bool = match last_base {
@@ -639,60 +648,35 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             };
 
             if should_add {
-                proof {
-                    // When should_add is true and last_base is Some,
-                    // curr_base > last_base.unwrap() >= all existing all_bases elements.
-                    // So curr_base > all existing all_bases elements.
-                    // When last_base is None, all_bases is empty, so trivially fine.
-                    if last_base.is_some() {
-                        let cb: int = curr_base as int;
-                        let lb: int = last_base.unwrap() as int;
-                        assert(cb > lb);
-                        assert(forall|i: int| #![auto]
-                            0 <= i < all_bases.len() as int ==>
-                            (all_bases[i] as int) < cb);
-                    }
-                }
+                // When should_add and last_base is Some: curr_base > prev >= all elements.
+                // When should_add and last_base is None: all_bases is empty.
+                // Either way, push maintains strictly increasing.
                 all_bases.push(curr_base);
             }
-            // After update: curr_base >= prev (monotonicity) so
-            // curr_base >= all existing all_bases elements (which are <= prev).
-            // If we pushed, curr_base is in all_bases and equals itself.
-            proof {
-                let cb: int = curr_base as int;
-                if last_base.is_some() {
-                    // curr_base >= last_base.unwrap() >= all old elements.
-                    // If pushed, new element is curr_base, and curr_base >= curr_base.
-                    assert(forall|i: int| #![auto]
-                        0 <= i < all_bases.len() as int ==>
-                        (all_bases[i] as int) <= cb);
-                } else {
-                    // First element pushed. all_bases has exactly one element.
-                    assert(all_bases.len() == 1);
-                    assert(all_bases[0] as int == cb);
-                }
-            }
+            // curr_base >= last_base.unwrap() (monotonicity, proved above).
+            // So curr_base >= all existing all_bases elements.
             last_base = Some(curr_base);
             p_idx = p_idx + 1;
         }
 
-        // After processing all pages of this region, last_base is Some.
-        // Prove: if there's a next region, the next region's pages will have
-        // pgtab bases >= last_base, so monotonicity is maintained.
+        r_idx = r_idx + 1;
+
         proof {
-            if r_idx + 1 < regions.len() {
+            // Establish cross-region invariant for the next iteration.
+            if r_idx < regions.len() {
                 // last_base = pgtab_base(last_page_of_this_region).
                 // last_page < region.end <= next_region.start.
-                // pgtab_base(last_page) <= pgtab_base(next_region.start) by monotonicity.
+                // By monotonicity: pgtab_base(last_page) <= pgtab_base(next_start).
                 let last_page_idx: int = region.size as int / INIT_PAGE_SIZE as int - 1;
                 let last_page: int = spec_nth_page_addr(region.start as int, last_page_idx);
                 VirtProofs::lemma_page_iteration_covers_region(
                     region.start as int, region.size as int, last_page_idx);
-                // last_page < region.end = region.start + region.size.
-                // region.end <= next_region.start.
+                let next_start: int = regions[r_idx as int].spec_start();
+                assert(last_page < region.spec_end());
+                assert(region.spec_end() <= next_start);
+                VirtProofs::lemma_sorted_addrs_sorted_pgtab_bases(last_page, next_start);
             }
         }
-        r_idx = r_idx + 1;
     }
 
     all_bases
