@@ -572,6 +572,7 @@ pub fn process_region(
                 #![trigger new_bases[i], new_bases[j]]
                 0 <= i < j < new_bases.len() as int ==>
                 (new_bases[i] as int) < (new_bases[j] as int),
+        decreases page_count - idx,
     {
         let vaddr: usize = get_nth_page_addr(region.start, idx);
         let curr_base: usize = compute_pgtab_base(vaddr);
@@ -681,12 +682,11 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
             last_base.is_some() ==> forall|i: int| #![auto]
                 0 <= i < all_bases.len() as int ==>
                 all_bases[i] as int <= last_base.unwrap() as int,
-            // Connection: last_base is Some iff we've processed at least one region.
-            last_base.is_some() <==> all_bases.len() > 0 || r_idx > 0,
             // If last_base is Some and there are more regions, it's <= the next region's base.
             last_base.is_some() && r_idx < regions.len() as int ==>
                 last_base.unwrap() as int
                     <= spec_pgtab_base(regions[r_idx as int].spec_start()),
+        decreases regions.len() - r_idx,
     {
         let region: &MemRegion = &regions[r_idx];
 
@@ -725,6 +725,7 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: Vec<usize>)
                 forall|i: int| #![auto]
                     0 <= i < all_bases.len() as int ==>
                     all_bases[i] as int % INIT_PGTAB_ALIGNMENT as int == 0,
+            decreases new_bases.len() - k,
         {
             all_bases.push(new_bases[k]);
             k = k + 1;
