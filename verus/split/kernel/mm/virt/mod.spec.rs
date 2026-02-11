@@ -159,67 +159,6 @@ impl MemRegion {
 }
 
 //==================================================================================================
-// View Type for Init Result
-//==================================================================================================
-
-/// Abstract view of the virtual memory initialization result.
-///
-/// # Description
-///
-/// Captures the essential properties of the init function's output:
-/// - A sequence of page table base addresses (ordered, aligned).
-/// - The regions that were processed.
-#[verifier::ext_equal]
-pub struct VirtInitView {
-    /// The input regions processed by init.
-    pub regions: Seq<MemRegion>,
-    /// The page table base addresses in the output (unique, sorted).
-    pub page_table_bases: Seq<int>,
-}
-
-impl VirtInitView {
-    /// Property: all input regions are sorted by start address.
-    pub open spec fn regions_sorted(&self) -> bool {
-        forall|i: int, j: int|
-            #![trigger self.regions[i], self.regions[j]]
-            0 <= i < j < self.regions.len() as int ==>
-            self.regions[i].spec_start() <= self.regions[j].spec_start()
-    }
-
-    /// Property: all input regions are valid (positive size, aligned).
-    pub open spec fn regions_valid(&self) -> bool {
-        forall|i: int|
-            #![trigger self.regions[i]]
-            0 <= i < self.regions.len() as int ==>
-            self.regions[i].spec_is_valid()
-    }
-
-    /// Property: output page table bases are in non-decreasing order.
-    pub open spec fn page_tables_ordered(&self) -> bool {
-        forall|i: int, j: int|
-            #![trigger self.page_table_bases[i], self.page_table_bases[j]]
-            0 <= i < j < self.page_table_bases.len() as int ==>
-            self.page_table_bases[i] <= self.page_table_bases[j]
-    }
-
-    /// Property: all page table bases are properly aligned.
-    pub open spec fn page_tables_aligned(&self) -> bool {
-        forall|i: int|
-            #![trigger self.page_table_bases[i]]
-            0 <= i < self.page_table_bases.len() as int ==>
-            self.page_table_bases[i] % INIT_PGTAB_ALIGNMENT as int == 0
-    }
-
-    /// Property: no duplicate page table bases (strictly increasing).
-    pub open spec fn page_tables_unique(&self) -> bool {
-        forall|i: int, j: int|
-            #![trigger self.page_table_bases[i], self.page_table_bases[j]]
-            0 <= i < j < self.page_table_bases.len() as int ==>
-            self.page_table_bases[i] < self.page_table_bases[j]
-    }
-}
-
-//==================================================================================================
 // PageTableStorage Spec Functions
 //==================================================================================================
 
@@ -270,35 +209,23 @@ impl PgtabDecision {
 }
 
 //==================================================================================================
-// Init Loop Invariant Spec
+// Init Mapping Coverage Spec
 //==================================================================================================
 
-/// Spec for the init inner loop invariant.
+/// Recursive spec function computing the total number of pages across regions.
 ///
 /// # Description
 ///
-/// Captures the state maintained across iterations of the inner page-mapping loop.
-/// The invariant ensures that the page table list remains sorted and aligned,
-/// and that the last base address is consistent with the current virtual address.
-pub open spec fn spec_init_loop_inv(
-    pgtab_bases: Seq<int>,
-    last_base: int,
-    vaddr: int,
-) -> bool {
-    // The last base is the pgtab base for the current vaddr.
-    &&& last_base == spec_pgtab_base(vaddr)
-    // The last base is aligned.
-    &&& last_base % INIT_PGTAB_ALIGNMENT as int == 0
-    // All existing bases are aligned.
-    &&& forall|i: int|
-            #![trigger pgtab_bases[i]]
-            0 <= i < pgtab_bases.len() ==>
-            pgtab_bases[i] % INIT_PGTAB_ALIGNMENT as int == 0
-    // All existing bases are <= the last base.
-    &&& forall|i: int|
-            #![trigger pgtab_bases[i]]
-            0 <= i < pgtab_bases.len() ==>
-            pgtab_bases[i] <= last_base
+/// Computes the sum of page counts for regions[0..n). Used to prove that
+/// init() visits exactly the right number of pages (functional completeness).
+pub open spec fn spec_total_pages(regions: Seq<MemRegion>, n: int) -> int
+    decreases n,
+{
+    if n <= 0 {
+        0
+    } else {
+        spec_total_pages(regions, n - 1) + spec_page_count(regions[n - 1].spec_size())
+    }
 }
 
 } // verus!

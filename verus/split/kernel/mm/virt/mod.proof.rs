@@ -389,6 +389,47 @@ impl VirtProofs {
     {
         Self::lemma_sorted_addrs_sorted_pgtab_bases(prev_vaddr, curr_vaddr);
     }
+
+    //==============================================================================================
+    // Init Mapping Coverage Proofs
+    //==============================================================================================
+
+    /// Proof that spec_total_pages unfolds correctly at step n.
+    ///
+    /// # Description
+    ///
+    /// Proves that `spec_total_pages(regions, n + 1) ==
+    ///   spec_total_pages(regions, n) + spec_page_count(regions[n].spec_size())`.
+    /// This is needed in the init loop to maintain the ghost page counter
+    /// across outer loop iterations.
+    pub proof fn lemma_total_pages_step(regions: Seq<MemRegion>, n: int)
+        requires
+            0 <= n < regions.len(),
+        ensures
+            spec_total_pages(regions, n + 1)
+                == spec_total_pages(regions, n)
+                    + spec_page_count(regions[n].spec_size()),
+    {
+        // Follows directly from spec_total_pages definition unfolding.
+    }
+
+
+    /// Proof that spec_total_pages is non-negative for valid regions.
+    pub proof fn lemma_total_pages_nonneg(regions: Seq<MemRegion>, n: int)
+        requires
+            0 <= n <= regions.len(),
+            forall|i: int| #![auto] 0 <= i < regions.len() ==>
+                regions[i].spec_is_valid(),
+        ensures
+            spec_total_pages(regions, n) >= 0,
+        decreases n,
+    {
+        if n > 0 {
+            Self::lemma_total_pages_nonneg(regions, n - 1);
+            // spec_page_count(regions[n-1].spec_size()) = regions[n-1].size / PAGE_SIZE >= 0
+            // since size > 0 and PAGE_SIZE > 0.
+        }
+    }
 }
 
 } // verus!
