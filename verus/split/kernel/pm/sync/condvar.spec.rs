@@ -15,11 +15,11 @@ verus! {
 /// # Description
 ///
 /// Represents the observable state of a condition variable: the queue of waiting
-/// threads, each identified by a (pid, tid) pair stored as (int, int).
+/// threads, each identified by a (pid, tid) pair stored as (i32, i32).
 #[verifier::ext_equal]
 pub struct CondvarView {
     /// The sequence of sleeping (pid, tid) pairs, in FIFO order.
-    pub sleeping: Seq<(int, int)>,
+    pub sleeping: Seq<(i32, i32)>,
 }
 
 //==================================================================================================
@@ -31,7 +31,7 @@ impl Condvar {
     ///
     /// # Description
     ///
-    /// Enforces that the concrete length counter matches the ghost sequence
+    /// Enforces that the concrete length counter matches the concrete Vec
     /// length, that all queue entries are unique (trust assumption T1), and
     /// that no kernel process entry exists in the queue (safety invariant
     /// from the original `wait()` panic guard).
@@ -58,7 +58,7 @@ impl Condvar {
 
     /// Spec function: the view of a newly created condvar.
     pub open spec fn spec_new_view() -> CondvarView {
-        CondvarView { sleeping: Seq::empty() }
+        CondvarView { sleeping: Seq::<(i32, i32)>::empty() }
     }
 
     /// Spec function: returns whether the queue contains an entry with the given pid.
@@ -115,21 +115,21 @@ impl Condvar {
     }
 
     /// Spec function: returns the front element of the queue.
-    pub open spec fn spec_front(&self) -> (int, int)
+    pub open spec fn spec_front(&self) -> (i32, i32)
         recommends !self.spec_is_empty()
     {
         self@.sleeping[0]
     }
 
     /// Spec function: returns the back element of the queue.
-    pub open spec fn spec_back(&self) -> (int, int)
+    pub open spec fn spec_back(&self) -> (i32, i32)
         recommends !self.spec_is_empty()
     {
         self@.sleeping[self@.sleeping.len() as int - 1]
     }
 
     /// Spec function: returns the sequence after removing the element at index `idx`.
-    pub open spec fn spec_remove_at_seq(s: Seq<(int, int)>, idx: int) -> Seq<(int, int)>
+    pub open spec fn spec_remove_at_seq(s: Seq<(i32, i32)>, idx: int) -> Seq<(i32, i32)>
         recommends 0 <= idx < s.len()
     {
         s.subrange(0, idx) + s.subrange(idx + 1, s.len() as int)

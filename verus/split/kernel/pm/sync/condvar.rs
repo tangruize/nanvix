@@ -16,7 +16,7 @@
 //!   the queue is unchanged; otherwise, enqueue proceeds.
 //! - `dequeue_first` removes the front entry (FIFO) and decreases length by 1.
 //! - `remove_at` removes the entry at a given index and preserves remaining order.
-//! - `remove_entry` removes a specific (pid, tid) entry by ghost index, models
+//! - `remove_entry` removes a specific (pid, tid) entry by index, models
 //!   `wait()` failure cleanup. Under uniqueness, the entry is absent afterward.
 //! - `remove_by_pid` removes the first entry matching a pid (first-match).
 //! - `remove_by_tid` removes the first entry matching a tid (first-match).
@@ -42,7 +42,7 @@
 //! The original implementation uses `Arc<CondvarInner>` with
 //! `RefCell<LinkedList<(ProcessIdentifier, ThreadIdentifier)>>` for interior
 //! mutability and shared ownership. For verification, we model the sleeping
-//! queue as a ghost `Seq<(int, int)>` field and a concrete `len: usize`
+//! queue as a concrete `Vec<(i32, i32)>` field and a concrete `len: usize`
 //! counter, using `&mut self` for state transitions. This is a sequential
 //! model that verifies the queue protocol (state machine correctness) without
 //! reasoning about interior mutability or shared ownership.
@@ -92,13 +92,12 @@
 //!
 //! The original `notify_process` and `notify_thread` search the queue by pid
 //! or tid using `LinkedList::iter().position()`. In the verified model, the
-//! search result is provided as a ghost index parameter. The wrapper functions
-//! `remove_by_pid` and `remove_by_tid` connect the search predicate to the
-//! ghost index via preconditions that assert the entry at the ghost index
-//! matches the search criterion. The lower-level `remove_at` is also retained
-//! for generality. The spec functions `spec_contains_pid` and
-//! `spec_contains_tid` allow callers to reason about whether a matching entry
-//! exists.
+//! search result is provided as a concrete index parameter. The wrapper
+//! functions `remove_by_pid` and `remove_by_tid` connect the search predicate
+//! to the index via preconditions that assert the entry at the index matches
+//! the search criterion. The lower-level `remove_at` is also retained for
+//! generality. The spec functions `spec_contains_pid` and `spec_contains_tid`
+//! allow callers to reason about whether a matching entry exists.
 //!
 //! The original `notify_process(pid)` documentation says "Wakes up all threads
 //! of a process" but the implementation only wakes the *first* thread found
@@ -196,19 +195,19 @@ verus! {
 ///
 /// Manages a FIFO queue of sleeping threads, each identified by a (pid, tid)
 /// pair. In the original implementation, this uses `Arc<CondvarInner>` with
-/// `RefCell<LinkedList<...>>`. Here we use a ghost `Seq` and a concrete length
-/// counter for verification.
+/// `RefCell<LinkedList<...>>`. Here we use a concrete `Vec<(i32, i32)>` and
+/// a concrete length counter for verification.
 ///
 /// # Representation
 ///
 /// The fields are `pub` as required by Verus for `pub open spec fn` access.
-/// The `sleeping` field is ghost (erased at runtime) and tracks the abstract
-/// queue state. The `len` field is the concrete queue length.
+/// The `sleeping` field is a concrete Vec storing the FIFO queue of
+/// (pid, tid) pairs. The `len` field tracks the queue length.
 pub struct Condvar {
     /// Concrete queue length.
     pub len: usize,
-    /// Ghost FIFO queue of (pid_value, tid_value) pairs.
-    pub sleeping: Ghost<Seq<(int, int)>>,
+    /// Concrete FIFO queue of (pid_value, tid_value) pairs.
+    pub sleeping: Vec<(i32, i32)>,
 }
 
 //==================================================================================================
@@ -228,7 +227,7 @@ impl Condvar {
             result@ == Condvar::spec_new_view(),
             result.wf(),
     {
-        Condvar { len: 0, sleeping: Ghost(Seq::empty()) }
+        Condvar { len: 0, sleeping: Vec::new() }
     }
 
     /// Adds a thread to the back of the sleeping queue.
@@ -251,14 +250,14 @@ impl Condvar {
             pid_val as int != Condvar::spec_kernel_pid(),
         ensures
             self.len as nat == old(self).len as nat + 1,
-            self@.sleeping =~= old(self)@.sleeping.push((pid_val as int, tid_val as int)),
+            self@.sleeping =~= old(self)@.sleeping.push((pid_val, tid_val)),
             !self.spec_is_empty(),
             self.wf(),
     {
         proof {
             // Bridge from self.spec_all_unique() to raw-Seq uniqueness.
-            let entry: (int, int) = (pid_val as int, tid_val as int);
-            let s: Seq<(int, int)> = self.sleeping@;
+            let entry: (i32, i32) = (pid_val, tid_val);
+            let s: Seq<(i32, i32)> = self.sleeping@;
             assert(s =~= self@.sleeping);
             // Uniqueness of s follows from wf() which includes spec_all_unique().
             assert forall|i: int, j: int|
@@ -276,12 +275,12 @@ impl Condvar {
                 0 <= i < s.len() as int
             implies s[i] != entry by {
                 if s[i] == entry {
-                    assert(s[i].0 == pid_val as int && s[i].1 == tid_val as int);
+                    assert(s[i].0 == pid_val && s[i].1 == tid_val);
                 }
             }
             Condvar::lemma_enqueue_preserves_unique(s, entry);
             // Prove no-kernel-pid is preserved after push.
-            let new_s: Seq<(int, int)> = s.push(entry);
+            let new_s: Seq<(i32, i32)> = s.push(entry);
             assert forall|i: int|
                 #![trigger new_s[i]]
                 0 <= i < new_s.len() as int
@@ -295,7 +294,7 @@ impl Condvar {
             }
         }
         self.len = self.len + 1;
-        self.sleeping = Ghost(self.sleeping@.push((pid_val as int, tid_val as int)));
+        self.sleeping.push((pid_val, tid_val));
     }
 
     /// Conditionally enqueues a (pid, tid) entry, modeling `wait()` with alarm.
@@ -333,7 +332,7 @@ impl Condvar {
             // If enqueued: queue grew by one.
             enqueued ==> self.len as nat == old(self).len as nat + 1,
             enqueued ==> self@.sleeping =~= old(self)@.sleeping.push(
-                (pid_val as int, tid_val as int),
+                (pid_val, tid_val),
             ),
             // If alarm expired: queue unchanged.
             !enqueued ==> self@ == old(self)@,
@@ -374,49 +373,66 @@ impl Condvar {
             self.wf(),
     {
         if self.len > 0 {
-            let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
             self.len = self.len - 1;
-            self.sleeping = Ghost(old_sleeping.subrange(1, old_sleeping.len() as int));
+            let _removed: (i32, i32) = self.sleeping.remove(0);
             true
         } else {
             false
         }
     }
 
-    /// Removes the thread at the given ghost index from the sleeping queue.
+    /// Removes the thread at the given index from the sleeping queue.
     ///
     /// # Description
     ///
     /// Models the find-and-remove operation used by the original
-    /// `notify_process()` and `notify_thread()`. The ghost index represents
+    /// `notify_process()` and `notify_thread()`. The index represents
     /// the result of `LinkedList::iter().position()` in the original.
     ///
     /// # Parameters
     ///
-    /// - `idx`: Ghost index of the entry to remove. Must be a valid index
+    /// - `idx`: Index of the entry to remove. Must be a valid index
     ///   into the sleeping queue.
     ///
     /// # Returns
     ///
     /// Always returns `true` (removal always succeeds when preconditions hold).
-    pub fn remove_at(&mut self, Ghost(idx): Ghost<int>) -> (removed: bool)
+    pub fn remove_at(&mut self, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            0 <= idx < old(self).len as int,
+            idx < old(self).len,
         ensures
             removed,
             self.len as nat == old(self).len as nat - 1,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
+            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
-        let ghost old_sleeping: Seq<(int, int)> = self.sleeping@;
+        proof {
+            // Uniqueness preservation (uses _cv variant to avoid trigger mismatch).
+            self.lemma_remove_at_preserves_unique_cv(idx as int);
+            // No-kernel-pid preservation: map result elements back to originals.
+            let s: Seq<(i32, i32)> = self@.sleeping;
+            let idx_int: int = idx as int;
+            let sub1: Seq<(i32, i32)> = s.subrange(0, idx_int);
+            let sub2: Seq<(i32, i32)> = s.subrange(idx_int + 1, s.len() as int);
+            let result: Seq<(i32, i32)> = sub1 + sub2;
+            assert(result =~= Condvar::spec_remove_at_seq(s, idx_int));
+            assert forall|i: int|
+                #![trigger result[i]]
+                0 <= i < result.len() as int
+            implies result[i].0 != Condvar::spec_kernel_pid() by {
+                if i < sub1.len() as int {
+                    assert(result[i] == sub1[i]);
+                    assert(sub1[i] == s[i]);
+                } else {
+                    let j: int = i - sub1.len() as int;
+                    assert(result[i] == sub2[j]);
+                    assert(sub2[j] == s[idx_int + 1 + j]);
+                }
+            }
+        }
         self.len = self.len - 1;
-        self.sleeping = Ghost(
-            old_sleeping.subrange(0, idx) + old_sleeping.subrange(
-                idx + 1,
-                old_sleeping.len() as int,
-            ),
-        );
+        let _removed: (i32, i32) = self.sleeping.remove(idx);
         true
     }
 
@@ -427,7 +443,7 @@ impl Condvar {
     /// Models the `wait()` failure cleanup path in the original, where
     /// `self.sleeping.borrow_mut().retain(|&mut (p, t)| p != pid || t != tid)`
     /// removes the entry after `ProcessManager::sleep()` fails. The caller
-    /// provides a ghost index proving where the entry is located.
+    /// provides the index where the entry is located.
     ///
     /// **Note:** The original `retain()` removes *all* entries matching
     /// `(pid, tid)`, while this model removes exactly one entry at the given
@@ -439,23 +455,23 @@ impl Condvar {
     ///
     /// - `pid_val`: Process identifier value to remove.
     /// - `tid_val`: Thread identifier value to remove.
-    /// - `idx`: Ghost index of the (pid, tid) entry in the queue.
+    /// - `idx`: Index of the (pid, tid) entry in the queue.
     ///
     /// # Returns
     ///
     /// Always returns `true` (removal succeeds when preconditions hold).
-    pub fn remove_entry(&mut self, pid_val: i32, tid_val: i32, Ghost(idx): Ghost<int>) -> (removed: bool)
+    pub fn remove_entry(&mut self, pid_val: i32, tid_val: i32, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            0 <= idx < old(self).len as int,
-            old(self)@.sleeping[idx] == (pid_val as int, tid_val as int),
+            idx < old(self).len,
+            old(self)@.sleeping[idx as int] == (pid_val, tid_val),
         ensures
             removed,
             self.len as nat == old(self).len as nat - 1,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
+            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
-        self.remove_at(Ghost(idx))
+        self.remove_at(idx)
     }
 
     /// Removes the first entry matching a given process identifier.
@@ -464,34 +480,34 @@ impl Condvar {
     ///
     /// Models the original `notify_process(pid)` which uses
     /// `LinkedList::iter().position()` to find the first entry with matching
-    /// pid, then removes it. The ghost index must point to the first entry
+    /// pid, then removes it. The index must point to the first entry
     /// whose pid component matches `pid_val`.
     ///
     /// # Parameters
     ///
     /// - `pid_val`: Process identifier value to search for.
-    /// - `idx`: Ghost index of the first matching entry in the queue.
+    /// - `idx`: Index of the first matching entry in the queue.
     ///
     /// # Returns
     ///
     /// Always returns `true` (removal succeeds when preconditions hold).
-    pub fn remove_by_pid(&mut self, pid_val: i32, Ghost(idx): Ghost<int>) -> (removed: bool)
+    pub fn remove_by_pid(&mut self, pid_val: i32, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            0 <= idx < old(self).len as int,
-            old(self)@.sleeping[idx].0 == pid_val as int,
+            idx < old(self).len,
+            old(self)@.sleeping[idx as int].0 == pid_val as int,
             // The index is the first match, modeling `position()` semantics.
             forall|k: int|
                 #![trigger old(self)@.sleeping[k]]
-                0 <= k < idx ==> old(self)@.sleeping[k].0 != pid_val as int,
+                0 <= k < idx as int ==> old(self)@.sleeping[k].0 != pid_val as int,
         ensures
             removed,
             self.len as nat == old(self).len as nat - 1,
-            old(self)@.sleeping[idx].0 == pid_val as int,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
+            old(self)@.sleeping[idx as int].0 == pid_val as int,
+            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
-        self.remove_at(Ghost(idx))
+        self.remove_at(idx)
     }
 
     /// Removes the first entry matching a given thread identifier.
@@ -500,34 +516,34 @@ impl Condvar {
     ///
     /// Models the original `notify_thread(tid)` which uses
     /// `LinkedList::iter().position()` to find the first entry with matching
-    /// tid, then removes it. The ghost index must point to the first entry
+    /// tid, then removes it. The index must point to the first entry
     /// whose tid component matches `tid_val`.
     ///
     /// # Parameters
     ///
     /// - `tid_val`: Thread identifier value to search for.
-    /// - `idx`: Ghost index of the first matching entry in the queue.
+    /// - `idx`: Index of the first matching entry in the queue.
     ///
     /// # Returns
     ///
     /// Always returns `true` (removal succeeds when preconditions hold).
-    pub fn remove_by_tid(&mut self, tid_val: i32, Ghost(idx): Ghost<int>) -> (removed: bool)
+    pub fn remove_by_tid(&mut self, tid_val: i32, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            0 <= idx < old(self).len as int,
-            old(self)@.sleeping[idx].1 == tid_val as int,
+            idx < old(self).len,
+            old(self)@.sleeping[idx as int].1 == tid_val as int,
             // The index is the first match, modeling `position()` semantics.
             forall|k: int|
                 #![trigger old(self)@.sleeping[k]]
-                0 <= k < idx ==> old(self)@.sleeping[k].1 != tid_val as int,
+                0 <= k < idx as int ==> old(self)@.sleeping[k].1 != tid_val as int,
         ensures
             removed,
             self.len as nat == old(self).len as nat - 1,
-            old(self)@.sleeping[idx].1 == tid_val as int,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx),
+            old(self)@.sleeping[idx as int].1 == tid_val as int,
+            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
-        self.remove_at(Ghost(idx))
+        self.remove_at(idx)
     }
 
     /// Attempts to remove the first entry matching a given process identifier.
@@ -537,7 +553,7 @@ impl Condvar {
     /// Models the original `notify_process(pid)` including the "not found"
     /// case where `position()` returns `None` and the queue is unchanged.
     /// The `has_match` parameter indicates whether a matching entry exists.
-    /// If `true`, the ghost index must point to the first matching entry.
+    /// If `true`, the index must point to the first matching entry.
     ///
     /// **Note:** `has_match` is concrete (not ghost) because the exec code
     /// branches on it. In the original, this is computed internally by
@@ -550,21 +566,21 @@ impl Condvar {
     ///
     /// - `pid_val`: Process identifier value to search for.
     /// - `has_match`: Whether a matching entry exists in the queue.
-    /// - `ghost_idx`: Ghost index of the first matching entry (when found).
+    /// - `match_idx`: Index of the first matching entry (when found).
     ///
     /// # Returns
     ///
     /// `true` if an entry was found and removed, `false` if no match existed.
-    pub fn try_remove_by_pid(&mut self, pid_val: i32, has_match: bool, Ghost(ghost_idx): Ghost<int>) -> (found: bool)
+    pub fn try_remove_by_pid(&mut self, pid_val: i32, has_match: bool, match_idx: usize) -> (found: bool)
         requires
             old(self).wf(),
-            // If match exists: ghost_idx is the first valid match.
+            // If match exists: match_idx is the first valid match.
             has_match ==> (
-                0 <= ghost_idx < old(self).len as int
-                && old(self)@.sleeping[ghost_idx].0 == pid_val as int
+                match_idx < old(self).len
+                && old(self)@.sleeping[match_idx as int].0 == pid_val as int
                 && forall|k: int|
                     #![trigger old(self)@.sleeping[k]]
-                    0 <= k < ghost_idx ==> old(self)@.sleeping[k].0 != pid_val as int
+                    0 <= k < match_idx as int ==> old(self)@.sleeping[k].0 != pid_val as int
             ),
             // If no match: no entry has matching pid.
             !has_match ==> !old(self).spec_contains_pid(pid_val as int),
@@ -573,7 +589,7 @@ impl Condvar {
             // If found: removal happened.
             found ==> self.len as nat == old(self).len as nat - 1,
             found ==> self@.sleeping =~= Condvar::spec_remove_at_seq(
-                old(self)@.sleeping, ghost_idx,
+                old(self)@.sleeping, match_idx as int,
             ),
             // If not found: state unchanged.
             !found ==> self@ == old(self)@,
@@ -581,7 +597,7 @@ impl Condvar {
             self.wf(),
     {
         if has_match {
-            self.remove_at(Ghost(ghost_idx));
+            self.remove_at(match_idx);
             true
         } else {
             false
@@ -595,28 +611,28 @@ impl Condvar {
     /// Models the original `notify_thread(tid)` including the "not found"
     /// case where `position()` returns `None` and the queue is unchanged.
     /// The `has_match` parameter indicates whether a matching entry exists.
-    /// If `true`, the ghost index must point to the first matching entry.
+    /// If `true`, the index must point to the first matching entry.
     /// See `try_remove_by_pid` for the rationale on `has_match` being concrete.
     ///
     /// # Parameters
     ///
     /// - `tid_val`: Thread identifier value to search for.
     /// - `has_match`: Whether a matching entry exists in the queue.
-    /// - `ghost_idx`: Ghost index of the first matching entry (when found).
+    /// - `match_idx`: Index of the first matching entry (when found).
     ///
     /// # Returns
     ///
     /// `true` if an entry was found and removed, `false` if no match existed.
-    pub fn try_remove_by_tid(&mut self, tid_val: i32, has_match: bool, Ghost(ghost_idx): Ghost<int>) -> (found: bool)
+    pub fn try_remove_by_tid(&mut self, tid_val: i32, has_match: bool, match_idx: usize) -> (found: bool)
         requires
             old(self).wf(),
-            // If match exists: ghost_idx is the first valid match.
+            // If match exists: match_idx is the first valid match.
             has_match ==> (
-                0 <= ghost_idx < old(self).len as int
-                && old(self)@.sleeping[ghost_idx].1 == tid_val as int
+                match_idx < old(self).len
+                && old(self)@.sleeping[match_idx as int].1 == tid_val as int
                 && forall|k: int|
                     #![trigger old(self)@.sleeping[k]]
-                    0 <= k < ghost_idx ==> old(self)@.sleeping[k].1 != tid_val as int
+                    0 <= k < match_idx as int ==> old(self)@.sleeping[k].1 != tid_val as int
             ),
             // If no match: no entry has matching tid.
             !has_match ==> !old(self).spec_contains_tid(tid_val as int),
@@ -625,7 +641,7 @@ impl Condvar {
             // If found: removal happened.
             found ==> self.len as nat == old(self).len as nat - 1,
             found ==> self@.sleeping =~= Condvar::spec_remove_at_seq(
-                old(self)@.sleeping, ghost_idx,
+                old(self)@.sleeping, match_idx as int,
             ),
             // If not found: state unchanged.
             !found ==> self@ == old(self)@,
@@ -633,7 +649,7 @@ impl Condvar {
             self.wf(),
     {
         if has_match {
-            self.remove_at(Ghost(ghost_idx));
+            self.remove_at(match_idx);
             true
         } else {
             false
@@ -671,7 +687,7 @@ impl Condvar {
     {
         let old_len: usize = self.len;
         self.len = 0;
-        self.sleeping = Ghost(Seq::empty());
+        self.sleeping.clear();
         old_len
     }
 
