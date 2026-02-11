@@ -1,0 +1,33 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 23:54:01 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::virt
+
+note: verifying module kernel::mm::virt::kpage
+
+note: verifying module kernel::mm::virt::vmem
+
+error: precondition not satisfied
+   --> kernel/mm/virt/mod.rs:542:9
+    |
+542 |         get_mmio_paddr(region_start)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+572 |         region_start as int % INIT_PAGE_SIZE as int == 0,
+    |         ------------------------------------------------ failed precondition
+
+verification results:: 83 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 83
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:83, errors:1)
