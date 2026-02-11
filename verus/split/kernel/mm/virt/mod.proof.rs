@@ -38,6 +38,9 @@ impl VirtProofs {
             spec_align_down(addr, alignment) <= addr,
     {
         vstd::arithmetic::div_mod::lemma_fundamental_div_mod(addr, alignment);
+        // vstd gives: addr == alignment * (addr / alignment) + (addr % alignment).
+        // Our spec uses (addr / alignment) * alignment, so apply commutativity.
+        vstd::arithmetic::mul::lemma_mul_is_commutative(alignment, addr / alignment);
         assert(addr % alignment >= 0);
     }
 
@@ -114,6 +117,7 @@ impl VirtProofs {
             spec_align_down(addr, alignment) == addr,
     {
         vstd::arithmetic::div_mod::lemma_fundamental_div_mod(addr, alignment);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(alignment, addr / alignment);
         assert(addr % alignment == 0);
     }
 
