@@ -1,0 +1,47 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 11 23:45:00 CST 2026
+Module: kernel::mm::virt
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::virt
+
+note: verifying module kernel::mm::virt::kpage
+
+note: verifying module kernel::mm::virt::vmem
+
+note: while loop: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/mm/virt/mod.rs:657:5
+    |
+657 |     while i < regions.len() - 1
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/mm/virt/mod.rs:649:9
+    |
+649 | /         (forall|i: int| #![auto] 0 <= i < regions.len() as int - 1 ==>
+650 | |             regions[i].spec_end() <= regions[i + 1].spec_start())
+651 | |             ==> result,
+    | |______________________^ failed this postcondition
+...
+678 |               return false;
+    |               ------------ at this exit
+
+error: possible arithmetic underflow/overflow
+   --> kernel/mm/virt/mod.rs:677:12
+    |
+677 |         if regions[i].start + regions[i].size > regions[i + 1].start {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 83 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 83
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt (verified:83, errors:1)
