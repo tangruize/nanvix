@@ -51,6 +51,29 @@
 //!     - Correctness: every `paddr == spec_init_paddr(vaddr, region_start, is_mmio)`.
 //!     - Identity: non-MMIO pages satisfy `paddr == vaddr`.
 //!     - Alignment: all mapped vaddrs and paddrs are page-aligned.
+//!     - No Double-Mapping: all vaddrs are strictly increasing.
+//! 12. **Map Side Effect**: The `page_table_map_page(vaddr, paddr)` call models
+//!     the original `page_table.map()` side effect. It is called for every page
+//!     with verified-correct arguments (alignment, identity/MMIO correctness).
+//!     The actual PTE write is a HAL-level operation at the `external_body`
+//!     boundary.
+//!
+//! ## Verification Boundary
+//!
+//! This is a **verified model** of the init algorithm, not a drop-in replacement
+//! for the original implementation. The verification boundary is:
+//!
+//! - **Verified**: The algorithm that determines WHAT to map (which vaddr → paddr
+//!   pairs) and in what order. The ghost `PageMapping` postconditions prove every
+//!   page is visited with correct arguments. The `page_table_map_page` call models
+//!   the side effect at the spec level.
+//! - **External (HAL)**: The actual PTE write (`page_table.map()`), page table
+//!   allocation (`PageTableStorage`), MMIO address translation, and unsafe pointer
+//!   operations. These are modeled as `external_body` with specs capturing their
+//!   safety-relevant properties (alignment, length, address correctness).
+//!
+//! This layered approach separates algorithm correctness (verified here) from
+//! hardware interaction correctness (verified at the HAL level or by inspection).
 //!
 //! ## Abstraction Decisions
 //!
@@ -554,6 +577,33 @@ pub fn is_last_kernel_page(vaddr: usize) -> (result: bool)
 }
 
 
+/// Models the `page_table.map(vaddr, paddr)` call from the original `init()`.
+///
+/// # Description
+///
+/// The original `init()` calls `page_table.map(vaddr, paddr)` for every page,
+/// which writes a page table entry (PTE) to the page table storage. This
+/// involves unsafe pointer writes to hardware-managed memory structures.
+///
+/// This `external_body` models the side effect: the function is called with
+/// verified-correct (vaddr, paddr) arguments, and the ghost `PageMapping`
+/// postconditions prove the arguments match `spec_init_paddr`. The actual
+/// PTE write is a HAL-level operation verified separately.
+///
+/// # Parameters
+///
+/// - `vaddr`: Virtual address of the page to map (page-aligned).
+/// - `paddr`: Physical address to map to (page-aligned).
+#[verifier::external_body]
+pub fn page_table_map_page(vaddr: usize, paddr: usize)
+    requires
+        vaddr as int % INIT_PAGE_SIZE as int == 0,
+        paddr as int % INIT_PAGE_SIZE as int == 0,
+{
+    // HAL-level unsafe PTE write - intentionally unimplemented in model.
+}
+
+
 /// Verified init function modeling the original `init()`.
 ///
 /// # Description
@@ -616,6 +666,7 @@ pub fn is_last_kernel_page(vaddr: usize) -> (result: bool)
 /// - Mapping correctness: each entry satisfies `spec_init_paddr`.
 /// - Identity mapping: non-MMIO pages have paddr == vaddr.
 /// - Alignment: all mapped vaddrs and paddrs are page-aligned.
+/// - No double-mapping: all mapped vaddrs are strictly increasing.
 pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMapping>>))
     requires
         // All regions are valid.
@@ -664,12 +715,18 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
         // Alignment: all mapped paddrs are page-aligned.
         forall|k: int| #![auto] 0 <= k < result.1@.len() ==>
             result.1@[k].paddr % INIT_PAGE_SIZE as int == 0,
+        // No double-mapping: all mapped vaddrs are strictly increasing.
+        forall|i: int, j: int|
+            #![trigger result.1@[i], result.1@[j]]
+            0 <= i < j < result.1@.len() ==>
+            result.1@[i].vaddr < result.1@[j].vaddr,
 {
     let mut all_bases: Vec<usize> = Vec::new();
     let mut last_base: Option<usize> = None;
     let mut r_idx: usize = 0;
     let ghost mut total_mapped: int = 0;
     let ghost mut mappings: Seq<PageMapping> = Seq::empty();
+    let ghost mut last_mapped_vaddr: Option<int> = None;
 
     proof {
         VirtProofs::lemma_total_pages_nonneg(regions@, 0);
@@ -734,6 +791,20 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
             // Ghost mapping: all paddrs are page-aligned.
             forall|k: int| #![auto] 0 <= k < mappings.len() ==>
                 mappings[k].paddr % INIT_PAGE_SIZE as int == 0,
+            // Ghost mapping: vaddrs are strictly increasing (no double-mapping).
+            forall|i: int, j: int|
+                #![trigger mappings[i], mappings[j]]
+                0 <= i < j < mappings.len() ==>
+                mappings[i].vaddr < mappings[j].vaddr,
+            // Ghost: last_mapped_vaddr tracks the most recent vaddr.
+            mappings.len() > 0 ==> last_mapped_vaddr.is_some(),
+            mappings.len() == 0 ==> last_mapped_vaddr.is_none(),
+            last_mapped_vaddr.is_some() ==> forall|k: int| #![auto]
+                0 <= k < mappings.len() ==>
+                mappings[k].vaddr <= last_mapped_vaddr.unwrap(),
+            // Ghost: cross-region vaddr ordering.
+            last_mapped_vaddr.is_some() && r_idx < regions.len() as int ==>
+                last_mapped_vaddr.unwrap() < regions[r_idx as int].spec_start(),
         decreases regions.len() - r_idx,
     {
         let region: &MemRegion = &regions[r_idx];
@@ -794,6 +865,23 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
                 // Ghost mapping: all paddrs are page-aligned.
                 forall|k: int| #![auto] 0 <= k < mappings.len() ==>
                     mappings[k].paddr % INIT_PAGE_SIZE as int == 0,
+                // Ghost mapping: vaddrs are strictly increasing (no double-mapping).
+                forall|i: int, j: int|
+                    #![trigger mappings[i], mappings[j]]
+                    0 <= i < j < mappings.len() ==>
+                    mappings[i].vaddr < mappings[j].vaddr,
+                // Ghost: last_mapped_vaddr tracks the most recent vaddr.
+                mappings.len() > 0 ==> last_mapped_vaddr.is_some(),
+                mappings.len() == 0 ==> last_mapped_vaddr.is_none(),
+                last_mapped_vaddr.is_some() ==> forall|k: int| #![auto]
+                    0 <= k < mappings.len() ==>
+                    mappings[k].vaddr <= last_mapped_vaddr.unwrap(),
+                // Ghost: last_mapped_vaddr tracks the page vaddr.
+                p_idx > 0 ==> last_mapped_vaddr == Some(
+                    spec_nth_page_addr(region.start as int, (p_idx - 1) as int)),
+                // Ghost: for p_idx == 0, last_mapped_vaddr < region start.
+                p_idx == 0 && last_mapped_vaddr.is_some() ==>
+                    last_mapped_vaddr.unwrap() < region.spec_start(),
             decreases page_count - p_idx,
         {
             proof {
@@ -808,6 +896,10 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
             // Non-MMIO: paddr == vaddr (identity mapping).
             // MMIO: paddr == spec_mmio_paddr(region.start) (constant across pages).
             let paddr: usize = get_page_paddr(vaddr, region.start, region.is_mmio);
+
+            // Execute the page table map operation (side effect).
+            // This models the original's page_table.map(vaddr, paddr) call.
+            page_table_map_page(vaddr, paddr);
 
             proof {
                 // Prove monotonicity: curr_base >= last_base (when present).
@@ -828,6 +920,17 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
             last_base = Some(curr_base);
 
             proof {
+                // Prove new vaddr > last_mapped_vaddr for strictly-increasing invariant.
+                if last_mapped_vaddr.is_some() {
+                    if p_idx > 0 {
+                        // Within region: vaddr = start + p_idx*PS > start + (p_idx-1)*PS.
+                        let ps: int = INIT_PAGE_SIZE as int;
+                        let prev_vaddr: int = spec_nth_page_addr(region.start as int, (p_idx - 1) as int);
+                        vstd::arithmetic::mul::lemma_mul_inequality(p_idx as int - 1, p_idx as int, ps);
+                    }
+                    // Cross-region (p_idx == 0): last_mapped_vaddr < region.start = vaddr.
+                }
+                last_mapped_vaddr = Some(vaddr as int);
                 mappings = mappings.push(PageMapping {
                     vaddr: vaddr as int,
                     paddr: paddr as int,
@@ -858,6 +961,9 @@ pub fn init(regions: &Vec<MemRegion>) -> (result: (Vec<usize>, Ghost<Seq<PageMap
                 assert(last_page < region.spec_end());
                 assert(region.spec_end() <= next_start);
                 VirtProofs::lemma_sorted_addrs_sorted_pgtab_bases(last_page, next_start);
+                // Establish last_mapped_vaddr < next region start.
+                assert(last_mapped_vaddr == Some(last_page));
+                assert(last_page < next_start);
             }
         }
     }
