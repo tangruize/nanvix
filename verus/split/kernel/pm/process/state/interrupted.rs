@@ -1,27 +1,11 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # InterruptedProcess — Design Verification
+//! # InterruptedProcess Implementation
 //!
 //! Represents a process that was interrupted in the Nanvix kernel.
 //! An InterruptedProcess has at least one interrupted thread, optional
 //! sleeping threads, and optional zombie threads.
-//!
-//! ## Verification Scope
-//!
-//! This is a **design-level (ghost model) verification**, not an
-//! implementation verification. All struct fields are `Ghost<...>` types
-//! and functions operate on ghost sequences. The verification proves that
-//! the *state transition logic* is correct — threads are not lost or
-//! duplicated, well-formedness invariants are preserved, and process
-//! identity is immutable — but does NOT verify the executable Rust code
-//! in `src/kernel/src/pm/process/state/interrupted.rs` directly.
-//!
-//! Structural equivalence between the ghost model and the real
-//! implementation (e.g., correct `VecDeque` method calls, absence of
-//! panics, memory safety) is assumed. Verifying the executable code
-//! would require `external_body` wrappers for standard library containers
-//! and `exec`-mode functions operating on real data, which is future work.
 //!
 //! ## Verified Properties
 //!
@@ -39,10 +23,10 @@
 //! ## Verification Model
 //!
 //! The original `InterruptedProcess` contains complex kernel types. For verification:
-//! - `Box<ProcessState>` -> PID (int, identity tracking only).
-//! - `NonEmptyVecDeque<InterruptedThread>` -> `Seq<int>` of thread IDs (ghost).
-//! - `Option<NonEmptyVecDeque<SleepingThread>>` -> `Seq<int>` (empty = None).
-//! - `Option<NonEmptyVecDeque<ZombieThread>>` -> `Seq<int>` (empty = None).
+//! - `Box<ProcessState>` -> PID (`u64`, identity tracking only).
+//! - `NonEmptyVecDeque<InterruptedThread>` -> `Vec<u64>` of thread IDs (concrete).
+//! - `Option<NonEmptyVecDeque<SleepingThread>>` -> `Vec<u64>` (empty = None).
+//! - `Option<NonEmptyVecDeque<ZombieThread>>` -> `Vec<u64>` (empty = None).
 //! - `InterruptReason` -> modeled as spec constant `INTERRUPT_REASON_KILLED`.
 //!   The standalone `interrupt()` function returns this tag explicitly.
 //!
@@ -68,7 +52,7 @@
 //!   that the thread module's verification must establish. If downstream code
 //!   relies on `interrupt_reason` being set, the thread module's proof must
 //!   discharge this obligation (see `src/kernel/src/pm/thread/interrupted.rs`).
-//! - `resume()` takes `admission_time: Ghost<int>` as an oracle parameter.
+//! - `resume()` takes `admission_time: u64` as an oracle parameter.
 //!   In the original code, admission time is set by `clock::now()` inside
 //!   `ReadyThread::from_state()`. Since the clock is a HAL boundary outside
 //!   this module's scope, the oracle pattern with caller-side obligations is
@@ -76,8 +60,8 @@
 //!   **Enforcement:** `resume_with_valid_clock()` is a verified wrapper that
 //!   requires `spec_admission_time_valid()` in its precondition, enforcing the
 //!   clock link at call sites that have access to the clock state. The base
-//!   `resume()` retains the weaker `>= 0` precondition for callers that cannot
-//!   yet provide a verified clock. The postcondition of `resume_with_valid_clock`
+//!   `resume()` accepts any `u64` value (non-negativity guaranteed by type).
+//!   The postcondition of `resume_with_valid_clock`
 //!   guarantees `spec_admission_time_valid(admission_times[0], clock_state)`.
 //! - `find_thread()` / `find_thread_mut()` are **spec-level models** — they
 //!   compute `spec_find_thread()` directly and do not model the executable
@@ -97,15 +81,14 @@
 //!   the result is unambiguous under `wf()`. If Verus adds support for
 //!   reference-typed returns or executable ghost iteration, this should be
 //!   replaced with a verified implementation. Tagged for trust-boundary inventory.
-//! - `state()` / `state_mut()` are implemented as pure ghost returns (no
-//!   external_body). The original returns `&ProcessState` / `&mut ProcessState`;
-//!   since ProcessState is abstracted to PID and all fields are ghost, the
-//!   frame condition holds trivially without trusted assumptions.
+//! - `state()` / `state_mut()` return the PID directly. The original returns
+//!   `&ProcessState` / `&mut ProcessState`; since ProcessState is abstracted to
+//!   PID, the frame condition holds trivially.
 //!   **ProcessState abstraction gap:** There is no verified link between the
-//!   ghost PID field and the real `ProcessState`'s internal PID. The model
-//!   assumes the ghost PID accurately reflects the real state.
+//!   concrete PID field and the real `ProcessState`'s internal PID. The model
+//!   assumes the PID accurately reflects the real state.
 //!   `spec_process_state_pid_integration_obligation` defines the formal
-//!   contract: `ghost_pid == real_process_state.pid()`. This must be
+//!   contract: `pid == real_process_state.pid()`. This must be
 //!   established at construction (`new()`/`from_sleeping()`) and is preserved
 //!   by all operations (proven by PID-preservation postconditions).
 //!   `lemma_pid_obligation_preserved_by_resume` formally proves preservation
@@ -136,13 +119,13 @@ verus! {
 /// Verification model of `src/kernel/src/pm/process/state/interrupted.rs::InterruptedProcess`.
 pub struct InterruptedProcess {
     /// Process identifier (from the inner ProcessState).
-    pub pid: Ghost<int>,
-    /// Ghost sequence of sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
-    /// Ghost sequence of interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Ghost<Seq<int>>,
-    /// Ghost sequence of zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub pid: u64,
+    /// Sleeping thread IDs (may be empty).
+    pub sleeping_thread_ids: Vec<u64>,
+    /// Interrupted thread IDs (non-empty).
+    pub interrupted_thread_ids: Vec<u64>,
+    /// Zombie thread IDs (may be empty).
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 /// A process that is ready to run (boundary model).
@@ -150,17 +133,17 @@ pub struct InterruptedProcess {
 /// Models `RunnableProcess` from the sibling module.
 pub struct RunnableProcess {
     /// Process identifier.
-    pub pid: Ghost<int>,
+    pub pid: u64,
     /// Ready thread IDs (non-empty).
-    pub ready_thread_ids: Ghost<Seq<int>>,
+    pub ready_thread_ids: Vec<u64>,
     /// Ready thread admission times, parallel to ready_thread_ids.
-    pub ready_admission_times: Ghost<Seq<int>>,
+    pub ready_admission_times: Vec<u64>,
     /// Interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Ghost<Seq<int>>,
+    pub interrupted_thread_ids: Vec<u64>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Ghost<Seq<int>>,
+    pub sleeping_thread_ids: Vec<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Ghost<Seq<int>>,
+    pub zombie_thread_ids: Vec<u64>,
 }
 
 //==================================================================================================
@@ -175,16 +158,16 @@ impl InterruptedProcess {
     /// # Parameters
     ///
     /// - `pid`: Process identifier.
-    /// - `interrupted_ids`: Ghost interrupted thread IDs (must be non-empty).
-    /// - `zombie_ids`: Ghost zombie thread IDs (may be empty).
+    /// - `interrupted_ids`: Interrupted thread IDs (must be non-empty).
+    /// - `zombie_ids`: Zombie thread IDs (may be empty).
     ///
     /// # Returns
     ///
     /// A new, well-formed InterruptedProcess with no sleeping threads.
     pub fn new(
-        pid: Ghost<int>,
-        interrupted_ids: Ghost<Seq<int>>,
-        zombie_ids: Ghost<Seq<int>>,
+        pid: u64,
+        interrupted_ids: Vec<u64>,
+        zombie_ids: Vec<u64>,
     ) -> (result: InterruptedProcess)
         requires
             interrupted_ids@.len() >= 1,
@@ -192,7 +175,7 @@ impl InterruptedProcess {
             Self::spec_no_duplicates(zombie_ids@),
             Self::spec_seqs_disjoint(interrupted_ids@, zombie_ids@),
         ensures
-            result.spec_pid() == pid@,
+            result.spec_pid() == pid,
             result.sleeping_thread_ids@.len() == 0,
             result.interrupted_thread_ids@ == interrupted_ids@,
             result.zombie_thread_ids@ == zombie_ids@,
@@ -200,7 +183,7 @@ impl InterruptedProcess {
     {
         InterruptedProcess {
             pid,
-            sleeping_thread_ids: Ghost(Seq::empty()),
+            sleeping_thread_ids: Vec::new(),
             interrupted_thread_ids: interrupted_ids,
             zombie_thread_ids: zombie_ids,
         }
@@ -214,18 +197,18 @@ impl InterruptedProcess {
     /// # Parameters
     ///
     /// - `pid`: Process identifier.
-    /// - `sleeping_ids`: Ghost sleeping thread IDs (may be empty).
-    /// - `interrupted_ids`: Ghost interrupted thread IDs (must be non-empty).
-    /// - `zombie_ids`: Ghost zombie thread IDs (may be empty).
+    /// - `sleeping_ids`: Sleeping thread IDs (may be empty).
+    /// - `interrupted_ids`: Interrupted thread IDs (must be non-empty).
+    /// - `zombie_ids`: Zombie thread IDs (may be empty).
     ///
     /// # Returns
     ///
     /// A new, well-formed InterruptedProcess.
     pub fn from_sleeping(
-        pid: Ghost<int>,
-        sleeping_ids: Ghost<Seq<int>>,
-        interrupted_ids: Ghost<Seq<int>>,
-        zombie_ids: Ghost<Seq<int>>,
+        pid: u64,
+        sleeping_ids: Vec<u64>,
+        interrupted_ids: Vec<u64>,
+        zombie_ids: Vec<u64>,
     ) -> (result: InterruptedProcess)
         requires
             interrupted_ids@.len() >= 1,
@@ -236,7 +219,7 @@ impl InterruptedProcess {
             Self::spec_seqs_disjoint(interrupted_ids@, zombie_ids@),
             Self::spec_seqs_disjoint(sleeping_ids@, zombie_ids@),
         ensures
-            result.spec_pid() == pid@,
+            result.spec_pid() == pid,
             result.sleeping_thread_ids@ == sleeping_ids@,
             result.interrupted_thread_ids@ == interrupted_ids@,
             result.zombie_thread_ids@ == zombie_ids@,
@@ -257,11 +240,11 @@ impl InterruptedProcess {
     /// # Returns
     ///
     /// The process identifier.
-    pub fn state(&self) -> (result: Ghost<int>)
+    pub fn state(&self) -> (result: u64)
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
     {
-        Ghost(self.pid@)
+        self.pid
     }
 
     /// Returns a mutable reference to the process state.
@@ -269,24 +252,23 @@ impl InterruptedProcess {
     /// Models the original `InterruptedProcess::state_mut()`.
     /// In the real implementation this returns `&mut ProcessState`, allowing
     /// mutation of inner fields (e.g., capabilities). Since our model abstracts
-    /// ProcessState to PID and all fields are ghost, the frame condition holds
-    /// trivially — nothing is mutated.
+    /// ProcessState to PID, the frame condition holds trivially.
     ///
     /// # Returns
     ///
-    /// The process identifier (as a ghost value).
-    pub fn state_mut(&mut self) -> (result: Ghost<int>)
+    /// The process identifier.
+    pub fn state_mut(&mut self) -> (result: u64)
         requires
             old(self).wf(),
         ensures
-            result@ == self.spec_pid(),
+            result == self.spec_pid(),
             self.spec_pid() == old(self).spec_pid(),
             self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf(),
     {
-        Ghost(self.pid@)
+        self.pid
     }
 
     /// Resumes the first interrupted thread and transitions to RunnableProcess.
@@ -309,22 +291,21 @@ impl InterruptedProcess {
     ///
     /// `admission_time`: The admission time assigned to the resumed thread.
     /// In the original code, this is `clock::now()` inside `ReadyThread::from_state()`.
-    /// The oracle must be non-negative. Callers must establish equivalence with
-    /// the real clock via `spec_admission_time_valid()` at the integration level.
-    /// The postcondition records the oracle value in `ready_admission_times[0]`
-    /// so downstream consumers can reason about the timestamp.
+    /// Non-negativity is guaranteed by the `u64` type. Callers must establish
+    /// equivalence with the real clock via `spec_admission_time_valid()` at the
+    /// integration level. The postcondition records the oracle value in
+    /// `ready_admission_times[0]` so downstream consumers can reason about it.
     ///
     /// # Parameters
     ///
-    /// - `admission_time`: Ghost admission time for the resumed thread.
+    /// - `admission_time`: Admission time for the resumed thread.
     ///
     /// # Returns
     ///
     /// A RunnableProcess with the resumed thread as the only ready thread.
-    pub fn resume(self, admission_time: Ghost<int>) -> (result: RunnableProcess)
+    pub fn resume(self, admission_time: u64) -> (result: RunnableProcess)
         requires
             self.wf(),
-            admission_time@ >= 0,
         ensures
             result.spec_pid() == self.spec_pid(),
             result.wf(),
@@ -333,7 +314,7 @@ impl InterruptedProcess {
             result.ready_thread_ids@[0] == self.interrupted_thread_ids@[0],
             // Admission time matches the oracle parameter.
             result.ready_admission_times@.len() == 1,
-            result.ready_admission_times@[0] == admission_time@,
+            result.ready_admission_times@[0] == admission_time,
             // Remaining interrupted threads (tail of original list).
             result.interrupted_thread_ids@ ==
                 self.interrupted_thread_ids@.subrange(1, self.interrupted_thread_ids@.len() as int),
@@ -343,89 +324,100 @@ impl InterruptedProcess {
             // Zombie threads preserved.
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
     {
-        let ghost front_tid: int = self.interrupted_thread_ids@[0];
-        let ghost remaining: Seq<int> =
-            self.interrupted_thread_ids@.subrange(1, self.interrupted_thread_ids@.len() as int);
+        // Destructure self to work with individual fields.
+        let pid: u64 = self.pid;
+        let mut interrupted: Vec<u64> = self.interrupted_thread_ids;
+        let sleeping: Vec<u64> = self.sleeping_thread_ids;
+        let zombie: Vec<u64> = self.zombie_thread_ids;
+        let ghost old_interrupted: Seq<u64> = interrupted@;
+
+        // Pop front of interrupted list.
+        let front_tid: u64 = interrupted.remove(0);
+
+        // Build ready list (singleton).
+        let mut ready: Vec<u64> = Vec::new();
+        ready.push(front_tid);
+
+        // Build admission times list (singleton).
+        let mut admit_times: Vec<u64> = Vec::new();
+        admit_times.push(admission_time);
 
         proof {
-            // The ready list has exactly one element.
-            let ready: Seq<int> = Seq::<int>::empty().push(front_tid);
-            assert(ready.len() == 1);
-            assert(ready[0] == front_tid);
+            // Connect Vec::remove(0) with subrange(1, len).
+            assert(old_interrupted.remove(0int) =~=
+                old_interrupted.subrange(1, old_interrupted.len() as int));
 
-            // The remaining interrupted list has length - 1.
-            assert(remaining.len() == (self.interrupted_thread_ids@.len() - 1) as nat);
+            let ready_spec: Seq<u64> = ready@;
+            assert(ready_spec.len() == 1);
+            assert(ready_spec[0] == front_tid);
 
             // Prove no-duplicates on the tail of the interrupted list.
-            Self::lemma_subrange_preserves_no_duplicates(self.interrupted_thread_ids@);
+            Self::lemma_subrange_preserves_no_duplicates(old_interrupted);
 
             // Prove the front element is not in the tail.
-            Self::lemma_front_not_in_tail(self.interrupted_thread_ids@);
+            Self::lemma_front_not_in_tail(old_interrupted);
 
             // Prove tail of interrupted is disjoint from sleeping and zombie.
-            Self::lemma_tail_disjoint_sleeping(
-                self.interrupted_thread_ids@, self.sleeping_thread_ids@);
-            Self::lemma_tail_disjoint_zombie(
-                self.interrupted_thread_ids@, self.zombie_thread_ids@);
+            Self::lemma_tail_disjoint_sleeping(old_interrupted, sleeping@);
+            Self::lemma_tail_disjoint_zombie(old_interrupted, zombie@);
 
             // Prove ready (singleton) is no-duplicates trivially.
-            assert(InterruptedProcess::spec_no_duplicates(ready)) by {
-                assert forall|i: int, j: int| 0 <= i < j < ready.len()
-                    implies ready[i] != ready[j]
+            assert(InterruptedProcess::spec_no_duplicates(ready_spec)) by {
+                assert forall|i: int, j: int| 0 <= i < j < ready_spec.len()
+                    implies ready_spec[i] != ready_spec[j]
                 by {
-                    // ready.len() == 1, so no i < j pair exists.
+                    // ready_spec.len() == 1, so no i < j pair exists.
                 }
             }
 
             // Prove ready is disjoint from remaining interrupted.
-            assert(InterruptedProcess::spec_seqs_disjoint(ready, remaining)) by {
+            assert(InterruptedProcess::spec_seqs_disjoint(ready_spec, interrupted@)) by {
                 assert forall|i: int, j: int|
-                    0 <= i < ready.len() && 0 <= j < remaining.len()
-                    implies ready[i] != remaining[j]
+                    0 <= i < ready_spec.len() && 0 <= j < interrupted@.len()
+                    implies ready_spec[i] != interrupted@[j]
                 by {
-                    assert(ready[i] == front_tid);
-                    assert(remaining[j] == self.interrupted_thread_ids@[j + 1]);
+                    assert(ready_spec[i] == front_tid);
+                    assert(interrupted@[j] == old_interrupted[j + 1]);
                 }
             }
 
             // Prove ready is disjoint from sleeping.
-            assert(InterruptedProcess::spec_seqs_disjoint(ready, self.sleeping_thread_ids@)) by {
+            assert(InterruptedProcess::spec_seqs_disjoint(ready_spec, sleeping@)) by {
                 assert forall|i: int, j: int|
-                    0 <= i < ready.len() && 0 <= j < self.sleeping_thread_ids@.len()
-                    implies ready[i] != self.sleeping_thread_ids@[j]
+                    0 <= i < ready_spec.len() && 0 <= j < sleeping@.len()
+                    implies ready_spec[i] != sleeping@[j]
                 by {
-                    assert(ready[i] == front_tid);
-                    assert(0 <= 0int < self.interrupted_thread_ids@.len());
-                    assert(self.interrupted_thread_ids@[0] == front_tid);
+                    assert(ready_spec[i] == front_tid);
+                    assert(0 <= 0int < old_interrupted.len());
+                    assert(old_interrupted[0] == front_tid);
                 }
             }
 
             // Prove ready is disjoint from zombie.
-            assert(InterruptedProcess::spec_seqs_disjoint(ready, self.zombie_thread_ids@)) by {
+            assert(InterruptedProcess::spec_seqs_disjoint(ready_spec, zombie@)) by {
                 assert forall|i: int, j: int|
-                    0 <= i < ready.len() && 0 <= j < self.zombie_thread_ids@.len()
-                    implies ready[i] != self.zombie_thread_ids@[j]
+                    0 <= i < ready_spec.len() && 0 <= j < zombie@.len()
+                    implies ready_spec[i] != zombie@[j]
                 by {
-                    assert(ready[i] == front_tid);
-                    assert(0 <= 0int < self.interrupted_thread_ids@.len());
-                    assert(self.interrupted_thread_ids@[0] == front_tid);
+                    assert(ready_spec[i] == front_tid);
+                    assert(0 <= 0int < old_interrupted.len());
+                    assert(old_interrupted[0] == front_tid);
                 }
             }
 
             // Admission times: singleton matching oracle.
-            let admit: Seq<int> = Seq::<int>::empty().push(admission_time@);
-            assert(admit.len() == 1);
-            assert(admit[0] == admission_time@);
-            assert(admit[0] >= 0);
+            let admit_spec: Seq<u64> = admit_times@;
+            assert(admit_spec.len() == 1);
+            assert(admit_spec[0] == admission_time);
         }
 
         RunnableProcess {
-            pid: Ghost(self.pid@),
-            ready_thread_ids: Ghost(Seq::<int>::empty().push(front_tid)),
-            ready_admission_times: Ghost(Seq::<int>::empty().push(admission_time@)),
-            interrupted_thread_ids: Ghost(remaining),
-            sleeping_thread_ids: Ghost(self.sleeping_thread_ids@),
-            zombie_thread_ids: Ghost(self.zombie_thread_ids@),
+            pid,
+            ready_thread_ids: ready,
+            ready_admission_times: admit_times,
+            interrupted_thread_ids: interrupted,
+            sleeping_thread_ids: sleeping,
+            zombie_thread_ids: zombie,
         }
     }
 
@@ -443,27 +435,27 @@ impl InterruptedProcess {
     ///
     /// # Parameters
     ///
-    /// - `admission_time`: Ghost admission time (must be clock-validated).
+    /// - `admission_time`: Admission time (must be clock-validated).
     /// - `clock_state`: Ghost abstract clock state at the call site.
     ///
     /// # Returns
     ///
     /// A RunnableProcess with clock-validated admission time.
     pub fn resume_with_valid_clock(
-        self, admission_time: Ghost<int>, clock_state: Ghost<int>,
+        self, admission_time: u64, clock_state: Ghost<int>,
     ) -> (result: RunnableProcess)
         requires
             self.wf(),
-            Self::spec_admission_time_valid(admission_time@, clock_state@),
+            Self::spec_admission_time_valid(admission_time as int, clock_state@),
         ensures
             result.spec_pid() == self.spec_pid(),
             result.wf(),
             result.ready_thread_ids@.len() == 1,
             result.ready_thread_ids@[0] == self.interrupted_thread_ids@[0],
             result.ready_admission_times@.len() == 1,
-            result.ready_admission_times@[0] == admission_time@,
+            result.ready_admission_times@[0] == admission_time,
             Self::spec_admission_time_valid(
-                result.ready_admission_times@[0], clock_state@),
+                result.ready_admission_times@[0] as int, clock_state@),
             result.interrupted_thread_ids@ ==
                 self.interrupted_thread_ids@.subrange(
                     1, self.interrupted_thread_ids@.len() as int),
@@ -497,16 +489,16 @@ impl InterruptedProcess {
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
     /// The ghost list variant.
-    pub fn find_thread(&self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<int>>)
         ensures
-            result@ == self.spec_find_thread(tid@),
+            result@ == self.spec_find_thread(tid),
     {
-        Ghost(self.spec_find_thread(tid@))
+        Ghost(self.spec_find_thread(tid))
     }
 
     /// Finds a thread by its identifier (mutable variant).
@@ -517,23 +509,23 @@ impl InterruptedProcess {
     ///
     /// # Parameters
     ///
-    /// - `tid`: Ghost thread identifier to search for.
+    /// - `tid`: Thread identifier to search for.
     ///
     /// # Returns
     ///
     /// The ghost list variant.
-    pub fn find_thread_mut(&mut self, tid: Ghost<int>) -> (result: Ghost<Option<int>>)
+    pub fn find_thread_mut(&mut self, tid: u64) -> (result: Ghost<Option<int>>)
         requires
             old(self).wf(),
         ensures
-            result@ == old(self).spec_find_thread(tid@),
+            result@ == old(self).spec_find_thread(tid),
             self.spec_pid() == old(self).spec_pid(),
             self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf(),
     {
-        Ghost(old(self).spec_find_thread(tid@))
+        Ghost(old(self).spec_find_thread(tid))
     }
 }
 
@@ -549,18 +541,18 @@ impl InterruptedProcess {
 ///
 /// # Parameters
 ///
-/// - `sleeping_tid`: Ghost thread identifier of the sleeping thread.
+/// - `sleeping_tid`: Thread identifier of the sleeping thread.
 ///
 /// # Returns
 ///
 /// A tuple of the same thread identifier and the interrupt reason
 /// (`INTERRUPT_REASON_KILLED`), modeling the ID-preserving transition.
-pub fn interrupt(sleeping_tid: Ghost<int>) -> (result: (Ghost<int>, Ghost<int>))
+pub fn interrupt(sleeping_tid: u64) -> (result: (u64, u64))
     ensures
-        result.0@ == sleeping_tid@,
-        result.1@ == InterruptedProcess::INTERRUPT_REASON_KILLED(),
+        result.0 == sleeping_tid,
+        result.1 as int == InterruptedProcess::INTERRUPT_REASON_KILLED(),
 {
-    (sleeping_tid, Ghost(InterruptedProcess::INTERRUPT_REASON_KILLED()))
+    (sleeping_tid, 0u64)
 }
 
 } // verus!

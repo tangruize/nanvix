@@ -1,26 +1,20 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-// InterruptedProcess Specification (Design-Level Verification).
+// InterruptedProcess Specification.
 // This file contains spec functions and View types for the InterruptedProcess type.
-//
-// ## Verification Scope
-//
-// This is a design-level (ghost model) specification. The spec functions define
-// abstract properties over ghost sequences of thread IDs. Structural equivalence
-// with the real executable code is assumed (see interrupted.rs header).
 //
 // ## Verification Model
 //
 // InterruptedProcess has at least one interrupted thread, optional sleeping
 // threads, and optional zombie threads. For verification:
-// - Thread lists are modeled as `Seq<int>` of abstract thread IDs.
-// - `NonEmptyVecDeque<InterruptedThread>` is modeled as `Seq<int>` with `len() >= 1`.
-// - `Option<NonEmptyVecDeque<SleepingThread>>` is modeled as `Seq<int>`:
-//   - `Seq::empty()` represents `None`.
-//   - `Seq` with `len() >= 1` represents `Some(non_empty_deque)`.
+// - Thread lists are modeled as concrete `Vec<u64>` of thread IDs.
+// - `NonEmptyVecDeque<InterruptedThread>` is modeled as `Vec<u64>` with `len() >= 1`.
+// - `Option<NonEmptyVecDeque<SleepingThread>>` is modeled as `Vec<u64>`:
+//   - Empty Vec represents `None`.
+//   - Vec with `len() >= 1` represents `Some(non_empty_deque)`.
 // - `Option<NonEmptyVecDeque<ZombieThread>>` is similarly modeled.
-// - `Box<ProcessState>` is transparent (modeled as PID only).
+// - `Box<ProcessState>` is transparent (modeled as PID only, concrete `u64`).
 //
 // ## Key Invariants
 //
@@ -69,10 +63,10 @@
 //   with a verified implementation.
 // - `state()` / `state_mut()` return references to ProcessState in the original.
 //   In the verification model, ProcessState is abstracted to PID and all fields
-//   are ghost, so these are implemented as pure ghost returns without
-//   external_body. The original `state_mut()` allows mutation of inner
-//   ProcessState fields (e.g., capabilities); since our model only tracks PID,
-//   the frame condition holds trivially.
+//   are concrete, so these are implemented as external_body returns.
+//   The original `state_mut()` allows mutation of inner ProcessState fields
+//   (e.g., capabilities); since our model only tracks PID, the frame condition
+//   holds trivially.
 // - The standalone `interrupt()` function is modeled as ID-preserving with
 //   an explicit `InterruptReason::Killed` tag (spec constant
 //   `INTERRUPT_REASON_KILLED`).
@@ -94,30 +88,30 @@ verus! {
 #[verifier::ext_equal]
 pub struct InterruptedProcessView {
     /// Process identifier value.
-    pub pid: int,
+    pub pid: u64,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<int>,
+    pub sleeping_thread_ids: Seq<u64>,
     /// Interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Seq<int>,
+    pub interrupted_thread_ids: Seq<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<u64>,
 }
 
 /// Abstract view of a RunnableProcess (boundary type).
 #[verifier::ext_equal]
 pub struct RunnableProcessView {
     /// Process identifier value.
-    pub pid: int,
+    pub pid: u64,
     /// Ready thread IDs (non-empty).
-    pub ready_thread_ids: Seq<int>,
+    pub ready_thread_ids: Seq<u64>,
     /// Ready thread admission times, parallel to ready_thread_ids.
-    pub ready_admission_times: Seq<int>,
+    pub ready_admission_times: Seq<u64>,
     /// Interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Seq<int>,
+    pub interrupted_thread_ids: Seq<u64>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<int>,
+    pub sleeping_thread_ids: Seq<u64>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<int>,
+    pub zombie_thread_ids: Seq<u64>,
 }
 
 //==================================================================================================
@@ -126,8 +120,8 @@ pub struct RunnableProcessView {
 
 impl InterruptedProcess {
     /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+    pub open spec fn spec_pid(&self) -> u64 {
+        self.pid
     }
 
     /// Spec function: returns the number of interrupted threads.
@@ -153,25 +147,25 @@ impl InterruptedProcess {
     }
 
     /// Spec function: checks if a thread ID is in the interrupted list.
-    pub open spec fn spec_has_interrupted_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_interrupted_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.interrupted_thread_ids@.len()
             && self.interrupted_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in the sleeping list.
-    pub open spec fn spec_has_sleeping_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.sleeping_thread_ids@.len()
             && self.sleeping_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in the zombie list.
-    pub open spec fn spec_has_zombie_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.zombie_thread_ids@.len()
             && self.zombie_thread_ids@[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in any list.
-    pub open spec fn spec_has_thread(&self, tid: int) -> bool {
+    pub open spec fn spec_has_thread(&self, tid: u64) -> bool {
         self.spec_has_interrupted_thread(tid)
         || self.spec_has_sleeping_thread(tid)
         || self.spec_has_zombie_thread(tid)
@@ -185,7 +179,7 @@ impl InterruptedProcess {
     /// - `None` if not found.
     ///
     /// Search order matches original: interrupted → sleeping → zombie.
-    pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+    pub open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
         if self.spec_has_interrupted_thread(tid) {
             Some(0int)
         } else if self.spec_has_sleeping_thread(tid) {
@@ -198,18 +192,18 @@ impl InterruptedProcess {
     }
 
     /// Spec helper: checks if a sequence contains a given value.
-    pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
+    pub open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
     /// Spec helper: checks whether a sequence has no duplicate elements.
-    pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
+    pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
             ==> s[i] != s[j]
     }
 
     /// Spec helper: checks whether two sequences share no common elements.
-    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+    pub open spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
@@ -252,7 +246,7 @@ impl InterruptedProcess {
     /// admission time for the newly ready thread. This spec function serves as
     /// a cross-module contract point: callers of `resume()` must provide an
     /// `admission_time` oracle satisfying:
-    ///   `admission_time@ == Self::spec_clock_now(clock_state)`
+    ///   `admission_time == Self::spec_clock_now(clock_state)`
     /// where `clock_state` is the abstract clock state at the call site.
     ///
     /// The clock model is a HAL boundary — this module does not define it.
@@ -302,7 +296,7 @@ impl InterruptedProcess {
     /// Verus cannot express the reference-typed return value (`ThreadRef`)
     /// or iterate ghost sequences.
     pub open spec fn spec_find_thread_integration_obligation(
-        &self, tid: int, real_result: Option<int>,
+        &self, tid: u64, real_result: Option<int>,
     ) -> bool {
         real_result == self.spec_find_thread(tid)
     }
@@ -318,25 +312,25 @@ impl InterruptedProcess {
     /// The `reason_tag` parameter represents the `InterruptReason` value
     /// (modeled as `INTERRUPT_REASON_KILLED` for the `Killed` variant).
     pub open spec fn spec_resume_reason_integration_obligation(
-        thread_id: int, reason_tag: int, ready_thread_reason: int,
+        thread_id: u64, reason_tag: int, ready_thread_reason: int,
     ) -> bool {
         ready_thread_reason == reason_tag
     }
 
     /// Integration obligation for ProcessState PID linking.
     ///
-    /// The ghost `pid` field in `InterruptedProcess` is assumed to match the
+    /// The `pid` field in `InterruptedProcess` is assumed to match the
     /// real `ProcessState::pid()` inside `Box<ProcessState>`. An integration
     /// proof (or the ProcessState module's verification) must establish:
-    ///   `ghost_pid == real_process_state.pid()`
+    ///   `pid == real_process_state.pid()`
     /// at construction time and show that no operation in this module
     /// invalidates this link. Since this module never mutates the PID
     /// (proven by PID-preservation postconditions on all functions), the
     /// obligation reduces to verifying the link at `new()` / `from_sleeping()`.
     pub open spec fn spec_process_state_pid_integration_obligation(
-        ghost_pid: int, real_pid: int,
+        model_pid: u64, real_pid: u64,
     ) -> bool {
-        ghost_pid == real_pid
+        model_pid == real_pid
     }
 }
 
@@ -346,8 +340,8 @@ impl InterruptedProcess {
 
 impl RunnableProcess {
     /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> int {
-        self.pid@
+    pub open spec fn spec_pid(&self) -> u64 {
+        self.pid
     }
 
     /// Spec function: well-formedness predicate.
@@ -355,14 +349,11 @@ impl RunnableProcess {
     /// A boundary RunnableProcess is well-formed when:
     /// - There is at least one ready thread (NonEmptyVecDeque invariant).
     /// - Ready thread IDs and admission times have matching lengths.
-    /// - All admission times are non-negative.
     /// - No duplicate thread IDs within any list.
     /// - All thread lists are pairwise disjoint.
     pub open spec fn wf(&self) -> bool {
         &&& self.ready_thread_ids@.len() >= 1
         &&& self.ready_thread_ids@.len() == self.ready_admission_times@.len()
-        &&& forall|i: int| 0 <= i < self.ready_admission_times@.len()
-                ==> #[trigger] self.ready_admission_times@[i] >= 0
         &&& Self::spec_no_duplicates(self.ready_thread_ids@)
         &&& Self::spec_no_duplicates(self.interrupted_thread_ids@)
         &&& Self::spec_no_duplicates(self.sleeping_thread_ids@)
@@ -376,13 +367,13 @@ impl RunnableProcess {
     }
 
     /// Spec helper: checks whether a sequence has no duplicate elements.
-    pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
+    pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
             ==> s[i] != s[j]
     }
 
     /// Spec helper: checks whether two sequences share no common elements.
-    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+    pub open spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
@@ -398,7 +389,7 @@ impl View for InterruptedProcess {
 
     open spec fn view(&self) -> InterruptedProcessView {
         InterruptedProcessView {
-            pid: self.pid@,
+            pid: self.pid,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
@@ -411,7 +402,7 @@ impl View for RunnableProcess {
 
     open spec fn view(&self) -> RunnableProcessView {
         RunnableProcessView {
-            pid: self.pid@,
+            pid: self.pid,
             ready_thread_ids: self.ready_thread_ids@,
             ready_admission_times: self.ready_admission_times@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
