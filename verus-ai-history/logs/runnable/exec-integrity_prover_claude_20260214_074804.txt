@@ -1,0 +1,133 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T07:49:35.483457
+Model: claude-opus-4.6-fast
+Session: 1e02fa6b-8fa5-41aa-9b2e-3f34cfc48c69
+Duration: 91.3s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for runnable.
+
+Original source: src/kernel/src/pm/process/state/runnable.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - runnable.rs (exec)
+  - runnable.spec.rs (spec)
+  - runnable.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/process/state/runnable.rs) against the
+original source (src/kernel/src/pm/process/state/runnable.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh runnable
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/runnable_20260214_074804.md:
+
+```markdown
+# Exec Integrity: runnable
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● Read verus/split/kernel/pm/process/state/runnable.rs
+  └ 1 line read
+
+● Read verus/split/kernel/pm/process/state/runnable.spec.rs
+  └ 1 line read
+
+● Read verus/split/kernel/pm/process/state/runnable.proof.rs
+  └ 1 line read
+
+● Read src/kernel/src/pm/process/state/runnable.rs
+  └ 321 lines read
+
+● Check verified file size
+  $ wc -l /home/ubuntu/nanvix/verus/split/kernel/pm/process/state/runnable.rs
+  └ 2 lines...
+
+● Read verus/split/kernel/pm/process/state/runnable.rs lines 1-100
+  └ 99 lines read
+
+● Read verus/split/kernel/pm/process/state/runnable.rs lines 100-250
+  └ 151 lines read
+
+● Read verus/split/kernel/pm/process/state/runnable.rs lines 250-450
+  └ 201 lines read
+
+● Read verus/split/kernel/pm/process/state/runnable.rs lines 450-650
+  └ 201 lines read
+
+● Read verus/split/kernel/pm/process/state/runnable.rs lines 650-814
+  └ 165 lines read
+
+Now let me run the verification and check the spec file for context on documented omissions.
+
+● List spec functions
+  $ grep -n 'pub.*fn\|fn ' /home/ubuntu/nanvix/verus/split/kernel/pm/process/state/runnable.spec.rs
+  | head -30
+  └ 31 lines...
+
+● Run verification for runnable
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh runnable 2>&1 | tail -30
+  └ 23 lines...
+
+Now I have all the information needed. Let me create the integrity report.
+
+● Create integrity directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+● Create verus-ai-history/integrity/runnable_20260214_074804.md (+78)
+
+Integrity report complete. All 22 differences are acceptable — no logic changes found. Verification passes (67/0). Report at `verus-ai-history/integrity/runnable_20260214_074804.md`.
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 13.001s
+Total session time:     1m 30.091s
+Total code changes:     +78 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    459.7k in, 7.7k out, 420.4k cached (Est. 9 Premium requests)
+
+=== End ===
