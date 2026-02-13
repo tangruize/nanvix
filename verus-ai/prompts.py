@@ -18,6 +18,20 @@ Target directory: {output_dir}
 This is an OS kernel component. Identify and prove the core specifications,
 invariants, and safety/liveness properties that matter for correctness.
 
+== CRITICAL CONSTRAINTS ==
+
+1. Do NOT modify executable struct definitions (fields, types, visibility).
+   Only add ghost/tracked fields if absolutely necessary, and document each one.
+2. Do NOT convert executable fields to ghost. The verified exec code must be
+   semantically equivalent to the original source.
+3. Specs must be ABSTRACT, not implementation mirrors. Use sets, sequences,
+   and high-level predicates — not bit-level or field-level copies of the
+   implementation. Define View types that hide internal representation.
+4. Before defining new spec functions or lemmas, search vstd for existing
+   ones (e.g., seq_to_set, set operations). Do NOT redefine what vstd provides.
+5. Document every deviation from the original source in the module header,
+   explaining why it is necessary for verification.
+
 == THREE-FILE SPLIT ORGANIZATION ==
 
 You MUST produce three separate files for each module:
@@ -30,52 +44,52 @@ You MUST produce three separate files for each module:
    - Reference lemmas from proof file; do NOT inline proofs in exec code
 
 2. **{output_dir}/{file_stem}.spec.rs** - Specification functions
-   - Define View types (e.g., `pub struct {type_name}View`) with `#[verifier::ext_equal]`
-   - Define `impl View for {type_name}` trait
+   - Define View types (e.g., `pub struct {{type_name}}View`) with `#[verifier::ext_equal]`
+   - Define `impl View for {{type_name}}` trait
    - Define `pub open spec fn` for abstract properties (wf, invariants, etc.)
    - Wrap everything in a `verus! {{ }}` block
 
 3. **{output_dir}/{file_stem}.proof.rs** - Proof functions and lemmas
    - Define `proof fn` lemmas with requires/ensures
    - Place inside `verus! {{ }}` block
-   - Use `impl {type_name}` blocks to add proof methods
+   - Use `impl {{type_name}}` blocks to add proof methods
 
 Example file structure:
 ```rust
-// {file_stem}.rs (exec)
+// {{file_stem}}.rs (exec)
 use vstd::prelude::*;
-include!("{file_stem}.spec.rs");
-include!("{file_stem}.proof.rs");
+include!("{{file_stem}}.spec.rs");
+include!("{{file_stem}}.proof.rs");
 
-verus! {{
+verus! {{{{
     pub struct MyType {{ ... }}
-    impl MyType {{
+    impl MyType {{{{
         pub fn new(...) -> (result: ...) requires ... ensures ... {{ ... }}
-    }}
-}}
+    }}}}
+}}}}
 ```
 
 ```rust
-// {file_stem}.spec.rs (spec)
+// {{file_stem}}.spec.rs (spec)
 use vstd::prelude::*;
-verus! {{
+verus! {{{{
     #[verifier::ext_equal]
     pub struct MyTypeView {{ ... }}
-    impl View for MyType {{
+    impl View for MyType {{{{
         type V = MyTypeView;
         ...
-    }}
-}}
+    }}}}
+}}}}
 ```
 
 ```rust
-// {file_stem}.proof.rs (proof)
+// {{file_stem}}.proof.rs (proof)
 use vstd::prelude::*;
-verus! {{
-    impl MyType {{
+verus! {{{{
+    impl MyType {{{{
         pub proof fn lemma_something(&self) requires ... ensures ... {{ ... }}
-    }}
-}}
+    }}}}
+}}}}
 ```
 
 == REQUIREMENTS ==
@@ -114,10 +128,15 @@ Review criteria:
 1. COVERAGE: All functions in original source (public and private) have verified versions
 2. SPECIFICATIONS: Specs capture intended behavior (not too weak, not too strong)
 3. SOUNDNESS: No unjustified assume/external_body in core module
-4. EQUIVALENCE: Verified code is semantically equivalent to original
+4. EQUIVALENCE: Verified exec code is semantically equivalent to original
 5. INVARIANTS: State invariants are sufficient to prove correctness
 6. PROPERTIES: Are the key safety and liveness properties identified and proven?
 7. SPLIT QUALITY: Are spec/proof properly separated from exec code?
+8. ABSTRACTION: Do specs use abstract reasoning (sets, sequences, predicates)
+   rather than mirroring implementation details (bit operations, raw field access)?
+   View types should hide internal representation.
+9. EXEC INTEGRITY: Are executable struct definitions unchanged from the original?
+   Ghost fields must be justified. No fields converted from exec to ghost.
 
 Verification command: ./verus-ai/scripts/verify.sh {module_name}
 
@@ -203,6 +222,8 @@ Please read the review file(s) carefully and address each issue:
 3. NO assume or unjustified external_body for core module functions
 4. Verify semantic equivalence with original source
 5. Maintain the three-file split: exec, spec, proof
+6. Do NOT modify executable struct definitions unless absolutely necessary
+7. Specs must be abstract (use sets, sequences) not implementation mirrors
 
 == VERIFICATION ==
 Run: ./verus-ai/scripts/verify.sh {module_name}
