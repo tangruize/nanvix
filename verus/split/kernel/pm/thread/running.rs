@@ -30,7 +30,9 @@
 //! - `SystemTime` alarm -> `Option<int>` (abstract timestamp).
 //! - `ExitStatus` -> `int` (abstract status tag).
 //! - `*mut ContextInformation` -> omitted (HAL boundary, unsafe raw pointer).
-//! - `MutexAddress` -> `Ghost<int>` (abstract address).
+//! - `MutexAddress` -> `u64` (exec) / `int` (spec). The original wraps
+//!   `VirtualAddress(usize)` which is 32-bit on x86; `u64` is a widening
+//!   that is semantically harmless since the spec reasons about `address as int`.
 //! - `MutexGuard` -> elided (RAII payload opaque, protocol-only accounting).
 //! - `Condvar` -> elided (sync boundary); `join_cond()` omitted.
 //! - `SleepingThread` -> boundary model wrapping `ThreadState` + `Option<int>` alarm.
