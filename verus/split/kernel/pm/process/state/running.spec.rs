@@ -2,6 +2,31 @@
 // Licensed under the MIT License.
 
 // Specifications for RunningProcess and boundary process types.
+//
+// ## Abstract State Transition Functions (RunningProcessView)
+//
+// View-level spec functions mirror each exec-level state transition so that
+// downstream modules can write postconditions of the form:
+//     ensures result@ =~= old(self)@.spec_foo(args)
+// instead of listing every field change individually.
+//
+// Added functions on `RunningProcessView`:
+//   - `spec_new`                          — constructor.
+//   - `spec_schedule`                     — schedule transition → RunnableProcessView.
+//   - `spec_sleep_to_runnable_ready`      — sleep (ready branch) → RunnableProcessView.
+//   - `spec_sleep_to_runnable_interrupted`— sleep (interrupted branch) → RunnableProcessView.
+//   - `spec_sleep_to_sleeping`            — sleep (sleeping branch) → SleepingProcessView.
+//   - `spec_exit_to_runnable`             — exit (interrupted branch) → RunnableProcessView.
+//   - `spec_exit_to_zombie`               — exit (zombie branch) → ZombieProcessView.
+//   - `spec_exit_thread_to_runnable_ready`       — exit_thread (ready branch) → RunnableProcessView.
+//   - `spec_exit_thread_to_runnable_interrupted` — exit_thread (interrupted branch) → RunnableProcessView.
+//   - `spec_exit_thread_to_sleeping`             — exit_thread (sleeping branch) → SleepingProcessView.
+//   - `spec_exit_thread_to_zombie`               — exit_thread (zombie branch) → ZombieProcessView.
+//   - `spec_wakeup_ok`                    — wakeup success → RunningProcessView.
+//   - `spec_wakeup_err`                   — wakeup failure (identity) → RunningProcessView.
+//   - `spec_join_zombie_result`           — try_join_thread zombie case → RunningProcessView.
+//   - `spec_join_non_zombie_result`       — try_join_thread non-zombie case (identity) → RunningProcessView.
+//   - `seq_remove_at`                     — helper: remove element at index from Seq.
 
 use vstd::prelude::*;
 
@@ -335,6 +360,209 @@ impl ZombieProcess {
     /// Well-formedness: zombie list is non-empty.
     pub open spec fn wf(&self) -> bool {
         self.zombie_thread_ids@.len() >= 1
+    }
+}
+
+//==================================================================================================
+// Abstract State Transition Functions — RunningProcessView
+//==================================================================================================
+
+impl RunningProcessView {
+    /// Removes element at `idx` from sequence `s`.
+    pub open spec fn seq_remove_at(s: Seq<u64>, idx: int) -> Seq<u64> {
+        s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
+    }
+
+    /// Abstract state produced by `RunningProcess::new()`.
+    pub open spec fn spec_new(
+        pid: u64,
+        running_tid: u64,
+        ready: Seq<u64>,
+        interrupted: Seq<u64>,
+        sleeping: Seq<u64>,
+        zombie: Seq<u64>,
+    ) -> RunningProcessView {
+        RunningProcessView {
+            pid,
+            running_thread_id: running_tid,
+            ready_thread_ids: ready,
+            interrupted_thread_ids: interrupted,
+            sleeping_thread_ids: sleeping,
+            zombie_thread_ids: zombie,
+        }
+    }
+
+    /// Abstract state after `RunningProcess::schedule()`.
+    ///
+    /// Running thread joins the ready queue; all other lists preserved.
+    pub open spec fn spec_schedule(&self) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: self.ready_thread_ids.push(self.running_thread_id),
+            interrupted_thread_ids: self.interrupted_thread_ids,
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract state after `RunningProcess::sleep()` when ready threads exist.
+    ///
+    /// Running thread moves to sleeping; ready/interrupted/zombie preserved.
+    pub open spec fn spec_sleep_to_runnable_ready(&self) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: self.ready_thread_ids,
+            interrupted_thread_ids: self.interrupted_thread_ids,
+            sleeping_thread_ids: self.sleeping_thread_ids.push(self.running_thread_id),
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract state after `RunningProcess::sleep()` when no ready but interrupted threads exist.
+    ///
+    /// Running thread moves to sleeping; front interrupted thread becomes sole ready thread;
+    /// remaining interrupted threads form new interrupted list.
+    pub open spec fn spec_sleep_to_runnable_interrupted(&self) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: Seq::<u64>::empty().push(self.interrupted_thread_ids[0]),
+            interrupted_thread_ids: self.interrupted_thread_ids.subrange(
+                1, self.interrupted_thread_ids.len() as int),
+            sleeping_thread_ids: self.sleeping_thread_ids.push(self.running_thread_id),
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract state after `RunningProcess::sleep()` when no ready or interrupted threads.
+    ///
+    /// Running thread moves to sleeping; process becomes sleeping.
+    pub open spec fn spec_sleep_to_sleeping(&self) -> SleepingProcessView {
+        SleepingProcessView {
+            pid: self.pid,
+            sleeping_thread_ids: self.sleeping_thread_ids.push(self.running_thread_id),
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract state after `RunningProcess::exit(status)` when interrupted or sleeping threads exist.
+    ///
+    /// Running + ready threads become zombies; sleeping threads become interrupted;
+    /// front interrupted thread resumes as sole ready thread.
+    pub open spec fn spec_exit_to_runnable(&self) -> RunnableProcessView {
+        let combined_interrupted: Seq<u64> =
+            self.interrupted_thread_ids.add(self.sleeping_thread_ids);
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: Seq::<u64>::empty().push(combined_interrupted[0]),
+            interrupted_thread_ids: combined_interrupted.subrange(
+                1, combined_interrupted.len() as int),
+            sleeping_thread_ids: Seq::<u64>::empty(),
+            zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id).add(
+                self.ready_thread_ids),
+        }
+    }
+
+    /// Abstract state after `RunningProcess::exit(status)` when no interrupted or sleeping threads.
+    ///
+    /// Running + ready threads become zombies; process terminates.
+    pub open spec fn spec_exit_to_zombie(&self, status: u64) -> ZombieProcessView {
+        ZombieProcessView {
+            pid: self.pid,
+            zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id).add(
+                self.ready_thread_ids),
+            status,
+        }
+    }
+
+    /// Abstract state after `RunningProcess::exit_thread(status)` when ready threads exist.
+    ///
+    /// Running thread becomes zombie; all other lists preserved.
+    pub open spec fn spec_exit_thread_to_runnable_ready(&self) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: self.ready_thread_ids,
+            interrupted_thread_ids: self.interrupted_thread_ids,
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id),
+        }
+    }
+
+    /// Abstract state after `RunningProcess::exit_thread(status)` when no ready
+    /// but interrupted threads exist.
+    ///
+    /// Running thread becomes zombie; front interrupted resumes as sole ready thread.
+    pub open spec fn spec_exit_thread_to_runnable_interrupted(&self) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: Seq::<u64>::empty().push(self.interrupted_thread_ids[0]),
+            interrupted_thread_ids: self.interrupted_thread_ids.subrange(
+                1, self.interrupted_thread_ids.len() as int),
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id),
+        }
+    }
+
+    /// Abstract state after `RunningProcess::exit_thread(status)` when only
+    /// sleeping threads remain.
+    ///
+    /// Running thread becomes zombie; sleeping threads preserved.
+    pub open spec fn spec_exit_thread_to_sleeping(&self) -> SleepingProcessView {
+        SleepingProcessView {
+            pid: self.pid,
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id),
+        }
+    }
+
+    /// Abstract state after `RunningProcess::exit_thread(status)` when no other
+    /// threads remain.
+    ///
+    /// Running thread becomes zombie; process terminates.
+    pub open spec fn spec_exit_thread_to_zombie(&self, status: u64) -> ZombieProcessView {
+        ZombieProcessView {
+            pid: self.pid,
+            zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id),
+            status,
+        }
+    }
+
+    /// Abstract state after successful `RunningProcess::wakeup(tid)`.
+    ///
+    /// Thread `tid` moves from sleeping to ready.
+    pub open spec fn spec_wakeup_ok(&self, tid: u64) -> RunningProcessView {
+        let s: Seq<u64> = self.sleeping_thread_ids;
+        let idx: int = choose|i: int| 0 <= i < s.len() && #[trigger] s[i] == tid;
+        RunningProcessView {
+            ready_thread_ids: self.ready_thread_ids.push(tid),
+            sleeping_thread_ids: Self::seq_remove_at(s, idx),
+            ..*self
+        }
+    }
+
+    /// Abstract state after failed `RunningProcess::wakeup(tid)` (not found).
+    ///
+    /// State is unchanged.
+    pub open spec fn spec_wakeup_err(&self) -> RunningProcessView {
+        *self
+    }
+
+    /// Abstract state after `RunningProcess::try_join_thread(tid)` when `tid` is zombie.
+    ///
+    /// Zombie thread `tid` is removed from the zombie list.
+    pub open spec fn spec_join_zombie_result(&self, tid: u64) -> RunningProcessView {
+        let s: Seq<u64> = self.zombie_thread_ids;
+        let idx: int = choose|i: int| 0 <= i < s.len() && #[trigger] s[i] == tid;
+        RunningProcessView {
+            zombie_thread_ids: Self::seq_remove_at(s, idx),
+            ..*self
+        }
+    }
+
+    /// Abstract state after `RunningProcess::try_join_thread(tid)` when `tid` is not zombie.
+    ///
+    /// State is unchanged (running/live/not-found all preserve state).
+    pub open spec fn spec_join_non_zombie_result(&self) -> RunningProcessView {
+        *self
     }
 }
 
