@@ -534,12 +534,12 @@ impl RunnableProcess {
     // find_thread() Lemmas
     //==============================================================================================
 
-    /// Lemma: spec_find_thread returns Some(0) iff the thread is in the ready list.
+    /// Lemma: spec_find_thread returns THREAD_REF_READY iff the thread is in the ready list.
     pub proof fn lemma_find_thread_ready(&self, tid: i64)
         requires
             self.spec_has_ready_thread(tid),
         ensures
-            self.spec_find_thread(tid) == Some(0int),
+            self.spec_find_thread(tid) == Some(THREAD_REF_READY()),
     {
     }
 
@@ -737,6 +737,78 @@ impl RunnableProcess {
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
         ensures
             result@ == self@.spec_add_thread(tid, time),
+    {
+    }
+
+    /// Bridging lemma: the wakeup() success result view matches
+    /// `RunnableProcessView::spec_wakeup()`.
+    ///
+    /// The `found_idx` parameter is the concrete index where `tid` was found
+    /// in the sleeping list (from `vec_search`). The proof shows this concrete
+    /// index equals the `choose`-based `spec_find_index` witness, establishing
+    /// that the view-level spec transition matches the exec result.
+    pub proof fn lemma_wakeup_view_eq(
+        &self,
+        result: &RunnableProcess,
+        tid: i64,
+        time: i64,
+        found_idx: int,
+    )
+        requires
+            self.wf(),
+            RunnableProcess::spec_seq_contains(self.sleeping_thread_ids@, tid),
+            0 <= found_idx < self.sleeping_thread_ids@.len(),
+            self.sleeping_thread_ids@[found_idx] == tid,
+            result.pid.spec_value() == self.pid.spec_value(),
+            result.ready_thread_ids@ == self.ready_thread_ids@.push(tid),
+            result.ready_admission_times@ == self.ready_admission_times@.push(time),
+            result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
+            result.sleeping_thread_ids@ ==
+                RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx),
+            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+        ensures
+            result@ == self@.spec_wakeup(tid, time),
+    {
+        // Show that the view-level spec_find_index chooses the same index.
+        let view_idx: int = RunnableProcessView::spec_find_index(
+            self@.sleeping_thread_ids, tid);
+        // view_idx satisfies the choose predicate.
+        assert(0 <= view_idx < self@.sleeping_thread_ids.len()
+            && self@.sleeping_thread_ids[view_idx] == tid);
+        // found_idx also satisfies it.
+        assert(0 <= found_idx < self@.sleeping_thread_ids.len()
+            && self@.sleeping_thread_ids[found_idx] == tid);
+        // Both produce the same spec_remove_at result when applied to the same input.
+        // The result sleeping list matches the concrete removal at found_idx.
+        assert(RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx)
+            =~= RunnableProcessView::spec_remove_at(self@.sleeping_thread_ids, found_idx));
+        // Show the view-level removal at view_idx equals the concrete removal.
+        assert(RunnableProcessView::spec_remove_at(self@.sleeping_thread_ids, view_idx)
+            =~= result@.sleeping_thread_ids);
+    }
+
+    /// Bridging lemma: the from_state() constructor view matches
+    /// `RunnableProcessView::spec_from_state()`.
+    pub proof fn lemma_from_state_view_eq(
+        p: &RunnableProcess,
+        pid_val: int,
+        ready_ids: Seq<i64>,
+        ready_times: Seq<i64>,
+        interrupted_ids: Seq<i64>,
+        sleeping_ids: Seq<i64>,
+        zombie_ids: Seq<i64>,
+    )
+        requires
+            p.pid.spec_value() == pid_val,
+            p.ready_thread_ids@ == ready_ids,
+            p.ready_admission_times@ == ready_times,
+            p.interrupted_thread_ids@ == interrupted_ids,
+            p.sleeping_thread_ids@ == sleeping_ids,
+            p.zombie_thread_ids@ == zombie_ids,
+        ensures
+            p@ == RunnableProcessView::spec_from_state(
+                pid_val, ready_ids, ready_times,
+                interrupted_ids, sleeping_ids, zombie_ids),
     {
     }
 

@@ -13,6 +13,7 @@
 // instead of listing every field change individually:
 //
 // - `spec_new(pid, tid, time)` — constructs the initial view (models `new()`).
+// - `spec_from_state(...)` — constructs a view from existing state (models `from_state()`).
 // - `spec_run()` — selects the earliest-admission-time thread and returns
 //   a `RunningProcessView` (models `run()`).
 // - `spec_terminate_has_interrupted()` — predicate for the terminate branch.
@@ -130,6 +131,11 @@ pub struct RunnableProcessView {
 }
 
 /// Abstract view of a RunningProcess (boundary type).
+///
+/// Note: `ready_admission_times` is intentionally omitted. The exec-level
+/// `RunningProcess` does not carry admission times for remaining ready threads.
+/// When transitioning back to `RunnableProcess` (e.g., after the running thread
+/// blocks), the downstream module must re-supply admission times.
 #[verifier::ext_equal]
 pub struct RunningProcessView {
     /// Process identifier value.
@@ -182,6 +188,15 @@ pub struct ZombieProcessView {
 /// validates this constant against the actual `ErrorCode::Interrupted` value.
 /// If the error code numbering changes, this must be updated accordingly.
 pub open spec fn EXIT_STATUS_INTERRUPTED() -> int { 4 }
+
+/// Spec constant: thread found in the ready list.
+pub open spec fn THREAD_REF_READY() -> int { 0 }
+/// Spec constant: thread found in the interrupted list.
+pub open spec fn THREAD_REF_INTERRUPTED() -> int { 1 }
+/// Spec constant: thread found in the sleeping list.
+pub open spec fn THREAD_REF_SLEEPING() -> int { 2 }
+/// Spec constant: thread found in the zombie list.
+pub open spec fn THREAD_REF_ZOMBIE() -> int { 3 }
 
 /// Concrete exit status for interrupted processes (i64 version).
 /// Used in exec code where the spec `int` version cannot be used.
@@ -291,13 +306,13 @@ impl RunnableProcess {
     /// This models the exhaustive search and correct variant selection.
     pub open spec fn spec_find_thread(&self, tid: i64) -> Option<int> {
         if self.spec_has_ready_thread(tid) {
-            Some(0int)
+            Some(THREAD_REF_READY())
         } else if self.spec_has_interrupted_thread(tid) {
-            Some(1int)
+            Some(THREAD_REF_INTERRUPTED())
         } else if self.spec_has_sleeping_thread(tid) {
-            Some(2int)
+            Some(THREAD_REF_SLEEPING())
         } else if self.spec_has_zombie_thread(tid) {
-            Some(3int)
+            Some(THREAD_REF_ZOMBIE())
         } else {
             None
         }
@@ -492,6 +507,12 @@ impl RunnableProcessView {
                 ==> #[trigger] self.ready_admission_times[i] >= 0i64
     }
 
+    // Note: The helpers `spec_seq_contains`, `spec_remove_at`, and
+    // `spec_min_index_rec` are duplicated from `RunnableProcess` because Verus
+    // requires them on each impl block. The bridging lemma
+    // `lemma_view_min_index_eq` in the proof file proves equivalence for
+    // `spec_min_index_rec`; the other two are structurally identical.
+
     /// View-level helper: checks if a sequence contains a given value.
     pub open spec fn spec_seq_contains(s: Seq<i64>, tid: i64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
@@ -550,8 +571,37 @@ impl RunnableProcessView {
         }
     }
 
+    /// Abstract state transition: constructs a view from existing state
+    /// (models `from_state()`). Used by sibling modules when reconstituting
+    /// a `RunnableProcess` after a state transition (e.g., returning from
+    /// running to runnable).
+    pub open spec fn spec_from_state(
+        pid: int,
+        ready_ids: Seq<i64>,
+        ready_times: Seq<i64>,
+        interrupted_ids: Seq<i64>,
+        sleeping_ids: Seq<i64>,
+        zombie_ids: Seq<i64>,
+    ) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: pid,
+            ready_thread_ids: ready_ids,
+            ready_admission_times: ready_times,
+            interrupted_thread_ids: interrupted_ids,
+            sleeping_thread_ids: sleeping_ids,
+            zombie_thread_ids: zombie_ids,
+        }
+    }
+
     /// Abstract state transition: selects earliest-admission-time thread
     /// and returns `RunningProcessView` (models `run()`).
+    ///
+    /// Note: `interrupt_reason` is set to `0i64` as a placeholder. The real
+    /// `run()` returns an opaque `Option<InterruptReason>` from the thread's
+    /// previous state, which is unconstrained at this abstraction level.
+    /// Downstream proofs must not rely on this specific value; the bridging
+    /// lemma `lemma_run_view_eq` ties the exec result to this spec via a
+    /// matching precondition.
     pub open spec fn spec_run(&self) -> RunningProcessView
         recommends self.ready_thread_ids.len() >= 1
     {
@@ -592,7 +642,7 @@ impl RunnableProcessView {
         ZombieProcessView {
             pid: self.pid,
             zombie_thread_ids: self.ready_thread_ids.add(self.zombie_thread_ids),
-            status: 4i64,
+            status: EXIT_STATUS_INTERRUPTED() as i64,
         }
     }
 
