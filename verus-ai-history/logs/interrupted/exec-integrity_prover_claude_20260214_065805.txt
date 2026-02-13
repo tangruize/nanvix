@@ -1,0 +1,122 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T06:58:58.623987
+Model: claude-opus-4.6-fast
+Session: b24109c5-9294-42cf-b23c-222847c816c0
+Duration: 53.0s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for interrupted.
+
+Original source: src/kernel/src/pm/thread/interrupted.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - interrupted.rs (exec)
+  - interrupted.spec.rs (spec)
+  - interrupted.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/thread/interrupted.rs) against the
+original source (src/kernel/src/pm/thread/interrupted.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh interrupted
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/interrupted_20260214_065805.md:
+
+```markdown
+# Exec Integrity: interrupted
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● List directory verus/split/kernel/pm/thread
+  └ 22 files found
+
+● Read src/kernel/src/pm/thread/interrupted.rs
+  └ 130 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.rs
+  └ 244 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.spec.rs
+  └ 205 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.proof.rs
+  └ 254 lines read
+
+● Check verify script
+  $ cd /home/ubuntu/nanvix && cat verus-ai/scripts/verify.sh | head -30
+  └ 31 lines...
+
+Now let me run verification and check the original `set_interrupt_reason` to understand the type mapping.
+
+● Grep "fn set_interrupt_reason" (/home/ubuntu/nanvix/src/kernel/src/pm/thread)
+  └ 6 lines found
+
+● Run verification for interrupted
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh interrupted 2>&1 | tail -30
+  └ 23 lines...
+
+● Grep "fn set_interrupt_reason" (/home/ubuntu/nanvix/verus/split/kernel/pm/thread/state.rs)
+  └ 11 lines found
+
+Now I have all the information I need. Let me create the integrity report.
+
+● Create integrity directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+● Create verus-ai-history/integrity/interrupted_20260214_065805.md (+95)
+
+Integrity check complete. All exec logic in the verified `interrupted.rs` faithfully matches the original — 21 verified, 0 errors, no fixes needed. Report at `verus-ai-history/integrity/interrupted_20260214_065805.md`.
+
+
+Total usage est:        9 Premium requests
+API time spent:         36s
+Total session time:     51s
+Total code changes:     +95 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    289.0k in, 4.3k out, 259.6k cached (Est. 9 Premium requests)
+
+=== End ===
