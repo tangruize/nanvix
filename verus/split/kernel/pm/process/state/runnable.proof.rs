@@ -616,6 +616,140 @@ impl RunnableProcess {
             a@ == b@,
     {
     }
+
+    //==============================================================================================
+    // View-Level Bridging Lemmas
+    //==============================================================================================
+
+    /// Bridging lemma: exec-level `wf()` implies view-level `wf()`.
+    pub proof fn lemma_wf_implies_view_wf(&self)
+        requires
+            self.wf(),
+        ensures
+            self@.wf(),
+    {
+    }
+
+    /// Bridging lemma: view-level `spec_min_index_rec` equals exec-level `spec_min_index_rec`.
+    pub proof fn lemma_view_min_index_eq(s: Seq<i64>, n: int)
+        requires
+            1 <= n <= s.len(),
+        ensures
+            RunnableProcessView::spec_min_index_rec(s, n)
+                == RunnableProcess::spec_min_index_rec(s, n),
+        decreases n,
+    {
+        if n > 1 {
+            Self::lemma_view_min_index_eq(s, n - 1);
+        }
+    }
+
+    /// Bridging lemma: the new() constructor view matches `RunnableProcessView::spec_new()`.
+    pub proof fn lemma_new_view_eq(p: &RunnableProcess, pid_val: int, tid: i64, time: i64)
+        requires
+            p.pid.spec_value() == pid_val,
+            p.ready_thread_ids@.len() == 1,
+            p.ready_thread_ids@[0] == tid,
+            p.ready_admission_times@.len() == 1,
+            p.ready_admission_times@[0] == time,
+            p.interrupted_thread_ids@.len() == 0,
+            p.sleeping_thread_ids@.len() == 0,
+            p.zombie_thread_ids@.len() == 0,
+        ensures
+            p@ == RunnableProcessView::spec_new(pid_val, tid, time),
+    {
+        assert(p.ready_thread_ids@ =~= seq![tid]);
+        assert(p.ready_admission_times@ =~= seq![time]);
+        assert(p.interrupted_thread_ids@ =~= Seq::<i64>::empty());
+        assert(p.sleeping_thread_ids@ =~= Seq::<i64>::empty());
+        assert(p.zombie_thread_ids@ =~= Seq::<i64>::empty());
+    }
+
+    /// Bridging lemma: the run() result view matches `RunnableProcessView::spec_run()`.
+    pub proof fn lemma_run_view_eq(&self, result: &RunningProcess)
+        requires
+            self.wf(),
+            result.pid.spec_value() == self.pid.spec_value(),
+            ({
+                let sel: int = self.spec_earliest_ready_index();
+                result.running_thread_id as int == self.ready_thread_ids@[sel] as int
+                && result.ready_thread_ids@ ==
+                    Self::spec_remove_at(self.ready_thread_ids@, sel)
+            }),
+            result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
+            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
+            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+            result.interrupt_reason == 0i64,
+        ensures
+            result@ == self@.spec_run(),
+    {
+        Self::lemma_view_min_index_eq(
+            self.ready_admission_times@,
+            self.ready_admission_times@.len() as int,
+        );
+        let sel_exec: int = self.spec_earliest_ready_index();
+        let sel_view: int = self@.spec_earliest_ready_index();
+        assert(sel_exec == sel_view);
+        assert(self.ready_thread_ids@[sel_exec] == self@.ready_thread_ids[sel_view]);
+        assert(Self::spec_remove_at(self.ready_thread_ids@, sel_exec)
+            =~= RunnableProcessView::spec_remove_at(self@.ready_thread_ids, sel_view));
+    }
+
+    /// Bridging lemma: the terminate() InterruptedProcess result view matches
+    /// `RunnableProcessView::spec_terminate_to_interrupted()`.
+    pub proof fn lemma_terminate_interrupted_view_eq(&self, result: &InterruptedProcess)
+        requires
+            self.wf(),
+            result.pid.spec_value() == self.pid.spec_value(),
+            result.interrupted_thread_ids@ ==
+                self.interrupted_thread_ids@.add(self.sleeping_thread_ids@),
+            result.zombie_thread_ids@ ==
+                self.ready_thread_ids@.add(self.zombie_thread_ids@),
+        ensures
+            result@ == self@.spec_terminate_to_interrupted(),
+    {
+    }
+
+    /// Bridging lemma: the terminate() ZombieProcess result view matches
+    /// `RunnableProcessView::spec_terminate_to_zombie()`.
+    pub proof fn lemma_terminate_zombie_view_eq(&self, result: &ZombieProcess)
+        requires
+            self.wf(),
+            result.pid.spec_value() == self.pid.spec_value(),
+            result.zombie_thread_ids@ ==
+                self.ready_thread_ids@.add(self.zombie_thread_ids@),
+            result.status == 4i64,
+        ensures
+            result@ == self@.spec_terminate_to_zombie(),
+    {
+    }
+
+    /// Bridging lemma: the add_thread() result view matches
+    /// `RunnableProcessView::spec_add_thread()`.
+    pub proof fn lemma_add_thread_view_eq(&self, result: &RunnableProcess, tid: i64, time: i64)
+        requires
+            self.wf(),
+            result.pid.spec_value() == self.pid.spec_value(),
+            result.ready_thread_ids@ == self.ready_thread_ids@.push(tid),
+            result.ready_admission_times@ == self.ready_admission_times@.push(time),
+            result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
+            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
+            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+        ensures
+            result@ == self@.spec_add_thread(tid, time),
+    {
+    }
+
+    /// Bridging lemma: the exec-level `spec_terminate_has_interrupted` predicate
+    /// matches the view-level `spec_terminate_has_interrupted`.
+    pub proof fn lemma_terminate_branch_eq(&self)
+        requires
+            self.wf(),
+        ensures
+            (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0)
+                == self@.spec_terminate_has_interrupted(),
+    {
+    }
 }
 
 //==================================================================================================
