@@ -1,0 +1,114 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T06:46:05.351483
+Model: claude-opus-4.6-fast
+Session: 2fd4b24f-1631-43b2-8055-0d3f3614afe9
+Duration: 66.4s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for mutex.
+
+Original source: src/kernel/src/pm/sync/mutex.rs
+Verified code directory: verus/split/kernel/pm/sync/
+  - mutex.rs (exec)
+  - mutex.spec.rs (spec)
+  - mutex.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/sync/mutex.rs) against the
+original source (src/kernel/src/pm/sync/mutex.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh mutex
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/mutex_20260214_064458.md:
+
+```markdown
+# Exec Integrity: mutex
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● Read src/kernel/src/pm/sync/mutex.rs
+  └ 207 lines read
+
+● Read verus/split/kernel/pm/sync/mutex.rs
+  └ 335 lines read
+
+● Read verus/split/kernel/pm/sync/mutex.spec.rs
+  └ 110 lines read
+
+● Read verus/split/kernel/pm/sync/mutex.proof.rs
+  └ 318 lines read
+
+Now let me run the verification to check the current status:
+
+● Run mutex verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh mutex 2>&1 | tail -30
+  └ 23 lines...
+
+● Create integrity report directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+Now let me produce the detailed integrity report:
+
+● Create verus-ai-history/integrity/mutex_20260214_064458.md (+104)
+
+● Commit integrity report
+  $ cd /home/ubuntu/nanvix && git add verus-ai-history/integrity/mutex_20260214_064458.md && git
+  commit -m "Add mutex exec integrity report
+
+  Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+  └ 4 lines...
+
+
+Total usage est:        9 Premium requests
+API time spent:         49s
+Total session time:     1m 5.059s
+Total code changes:     +104 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    274.1k in, 5.3k out, 242.3k cached (Est. 9 Premium requests)
+
+=== End ===
