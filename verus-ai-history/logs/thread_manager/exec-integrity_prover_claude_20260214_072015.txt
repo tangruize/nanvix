@@ -1,0 +1,118 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T07:21:34.162272
+Model: claude-opus-4.6-fast
+Session: 34e6e493-abb0-4c35-8638-cca85023abbb
+Duration: 78.8s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for thread_manager.
+
+Original source: src/kernel/src/pm/thread/mod.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - mod.rs (exec)
+  - mod.spec.rs (spec)
+  - mod.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/thread/mod.rs) against the
+original source (src/kernel/src/pm/thread/mod.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh thread_manager
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/thread_manager_20260214_072015.md:
+
+```markdown
+# Exec Integrity: thread_manager
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● List directory verus/split/kernel/pm/thread
+  └ 22 files found
+
+● Read verus/split/kernel/pm/thread/mod.rs
+  └ 10 lines read
+
+● Read src/kernel/src/pm/thread/mod.rs
+  └ 233 lines read
+
+● Read verus/split/kernel/pm/thread/thread_manager.rs
+  └ 420 lines read
+
+● Read verus/split/kernel/pm/thread/thread_manager.spec.rs
+  └ 193 lines read
+
+● Read verus/split/kernel/pm/thread/thread_manager.proof.rs
+  └ 246 lines read
+
+Now let me run verification and check if the verification script exists.
+
+● Create output directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+● Check verify script
+  $ ls /home/ubuntu/nanvix/verus-ai/scripts/verify.sh && head -30
+  /home/ubuntu/nanvix/verus-ai/scripts/verify.sh
+  └ 32 lines...
+
+● Run verification for thread_manager
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh thread_manager 2>&1
+  └ 23 lines...
+
+● Create verus-ai-history/integrity/thread_manager_20260214_072015.md (+75)
+
+Integrity check complete. All 13 differences between original and verified exec code are acceptable — 4 ghost annotations and 9 type changes justified by Verus limitations (no lifetime enums, no `&mut T` returns, HAL type elision). Core logic (ID assignment, monotonic increment, dispatch) is identical. Verification passes: 22 verified, 0 errors.
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 2.588s
+Total session time:     1m 17.534s
+Total code changes:     +75 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    273.1k in, 8.7k out, 236.5k cached (Est. 9 Premium requests)
+
+=== End ===
