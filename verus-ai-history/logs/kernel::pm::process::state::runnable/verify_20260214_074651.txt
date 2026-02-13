@@ -1,0 +1,28 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 07:46:51 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+error: assertion failed
+   --> kernel/pm/process/state/runnable.proof.rs:786:16
+    |
+786 |           assert(RunnableProcessView::spec_remove_at(self@.sleeping_thread_ids, view_idx)
+    |  ________________^
+787 | |             =~= result@.sleeping_thread_ids);
+    | |___________________________________________^ assertion failed
+
+verification results:: 66 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 66
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:66, errors:1)
