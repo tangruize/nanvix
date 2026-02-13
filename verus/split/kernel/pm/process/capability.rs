@@ -5,6 +5,19 @@
 //!
 //! A bitfield type that tracks which capabilities are granted to a process.
 //!
+//! ## Abstraction Levels
+//!
+//! This module provides two levels of specification:
+//! - **Bit-level**: `spec_bits`, `spec_has`, `spec_set`, `spec_clear` — directly
+//!   model the u8 bitfield implementation.
+//! - **Set-level**: `spec_as_set`, `spec_granted`, `spec_set_contains`,
+//!   `spec_set_insert`, `spec_set_remove` — model capabilities as a `Set<Capability>`.
+//!
+//! Downstream modules should prefer the set-level abstraction. The bit-level
+//! specs exist for internal proof obligations and are bridged to the set-level
+//! via `lemma_has_iff_set_contains`, `lemma_set_insert_matches_bit_set`, and
+//! `lemma_clear_remove_matches_bit_clear`.
+//!
 //! ## Verified Properties
 //!
 //! - Default capabilities have no bits set (empty bitfield).
@@ -193,10 +206,12 @@ impl Capabilities {
     /// - The target bit is set in the result.
     /// - All other bits are unchanged (bitfield equals `old | mask`).
     /// - If the input was well-formed, the output is well-formed.
+    /// - Set-level: the granted set contains the new capability.
     pub fn set(&mut self, capability: Capability)
         ensures
             self.spec_bits() == old(self).spec_set(capability),
             self.spec_has(capability),
+            self.spec_set_contains(capability),
             old(self).wf() ==> self.wf(),
     {
         let mask: u8 = Self::to_mask(capability);
@@ -222,10 +237,12 @@ impl Capabilities {
     /// - The target bit is cleared in the result.
     /// - All other bits are unchanged (bitfield equals `old & !mask`).
     /// - If the input was well-formed, the output is well-formed.
+    /// - Set-level: the granted set no longer contains the capability.
     pub fn clear(&mut self, capability: Capability)
         ensures
             self.spec_bits() == old(self).spec_clear(capability),
             !self.spec_has(capability),
+            !self.spec_set_contains(capability),
             old(self).wf() ==> self.wf(),
     {
         let mask: u8 = Self::to_mask(capability);

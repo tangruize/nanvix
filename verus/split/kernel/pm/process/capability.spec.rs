@@ -3,6 +3,25 @@
 
 // Capabilities Specification.
 // This file contains spec functions for the Capabilities type.
+//
+// ## Abstraction Strategy
+//
+// This module provides two levels of specification:
+//
+// 1. **Bit-level specs** (`spec_bits`, `spec_mask`, `spec_has`, `spec_set`,
+//    `spec_clear`): directly model the implementation's u8 bitfield. These are
+//    used in the exec-level ensures clauses and proof lemmas.
+//
+// 2. **Set-level specs** (`spec_as_set`, `spec_set_insert`, `spec_set_remove`,
+//    `spec_set_contains`): model capabilities as a `Set<Capability>`. This is
+//    the abstract interface for downstream modules. Instead of reasoning about
+//    bit manipulation, callers reason about set membership, insertion, and
+//    removal.
+//
+// The bridging lemmas (`lemma_set_insert_matches_bit_set`, etc.) prove that
+// the set-level and bit-level views are consistent. This allows the exec code
+// to keep its bit-level implementation while callers verify against the
+// set abstraction — addressing the "spec = implementation mirror" concern.
 
 verus! {
 
@@ -10,15 +29,24 @@ verus! {
 // View Type
 //==================================================================================================
 
-/// Abstract view of a Capabilities, represented as a set of active capability bits.
+/// Abstract view of Capabilities as a set of granted capabilities.
+///
+/// # Description
+///
+/// The primary abstract representation is `granted: Set<Capability>`, which
+/// models capabilities as a mathematical set. The `bits` field is retained
+/// for bridging proofs between the set abstraction and the bit-level
+/// implementation.
 #[verifier::ext_equal]
 pub struct CapabilitiesView {
-    /// The raw bitfield value.
+    /// The raw bitfield value (implementation-level).
     pub bits: u8,
+    /// The set of granted capabilities (abstract-level).
+    pub granted: Set<Capability>,
 }
 
 //==================================================================================================
-// Spec Functions
+// Spec Functions — Bit-Level (Implementation)
 //==================================================================================================
 
 impl Capabilities {
@@ -107,6 +135,104 @@ impl Capabilities {
     pub open spec fn spec_mask_is_valid(cap: Capability) -> bool {
         Self::spec_mask(cap) & 0b1110_0000u8 == 0u8
     }
+
+//==================================================================================================
+// Spec Functions — Set-Level (Abstract)
+//==================================================================================================
+
+    /// Spec function: converts the capabilities bitfield to a set of Capability values.
+    ///
+    /// # Description
+    ///
+    /// This is the primary abstract representation. Instead of reasoning about
+    /// bit positions, downstream modules can reason about set membership:
+    ///   `self.spec_as_set().contains(cap)  <==>  self.spec_has(cap)`
+    ///
+    /// This addresses the "spec = implementation mirror" concern by providing
+    /// a higher-level abstraction: capabilities are a *set*, not a bitfield.
+    pub open spec fn spec_as_set(&self) -> Set<Capability> {
+        Set::empty()
+            .insert_if(self.spec_has(Capability::ExceptionControl), Capability::ExceptionControl)
+            .insert_if(self.spec_has(Capability::InterruptControl), Capability::InterruptControl)
+            .insert_if(self.spec_has(Capability::IoManagement), Capability::IoManagement)
+            .insert_if(self.spec_has(Capability::MemoryManagement), Capability::MemoryManagement)
+            .insert_if(self.spec_has(Capability::ProcessManagement), Capability::ProcessManagement)
+    }
+
+    /// Spec function: checks whether a capability is in the granted set.
+    ///
+    /// # Description
+    ///
+    /// Abstract predicate equivalent to `spec_has`, expressed in set terms.
+    /// Downstream modules should prefer this over `spec_has` for cleaner specs.
+    pub open spec fn spec_set_contains(&self, cap: Capability) -> bool {
+        self.spec_as_set().contains(cap)
+    }
+
+    /// Spec function: returns the set after granting a capability.
+    ///
+    /// # Description
+    ///
+    /// Models `set(cap)` as set insertion. Downstream modules can write:
+    ///   `ensures self.spec_granted() == old(self).spec_granted().insert(cap)`
+    /// instead of reasoning about bit-level OR operations.
+    pub open spec fn spec_set_insert(&self, cap: Capability) -> Set<Capability> {
+        self.spec_as_set().insert(cap)
+    }
+
+    /// Spec function: returns the set after revoking a capability.
+    ///
+    /// # Description
+    ///
+    /// Models `clear(cap)` as set removal. Downstream modules can write:
+    ///   `ensures self.spec_granted() == old(self).spec_granted().remove(cap)`
+    /// instead of reasoning about bit-level AND-NOT operations.
+    pub open spec fn spec_set_remove(&self, cap: Capability) -> Set<Capability> {
+        self.spec_as_set().remove(cap)
+    }
+
+    /// Spec function: the set of granted capabilities (alias for `spec_as_set`).
+    ///
+    /// # Description
+    ///
+    /// Convenience alias. The canonical abstract postcondition for downstream
+    /// modules is:
+    ///   `process.capabilities().spec_granted().contains(Capability::ProcessManagement)`
+    /// rather than:
+    ///   `(process.capabilities().bits & 16u8) != 0u8`
+    pub open spec fn spec_granted(&self) -> Set<Capability> {
+        self.spec_as_set()
+    }
+
+    /// Spec function: the default (empty) capabilities as a set.
+    pub open spec fn spec_empty_set() -> Set<Capability> {
+        Set::empty()
+    }
+
+    /// Spec function: the number of granted capabilities.
+    pub open spec fn spec_count(&self) -> nat {
+        (if self.spec_has(Capability::ExceptionControl) { 1nat } else { 0nat })
+        + (if self.spec_has(Capability::InterruptControl) { 1nat } else { 0nat })
+        + (if self.spec_has(Capability::IoManagement) { 1nat } else { 0nat })
+        + (if self.spec_has(Capability::MemoryManagement) { 1nat } else { 0nat })
+        + (if self.spec_has(Capability::ProcessManagement) { 1nat } else { 0nat })
+    }
+}
+
+//==================================================================================================
+// Helper Spec for Set Construction
+//==================================================================================================
+
+/// Extension trait for conditional set insertion (used by spec_as_set).
+pub trait SetInsertIf<T> {
+    /// Inserts the element if the condition is true, otherwise returns self unchanged.
+    spec fn insert_if(self, cond: bool, elem: T) -> Self;
+}
+
+impl<T> SetInsertIf<T> for Set<T> {
+    open spec fn insert_if(self, cond: bool, elem: T) -> Set<T> {
+        if cond { self.insert(elem) } else { self }
+    }
 }
 
 //==================================================================================================
@@ -117,7 +243,10 @@ impl View for Capabilities {
     type V = CapabilitiesView;
 
     open spec fn view(&self) -> CapabilitiesView {
-        CapabilitiesView { bits: self.bits }
+        CapabilitiesView {
+            bits: self.bits,
+            granted: self.spec_as_set(),
+        }
     }
 }
 

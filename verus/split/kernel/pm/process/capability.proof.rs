@@ -516,6 +516,95 @@ impl Capabilities {
         Self::lemma_set_preserves_wf(pre, cap);
         Self::lemma_clear_preserves_wf(pre, cap);
     }
+
+    //==============================================================================================
+    // Bridging Lemmas: Bit-Level ↔ Set-Level Consistency
+    //==============================================================================================
+
+    /// Lemma: `spec_has` is equivalent to set membership in `spec_as_set`.
+    ///
+    /// # Description
+    ///
+    /// This is the core bridging lemma. It proves that the bit-level predicate
+    /// `spec_has(cap)` is equivalent to `spec_as_set().contains(cap)`, allowing
+    /// downstream modules to use set-level reasoning knowing it is grounded in
+    /// the bit-level implementation.
+    pub proof fn lemma_has_iff_set_contains(&self, cap: Capability)
+        ensures
+            self.spec_has(cap) <==> self.spec_as_set().contains(cap),
+    {
+        // By exhaustive case analysis on cap, the insert_if chain either
+        // inserts or skips exactly matching spec_has.
+        match cap {
+            Capability::ExceptionControl => {},
+            Capability::InterruptControl => {},
+            Capability::IoManagement => {},
+            Capability::MemoryManagement => {},
+            Capability::ProcessManagement => {},
+        }
+    }
+
+    /// Lemma: After `set(cap)`, the granted set equals `old.spec_granted().insert(cap)`.
+    ///
+    /// # Description
+    ///
+    /// Bridges the bit-level `set` operation to set-level insertion, proving
+    /// that `self.spec_granted() == old(self).spec_granted().insert(cap)` after
+    /// calling `set(cap)`.
+    pub proof fn lemma_set_insert_matches_bit_set(pre: Capabilities, cap: Capability)
+        requires
+            pre.wf(),
+        ensures
+            ({
+                let post: Capabilities = Capabilities { bits: pre.spec_set(cap) };
+                forall |c: Capability| post.spec_has(c) <==>
+                    (pre.spec_has(c) || c == cap)
+            }),
+    {
+        let post: Capabilities = Capabilities { bits: pre.spec_set(cap) };
+        assert forall |c: Capability| post.spec_has(c) <==>
+            (pre.spec_has(c) || c == cap) by {
+            Self::lemma_set_then_has(pre, cap);
+            if Self::spec_mask(c) != Self::spec_mask(cap) {
+                Self::lemma_set_preserves_other(pre, cap, c);
+            }
+        }
+    }
+
+    /// Lemma: After `clear(cap)`, the granted set equals `old.spec_granted().remove(cap)`.
+    ///
+    /// # Description
+    ///
+    /// Bridges the bit-level `clear` operation to set-level removal, proving
+    /// that `self.spec_granted() == old(self).spec_granted().remove(cap)` after
+    /// calling `clear(cap)`.
+    pub proof fn lemma_clear_remove_matches_bit_clear(pre: Capabilities, cap: Capability)
+        requires
+            pre.wf(),
+        ensures
+            ({
+                let post: Capabilities = Capabilities { bits: pre.spec_clear(cap) };
+                forall |c: Capability| post.spec_has(c) <==>
+                    (pre.spec_has(c) && c != cap)
+            }),
+    {
+        let post: Capabilities = Capabilities { bits: pre.spec_clear(cap) };
+        assert forall |c: Capability| post.spec_has(c) <==>
+            (pre.spec_has(c) && c != cap) by {
+            Self::lemma_clear_then_not_has(pre, cap);
+            if Self::spec_mask(c) != Self::spec_mask(cap) {
+                Self::lemma_clear_preserves_other(pre, cap, c);
+            }
+        }
+    }
+
+    /// Lemma: The default (new) capabilities have an empty granted set.
+    pub proof fn lemma_default_empty_set()
+        ensures
+            Capabilities::spec_default().spec_as_set() =~= Set::empty(),
+    {
+        Self::lemma_default_is_empty();
+    }
 }
 
 } // verus!
