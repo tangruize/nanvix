@@ -648,11 +648,14 @@ impl RunnableProcessView {
 
     /// Abstract state transition: moves a sleeping thread to the ready queue
     /// (models `wakeup()` success case). The `time` parameter represents the
-    /// admission time assigned by `clock_now()` at exec level.
-    pub open spec fn spec_wakeup(&self, tid: i64, time: i64) -> RunnableProcessView
-        recommends Self::spec_seq_contains(self.sleeping_thread_ids, tid)
+    /// admission time assigned by `clock_now()` at exec level. The `idx`
+    /// parameter is the index of `tid` in the sleeping list, determined by
+    /// the concrete search at exec level.
+    pub open spec fn spec_wakeup(&self, tid: i64, time: i64, idx: int) -> RunnableProcessView
+        recommends
+            0 <= idx < self.sleeping_thread_ids.len(),
+            self.sleeping_thread_ids[idx] == tid,
     {
-        let idx: int = Self::spec_find_index(self.sleeping_thread_ids, tid);
         RunnableProcessView {
             pid: self.pid,
             ready_thread_ids: self.ready_thread_ids.push(tid),

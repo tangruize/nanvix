@@ -744,9 +744,8 @@ impl RunnableProcess {
     /// `RunnableProcessView::spec_wakeup()`.
     ///
     /// The `found_idx` parameter is the concrete index where `tid` was found
-    /// in the sleeping list (from `vec_search`). The proof shows this concrete
-    /// index equals the `choose`-based `spec_find_index` witness, establishing
-    /// that the view-level spec transition matches the exec result.
+    /// in the sleeping list (from `vec_search`). This is passed through to
+    /// `spec_wakeup` to deterministically identify the removed element.
     pub proof fn lemma_wakeup_view_eq(
         &self,
         result: &RunnableProcess,
@@ -756,7 +755,6 @@ impl RunnableProcess {
     )
         requires
             self.wf(),
-            RunnableProcess::spec_seq_contains(self.sleeping_thread_ids@, tid),
             0 <= found_idx < self.sleeping_thread_ids@.len(),
             self.sleeping_thread_ids@[found_idx] == tid,
             result.pid.spec_value() == self.pid.spec_value(),
@@ -767,24 +765,10 @@ impl RunnableProcess {
                 RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx),
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
         ensures
-            result@ == self@.spec_wakeup(tid, time),
+            result@ == self@.spec_wakeup(tid, time, found_idx),
     {
-        // Show that the view-level spec_find_index chooses the same index.
-        let view_idx: int = RunnableProcessView::spec_find_index(
-            self@.sleeping_thread_ids, tid);
-        // view_idx satisfies the choose predicate.
-        assert(0 <= view_idx < self@.sleeping_thread_ids.len()
-            && self@.sleeping_thread_ids[view_idx] == tid);
-        // found_idx also satisfies it.
-        assert(0 <= found_idx < self@.sleeping_thread_ids.len()
-            && self@.sleeping_thread_ids[found_idx] == tid);
-        // Both produce the same spec_remove_at result when applied to the same input.
-        // The result sleeping list matches the concrete removal at found_idx.
         assert(RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx)
             =~= RunnableProcessView::spec_remove_at(self@.sleeping_thread_ids, found_idx));
-        // Show the view-level removal at view_idx equals the concrete removal.
-        assert(RunnableProcessView::spec_remove_at(self@.sleeping_thread_ids, view_idx)
-            =~= result@.sleeping_thread_ids);
     }
 
     /// Bridging lemma: the from_state() constructor view matches
