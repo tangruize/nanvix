@@ -184,6 +184,7 @@ impl ReadyThread {
     /// Spec function: well-formedness predicate.
     pub open spec fn wf(&self) -> bool {
         self.state.wf()
+        && self.admission_time >= 0
     }
 }
 
