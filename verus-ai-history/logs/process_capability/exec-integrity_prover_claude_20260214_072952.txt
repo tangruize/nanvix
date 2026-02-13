@@ -1,0 +1,110 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T07:31:19.299073
+Model: claude-opus-4.6-fast
+Session: 796be4c5-5e6f-40e9-9071-eb04d6269fd2
+Duration: 86.5s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for process_capability.
+
+Original source: src/kernel/src/pm/process/capability.rs
+Verified code directory: verus/split/kernel/pm/process/
+  - capability.rs (exec)
+  - capability.spec.rs (spec)
+  - capability.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/process/capability.rs) against the
+original source (src/kernel/src/pm/process/capability.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh process_capability
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/process_capability_20260214_072952.md:
+
+```markdown
+# Exec Integrity: process_capability
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● List directory verus/split/kernel/pm/process
+  └ 6 files found
+
+● Read src/kernel/src/pm/process/capability.rs
+  └ 33 lines read
+
+● Read verus/split/kernel/pm/process/capability.rs
+  └ 297 lines read
+
+Now let me run the verification and check the spec/proof files for completeness.
+
+● Read verus/split/kernel/pm/process/capability.spec.rs
+  └ 253 lines read
+
+● Read verus/split/kernel/pm/process/capability.proof.rs
+  └ 610 lines read
+
+● Run verification for process_capability
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh process_capability 2>&1 | tail -30
+  └ 23 lines...
+
+● Create integrity report directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+● Create verus-ai-history/integrity/process_capability_20260214_072952.md (+80)
+
+Integrity check complete. All exec logic in the verified code is semantically equivalent to the original — no fixes needed. Report at `verus-ai-history/integrity/process_capability_20260214_072952.md`.
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 7.917s
+Total session time:     1m 25.271s
+Total code changes:     +80 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    245.1k in, 6.2k out, 194.5k cached (Est. 9 Premium requests)
+
+=== End ===
