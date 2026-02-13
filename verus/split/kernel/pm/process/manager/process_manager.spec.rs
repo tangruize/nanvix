@@ -198,6 +198,24 @@ verus! {
 ///
 /// Models the logical state of the process manager: which PIDs are in which queue,
 /// the next PID to allocate, and configuration/message state.
+///
+/// ## Abstract State Transitions
+///
+/// The View type provides spec functions that model state transitions at a high
+/// level, abstracting away internal fields. Downstream modules should use these
+/// instead of reasoning about individual fields:
+///
+/// - `spec_create_process()` → new View after creating a process.
+/// - `spec_schedule(chosen)` → new View after scheduling.
+/// - `spec_sleep_running(chosen)` → new View after sleep.
+/// - `spec_exit_running(chosen)` → new View after exit.
+/// - `spec_wakeup(pid)` → new View after wakeup.
+/// - `spec_terminate(pid)` → new View after terminate.
+/// - `spec_harvest(pid)` → new View after harvest.
+///
+/// These allow postconditions like:
+///   `ensures self@ =~= old(self)@.spec_create_process()`
+/// instead of listing every field change individually.
 #[verifier::ext_equal]
 pub struct ProcessManagerInnerView {
     /// PID of the currently running process.
@@ -216,6 +234,131 @@ pub struct ProcessManagerInnerView {
     pub interrupt_capable: bool,
     /// Number of buffered (unconsumed) messages.
     pub number_buffered_messages: nat,
+}
+
+//==================================================================================================
+// Abstract State Transition Specs (on View)
+//==================================================================================================
+
+impl ProcessManagerInnerView {
+    /// Spec: the set of all live PIDs (running + all queues).
+    pub open spec fn spec_all_pids(&self) -> Set<int> {
+        Set::empty().insert(self.running_pid)
+            .union(self.ready_pids)
+            .union(self.suspended_pids)
+            .union(self.interrupted_pids)
+            .union(self.zombie_pids)
+    }
+
+    /// Spec: a process exists in some queue.
+    pub open spec fn spec_process_exists(&self, pid: int) -> bool {
+        self.running_pid == pid
+        || self.ready_pids.contains(pid)
+        || self.suspended_pids.contains(pid)
+        || self.interrupted_pids.contains(pid)
+        || self.zombie_pids.contains(pid)
+    }
+
+    /// Spec: abstract view after creating a new process.
+    ///
+    /// The new process is added to the ready queue with the next PID.
+    pub open spec fn spec_create_process(&self) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            ready_pids: self.ready_pids.insert(self.next_pid),
+            next_pid: self.next_pid + 1,
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after scheduling (running↔ready swap).
+    ///
+    /// The current running process goes to ready; `chosen_next` leaves ready
+    /// and becomes running.
+    pub open spec fn spec_schedule(&self, chosen_next: int) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            running_pid: chosen_next,
+            ready_pids: self.ready_pids.remove(chosen_next).insert(self.running_pid),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after sleeping the running process.
+    ///
+    /// Running process moves to suspended; `chosen_next` from ready becomes running.
+    pub open spec fn spec_sleep_running(&self, chosen_next: int) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            running_pid: chosen_next,
+            ready_pids: self.ready_pids.remove(chosen_next),
+            suspended_pids: self.suspended_pids.insert(self.running_pid),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after the running process exits to zombie.
+    ///
+    /// Running process moves to zombie; `chosen_next` from ready becomes running.
+    pub open spec fn spec_exit_running(&self, chosen_next: int) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            running_pid: chosen_next,
+            ready_pids: self.ready_pids.remove(chosen_next),
+            zombie_pids: self.zombie_pids.insert(self.running_pid),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after waking a suspended process.
+    ///
+    /// The process moves from suspended to ready.
+    pub open spec fn spec_wakeup(&self, pid: int) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            suspended_pids: self.suspended_pids.remove(pid),
+            ready_pids: self.ready_pids.insert(pid),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after terminating a ready process to zombie.
+    pub open spec fn spec_terminate_ready(&self, pid: int) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            ready_pids: self.ready_pids.remove(pid),
+            zombie_pids: self.zombie_pids.insert(pid),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after terminating a suspended process.
+    ///
+    /// Moves the process to interrupted (pre-zombie state for cleanup).
+    pub open spec fn spec_terminate_suspended(&self, pid: int) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            suspended_pids: self.suspended_pids.remove(pid),
+            interrupted_pids: self.interrupted_pids.insert(pid),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after harvesting a zombie process.
+    pub open spec fn spec_harvest(&self, pid: int) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            zombie_pids: self.zombie_pids.remove(pid),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after resuming all interrupted processes to ready.
+    pub open spec fn spec_resume_all_interrupted(&self) -> ProcessManagerInnerView {
+        ProcessManagerInnerView {
+            ready_pids: self.ready_pids.union(self.interrupted_pids),
+            interrupted_pids: Set::empty(),
+            ..*self
+        }
+    }
+
+    /// Spec: abstract view after a full schedule cycle
+    /// (resume all interrupted, then schedule).
+    pub open spec fn spec_full_schedule(&self, chosen_next: int) -> ProcessManagerInnerView {
+        self.spec_resume_all_interrupted().spec_schedule(chosen_next)
+    }
 }
 
 //==================================================================================================
