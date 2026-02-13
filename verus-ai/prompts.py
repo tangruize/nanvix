@@ -469,3 +469,245 @@ Write report to verus-ai-history/strengthen/{module_name}_{timestamp}.md showing
 # Keep old name as alias for backwards compatibility.
 STRENGTHEN_LIVENESS_PROMPT = STRENGTHEN_SPECS_PROMPT
 
+
+#==================================================================================================
+# Improvement Prompts: Abstraction and Exec Integrity
+#==================================================================================================
+
+IMPROVE_ABSTRACTION_PROMPT = """
+Improve the spec abstraction for {module_name}.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+== YOUR TASK ==
+
+The current spec may mirror the implementation too closely (listing individual
+fields in postconditions instead of using abstract reasoning). Your job is to
+add View-level abstract state transition functions so that downstream modules
+can write postconditions like:
+    ensures result@ =~= old(self)@.spec_foo(args)
+instead of listing every field change individually.
+
+== STEPS ==
+
+1. Read the .spec.rs file and identify all View types (e.g., FooView).
+2. Read the .rs exec file and identify all pub fn that mutate or construct state.
+3. For each exec function, add a corresponding `pub open spec fn` on the View
+   type that returns the expected output View. Use struct update syntax:
+     FooView {{ changed_field: new_val, ..*self }}
+4. Prefer abstract types: Set<T> over raw bits, Seq<T> for ordered collections,
+   high-level predicates over field-level conditions.
+5. If bridging lemmas are needed (e.g., bit-level ↔ set-level), add them to
+   the .proof.rs file.
+6. Do NOT modify exec code in the .rs file. Do NOT change existing ensures.
+   Only ADD new spec functions to the .spec.rs file (and optionally lemmas
+   to .proof.rs).
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh {module_name}
+Iterate until verification passes (0 errors).
+
+== OUTPUT ==
+Write a brief summary of what was added as a comment at the top of the
+.spec.rs file under the existing module doc comment.
+""".strip()
+
+
+IMPROVE_ABSTRACTION_REVIEW_PROMPT = """
+Review the abstraction improvements made to {module_name}.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+The prover has added abstract state transition spec functions to the View types.
+
+Review criteria:
+1. COMPLETENESS: Every exec function that changes state has a matching spec
+   transition function on the View type.
+2. CORRECTNESS: Each spec transition function accurately models what the exec
+   function does (field changes, collection operations, etc.).
+3. ABSTRACTION: Spec functions use abstract types (Set, Seq, predicates) rather
+   than mirroring implementation details (bit ops, raw indices).
+4. NO EXEC CHANGES: The .rs exec file must be unmodified from original.
+5. VERIFICATION: Code still verifies (0 errors).
+
+Verification command: ./verus-ai/scripts/verify.sh {module_name}
+
+For each issue, provide:
+- Priority: Critical / High / Medium / Low
+- Location: Function or spec name (and which file)
+- Description: What is wrong or missing
+- Suggested Fix: How to address it
+
+Write review to {review_file}.
+
+Output format:
+```markdown
+# Review: {module_name} Abstraction ({model_name})
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+### High
+- ...
+### Medium
+- ...
+### Low
+- ...
+
+## Positive Observations
+- ...
+
+## Summary
+[Overall assessment]
+```
+""".strip()
+
+
+EXEC_INTEGRITY_PROMPT = """
+Check exec code integrity for {module_name}.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code ({output_dir}/{file_stem}.rs) against the
+original source ({source_path}) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh {module_name}
+
+== OUTPUT ==
+Write report to {report_file}:
+
+```markdown
+# Exec Integrity: {module_name}
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+""".strip()
+
+
+EXEC_INTEGRITY_REVIEW_PROMPT = """
+Review the exec integrity report for {module_name}.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+Integrity report: {report_file}
+
+Review criteria:
+1. Were ALL differences between original and verified exec code identified?
+2. Were LOGIC_CHANGE items correctly fixed or properly justified?
+3. Are there any remaining semantic differences that were missed?
+4. Is the exec code still faithful to the original implementation?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh {module_name}
+
+Write review to {review_file}.
+
+Output format:
+```markdown
+# Review: {module_name} Exec Integrity ({model_name})
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+### High
+- ...
+
+## Summary
+[Overall assessment]
+```
+""".strip()
+
+
+IMPROVE_ABSTRACTION_FIX_PROMPT = """
+A reviewer has identified issues in your abstraction improvements for {module_name}.
+
+Review file: {review_file}
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
+
+Please address each issue:
+1. If the issue is valid, fix it and explain your change
+2. If the issue is not applicable, explain why
+
+After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
+Iterate until verification passes (0 errors).
+""".strip()
+
+
+EXEC_INTEGRITY_FIX_PROMPT = """
+A reviewer has identified issues in your exec integrity check for {module_name}.
+
+Review file: {review_file}
+Integrity report: {report_file}
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
+
+Please address each issue:
+1. If the issue is valid, fix it and explain your change
+2. If the issue is not applicable, explain why
+
+After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
+Iterate until verification passes (0 errors).
+""".strip()
+

@@ -28,6 +28,7 @@ REVIEWS_DIR = HISTORY_DIR / "reviews"
 CONSISTENCY_DIR = HISTORY_DIR / "consistency"
 SIMPLIFY_DIR = HISTORY_DIR / "simplify"
 STRENGTHEN_DIR = HISTORY_DIR / "strengthen"
+INTEGRITY_DIR = HISTORY_DIR / "integrity"
 
 # Verification command (run from VERUS_SPLIT_DIR).
 VERUS_CMD = "verus --crate-type lib lib.rs"

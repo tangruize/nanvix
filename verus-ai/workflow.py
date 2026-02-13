@@ -26,6 +26,7 @@ from config import (
     GRADE_THRESHOLD,
     HISTORY_DIR,
     INITIAL_PROVER_RETRIES,
+    INTEGRITY_DIR,
     LOGS_DIR,
     MAX_INNER_ITERATIONS,
     ModuleConfig,
@@ -49,6 +50,12 @@ from guardrails import (
 from prompts import (
     CHEATING_JUSTIFICATION_PROMPT,
     CHECK_CONSISTENCY_PROMPT,
+    EXEC_INTEGRITY_FIX_PROMPT,
+    EXEC_INTEGRITY_PROMPT,
+    EXEC_INTEGRITY_REVIEW_PROMPT,
+    IMPROVE_ABSTRACTION_FIX_PROMPT,
+    IMPROVE_ABSTRACTION_PROMPT,
+    IMPROVE_ABSTRACTION_REVIEW_PROMPT,
     PROVER_FIX_PROMPT,
     PROVER_FIX_FRESH_PROMPT,
     PROVER_PROMPT,
@@ -937,7 +944,221 @@ def run_strengthen_liveness(module_name: str, source_path: Optional[str] = None)
     return verus_success
 
 
-def run_polish(module_name: str, source_path: Optional[str] = None) -> bool:
+def _run_single_step_with_review(
+    module_name: str,
+    source_path: str,
+    step_name: str,
+    prover_prompt: str,
+    review_prompt_template: str,
+    fix_prompt_template: str,
+    review_model: str = "claude-opus-4.6",
+    report_file: Optional[str] = None,
+) -> bool:
+    """
+    Run a single improvement step with one round of review + fix.
+
+    Flow: prover runs → reviewer reviews → prover fixes → verify.
+
+    Parameters:
+        module_name: Module name.
+        source_path: Path to original source.
+        step_name: Step name for logs (e.g., "improve-abstraction").
+        prover_prompt: The initial prover prompt.
+        review_prompt_template: Template for review (needs review_file, model_name).
+        fix_prompt_template: Template for fix (needs review_file).
+        review_model: Model for the reviewer.
+        report_file: Optional report file path (for exec-integrity).
+
+    Returns:
+        True if verification passes at the end.
+    """
+    # Derive module config for output_dir/file_stem.
+    module = _find_module_config(module_name, source_path)
+    fmt = _module_fmt(module)
+
+    # Ensure review directory exists.
+    module_review_dir = REVIEWS_DIR / module_name
+    module_review_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    review_file = module_review_dir / f"{step_name}_{timestamp}.md"
+
+    # Step 1: Prover runs.
+    git_commit_module(module_name, f"[verus-ai] {step_name} START: {module_name}")
+    print(f"[PROVER] Running {step_name} for {module_name}...")
+    output, prover_session = run_copilot(
+        prover_prompt,
+        PROVER_MODEL,
+        timeout=PROVER_TIMEOUT,
+        log_prefix=f"{step_name}_prover",
+        module_name=module_name,
+    )
+    git_commit_module(module_name, f"[verus-ai] {step_name} prover END: {module_name}")
+
+    # Step 2: Verify after prover.
+    verus_success, verus_output = run_verus(module_name)
+    print(f"[VERUS] After prover: {'PASSED' if verus_success else 'FAILED'}")
+
+    # Step 3: Reviewer reviews.
+    review_fmt = {
+        **fmt,
+        "review_file": str(review_file),
+        "model_name": review_model,
+    }
+    if report_file:
+        review_fmt["report_file"] = report_file
+    review_prompt = review_prompt_template.format(**review_fmt)
+
+    print(f"[REVIEWER] Running {review_model} review for {step_name}...")
+    review_output, reviewer_session = run_reviewer(
+        review_prompt, review_model, module_name=module_name
+    )
+    git_commit_module(module_name, f"[verus-ai] {step_name} review END: {module_name}")
+
+    # Parse grade from review.
+    grade = "?"
+    if review_file.exists():
+        grade = parse_grade(review_file.read_text())
+    print(f"[REVIEWER] Grade: {grade}")
+
+    # Step 4: Prover fixes based on review (if review file exists).
+    if review_file.exists() and not is_passing_grade(grade):
+        fix_fmt = {
+            **fmt,
+            "review_file": str(review_file),
+        }
+        if report_file:
+            fix_fmt["report_file"] = report_file
+        fix_prompt = fix_prompt_template.format(**fix_fmt)
+
+        print(f"[PROVER] Fixing issues from review...")
+        fix_output, fix_session = run_copilot(
+            fix_prompt,
+            PROVER_MODEL,
+            session=prover_session,
+            timeout=PROVER_TIMEOUT,
+            log_prefix=f"{step_name}_fix",
+            module_name=module_name,
+        )
+        git_commit_module(module_name, f"[verus-ai] {step_name} fix END: {module_name}")
+
+    # Step 5: Final verification.
+    verus_success, verus_output = run_verus(module_name)
+    print(f"[VERUS] Final: {'PASSED' if verus_success else 'FAILED'}")
+
+    if not verus_success:
+        print(f"[WARNING] Verification failed after {step_name}!")
+        print(f"[VERUS] Output: {verus_output[:1000]}")
+
+    return verus_success
+
+
+def _find_module_config(module_name: str, source_path: str) -> ModuleConfig:
+    """Find or create a ModuleConfig for a module name."""
+    # Infer output_subdir from source path.
+    # e.g., src/kernel/src/pm/process/state/runnable.rs -> kernel/pm/process/state
+    path = Path(source_path)
+    parts = path.parts
+    # Find "kernel" in parts and build from there.
+    output_subdir = module_name
+    file_stem = module_name
+    try:
+        kernel_idx = list(parts).index("kernel")
+        # Skip "kernel/src" -> take from parts[kernel_idx], skip src.
+        relevant = [p for p in parts[kernel_idx:] if p != "src"]
+        # Remove filename to get directory.
+        output_subdir = "/".join(relevant[:-1])
+        file_stem = path.stem
+    except ValueError:
+        # Try libs path.
+        try:
+            libs_idx = list(parts).index("libs")
+            relevant = [p for p in parts[libs_idx:] if p != "src"]
+            output_subdir = "/".join(relevant[:-1])
+            file_stem = path.stem
+        except ValueError:
+            pass
+
+    return ModuleConfig(
+        name=module_name,
+        source_path=path,
+        verify_module=module_name,
+        output_subdir=output_subdir,
+        file_stem=file_stem,
+    )
+
+
+def run_improve_abstraction(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Improve spec abstraction for a module with review.
+
+    Adds View-level abstract state transition functions to .spec.rs files.
+    Followed by one round of review + fix.
+    """
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"ERROR: Could not find source for {module_name}")
+            return False
+
+    module = _find_module_config(module_name, source_path)
+    fmt = _module_fmt(module)
+
+    print(f"\n{'#'*60}")
+    print(f"IMPROVE ABSTRACTION: {module_name}")
+    print(f"Source: {source_path}")
+    print(f"Output: {module.output_dir()}/")
+    print(f"{'#'*60}")
+
+    prompt = IMPROVE_ABSTRACTION_PROMPT.format(**fmt)
+
+    return _run_single_step_with_review(
+        module_name=module_name,
+        source_path=source_path,
+        step_name="improve-abstraction",
+        prover_prompt=prompt,
+        review_prompt_template=IMPROVE_ABSTRACTION_REVIEW_PROMPT,
+        fix_prompt_template=IMPROVE_ABSTRACTION_FIX_PROMPT,
+    )
+
+
+def run_exec_integrity(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Check exec code integrity for a module with review.
+
+    Compares verified exec code against original source, fixes logic changes,
+    and produces integrity report. Followed by one round of review + fix.
+    """
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"ERROR: Could not find source for {module_name}")
+            return False
+
+    module = _find_module_config(module_name, source_path)
+    fmt = _module_fmt(module)
+
+    print(f"\n{'#'*60}")
+    print(f"EXEC INTEGRITY: {module_name}")
+    print(f"Source: {source_path}")
+    print(f"Output: {module.output_dir()}/")
+    print(f"{'#'*60}")
+
+    # Create integrity report directory.
+    INTEGRITY_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_file = str(INTEGRITY_DIR / f"{module_name}_{timestamp}.md")
+
+    prompt = EXEC_INTEGRITY_PROMPT.format(**fmt, report_file=report_file)
+
+    return _run_single_step_with_review(
+        module_name=module_name,
+        source_path=source_path,
+        step_name="exec-integrity",
+        prover_prompt=prompt,
+        review_prompt_template=EXEC_INTEGRITY_REVIEW_PROMPT,
+        fix_prompt_template=EXEC_INTEGRITY_FIX_PROMPT,
+        report_file=report_file,
+    )
     """
     Run full polish pipeline: consistency check -> simplify -> strengthen specs.
 
@@ -1057,6 +1278,15 @@ Post-processing commands:
     polish_parser.add_argument("module", help="Module name to polish")
     polish_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
 
+    # Improvement commands.
+    abstraction_parser = subparsers.add_parser("improve-abstraction", help="Improve spec abstraction with View-level transition functions")
+    abstraction_parser.add_argument("module", help="Module name to improve")
+    abstraction_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
+    integrity_parser = subparsers.add_parser("exec-integrity", help="Check exec code integrity against original source")
+    integrity_parser.add_argument("module", help="Module name to check")
+    integrity_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
     args = parser.parse_args()
 
     if args.command == "verify":
@@ -1155,6 +1385,14 @@ Post-processing commands:
 
     elif args.command == "polish":
         success = run_polish(args.module, args.source)
+        return 0 if success else 1
+
+    elif args.command == "improve-abstraction":
+        success = run_improve_abstraction(args.module, getattr(args, 'source', None))
+        return 0 if success else 1
+
+    elif args.command == "exec-integrity":
+        success = run_exec_integrity(args.module, getattr(args, 'source', None))
         return 0 if success else 1
 
     else:
