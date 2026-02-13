@@ -1,0 +1,1907 @@
+[
+  {
+    "module": "capability",
+    "source": "src/kernel/src/pm/process/capability.rs",
+    "verus": "verus/split/kernel/pm/process/capability.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 4 critical, 0 high, 2 medium. Structs: 1 diffs. Functions: 6 diffs.",
+    "struct_diffs": [
+      {
+        "name": "Capabilities",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub bits: u8"
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "to_mask",
+        "type": "added_in_verus",
+        "severity": "low",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "default",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "set",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,5 @@\n {\n-        self.0 |= 1 << capability as u8;\n+        let mask: u8 = Self::to_mask(capability);\n+        self.bits = self.bits | mask;\n+        }\n     }"
+      },
+      {
+        "name": "clear",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,5 @@\n {\n-        self.0 &= !(1 << capability as u8);\n+        let mask: u8 = Self::to_mask(capability);\n+        self.bits = self.bits & !mask;\n+        }\n     }"
+      },
+      {
+        "name": "has",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,4 @@\n {\n-        (self.0 & (1 << capability as u8)) != 0\n+        let mask: u8 = Self::to_mask(capability);\n+        (self.bits & mask) != 0u8\n     }"
+      }
+    ]
+  },
+  {
+    "module": "clock",
+    "source": "src/kernel/src/pm/clock.rs",
+    "verus": "verus/split/kernel/pm/clock.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 5 critical, 7 high, 11 medium. Structs: 4 diffs. Functions: 19 diffs.",
+    "struct_diffs": [
+      {
+        "name": "TimerTicks",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'minor' changed from private to pub (Verus constraint)."
+      },
+      {
+        "name": "TimerTicks",
+        "type": "type_changed",
+        "severity": "high",
+        "detail": "Field 'minor' type changed: 'AtomicU32' \u2192 'u32'."
+      },
+      {
+        "name": "TimerTicks",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'major' changed from private to pub (Verus constraint)."
+      },
+      {
+        "name": "TimerTicks",
+        "type": "type_changed",
+        "severity": "high",
+        "detail": "Field 'major' type changed: 'AtomicU32' \u2192 'u32'."
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "timer_handler",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "is_max",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "is_zero",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "compute_nanoseconds",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "compute_seconds",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "timer_handler_model",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "standalone_ticks",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "standalone_now",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "now_fallback_model",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "now_pit_model",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,6 +1,3 @@\n {\n-        Self {\n-            minor: AtomicU32::new(0),\n-            major: AtomicU32::new(0),\n-        }\n+        TimerTicks { minor: 0, major: 0 }\n     }"
+      },
+      {
+        "name": "get",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,3 @@\n {\n-        (self.major.load(ORDER), self.minor.load(ORDER))\n+        (self.major, self.minor)\n     }"
+      },
+      {
+        "name": "increment",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self)' vs verus='(&mut self)'"
+      },
+      {
+        "name": "increment",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,15 +1,13 @@\n {\n-        // Safely increment `TIMER_TICKS`, assuming single-writer.\n-        let minor: u32 = self.minor.load(ORDER);\n-        let new_minor: u32 = minor.wrapping_add(1);\n-        self.minor.store(new_minor, ORDER);\n-\n-        // Check if the minor tick overflowed.\n-        if new_minor == 0 {\n-            // Safely increment `TIMER_TICKS_MAJOR`, assuming single-writer.\n-            let major: u32 = self.major.load(ORDER);\n-            self.major.store(major.wrapping_add(1), ORDER);\n+        if self.minor < u32::MAX {\n+            self.minor = self.minor + 1;\n+        } else {\n+            self.minor = 0;\n+            if self.major < u32::MAX {\n+                self.major = self.major + 1;\n+            } else {\n+                self.major = 0;\n+            }\n         }\n-\n-        new_minor\n+        self.minor\n     }"
+      },
+      {
+        "name": "ticks",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='()' vs verus='(&self)'"
+      },
+      {
+        "name": "ticks",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,4 +1,3 @@\n {\n-    let (major_ticks, minor_ticks): (u32, u32) = TIMER_TICKS.get();\n-    ((major_ticks as u64) << 32) + (minor_ticks as u64)\n-}\n+        (self.major as u64) * 0x1_0000_0000u64 + (self.minor as u64)\n+    }"
+      },
+      {
+        "name": "now",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='()' vs verus='(&self, timer_freq: u32)'"
+      },
+      {
+        "name": "now",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='SystemTime' vs verus='(u64, u32)'"
+      },
+      {
+        "name": "now",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,21 +1,6 @@\n {\n-    #[cfg(feature = \"pit\")]\n-    let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();\n-    #[cfg(not(feature = \"pit\"))]\n-    let timer_freq: u32 = 1;\n-\n-    let (major_ticks, minor_ticks): (u32, u32) = TIMER_TICKS.get();\n-    let seconds: u64 = (((major_ticks as u64) << 32) + (minor_ticks as u64)) / (timer_freq as u64);\n-    let nanoseconds: u32 = (minor_ticks % timer_freq) * (NANOSECONDS_PER_SECOND / timer_freq);\n-\n-    match SystemTime::new(seconds, nanoseconds) {\n-        Some(time) => time,\n-        None => {\n-            // SAFETY: This should not happen because `ticks` should be always in a valid range of `SystemTime`.\n-            unreachable!(\n-                \"now(): failed to get system time (major_ticks={major_ticks:?}, \\\n-                 minor_ticks={minor_ticks:?}, timer_freq={timer_freq:?})\"\n-            )\n-        },\n+        let (major_ticks, minor_ticks): (u32, u32) = self.get();\n+        let seconds: u64 = Self::compute_seconds(major_ticks, minor_ticks, timer_freq);\n+        let nanoseconds: u32 = Self::compute_nanoseconds(minor_ticks, timer_freq);\n+        (seconds, nanoseconds)\n     }\n-}"
+      }
+    ]
+  },
+  {
+    "module": "process_manager",
+    "source": "src/kernel/src/pm/process/manager/mod.rs",
+    "verus": "verus/split/kernel/pm/process/manager/process_manager.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 29 critical, 79 high, 74 medium. Structs: 15 diffs. Functions: 167 diffs.",
+    "struct_diffs": [
+      {
+        "name": "PidSet",
+        "type": "added_struct",
+        "severity": "high",
+        "detail": "New struct added in verus that doesn't exist in source."
+      },
+      {
+        "name": "ProcessManager",
+        "type": "removed_struct",
+        "severity": "critical",
+        "detail": "Struct exists in source but missing in verus."
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub running_pid: i32"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub ready_count: usize"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub suspended_count: usize"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub interrupted_count: usize"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub zombie_count: usize"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "ghost_field_added",
+        "severity": "high",
+        "detail": "Ghost field added to exec struct: pub ghost_ready: PidSet"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "ghost_field_added",
+        "severity": "high",
+        "detail": "Ghost field added to exec struct: pub ghost_suspended: PidSet"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "ghost_field_added",
+        "severity": "high",
+        "detail": "Ghost field added to exec struct: pub ghost_interrupted: PidSet"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "ghost_field_added",
+        "severity": "high",
+        "detail": "Ghost field added to exec struct: pub ghost_zombies: PidSet"
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'interrupt_capable' changed from private to pub (Verus constraint)."
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'next_pid' changed from private to pub (Verus constraint)."
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "type_changed",
+        "severity": "high",
+        "detail": "Field 'next_pid' type changed: 'ProcessIdentifier' \u2192 'i32'."
+      },
+      {
+        "name": "ProcessManagerInner",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'number_buffered_messages' changed from private to pub (Verus constraint)."
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "create_thread",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "try_add_thread",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "check_alarm",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "sleep",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "wakeup",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "try_wakeup",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "exit",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "exit_thread",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "terminate",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "interrupt_reason",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "harvest_zombies",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "get_pid",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "get_tid",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "has_capability",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "vmcopy_from_user",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "vmcopy_to_user",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "mmap",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "munmap",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "mctrl",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "mmio_alloc",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "mmio_free",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "attach_pmio",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "detach_pmio",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "read_pmio",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "write_pmio",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "add_event",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "remove_event",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "number_buffered_messages",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "try_borrow",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "try_borrow_mut",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "empty",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "pid_insert",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "pid_remove",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "find_index",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "pid_clear",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "absorb",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "get_running_pid",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "has_ready",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "has_zombies",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "is_interrupt_capable",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "get_buffered_message_count",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "sleep_running",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "sleep_thread_running",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "exit_running",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "exit_thread_running",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "exit_thread_to_suspended",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "exit_thread_to_zombie",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "wakeup_to_ready",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "resume_all_interrupted",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "terminate_ready",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "terminate_ready_stays_ready",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "terminate_suspended",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "harvest_zombie",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "post_message_not_found",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "recv_message",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "capctl_error_noop",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "alarm_interrupt",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "full_schedule",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "wakeup_running_noop",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "wakeup_ready_noop",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "wakeup_not_found",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "wakeup_suspended_failed_noop",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "take_interrupt_reason",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "create_thread_in_ready",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "create_thread_from_suspended",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "sleep_dispatch",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "exit_dispatch",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "exit_thread_dispatch",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "check_alarm_wrapper",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "harvest_zombies_wrapper",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "wakeup_dispatch",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "create_thread_dispatch",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "inner_create_thread",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "inner_create_thread_error",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "inner_try_add_thread",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "inner_wakeup",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "inner_try_wakeup",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "inner_try_wakeup_noop",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_try_borrow",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_try_borrow_mut",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_get_pid",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_get_tid",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_has_capability",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_terminate_ready",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_terminate_error",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_vmcopy_from_user",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_vmcopy_to_user",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_mmap",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_munmap",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_mctrl",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_mmio_alloc",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_mmio_free",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_attach_pmio",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_detach_pmio",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_read_pmio",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_write_pmio",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_add_event",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_remove_event",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_post_message",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_post_message_not_found",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "outer_number_buffered_messages",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        interrupt_capable: bool,\n        kernel: ReadyThread,\n        root: Vmem,\n        tm: ThreadManager,\n    )' vs verus='(interrupt_capable: bool)'"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,24 +1,16 @@\n {\n-        let kernel: RunnableProcess = RunnableProcess::new(ProcessIdentifier::KERNEL, kernel, root);\n-\n-        let (kernel, reason, _, _user_tda): (\n-            RunningProcess,\n-            Option<InterruptReason>,\n-            *mut ContextInformation,\n-            Option<VirtualAddress>,\n-        ) = kernel.run();\n-        debug_assert!(reason.is_none(), \"kernel process should not be interrupted\");\n-\n-        Self {\n+        ProcessManagerInner {\n+            running_pid: 0i32,\n+            ready_count: 0usize,\n+            suspended_count: 0usize,\n+            interrupted_count: 0usize,\n+            zombie_count: 0usize,\n+            next_pid: 1i32,\n             interrupt_capable,\n-            interrupt_reason: None,\n-            next_pid: ProcessIdentifier::from(1),\n-            ready: LinkedList::new(),\n-            suspended: LinkedList::new(),\n-            interrupted: LinkedList::new(),\n-            zombies: LinkedList::new(),\n-            running: Some(kernel),\n-            tm,\n-            number_buffered_messages: 0,\n+            number_buffered_messages: 0usize,\n+            ghost_ready: PidSet::empty(),\n+            ghost_suspended: PidSet::empty(),\n+            ghost_interrupted: PidSet::empty(),\n+            ghost_zombies: PidSet::empty(),\n         }\n     }"
+      },
+      {
+        "name": "forge_user_context",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        mm: &mut VirtMemoryManager,\n        vmem: &mut Vmem,\n        args: &ThreadCreateArgs,\n        enable_interrupts: bool,\n    )' vs verus='(&self)'"
+      },
+      {
+        "name": "forge_user_context",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(KernelStack, ContextInformation), Error>' vs verus='None'"
+      },
+      {
+        "name": "forge_user_context",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,37 +1,3 @@\n {\n-        trace!(\"args={args:?}, enable_interrupts={enable_interrupts:?}\",);\n-\n-        unsafe extern \"C\" {\n-            pub fn __leave_kernel_to_user_mode();\n-        }\n-\n-        // Assert pre-conditions (these should have been checked by the caller).\n-        debug_assert!(Vmem::is_user_region(args.user_stack_base, args.user_stack_size));\n-        debug_assert!(Vmem::is_user_addr(args.user_fn));\n-\n-        let kernel_func: VirtualAddress =\n-            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);\n-\n-        // Alloc kernel pages for the kernel stack. If we fail beyond this point, `kernel_stack`\n-        // gets dropped as soon as we exit this scope and underlying pages are released.\n-        let kernel_stack: KernelStack = KernelStack::new(mm)?;\n-\n-        let cr3: u32 = vmem.pgdir().physical_address()?.into_raw_value() as u32;\n-        let esp: u32 = unsafe {\n-            hal::arch::forge_user_stack(\n-                kernel_stack.top().into_raw_value() as *mut u8,\n-                args.user_stack_base.into_raw_value() + args.user_stack_size,\n-                args.user_fn.into_raw_value(),\n-                args.user_fn_arg0,\n-                args.user_fn_arg1,\n-                kernel_func.into_raw_value(),\n-                enable_interrupts,\n-            )\n-        } as u32;\n-        let esp0: u32 = kernel_stack.top().into_raw_value() as u32;\n-\n-        trace!(\"cr3={:#x}, esp={:#x}, ebp={:#x}\", cr3, esp, esp0);\n-        let context: ContextInformation = ContextInformation::new(cr3, esp, esp0);\n-\n-        Ok((kernel_stack, context))\n+        // Context setup: no queue-level change.\n     }"
+      },
+      {
+        "name": "set_thread_data_area",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n        pid: ProcessIdentifier,\n        tid: ThreadIdentifier,\n        user_tda: Option<VirtualAddress>,\n    )' vs verus='(&self, pid: i32)'"
+      },
+      {
+        "name": "set_thread_data_area",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(), Error>' vs verus='None'"
+      },
+      {
+        "name": "set_thread_data_area",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,4 +1,3 @@\n {\n-        self.try_borrow_mut()?\n-            .set_thread_data_area(pid, tid, user_tda)\n+        // Thread metadata update: no queue-level change (T3).\n     }"
+      },
+      {
+        "name": "get_thread_data_area",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &self,\n        pid: ProcessIdentifier,\n        tid: ThreadIdentifier,\n    )' vs verus='(&self, pid: i32)'"
+      },
+      {
+        "name": "get_thread_data_area",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<Option<VirtualAddress>, Error>' vs verus='None'"
+      },
+      {
+        "name": "get_thread_data_area",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,2 @@\n {\n-        self.try_borrow()?.get_thread_data_area(pid, tid)\n     }"
+      },
+      {
+        "name": "create_process",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n        mm: &mut VirtMemoryManager,\n        elf: &Elf32Fhdr,\n        args: &str,\n        env: &str,\n    )' vs verus='(&mut self)'"
+      },
+      {
+        "name": "create_process",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<ProcessIdentifier, Error>' vs verus='i32'"
+      },
+      {
+        "name": "create_process",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,7 @@\n {\n-        self.try_borrow_mut()?.create_process(mm, elf, args, env)\n+        let pid: i32 = self.next_pid;\n+        self.ghost_ready.pid_insert(pid as u64);\n+        self.ready_count = self.ready_count + 1;\n+        self.next_pid = pid + 1;\n+        pid\n     }"
+      },
+      {
+        "name": "schedule",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n    )' vs verus='(&mut self, chosen_next: i32)'"
+      },
+      {
+        "name": "schedule",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='(\n        ProcessIdentifier,\n        ThreadIdentifier,\n        *mut ContextInformation,\n        *mut ContextInformation,\n        Option<VirtualAddress>,\n    )' vs verus='None'"
+      },
+      {
+        "name": "schedule",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,31 +1,6 @@\n {\n-        // Reschedule running process.\n-        let previous_process: RunningProcess = self.take_running();\n-\n-        let (previous_process, previous_context) = previous_process.schedule();\n-        self.ready.push_back(previous_process);\n-\n-        self.check_alarm();\n-\n-        // Process all interrupted processes.\n-        while let Some(interrupted_process) = self.interrupted.pop_front() {\n-            let ready_process: RunnableProcess = interrupted_process.resume();\n-            self.ready.push_back(ready_process);\n-        }\n-\n-        // Select next process to run.\n-        let next_process: RunnableProcess = self.take_earliest_ready();\n-\n-        let (next_process, reason, next_context, user_tda): (\n-            RunningProcess,\n-            Option<InterruptReason>,\n-            *mut ContextInformation,\n-            Option<VirtualAddress>,\n-        ) = next_process.run();\n-\n-        let next_pid: ProcessIdentifier = next_process.state().pid();\n-        let next_tid: ThreadIdentifier = next_process.get_tid();\n-        self.interrupt_reason = reason;\n-        self.running = Some(next_process);\n-        (next_pid, next_tid, previous_context, next_context, user_tda)\n+        let old_running: i32 = self.running_pid;\n+        self.ghost_ready.pid_insert(old_running as u64);\n+        self.ghost_ready.pid_remove(chosen_next as u64);\n+        self.running_pid = chosen_next;\n     }"
+      },
+      {
+        "name": "capctl",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n        pid: ProcessIdentifier,\n        capability: Capability,\n        value: bool,\n    )' vs verus='(&self, pid: i32)'"
+      },
+      {
+        "name": "capctl",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(), Error>' vs verus='None'"
+      },
+      {
+        "name": "capctl",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,2 @@\n {\n-        self.try_borrow_mut()?.capctl(pid, capability, value)\n     }"
+      },
+      {
+        "name": "handle_fpu_exception",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self)' vs verus='(&self)'"
+      },
+      {
+        "name": "handle_fpu_exception",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(), Error>' vs verus='None'"
+      },
+      {
+        "name": "handle_fpu_exception",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,2 @@\n {\n-        self.try_borrow_mut()?.handle_fpu_exception()\n     }"
+      },
+      {
+        "name": "try_join_thread",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n        pid: ProcessIdentifier,\n        tid: ThreadIdentifier,\n    )' vs verus='(&self, pid: i32)'"
+      },
+      {
+        "name": "try_join_thread",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<ZombieThread, Result<Condvar, Error>>' vs verus='None'"
+      },
+      {
+        "name": "try_join_thread",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,25 +1,3 @@\n {\n-        match self.find_process_mut(pid).map_err(Err)? {\n-            ProcessRefMut::Running(process) => process.try_join_thread(tid),\n-            ProcessRefMut::Runnable(_) => {\n-                let reason: &str = \"process is runnable\";\n-                error!(\"{reason} (pid={pid:?}, tid={tid:?})\");\n-                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))\n-            },\n-            ProcessRefMut::Sleeping(_) => {\n-                let reason: &str = \"process is sleeping\";\n-                error!(\"{reason} (pid={pid:?}, tid={tid:?})\");\n-                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))\n-            },\n-            ProcessRefMut::Interrupted(_) => {\n-                let reason: &str = \"process is interrupted\";\n-                error!(\"{reason} (pid={pid:?}, tid={tid:?})\");\n-                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))\n-            },\n-            ProcessRefMut::Zombie(_) => {\n-                let reason: &str = \"process is a zombie\";\n-                error!(\"{reason} (pid={pid:?}, tid={tid:?})\");\n-                Err(Err(Error::new(ErrorCode::OperationNotPermitted, reason)))\n-            },\n-        }\n+        // Thread join: no queue-level change (T3).\n     }"
+      },
+      {
+        "name": "get_mutex",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self, mutex_addr: MutexAddress)' vs verus='(&self)'"
+      },
+      {
+        "name": "get_mutex",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<Mutex, Error>' vs verus='None'"
+      },
+      {
+        "name": "get_mutex",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,2 @@\n {\n-        self.get_running_mut().state_mut().get_mutex(mutex_addr)\n     }"
+      },
+      {
+        "name": "get_cond",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self, cond_addr: ConditionAddress)' vs verus='(&self)'"
+      },
+      {
+        "name": "get_cond",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<Condvar, Error>' vs verus='None'"
+      },
+      {
+        "name": "get_cond",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,2 @@\n {\n-        self.get_running_mut().state_mut().get_cond(cond_addr)\n     }"
+      },
+      {
+        "name": "put_cond",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self, cond_addr: ConditionAddress)' vs verus='(&self)'"
+      },
+      {
+        "name": "put_cond",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(), Error>' vs verus='None'"
+      },
+      {
+        "name": "put_cond",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,2 @@\n {\n-        self.get_running_mut().state_mut().put_cond(cond_addr)\n     }"
+      },
+      {
+        "name": "put_mutex_guard",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self, mutex_addr: MutexAddress, guard: MutexGuard)' vs verus='(&self)'"
+      },
+      {
+        "name": "put_mutex_guard",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,5 +1,2 @@\n {\n-        self.get_running_mut()\n-            .running_mut()\n-            .put_mutex_guard(mutex_addr, guard);\n     }"
+      },
+      {
+        "name": "take_mutex_guard",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n        pid: ProcessIdentifier,\n        tid: ThreadIdentifier,\n        mutex_addr: MutexAddress,\n    )' vs verus='(&self)'"
+      },
+      {
+        "name": "take_mutex_guard",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<MutexGuard, Error>' vs verus='None'"
+      },
+      {
+        "name": "take_mutex_guard",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,18 +1,2 @@\n {\n-        let mutex_guard: MutexGuard = match self\n-            .get_running_mut()\n-            .running_mut()\n-            .take_mutex_guard(mutex_addr)\n-        {\n-            Some(mutex_guard) => mutex_guard,\n-            None => {\n-                let reason: &str = \"thread does not own mutex\";\n-                error!(\"{reason} (pid={pid:?}, tid={tid:?})\");\n-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));\n-            },\n-        };\n-\n-        self.get_running_mut().state_mut().put_mutex(mutex_addr)?;\n-\n-        Ok(mutex_guard)\n     }"
+      },
+      {
+        "name": "take_earliest_ready",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self)' vs verus='(&self)'"
+      },
+      {
+        "name": "take_earliest_ready",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='RunnableProcess' vs verus='None'"
+      },
+      {
+        "name": "take_earliest_ready",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,21 +1,3 @@\n {\n-        // SAFETY: As the kernel process is always runnable, the following statement will never panic.\n-        let mut selected: (usize, SystemTime) = (\n-            0,\n-            self.ready\n-                .front()\n-                .expect(\"there should always be a process ready to run\")\n-                .earliest_admission_time(),\n-        );\n-\n-        // Select process with the earliest admission time.\n-        for (i, process) in self.ready.iter().enumerate() {\n-            let process_admission_time: SystemTime = process.earliest_admission_time();\n-            if process_admission_time < selected.1 {\n-                selected = (i, process_admission_time);\n-            }\n-        }\n-\n-        // Remove the selected process from the list of ready processes.\n-        self.ready.remove(selected.0)\n+        // Selection is abstracted by T1: chosen_next parameter in schedule.\n     }"
+      },
+      {
+        "name": "take_running",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self)' vs verus='(&self)'"
+      },
+      {
+        "name": "take_running",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='RunningProcess' vs verus='None'"
+      },
+      {
+        "name": "take_running",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,4 +1,3 @@\n {\n-        // NOTE: it is safe to call unwrap because there is always a process running.\n-        self.running.take().expect(\"the kernel should be running\")\n+        // Internal helper subsumed by schedule/sleep/exit verified transitions.\n     }"
+      },
+      {
+        "name": "get_running",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='&RunningProcess' vs verus='None'"
+      },
+      {
+        "name": "get_running",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,4 +1,2 @@\n {\n-        // NOTE: it is safe to call unwrap because there is always a process running.\n-        self.running.as_ref().expect(\"the kernel should be running\")\n     }"
+      },
+      {
+        "name": "get_running_mut",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self)' vs verus='(&self)'"
+      },
+      {
+        "name": "get_running_mut",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='&mut RunningProcess' vs verus='None'"
+      },
+      {
+        "name": "get_running_mut",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,4 +1,2 @@\n {\n-        // NOTE: it is safe to call unwrap because there is always a process running.\n-        self.running.as_mut().expect(\"the kernel should be running\")\n     }"
+      },
+      {
+        "name": "find_process",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self, pid: ProcessIdentifier)' vs verus='(&self, pid: i32)'"
+      },
+      {
+        "name": "find_process",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<ProcessRef<'_>, Error>' vs verus='None'"
+      },
+      {
+        "name": "find_process",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,17 +1,2 @@\n {\n-        if self.get_running().state().pid() == pid {\n-            Ok(ProcessRef::Running(self.get_running()))\n-        } else if let Some(process) = self.ready.iter().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRef::Runnable(process))\n-        } else if let Some(process) = self.suspended.iter().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRef::Sleeping(process))\n-        } else if let Some(process) = self.interrupted.iter().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRef::Interrupted(process))\n-        } else if let Some(process) = self.zombies.iter().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRef::Zombie(process))\n-        } else {\n-            let reason: &str = \"process not found\";\n-            error!(\"{reason} (pid={pid:?})\");\n-            Err(Error::new(ErrorCode::NoSuchProcess, reason))\n-        }\n     }"
+      },
+      {
+        "name": "find_process_mut",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self, pid: ProcessIdentifier)' vs verus='(&self, pid: i32)'"
+      },
+      {
+        "name": "find_process_mut",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<ProcessRefMut<'_>, Error>' vs verus='None'"
+      },
+      {
+        "name": "find_process_mut",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,17 +1,2 @@\n {\n-        if self.get_running_mut().state().pid() == pid {\n-            Ok(ProcessRefMut::Running(self.get_running_mut()))\n-        } else if let Some(process) = self.ready.iter_mut().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRefMut::Runnable(process))\n-        } else if let Some(process) = self.suspended.iter_mut().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRefMut::Sleeping(process))\n-        } else if let Some(process) = self.interrupted.iter_mut().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRefMut::Interrupted(process))\n-        } else if let Some(process) = self.zombies.iter_mut().find(|p| p.state().pid() == pid) {\n-            Ok(ProcessRefMut::Zombie(process))\n-        } else {\n-            let reason: &str = \"process not found\";\n-            error!(\"{reason} (pid={pid:?})\");\n-            Err(Error::new(ErrorCode::NoSuchProcess, reason))\n-        }\n     }"
+      },
+      {
+        "name": "find_process_by_tid",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self, tid: ThreadIdentifier)' vs verus='(&self)'"
+      },
+      {
+        "name": "find_process_by_tid",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<ProcessRefMut<'_>, Error>' vs verus='None'"
+      },
+      {
+        "name": "find_process_by_tid",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,29 +1,2 @@\n {\n-        if self.get_running_mut().find_thread(tid).is_some() {\n-            Ok(ProcessRefMut::Running(self.get_running_mut()))\n-        } else if let Some(process) = self.ready.iter_mut().find(|p| p.find_thread(tid).is_some()) {\n-            Ok(ProcessRefMut::Runnable(process))\n-        } else if let Some(process) = self\n-            .suspended\n-            .iter_mut()\n-            .find(|p| p.find_thread(tid).is_some())\n-        {\n-            Ok(ProcessRefMut::Sleeping(process))\n-        } else if let Some(process) = self\n-            .interrupted\n-            .iter_mut()\n-            .find(|p| p.find_thread(tid).is_some())\n-        {\n-            Ok(ProcessRefMut::Interrupted(process))\n-        } else if let Some(process) = self\n-            .zombies\n-            .iter_mut()\n-            .find(|p| p.find_thread(tid).is_some())\n-        {\n-            Ok(ProcessRefMut::Zombie(process))\n-        } else {\n-            let reason: &str = \"thread not found\";\n-            error!(\"{reason} (tid={tid:?})\");\n-            Err(Error::new(ErrorCode::NoSuchEntry, reason))\n-        }\n     }"
+      },
+      {
+        "name": "find_thread_mut",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&mut self, tid: ThreadIdentifier)' vs verus='(&self)'"
+      },
+      {
+        "name": "find_thread_mut",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<ThreadRefMut<'_>, Error>' vs verus='None'"
+      },
+      {
+        "name": "find_thread_mut",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,40 +1,2 @@\n {\n-        // Search thread in the running process.\n-        if let Some(thread) = self.running.as_mut() {\n-            if let Some(thread) = thread.find_thread_mut(tid) {\n-                return Ok(thread);\n-            }\n-        }\n-\n-        // Search thread in the list of ready processes.\n-        for process in self.ready.iter_mut() {\n-            if let Some(thread) = process.find_thread_mut(tid) {\n-                return Ok(thread);\n-            }\n-        }\n-\n-        // Search thread in the list of sleeping processes.\n-        for process in self.suspended.iter_mut() {\n-            if let Some(thread) = process.find_thread_mut(tid) {\n-                return Ok(thread);\n-            }\n-        }\n-\n-        // Search thread in the list of interrupted processes.\n-        for process in self.interrupted.iter_mut() {\n-            if let Some(thread) = process.find_thread_mut(tid) {\n-                return Ok(thread);\n-            }\n-        }\n-\n-        // Search thread in the list of zombie processes.\n-        for process in self.zombies.iter_mut() {\n-            if let Some(thread) = process.find_thread_mut(tid) {\n-                return Ok(thread);\n-            }\n-        }\n-\n-        let reason: &str = \"thread not found\";\n-        error!(\"{reason} (tid={tid:?})\");\n-        Err(Error::new(ErrorCode::NoSuchEntry, reason))\n     }"
+      },
+      {
+        "name": "post_message",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n        receiver: MessageReceiver,\n        message: Message,\n    )' vs verus='(&mut self, receiver_pid: i32)'"
+      },
+      {
+        "name": "post_message",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(), Error>' vs verus='None'"
+      },
+      {
+        "name": "post_message",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,10 +1,3 @@\n {\n-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;\n-        let mut process: ProcessRefMut = match receiver.as_id() {\n-            Ok(pid) => pm.find_process_mut(pid)?,\n-            Err(tid) => pm.find_process_by_tid(tid)?,\n-        };\n-        process.state_mut().post_message(message);\n-        pm.number_buffered_messages += 1;\n-        Ok(())\n+        self.number_buffered_messages = self.number_buffered_messages + 1;\n     }"
+      }
+    ]
+  },
+  {
+    "module": "thread_manager",
+    "source": "src/kernel/src/pm/thread/mod.rs",
+    "verus": "verus/split/kernel/pm/thread/thread_manager.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 4 critical, 4 high, 1 medium. Structs: 2 diffs. Functions: 7 diffs.",
+    "struct_diffs": [
+      {
+        "name": "ReadyThread",
+        "type": "added_struct",
+        "severity": "high",
+        "detail": "New struct added in verus that doesn't exist in source."
+      },
+      {
+        "name": "ThreadManager",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'next_id' changed from private to pub (Verus constraint)."
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "thread_state_mut",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "thread_state",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,9 +1,9 @@\n {\n         match self {\n-            ThreadRef::Ready(thread) => thread.thread_state(),\n-            ThreadRef::Running(thread) => thread.thread_state(),\n-            ThreadRef::Sleeping(thread) => thread.thread_state(),\n-            ThreadRef::Interrupted(thread) => thread.thread_state(),\n-            ThreadRef::Zombie(thread) => thread.thread_state(),\n+            ThreadRefMutModel::Ready(state) => state,\n+            ThreadRefMutModel::Running(state) => state,\n+            ThreadRefMutModel::Sleeping(state) => state,\n+            ThreadRefMutModel::Interrupted(state) => state,\n+            ThreadRefMutModel::Zombie(state) => state,\n         }\n     }"
+      },
+      {
+        "name": "new",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='(ReadyThread, Self)' vs verus='(ReadyThread, ThreadManager)'"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,19 +1,12 @@\n {\n-        let kernel: ReadyThread = {\n-            ReadyThread::new(\n-                From::<i32>::from(0),\n-                None,\n-                None,\n-                None,\n-                ContextInformation::default(),\n-                // SAFETY: calls to FpuState::new are synchronized.\n-                unsafe { FpuState::new() },\n-            )\n+        let kernel: ReadyThread = ReadyThread::new(\n+            ThreadIdentifier::from_i32(0),\n+            None,\n+            None,\n+            None,\n+        );\n+        let manager: ThreadManager = ThreadManager {\n+            next_id: ThreadIdentifier::from_i32(1),\n         };\n-        (\n-            kernel,\n-            Self {\n-                next_id: From::<i32>::from(1),\n-            },\n-        )\n+        (kernel, manager)\n     }"
+      },
+      {
+        "name": "create_thread",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(\n        &mut self,\n        kernel_stack: Option<KernelStack>,\n        user_stack: Option<UserStack>,\n        user_tda: Option<VirtualAddress>,\n        context: ContextInformation,\n    )' vs verus='(\n        &mut self,\n        kernel_stack: Option<int>,\n        user_stack: Option<int>,\n        user_tda: Option<int>,\n    )'"
+      },
+      {
+        "name": "create_thread",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,14 +1,5 @@\n {\n         let id: ThreadIdentifier = self.next_id;\n-        self.next_id = ThreadIdentifier::from(<i32>::from(self.next_id) + 1);\n-\n-        ReadyThread::new(\n-            id,\n-            kernel_stack,\n-            user_stack,\n-            user_tda,\n-            context,\n-            // SAFETY: calls to FpuState::new are synchronized.\n-            unsafe { FpuState::new() },\n-        )\n+        self.next_id = ThreadIdentifier::from_i32(self.next_id.into_i32() + 1);\n+        ReadyThread::new(id, kernel_stack, user_stack, user_tda)\n     }"
+      },
+      {
+        "name": "init",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,5 +1,3 @@\n {\n-    // TODO: check for double initialization.\n-\n     ThreadManager::new()\n }"
+      }
+    ]
+  },
+  {
+    "module": "mutex",
+    "source": "src/kernel/src/pm/sync/mutex.rs",
+    "verus": "verus/split/kernel/pm/sync/mutex.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 8 critical, 9 high, 2 medium. Structs: 5 diffs. Functions: 14 diffs.",
+    "struct_diffs": [
+      {
+        "name": "MutexInner",
+        "type": "removed_struct",
+        "severity": "critical",
+        "detail": "Struct exists in source but missing in verus."
+      },
+      {
+        "name": "MutexGuard",
+        "type": "removed_struct",
+        "severity": "critical",
+        "detail": "Struct exists in source but missing in verus."
+      },
+      {
+        "name": "Mutex",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub locked: bool"
+      },
+      {
+        "name": "Mutex",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub id: usize"
+      },
+      {
+        "name": "Mutex",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub token_issued: bool"
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "unlock_unchecked",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "reference_count",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "fmt",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "drop",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "unlock",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "is_locked",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='()' vs verus='(id: usize)'"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,6 +1,3 @@\n {\n-        Self(Arc::new(MutexInner {\n-            locked: AtomicBool::new(false),\n-            sleeping: Condvar::new(),\n-        }))\n+        Mutex { locked: false, id: id, token_issued: false }\n     }"
+      },
+      {
+        "name": "try_lock",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self)' vs verus='(&mut self)'"
+      },
+      {
+        "name": "try_lock",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<MutexGuard, ()>' vs verus='(bool, Tracked<Option<MutexToken>>)'"
+      },
+      {
+        "name": "try_lock",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,14 +1,10 @@\n {\n-        if self\n-            .0\n-            .locked\n-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)\n-            .is_err()\n-        {\n-            Err(())\n+        if !self.locked {\n+            self.locked = true;\n+            self.token_issued = true;\n+            let tracked token: MutexToken = MutexToken { view: self@ };\n+            (true, Tracked(Some(token)))\n         } else {\n-            Ok(MutexGuard {\n-                mutex: self.0.clone(),\n-            })\n+            (false, Tracked(None))\n         }\n     }"
+      },
+      {
+        "name": "lock",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self, timeout: Option<SystemTime>)' vs verus='(&mut self)'"
+      },
+      {
+        "name": "lock",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<MutexGuard, SleepError>' vs verus='Tracked<MutexToken>'"
+      },
+      {
+        "name": "lock",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,13 +1,5 @@\n {\n-        loop {\n-            // Attempt to acquire the mutex.\n-            match self.try_lock() {\n-                // Success.\n-                Ok(guard) => break Ok(guard),\n-                // Failed to acquire the mutex.\n-                Err(()) => {\n-                    self.0.sleeping.wait(timeout)?;\n-                },\n-            }\n-        }\n+        let (_success, Tracked(opt_token)) = self.try_lock();\n+        let tracked token: MutexToken = opt_token.tracked_unwrap();\n+        Tracked(token)\n     }"
+      }
+    ]
+  },
+  {
+    "module": "semaphore",
+    "source": "src/kernel/src/pm/sync/semaphore.rs",
+    "verus": "verus/split/kernel/pm/sync/semaphore.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 3 critical, 6 high, 5 medium. Structs: 2 diffs. Functions: 12 diffs.",
+    "struct_diffs": [
+      {
+        "name": "Semaphore",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'value' changed from private to pub (Verus constraint)."
+      },
+      {
+        "name": "Semaphore",
+        "type": "type_changed",
+        "severity": "high",
+        "detail": "Field 'value' type changed: 'AtomicUsize' \u2192 'usize'."
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "down",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "down_available",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "down_or_block",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "get_value",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "is_available",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,6 +1,3 @@\n {\n-        Self {\n-            value: AtomicUsize::new(value),\n-            sleeping: Condvar::new(),\n-        }\n+        Semaphore { value: value }\n     }"
+      },
+      {
+        "name": "try_down",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self)' vs verus='(&mut self)'"
+      },
+      {
+        "name": "try_down",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(), Error>' vs verus='bool'"
+      },
+      {
+        "name": "try_down",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,17 +1,8 @@\n {\n-        if self\n-            .value\n-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {\n-                if value == 0 {\n-                    None\n-                } else {\n-                    Some(value - 1)\n-                }\n-            })\n-            .is_ok()\n-        {\n-            return Ok(());\n+        if self.value > 0 {\n+            self.value = self.value - 1;\n+            true\n+        } else {\n+            false\n         }\n-\n-        Err(Error::new(ErrorCode::TryAgain, \"semaphore is busy\"))\n     }"
+      },
+      {
+        "name": "up",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self)' vs verus='(&mut self, ctx: Ghost<CallerContext>)'"
+      },
+      {
+        "name": "up",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='Result<(), Error>' vs verus='None'"
+      },
+      {
+        "name": "up",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,4 +1,3 @@\n {\n-        self.value.fetch_add(1, Ordering::SeqCst);\n-        self.sleeping.notify_first().map(|_awakened| ())\n+        self.value = self.value + 1;\n     }"
+      }
+    ]
+  },
+  {
+    "module": "spinlock",
+    "source": "src/kernel/src/pm/sync/spinlock.rs",
+    "verus": "verus/split/kernel/pm/sync/spinlock.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 6 critical, 4 high, 3 medium. Structs: 4 diffs. Functions: 9 diffs.",
+    "struct_diffs": [
+      {
+        "name": "SpinlockGuard",
+        "type": "removed_struct",
+        "severity": "critical",
+        "detail": "Struct exists in source but missing in verus."
+      },
+      {
+        "name": "Spinlock",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub locked: bool"
+      },
+      {
+        "name": "Spinlock",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub id: usize"
+      },
+      {
+        "name": "Spinlock",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub token_issued: bool"
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "drop",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "try_lock",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "unlock",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "is_locked",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='()' vs verus='(id: usize)'"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,3 @@\n {\n-        Self(AtomicBool::new(false))\n+        Spinlock { locked: false, id: id, token_issued: false }\n     }"
+      },
+      {
+        "name": "lock",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self)' vs verus='(&mut self)'"
+      },
+      {
+        "name": "lock",
+        "type": "return_type_changed",
+        "severity": "high",
+        "detail": "Return type differs: source='SpinlockGuard' vs verus='Tracked<LockToken>'"
+      },
+      {
+        "name": "lock",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,13 +1,5 @@\n {\n-        loop {\n-            match self\n-                .0\n-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)\n-            {\n-                Ok(false) => break,\n-                _ => ::arch::cpu::pause(),\n-            }\n-        }\n-\n-        SpinlockGuard(self)\n+        let (_success, Tracked(opt_token)) = self.try_lock();\n+        let tracked token: LockToken = opt_token.tracked_unwrap();\n+        Tracked(token)\n     }"
+      }
+    ]
+  },
+  {
+    "module": "condvar",
+    "source": "src/kernel/src/pm/sync/condvar.rs",
+    "verus": "verus/split/kernel/pm/sync/condvar.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 4 critical, 8 high, 12 medium. Structs: 3 diffs. Functions: 21 diffs.",
+    "struct_diffs": [
+      {
+        "name": "CondvarInner",
+        "type": "removed_struct",
+        "severity": "critical",
+        "detail": "Struct exists in source but missing in verus."
+      },
+      {
+        "name": "Condvar",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub len: usize"
+      },
+      {
+        "name": "Condvar",
+        "type": "added_field",
+        "severity": "critical",
+        "detail": "New exec field added: pub sleeping: Vec<(i32, i32)>"
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "reference_count",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "notify_first",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "notify_process",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "notify_thread",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "notify_all",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "wait",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "fmt",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "drop",
+        "type": "missing_in_verus",
+        "severity": "high",
+        "detail": "Function exists in source but not in verus exec code."
+      },
+      {
+        "name": "enqueue",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "try_enqueue",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "dequeue_first",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "remove_at",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "remove_entry",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "remove_by_pid",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "remove_by_tid",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "try_remove_by_pid",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "try_remove_by_tid",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "clear",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "is_empty",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "get_len",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,7 +1,3 @@\n {\n-        Self {\n-            inner: Arc::new(CondvarInner {\n-                sleeping: RefCell::new(LinkedList::new()),\n-            }),\n-        }\n+        Condvar { len: 0, sleeping: Vec::new() }\n     }"
+      }
+    ]
+  },
+  {
+    "module": "fence",
+    "source": "src/kernel/src/pm/sync/fence.rs",
+    "verus": "verus/split/kernel/pm/sync/fence.rs",
+    "tree_hash_match": false,
+    "summary": "Tree hash MISMATCH. Issues: 3 critical, 2 high, 5 medium. Structs: 3 diffs. Functions: 7 diffs.",
+    "struct_diffs": [
+      {
+        "name": "Fence",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'count' changed from private to pub (Verus constraint)."
+      },
+      {
+        "name": "Fence",
+        "type": "type_changed",
+        "severity": "high",
+        "detail": "Field 'count' type changed: 'AtomicUsize' \u2192 'usize'."
+      },
+      {
+        "name": "Fence",
+        "type": "visibility_changed",
+        "severity": "medium",
+        "detail": "Field 'total' changed from private to pub (Verus constraint)."
+      }
+    ],
+    "function_diffs": [
+      {
+        "name": "is_satisfied",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "get_count",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "get_total",
+        "type": "added_in_verus",
+        "severity": "medium",
+        "detail": "New exec function in verus (not in source). Modifiers: []"
+      },
+      {
+        "name": "new",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,6 +1,3 @@\n {\n-        Self {\n-            count: AtomicUsize::new(0),\n-            total,\n-        }\n+        Fence { count: 0, total }\n     }"
+      },
+      {
+        "name": "wait",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,5 +1,4 @@\n {\n-        while self.count.load(Ordering::Acquire) < self.total {\n-            ::arch::cpu::pause();\n-        }\n+        // In the sequential model, the precondition guarantees satisfaction,\n+        // so the spin loop body is never entered.\n     }"
+      },
+      {
+        "name": "signal",
+        "type": "signature_changed",
+        "severity": "high",
+        "detail": "Parameters differ: source='(&self)' vs verus='(&mut self)'"
+      },
+      {
+        "name": "signal",
+        "type": "body_changed_semantic",
+        "severity": "critical",
+        "detail": "Body differs semantically. Diff:\n--- source\n+++ verus\n@@ -1,3 +1,3 @@\n {\n-        self.count.fetch_add(1, Ordering::Release);\n+        self.count = self.count + 1;\n     }"
+      }
+    ]
+  }
+]
