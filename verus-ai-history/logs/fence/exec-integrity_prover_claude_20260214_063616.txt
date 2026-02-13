@@ -1,0 +1,107 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T06:36:56.937320
+Model: claude-opus-4.6-fast
+Session: d8ab19e3-753c-4814-93ae-0573ae8265ca
+Duration: 40.9s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for fence.
+
+Original source: src/kernel/src/pm/sync/fence.rs
+Verified code directory: verus/split/kernel/pm/sync/
+  - fence.rs (exec)
+  - fence.spec.rs (spec)
+  - fence.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/sync/fence.rs) against the
+original source (src/kernel/src/pm/sync/fence.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh fence
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/fence_20260214_063615.md:
+
+```markdown
+# Exec Integrity: fence
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● Read verus/split/kernel/pm/sync/fence.spec.rs
+  └ 95 lines read
+
+● Read verus/split/kernel/pm/sync/fence.proof.rs
+  └ 255 lines read
+
+● Read verus/split/kernel/pm/sync/fence.rs
+  └ 269 lines read
+
+● Read src/kernel/src/pm/sync/fence.rs
+  └ 69 lines read
+
+Now let me run verification and create the output directory.
+
+● Create output directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+● Verify fence
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh fence 2>&1 | tail -30
+  └ 23 lines...
+
+Verification passes (24 verified, 0 errors). Now I'll write the integrity report.
+
+● Create verus-ai-history/integrity/fence_20260214_063615.md (+52)
+
+
+Total usage est:        9 Premium requests
+API time spent:         25s
+Total session time:     39s
+Total code changes:     +52 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    166.4k in, 2.8k out, 133.9k cached (Est. 9 Premium requests)
+
+=== End ===
