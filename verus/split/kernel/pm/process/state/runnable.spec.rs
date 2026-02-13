@@ -5,6 +5,26 @@
 // This file contains spec functions and View types for the RunnableProcess type
 // and boundary types RunningProcess, InterruptedProcess, ZombieProcess.
 //
+// ## View-Level Abstract State Transitions
+//
+// The following spec functions on `RunnableProcessView` provide abstract
+// state transition descriptions so that downstream modules can write
+// postconditions in the form `result@ =~= old(self)@.spec_foo(args)`
+// instead of listing every field change individually:
+//
+// - `spec_new(pid, tid, time)` — constructs the initial view (models `new()`).
+// - `spec_run()` — selects the earliest-admission-time thread and returns
+//   a `RunningProcessView` (models `run()`).
+// - `spec_terminate_has_interrupted()` — predicate for the terminate branch.
+// - `spec_terminate_to_interrupted()` — returns `InterruptedProcessView`
+//   (models `terminate()` when interrupted/sleeping threads exist).
+// - `spec_terminate_to_zombie()` — returns `ZombieProcessView`
+//   (models `terminate()` when no interrupted/sleeping threads exist).
+// - `spec_wakeup(tid, time)` — moves a sleeping thread to ready, returns
+//   updated `RunnableProcessView` (models `wakeup()` success case).
+// - `spec_add_thread(tid, time)` — appends a thread to the ready queue,
+//   returns updated `RunnableProcessView` (models `add_thread()`).
+//
 // ## Verification Model
 //
 // RunnableProcess manages process-level thread scheduling. For verification:
@@ -451,6 +471,156 @@ impl ZombieProcess {
     /// Spec function: well-formedness predicate.
     pub open spec fn wf(&self) -> bool {
         self.zombie_thread_ids@.len() >= 1
+    }
+}
+
+//==================================================================================================
+// Abstract State Transitions: RunnableProcessView
+//==================================================================================================
+
+impl RunnableProcessView {
+    /// View-level well-formedness predicate.
+    ///
+    /// A RunnableProcessView is well-formed when:
+    /// - There is at least one ready thread.
+    /// - Ready thread IDs and admission times have equal length.
+    /// - All admission times are non-negative.
+    pub open spec fn wf(&self) -> bool {
+        &&& self.ready_thread_ids.len() >= 1
+        &&& self.ready_thread_ids.len() == self.ready_admission_times.len()
+        &&& forall|i: int| 0 <= i < self.ready_admission_times.len()
+                ==> #[trigger] self.ready_admission_times[i] >= 0i64
+    }
+
+    /// View-level helper: checks if a sequence contains a given value.
+    pub open spec fn spec_seq_contains(s: Seq<i64>, tid: i64) -> bool {
+        exists|i: int| 0 <= i < s.len() && s[i] == tid
+    }
+
+    /// View-level helper: removes element at index `idx` from sequence `s`.
+    pub open spec fn spec_remove_at(s: Seq<i64>, idx: int) -> Seq<i64>
+        recommends 0 <= idx < s.len()
+    {
+        s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
+    }
+
+    /// View-level helper: recursively finds the index of the minimum in `s[0..n]`.
+    pub open spec fn spec_min_index_rec(s: Seq<i64>, n: int) -> int
+        recommends 1 <= n <= s.len()
+        decreases n
+    {
+        if n <= 1 {
+            0int
+        } else {
+            let prev: int = Self::spec_min_index_rec(s, n - 1);
+            if 0 <= prev < s.len() && s[n - 1] < s[prev] {
+                n - 1
+            } else {
+                prev
+            }
+        }
+    }
+
+    /// View-level helper: finds the index of the ready thread with earliest admission time.
+    pub open spec fn spec_earliest_ready_index(&self) -> int
+        recommends self.ready_thread_ids.len() > 0
+    {
+        Self::spec_min_index_rec(
+            self.ready_admission_times,
+            self.ready_admission_times.len() as int,
+        )
+    }
+
+    /// View-level helper: selects a witness index for `tid` in sequence `s`.
+    pub open spec fn spec_find_index(s: Seq<i64>, tid: i64) -> int
+        recommends Self::spec_seq_contains(s, tid)
+    {
+        choose|i: int| 0 <= i < s.len() && s[i] == tid
+    }
+
+    /// Abstract state transition: constructs initial view (models `new()`).
+    pub open spec fn spec_new(pid: int, ready_tid: i64, ready_time: i64) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: pid,
+            ready_thread_ids: seq![ready_tid],
+            ready_admission_times: seq![ready_time],
+            interrupted_thread_ids: Seq::<i64>::empty(),
+            sleeping_thread_ids: Seq::<i64>::empty(),
+            zombie_thread_ids: Seq::<i64>::empty(),
+        }
+    }
+
+    /// Abstract state transition: selects earliest-admission-time thread
+    /// and returns `RunningProcessView` (models `run()`).
+    pub open spec fn spec_run(&self) -> RunningProcessView
+        recommends self.ready_thread_ids.len() >= 1
+    {
+        let sel: int = self.spec_earliest_ready_index();
+        RunningProcessView {
+            pid: self.pid,
+            running_thread_id: self.ready_thread_ids[sel],
+            ready_thread_ids: Self::spec_remove_at(self.ready_thread_ids, sel),
+            interrupted_thread_ids: self.interrupted_thread_ids,
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids,
+            interrupt_reason: 0i64,
+        }
+    }
+
+    /// Abstract predicate: does terminate produce an InterruptedProcess?
+    pub open spec fn spec_terminate_has_interrupted(&self) -> bool {
+        self.interrupted_thread_ids.len() > 0 || self.sleeping_thread_ids.len() > 0
+    }
+
+    /// Abstract state transition: terminate to `InterruptedProcessView`
+    /// (models `terminate()` when interrupted/sleeping threads exist).
+    pub open spec fn spec_terminate_to_interrupted(&self) -> InterruptedProcessView
+        recommends self.spec_terminate_has_interrupted()
+    {
+        InterruptedProcessView {
+            pid: self.pid,
+            interrupted_thread_ids: self.interrupted_thread_ids.add(self.sleeping_thread_ids),
+            zombie_thread_ids: self.ready_thread_ids.add(self.zombie_thread_ids),
+        }
+    }
+
+    /// Abstract state transition: terminate to `ZombieProcessView`
+    /// (models `terminate()` when no interrupted/sleeping threads exist).
+    pub open spec fn spec_terminate_to_zombie(&self) -> ZombieProcessView
+        recommends !self.spec_terminate_has_interrupted()
+    {
+        ZombieProcessView {
+            pid: self.pid,
+            zombie_thread_ids: self.ready_thread_ids.add(self.zombie_thread_ids),
+            status: 4i64,
+        }
+    }
+
+    /// Abstract state transition: moves a sleeping thread to the ready queue
+    /// (models `wakeup()` success case). The `time` parameter represents the
+    /// admission time assigned by `clock_now()` at exec level.
+    pub open spec fn spec_wakeup(&self, tid: i64, time: i64) -> RunnableProcessView
+        recommends Self::spec_seq_contains(self.sleeping_thread_ids, tid)
+    {
+        let idx: int = Self::spec_find_index(self.sleeping_thread_ids, tid);
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: self.ready_thread_ids.push(tid),
+            ready_admission_times: self.ready_admission_times.push(time),
+            interrupted_thread_ids: self.interrupted_thread_ids,
+            sleeping_thread_ids: Self::spec_remove_at(self.sleeping_thread_ids, idx),
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract state transition: appends a thread to the ready queue
+    /// (models `add_thread()`).
+    pub open spec fn spec_add_thread(&self, ready_tid: i64, ready_time: i64) -> RunnableProcessView {
+        RunnableProcessView {
+            ready_thread_ids: self.ready_thread_ids.push(ready_tid),
+            ready_admission_times: self.ready_admission_times.push(ready_time),
+            ..*self
+        }
     }
 }
 
