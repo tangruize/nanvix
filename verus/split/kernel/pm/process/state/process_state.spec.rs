@@ -34,8 +34,10 @@ verus! {
 pub struct ProcessStateView {
     /// Process identifier value.
     pub pid: int,
-    /// Capabilities bitfield value.
+    /// Capabilities bitfield value (implementation level).
     pub capabilities_bits: u8,
+    /// Set of granted capabilities (abstract level).
+    pub capabilities_granted: Set<Capability>,
     /// Number of mutexes in the map.
     pub mutex_count: nat,
     /// Mutex address keys.
@@ -65,6 +67,20 @@ impl ProcessState {
     /// Spec function: returns the capabilities bitfield value.
     pub open spec fn spec_capabilities_bits(&self) -> u8 {
         self.capabilities.spec_bits()
+    }
+
+    /// Spec function: returns the set of granted capabilities (abstract level).
+    pub open spec fn spec_capabilities_granted(&self) -> Set<Capability> {
+        self.capabilities.spec_granted()
+    }
+
+    /// Spec function: checks whether a capability is granted (abstract level).
+    ///
+    /// # Description
+    ///
+    /// Downstream modules should prefer this over `spec_capabilities_bits`.
+    pub open spec fn spec_has_capability(&self, cap: Capability) -> bool {
+        self.capabilities.spec_set_contains(cap)
     }
 
     /// Spec function: returns the number of mutexes.
@@ -202,6 +218,7 @@ impl View for ProcessState {
         ProcessStateView {
             pid: self.pid.spec_value(),
             capabilities_bits: self.capabilities.spec_bits(),
+            capabilities_granted: self.capabilities.spec_granted(),
             mutex_count: self.mutex_count as nat,
             mutex_addrs: self.mutex_addrs@,
             mutex_ref_counts: self.mutex_ref_counts@,
