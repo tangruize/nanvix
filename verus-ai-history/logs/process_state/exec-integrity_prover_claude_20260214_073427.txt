@@ -1,0 +1,161 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T07:36:46.508557
+Model: claude-opus-4.6-fast
+Session: d14f7251-0f1b-45b9-9112-28c3ec64e878
+Duration: 138.6s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for process_state.
+
+Original source: src/kernel/src/pm/process/state/mod.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - mod.rs (exec)
+  - mod.spec.rs (spec)
+  - mod.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/process/state/mod.rs) against the
+original source (src/kernel/src/pm/process/state/mod.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh process_state
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/process_state_20260214_073427.md:
+
+```markdown
+# Exec Integrity: process_state
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● List directory verus/split/kernel/pm/process/state
+  └ 25 files found
+
+● Read src/kernel/src/pm/process/state/mod.rs
+  └ 415 lines read
+
+● Read verus/split/kernel/pm/process/state/mod.rs
+  └ 9 lines read
+
+The verified exec code is split differently — `process_state.rs` contains the actual logic. Let me read it and the spec/proof files.
+
+● Read verus/split/kernel/pm/process/state/process_state.rs
+  └ 1 line read
+
+● Read verus/split/kernel/pm/process/state/process_state.proof.rs
+  └ 523 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.spec.rs
+  └ 233 lines read
+
+Now let me read the full exec file in sections:
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 1-120
+  └ 120 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 120-250
+  └ 131 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 250-380
+  └ 131 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 380-510
+  └ 131 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 640-770
+  └ 131 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 510-640
+  └ 131 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 770-900
+  └ 131 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 900-1050
+  └ 151 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 1050-1120
+  └ 71 lines read
+
+● Read verus/split/kernel/pm/process/state/process_state.rs lines 1120-1200
+  └ 18 lines read
+
+Now let me check the config values and run verification:
+
+● Grep "mutex_open_max|MUTEX_OPEN_MAX"
+  └ 51 lines found
+
+● Grep "cond_open_max|COND_OPEN_MAX"
+  └ 33 lines found
+
+● Read verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh | head -30
+  └ 31 lines...
+
+Good — MUTEX_OPEN_MAX=32, COND_OPEN_MAX=32, matching the verified constants. Now let me run verification:
+
+● Run verification for process_state
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh process_state 2>&1
+  └ 201 lines...
+
+Verification passes: 47 verified, 0 errors. Now let me create the integrity report.
+
+● Create integrity directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+● Create verus-ai-history/integrity/process_state_20260214_073427.md (+142)
+
+Integrity check complete. All 27 differences are justified — the verified code is a faithful protocol-level model of the original. Verification passes with 47 verified, 0 errors. Report at `verus-ai-history/integrity/process_state_20260214_073427.md`.
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 37.333s
+Total session time:     2m 17.391s
+Total code changes:     +142 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    775.3k in, 10.5k out, 697.5k cached (Est. 9 Premium requests)
+
+=== End ===
