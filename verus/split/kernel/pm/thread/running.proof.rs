@@ -331,7 +331,7 @@ impl RunningThread {
             r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted(),
     {
         reveal(RunningThread::wf);
-        reveal(ThreadState::wf);
+        ThreadState::lemma_new_is_wf(&r.state);
     }
 
     /// Lemma: Construction followed by schedule() produces a ReadyThread with
