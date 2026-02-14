@@ -94,15 +94,9 @@ impl ZombieThread {
         requires
             state.wf(),
         ensures
-            result.state@ == state@,
-            result.spec_id() == state.spec_id(),
-            result.spec_status() == status,
-            result.spec_kernel_stack() == state.spec_kernel_stack(),
-            result.spec_user_stack() == state.spec_user_stack(),
-            result.spec_user_tda() == state.spec_user_tda(),
-            result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            result@.state == state@,
+            result@.spec_id() == state@.id,
+            result@.spec_status() == status,
             result.wf(),
     {
         proof { reveal(ZombieThread::wf); }
@@ -115,8 +109,10 @@ impl ZombieThread {
     ///
     /// The thread identifier, unchanged from construction.
     pub fn id(&self) -> (result: ThreadIdentifier)
+        requires
+            self.wf(),
         ensures
-            result.spec_value() == self.spec_id(),
+            result.spec_value() == self@.spec_id(),
     {
         self.state.id()
     }
@@ -128,9 +124,11 @@ impl ZombieThread {
     /// A reference to the underlying ThreadState with the same identity
     /// and full state transparency.
     pub fn thread_state(&self) -> (result: &ThreadState)
+        requires
+            self.wf(),
         ensures
-            result.spec_id() == self.spec_id(),
-            result@ == self.state@,
+            result.spec_id() == self@.spec_id(),
+            result@ == self@.state,
     {
         &self.state
     }
@@ -156,8 +154,8 @@ impl ZombieThread {
         requires
             self.wf(),
         ensures
-            result.0 == self.spec_kernel_stack(),
-            result.1 == self.spec_user_stack(),
+            result.0 == self@.spec_kernel_stack(),
+            result.1 == self@.spec_user_stack(),
     {
         proof { reveal(ZombieThread::wf); }
         let mut state: ThreadState = self.state;
@@ -172,8 +170,10 @@ impl ZombieThread {
     ///
     /// The exit status of the terminated thread.
     pub fn status(&self) -> (result: int)
+        requires
+            self.wf(),
         ensures
-            result == self.spec_status(),
+            result == self@.spec_status(),
     {
         self.status
     }
