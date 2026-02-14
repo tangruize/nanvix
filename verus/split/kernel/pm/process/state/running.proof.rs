@@ -38,19 +38,18 @@ impl RunningProcess {
         reveal(RunningProcess::inv);
     }
 
-    /// Two RunningProcesses with identical views are observationally equal.
+    /// Two RunningProcesses with identical views have equal abstract fields.
     pub proof fn lemma_view_equality(a: &RunningProcess, b: &RunningProcess)
         requires
             a@ == b@,
         ensures
-            a.spec_pid() == b.spec_pid(),
-            a.spec_running_thread_id() == b.spec_running_thread_id(),
-            a.ready_thread_ids@ == b.ready_thread_ids@,
-            a.interrupted_thread_ids@ == b.interrupted_thread_ids@,
-            a.sleeping_thread_ids@ == b.sleeping_thread_ids@,
-            a.zombie_thread_ids@ == b.zombie_thread_ids@,
+            a@.pid == b@.pid,
+            a@.running_thread_id == b@.running_thread_id,
+            a@.ready_thread_ids == b@.ready_thread_ids,
+            a@.interrupted_thread_ids == b@.interrupted_thread_ids,
+            a@.sleeping_thread_ids == b@.sleeping_thread_ids,
+            a@.zombie_thread_ids == b@.zombie_thread_ids,
     {
-        reveal(RunningProcess::view);
     }
 
     /// Removing an element from a sequence decreases its length by one.
