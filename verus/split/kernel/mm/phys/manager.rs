@@ -401,9 +401,8 @@ impl VirtMemoryManager {
         ensures
             self.inv(),
             result.inv(),
-            // NOTE: Uses vmem.mapping_count directly because Vmem does not
-            // implement the View trait. This is a Vmem-side design issue.
-            result.mapping_count == 0,
+            // NOTE: Uses view (result@.mapping_count) per Vmem spec methodology.
+            result@.mapping_count == 0,
     {
         Vmem::clone(vmem)
     }
@@ -451,16 +450,16 @@ impl VirtMemoryManager {
             old(self).inv(),
             old(vmem).inv(),
             old(self)@.has_upool_capacity(),
-            old(vmem).has_mapping_capacity(),
+            old(vmem)@.has_mapping_capacity(),
             vaddr as int % PAGE_SIZE as int == 0,
             spec_is_user_addr(vaddr as int),
-            !old(vmem).spec_is_mapped(vaddr as int),
+            !old(vmem)@.spec_is_mapped(vaddr as int),
         ensures
             self.inv(),
             vmem.inv(),
             result.is_ok() ==> {
-                &&& vmem.spec_is_mapped(vaddr as int)
-                &&& vmem.mapping_count == old(vmem).mapping_count + 1
+                &&& vmem@.spec_is_mapped(vaddr as int)
+                &&& vmem@.mapping_count == old(vmem)@.mapping_count + 1
             },
     {
         // Allocate user frame.
@@ -476,8 +475,8 @@ impl VirtMemoryManager {
             assert(frame_addr.spec_is_aligned());
             // Vmem is unchanged after upool.alloc(), so preconditions for map() still hold.
             assert(vmem.inv());
-            assert(vmem.has_mapping_capacity());
-            assert(!vmem.spec_is_mapped(vaddr as int));
+            assert(vmem@.has_mapping_capacity());
+            assert(!vmem@.spec_is_mapped(vaddr as int));
         }
 
         // Map the frame to the virtual address.
@@ -485,7 +484,7 @@ impl VirtMemoryManager {
 
         proof {
             // vmem.map() postcondition gives us spec_is_mapped.
-            assert(vmem.spec_is_mapped(vaddr as int));
+            assert(vmem@.spec_is_mapped(vaddr as int));
         }
 
         Ok(())
@@ -522,18 +521,18 @@ impl VirtMemoryManager {
         requires
             old(self).inv(),
             old(vmem).inv(),
-            old(vmem).has_mappings(),
+            old(vmem)@.has_mappings(),
             vaddr as int % PAGE_SIZE as int == 0,
             spec_is_user_addr(vaddr as int),
-            old(vmem).spec_is_mapped(vaddr as int),
+            old(vmem)@.spec_is_mapped(vaddr as int),
             // The frame backing this mapping was allocated from the upool.
             // This is satisfied when the page was allocated via alloc_upage().
-            old(self).spec_uframe_is_allocated(old(vmem).spec_get_frame_addr(vaddr as int)),
+            old(self).spec_uframe_is_allocated(old(vmem)@.spec_get_frame_addr(vaddr as int)),
         ensures
             self.inv(),
             vmem.inv(),
             result.is_ok() ==> {
-                &&& vmem.mapping_count == old(vmem).mapping_count - 1
+                &&& vmem@.mapping_count == old(vmem)@.mapping_count - 1
             },
     {
         // Unmap the page. Returns the frame address.
@@ -582,11 +581,11 @@ impl VirtMemoryManager {
             old(vmem).inv(),
             vaddr as int % PAGE_SIZE as int == 0,
             spec_is_user_addr(vaddr as int),
-            old(vmem).spec_is_mapped(vaddr as int),
+            old(vmem)@.spec_is_mapped(vaddr as int),
         ensures
             self.inv(),
             vmem.inv(),
-            vmem.mapping_count == old(vmem).mapping_count,
+            vmem@.mapping_count == old(vmem)@.mapping_count,
     {
         vmem.uctrl(vaddr, access)
     }
@@ -726,7 +725,7 @@ impl VirtMemoryManager {
             old(vmem).inv(),
             nframes > 0,
             old(self)@.has_upool_capacity_for(nframes as int),
-            old(vmem).mapping_count as int + nframes as int <= MAX_USER_PAGES as int,
+            old(vmem)@.mapping_count + nframes as int <= MAX_USER_PAGES as int,
             vaddr as int % PAGE_SIZE as int == 0,
             spec_is_user_addr(vaddr as int),
             // All target addresses are in user space and not already mapped.
@@ -734,15 +733,15 @@ impl VirtMemoryManager {
                 #![trigger spec_is_user_addr(vaddr as int + i * PAGE_SIZE as int)]
                 0 <= i < nframes as int ==>
                     spec_is_user_addr(vaddr as int + i * PAGE_SIZE as int) &&
-                    !old(vmem).spec_is_mapped(vaddr as int + i * PAGE_SIZE as int),
+                    !old(vmem)@.spec_is_mapped(vaddr as int + i * PAGE_SIZE as int),
         ensures
             self.inv(),
             vmem.inv(),
             result.is_ok() ==> {
                 &&& self@.upool_free_count == old(self)@.upool_free_count - nframes as int
-                &&& vmem.mapping_count == old(vmem).mapping_count + nframes
+                &&& vmem@.mapping_count == old(vmem)@.mapping_count + nframes as int
             },
-            result.is_err() ==> vmem.mapping_count == old(vmem).mapping_count,
+            result.is_err() ==> vmem@.mapping_count == old(vmem)@.mapping_count,
     {
         unimplemented!()
     }
