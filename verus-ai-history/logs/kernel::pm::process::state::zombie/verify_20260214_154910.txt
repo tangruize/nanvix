@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 15:49:10 CST 2026
+Module: kernel::pm::process::state::zombie
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::zombie
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: in 'requires' clause of public function, cannot refer to private function
+  --> kernel/pm/process/state/zombie.proof.rs:61:13
+   |
+61 |             Self::spec_no_duplicates(zombie_ids),
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 5s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::zombie (verified:0, errors:0)
