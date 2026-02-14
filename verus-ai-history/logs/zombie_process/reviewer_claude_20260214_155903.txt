@@ -1,0 +1,86 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T16:00:37.928782
+Model: claude-opus-4.6
+Session: 01c4868b-4492-425c-b6b6-d3b8decb6143
+Duration: 94.5s
+Exit code: 0
+
+=== Prompt ===
+Review exec consistency fixes for zombie_process.
+
+Original source: src/kernel/src/pm/process/state/zombie.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - zombie.rs (exec)
+  - zombie.spec.rs (spec)
+  - zombie.proof.rs (proof)
+
+Consistency report: /home/ubuntu/nanvix/verus-ai-history/ast-consistency/zombie_process_20260214_155659_fix.md
+
+Review criteria:
+1. Were all MISMATCH functions properly restored or equivalence documented?
+2. Were MISSING functions added with proper verification?
+3. Are equivalence justifications sound?
+4. Does the exec code now faithfully represent the original source?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh zombie_process
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process/exec-consistency_20260214_155659.md.
+
+Output format:
+```markdown
+# Review: zombie_process Exec Consistency (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+
+
+I'll review the exec consistency fixes for zombie_process by examining the original source, the verified code, and the consistency report.
+
+● Read src/kernel/src/pm/process/state/zombie.rs
+  └ 106 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.spec.rs
+  └ 479 lines read
+
+● Read verus-ai-history/ast-consistency/zombie_process_20260214_155659_fix.md
+  └ 71 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.rs
+  └ 387 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.proof.rs
+  └ 421 lines read
+
+Now let me run the verification and do a detailed comparison between the original and exec code.
+
+● Run zombie_process verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh zombie_process 2>&1 | tail -30
+  └ 23 lines...
+
+Verification passes: 25 verified, 0 errors. Now let me do a thorough comparison of the original vs exec code function-by-function.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process
+  └ 1 line...
+
+● Create verus-ai-history/reviews/zombie_process/exec-consistency_20260214_155659.md (+161)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 17.404s
+Total session time:     1m 33.185s
+Total code changes:     +161 -0
+Breakdown by AI model:
+ claude-opus-4.6         270.5k in, 3.4k out, 194.3k cached (Est. 3 Premium requests)
+
+=== End ===
