@@ -91,7 +91,7 @@
 //! - `PageAlignedAddr`: A newtype wrapper with an alignment invariant
 //! - `base()`: Returns base as PageAlignedAddr (mirrors original `base()`)
 //! - `top()`: Returns top as PageAlignedAddr (mirrors original `top()`)
-//! - `from_aligned()`: Infallible constructor taking PageAlignedAddr (mirrors original `new()`)
+//! - `new()`: Infallible constructor taking PageAlignedAddr (mirrors original `new()`)
 //!
 //! These preserve the type-level alignment guarantees from the original API.
 //!
@@ -99,8 +99,8 @@
 //!
 //! | Function | Description |
 //! |----------|-------------|
-//! | `new(base_addr)` | Create a new user stack (fallible, takes raw usize) |
-//! | `from_aligned(base)` | Create a new user stack (infallible, takes PageAlignedAddr) |
+//! | `try_new(base_addr)` | Create a new user stack (fallible, takes raw usize) |
+//! | `new(base)` | Create a new user stack (infallible, takes PageAlignedAddr) |
 //! | `size()` | Returns the size in bytes (constant USER_STACK_SIZE) |
 //! | `base()` | Returns the base address as PageAlignedAddr |
 //! | `top()` | Returns the top address as PageAlignedAddr |
@@ -242,13 +242,11 @@ pub struct UserStackView {
 /// The user stack is a contiguous region of virtual memory used for user-mode
 /// execution. It has a fixed size of USER_STACK_SIZE bytes.
 ///
-/// # Debug Formatting Note
+/// # Debug Formatting
 ///
-/// This type uses `#[derive(Debug)]` for simplicity. The original kernel implementation
-/// has a custom `fmt::Debug` that formats as `UserStack { base: ..., top: ..., size=... }`.
-/// The derived Debug produces a different format: `UserStack { base_addr: ... }`.
-/// This difference is cosmetic and does not affect correctness properties.
-#[derive(Debug)]
+/// Custom `fmt::Debug` impl is defined outside the `verus!` block to match
+/// the original kernel format: `UserStack { base: ..., top: ..., size=... }`.
+///
 pub struct UserStack {
     /// Base virtual address of the stack.
     base_addr: usize,
@@ -278,7 +276,10 @@ impl UserStack {
     /// - `InvalidArgument`: If base_addr is not page-aligned.
     /// - `OutOfMemory`: If the address arithmetic would overflow.
     ///
-    pub fn new(base_addr: usize) -> (result: Result<Self, Error>)
+    // NOTE: Renamed from `new` to `try_new` for AST consistency.
+    // The original kernel `new` takes `PageAligned<VirtualAddress>` (infallible).
+    // This fallible constructor is a verification helper for raw usize inputs.
+    pub fn try_new(base_addr: usize) -> (result: Result<Self, Error>)
         requires
             spec_is_page_aligned(base_addr as int),
             base_addr as int + (USER_STACK_SIZE as int) <= usize::MAX as int,
@@ -351,22 +352,23 @@ impl UserStack {
     }
 
 
-    /// Instantiates a new user stack from a PageAlignedAddr (infallible).
+    /// Instantiates a new user stack (infallible).
     ///
     /// # Description
     ///
-    /// This constructor mirrors the original `new(base: PageAligned<VirtualAddress>) -> Self`
+    /// Creates a new user stack with the given page-aligned base address.
+    /// This mirrors the original `new(base: PageAligned<VirtualAddress>) -> Self`
     /// which is infallible because alignment is guaranteed by the type.
     ///
     /// # Parameters
     ///
-    /// - `base`: The page-aligned base address of the stack.
+    /// - `base`: The page-aligned base address of the stack (mirrors `PageAligned<VirtualAddress>`).
     ///
     /// # Returns
     ///
     /// A new user stack.
     ///
-    pub fn from_aligned(base: PageAlignedAddr) -> (result: Self)
+    pub fn new(base: PageAlignedAddr) -> (result: Self)
         requires
             base.inv(),
             base.spec_addr() + (USER_STACK_SIZE as int) <= usize::MAX as int,
@@ -615,3 +617,17 @@ impl UserStack {
 }
 
 } // verus!
+
+// Custom Debug implementation matching the original kernel format.
+// Placed outside verus! block because Verus does not support fmt trait impls.
+impl core::fmt::Debug for UserStack {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(
+            f,
+            "UserStack {{ base: {:?}, top: {:?}, size={:?} }}",
+            self.base_addr,
+            self.base_addr + USER_STACK_SIZE,
+            USER_STACK_SIZE
+        )
+    }
+}
