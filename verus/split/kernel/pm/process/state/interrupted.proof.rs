@@ -32,10 +32,12 @@ impl InterruptedProcess {
     // Construction Lemmas
     //==============================================================================================
 
-    /// Lemma: The preconditions of `new()` satisfy the well-formedness
-    /// invariant components. Cannot construct an InterruptedProcess with
-    /// `Vec<u64>` in proof mode, so this proves the spec-level equivalence
-    /// directly. The exec-level `new()` function has `ensures result.wf()`.
+    /// Lemma: Construction via `new()` produces a well-formed view.
+    ///
+    /// Proves that `InterruptedProcessView::spec_new(...)` satisfies the
+    /// view-level well-formedness predicate when the construction
+    /// preconditions hold. This operates on `Seq<u64>` directly (no
+    /// `Vec<u64>` needed in proof mode).
     pub proof fn lemma_new_is_wf(
         pid: u64,
         interrupted_ids: Seq<u64>,
@@ -47,11 +49,37 @@ impl InterruptedProcess {
             Self::spec_no_duplicates(zombie_ids),
             Self::spec_seqs_disjoint(interrupted_ids, zombie_ids),
         ensures
-            interrupted_ids.len() >= 1,
-            Self::spec_no_duplicates(interrupted_ids),
-            Self::spec_no_duplicates(zombie_ids),
-            Self::spec_seqs_disjoint(interrupted_ids, zombie_ids),
+            InterruptedProcessView::spec_new(pid, interrupted_ids, zombie_ids).wf(),
     {
+        let v: InterruptedProcessView =
+            InterruptedProcessView::spec_new(pid, interrupted_ids, zombie_ids);
+        // Empty sleeping list is trivially no-duplicates and disjoint.
+        assert(Self::spec_no_duplicates(v.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.sleeping_thread_ids.len()
+                implies v.sleeping_thread_ids[i] != v.sleeping_thread_ids[j]
+            by {
+                // sleeping_thread_ids is Seq::empty(), length 0 — no i < j pair.
+            }
+        }
+        assert(Self::spec_seqs_disjoint(v.interrupted_thread_ids, v.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.interrupted_thread_ids.len()
+                    && 0 <= j < v.sleeping_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.sleeping_thread_ids[j]
+            by {
+                // sleeping_thread_ids is empty — no j exists.
+            }
+        }
+        assert(Self::spec_seqs_disjoint(v.sleeping_thread_ids, v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.sleeping_thread_ids.len()
+                    && 0 <= j < v.zombie_thread_ids.len()
+                implies v.sleeping_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                // sleeping_thread_ids is empty — no i exists.
+            }
+        }
     }
 
     /// Lemma: If the caller provides a PID matching the real ProcessState PID,
@@ -67,10 +95,11 @@ impl InterruptedProcess {
     {
     }
 
-    /// Lemma: The preconditions of `from_sleeping()` satisfy the well-formedness
-    /// invariant components. Cannot construct an InterruptedProcess with
-    /// `Vec<u64>` in proof mode, so this proves the spec-level equivalence
-    /// directly. The exec-level `from_sleeping()` has `ensures result.wf()`.
+    /// Lemma: Construction via `from_sleeping()` produces a well-formed view.
+    ///
+    /// Proves that `InterruptedProcessView::spec_from_sleeping(...)` satisfies
+    /// the view-level well-formedness predicate when the construction
+    /// preconditions hold.
     pub proof fn lemma_from_sleeping_is_wf(
         pid: u64,
         sleeping_ids: Seq<u64>,
@@ -86,13 +115,8 @@ impl InterruptedProcess {
             Self::spec_seqs_disjoint(interrupted_ids, zombie_ids),
             Self::spec_seqs_disjoint(sleeping_ids, zombie_ids),
         ensures
-            interrupted_ids.len() >= 1,
-            Self::spec_no_duplicates(interrupted_ids),
-            Self::spec_no_duplicates(sleeping_ids),
-            Self::spec_no_duplicates(zombie_ids),
-            Self::spec_seqs_disjoint(interrupted_ids, sleeping_ids),
-            Self::spec_seqs_disjoint(interrupted_ids, zombie_ids),
-            Self::spec_seqs_disjoint(sleeping_ids, zombie_ids),
+            InterruptedProcessView::spec_from_sleeping(
+                pid, sleeping_ids, interrupted_ids, zombie_ids).wf(),
     {
     }
 
@@ -336,6 +360,16 @@ impl InterruptedProcess {
     {
     }
 
+    /// Lemma: `view()` of a well-formed `RunnableProcess` is well-formed
+    /// at the view level.
+    pub proof fn lemma_runnable_view_wf(p: &RunnableProcess)
+        requires
+            p.wf(),
+        ensures
+            p@.wf(),
+    {
+    }
+
     /// Lemma: `new()` result view matches `InterruptedProcessView::spec_new()`.
     pub proof fn lemma_new_refines_spec(
         pid: u64,
@@ -386,6 +420,7 @@ impl InterruptedProcess {
     )
         requires
             pre.wf(),
+            result.wf(),
             result.pid == pre.pid,
             result.ready_thread_ids@.len() == 1,
             result.ready_thread_ids@[0] == pre.interrupted_thread_ids@[0],
@@ -398,11 +433,14 @@ impl InterruptedProcess {
             result.zombie_thread_ids@ =~= pre.zombie_thread_ids@,
         ensures
             result@ =~= pre@.spec_resume(admission_time),
+            result@.wf(),
     {
         // Establish singleton sequence extensional equality.
         assert(result.ready_thread_ids@ =~=
             seq![pre.interrupted_thread_ids@[0]]);
         assert(result.ready_admission_times@ =~= seq![admission_time]);
+        // View-level wf follows from concrete wf via structural match.
+        Self::lemma_runnable_view_wf(result);
     }
 
     /// Lemma: `state_mut()` preserves the view, matching
@@ -551,9 +589,13 @@ impl InterruptedProcess {
 //==================================================================================================
 
 impl RunnableProcess {
-    /// Lemma: The preconditions for constructing a well-formed RunnableProcess.
-    /// Cannot construct a RunnableProcess with `Vec<u64>` in proof mode, so this
-    /// proves the spec-level equivalence directly.
+    /// Lemma: Construction of a `RunnableProcess` produces a well-formed view.
+    ///
+    /// Proves that a `RunnableProcessView` constructed from sequences
+    /// satisfying the structural invariants is well-formed. The `u64`
+    /// type guarantees non-negativity of admission times (previously
+    /// required as an explicit `ready_times[i] >= 0` precondition when
+    /// times were modeled as `int`).
     pub proof fn lemma_new_wf(
         pid: u64,
         ready_ids: Seq<u64>,
@@ -576,18 +618,17 @@ impl RunnableProcess {
             RunnableProcess::spec_seqs_disjoint(interrupted_ids, zombie_ids),
             RunnableProcess::spec_seqs_disjoint(sleeping_ids, zombie_ids),
         ensures
-            ready_ids.len() >= 1,
-            ready_ids.len() == ready_times.len(),
-            RunnableProcess::spec_no_duplicates(ready_ids),
-            RunnableProcess::spec_no_duplicates(interrupted_ids),
-            RunnableProcess::spec_no_duplicates(sleeping_ids),
-            RunnableProcess::spec_no_duplicates(zombie_ids),
-            RunnableProcess::spec_seqs_disjoint(ready_ids, interrupted_ids),
-            RunnableProcess::spec_seqs_disjoint(ready_ids, sleeping_ids),
-            RunnableProcess::spec_seqs_disjoint(ready_ids, zombie_ids),
-            RunnableProcess::spec_seqs_disjoint(interrupted_ids, sleeping_ids),
-            RunnableProcess::spec_seqs_disjoint(interrupted_ids, zombie_ids),
-            RunnableProcess::spec_seqs_disjoint(sleeping_ids, zombie_ids),
+            ({
+                let v: RunnableProcessView = RunnableProcessView {
+                    pid: pid,
+                    ready_thread_ids: ready_ids,
+                    ready_admission_times: ready_times,
+                    interrupted_thread_ids: interrupted_ids,
+                    sleeping_thread_ids: sleeping_ids,
+                    zombie_thread_ids: zombie_ids,
+                };
+                v.wf()
+            }),
     {
     }
 

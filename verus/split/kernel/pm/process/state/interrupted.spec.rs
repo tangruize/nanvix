@@ -471,6 +471,8 @@ impl InterruptedProcessView {
     /// Abstract state transition: models `InterruptedProcess::state_mut()`.
     ///
     /// Identity transition — mutable accessor preserves all fields.
+    /// Intentionally identical to `spec_find_thread_mut()`: neither
+    /// operation mutates `InterruptedProcess` state in the model.
     pub open spec fn spec_state_mut(self) -> InterruptedProcessView {
         self
     }
@@ -478,14 +480,34 @@ impl InterruptedProcessView {
     /// Abstract state transition: models `InterruptedProcess::find_thread_mut()`.
     ///
     /// Identity transition — mutable search preserves all fields.
+    /// Intentionally identical to `spec_state_mut()`: neither
+    /// operation mutates `InterruptedProcess` state in the model.
     pub open spec fn spec_find_thread_mut(self) -> InterruptedProcessView {
         self
     }
 }
 
-//==================================================================================================
-// View Implementations
-//==================================================================================================
+impl RunnableProcessView {
+    /// View-level well-formedness predicate for `RunnableProcess`.
+    ///
+    /// Mirrors `RunnableProcess::wf()` but operates directly on
+    /// abstract `Seq<u64>` fields. Enables downstream proofs to reason
+    /// about `pre@.spec_resume(t).wf()` entirely at the view level.
+    pub open spec fn wf(self) -> bool {
+        &&& self.ready_thread_ids.len() >= 1
+        &&& self.ready_thread_ids.len() == self.ready_admission_times.len()
+        &&& RunnableProcess::spec_no_duplicates(self.ready_thread_ids)
+        &&& RunnableProcess::spec_no_duplicates(self.interrupted_thread_ids)
+        &&& RunnableProcess::spec_no_duplicates(self.sleeping_thread_ids)
+        &&& RunnableProcess::spec_no_duplicates(self.zombie_thread_ids)
+        &&& RunnableProcess::spec_seqs_disjoint(self.ready_thread_ids, self.interrupted_thread_ids)
+        &&& RunnableProcess::spec_seqs_disjoint(self.ready_thread_ids, self.sleeping_thread_ids)
+        &&& RunnableProcess::spec_seqs_disjoint(self.ready_thread_ids, self.zombie_thread_ids)
+        &&& RunnableProcess::spec_seqs_disjoint(self.interrupted_thread_ids, self.sleeping_thread_ids)
+        &&& RunnableProcess::spec_seqs_disjoint(self.interrupted_thread_ids, self.zombie_thread_ids)
+        &&& RunnableProcess::spec_seqs_disjoint(self.sleeping_thread_ids, self.zombie_thread_ids)
+    }
+}
 
 impl View for InterruptedProcess {
     type V = InterruptedProcessView;
