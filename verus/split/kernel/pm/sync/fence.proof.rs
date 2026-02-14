@@ -12,7 +12,7 @@ verus! {
 //
 // The following lemmas are intentionally shallow definition-unfolding
 // properties. They serve as executable documentation and regression tests
-// that guard against accidental spec changes (e.g., a typo in wf() or
+// that guard against accidental spec changes (e.g., a typo in inv() or
 // spec_is_satisfied()). They are automatically discharged by Verus and do
 // not exercise the prover in a meaningful way. The substantive protocol
 // proofs are in the "Protocol Properties" and "Concurrency Properties"
@@ -31,20 +31,22 @@ impl Fence {
     /// Lemma: A fence is either satisfied or waiting (totality).
     pub proof fn lemma_state_is_total(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             self.spec_is_satisfied() || self.spec_is_waiting(),
             !(self.spec_is_satisfied() && self.spec_is_waiting()),
     {
+        reveal(Fence::inv);
     }
 
     /// Lemma: spec_is_satisfied and spec_is_waiting are complementary for well-formed fences.
     pub proof fn lemma_satisfied_waiting_complementary(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             self.spec_is_satisfied() == !self.spec_is_waiting(),
     {
+        reveal(Fence::inv);
     }
 
     /// Lemma: View reflects the count and total fields.
@@ -181,19 +183,21 @@ impl Fence {
     pub proof fn lemma_unsignaled_eq_new_view(s: &Fence)
         requires
             s.spec_count() == 0,
-            s.wf(),
+            s.inv(),
         ensures
             s@ == Fence::spec_new_view(s.spec_total()),
     {
+        reveal(Fence::inv);
     }
 
     /// Lemma: Remaining signals is zero iff the fence is satisfied.
     pub proof fn lemma_remaining_zero_iff_satisfied(s: &Fence)
         requires
-            s.wf(),
+            s.inv(),
         ensures
             (s.spec_remaining() == 0) == s.spec_is_satisfied(),
     {
+        reveal(Fence::inv);
     }
 }
 

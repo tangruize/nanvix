@@ -13,7 +13,7 @@
 //! - `signal()` is only valid when the fence is waiting (count < total).
 //! - `wait()` postcondition guarantees the fence is satisfied (count >= total).
 //! - `spec_is_satisfied` and `spec_is_waiting` are complementary predicates.
-//! - Well-formedness (`wf()`) enforces: count <= total.
+//! - Well-formedness (`inv()`) enforces: count <= total.
 //! - Satisfaction is monotone: once satisfied, a fence stays satisfied.
 //! - After exactly `total` signals from a new fence, it is satisfied.
 //!
@@ -30,7 +30,7 @@
 //! The kernel uses the original `src/kernel/src/pm/sync/fence.rs` (with
 //! `AtomicUsize` and spin-wait loop) at runtime. The verified model proves
 //! the state machine protocol is correct: every reachable state satisfies
-//! `wf()`, and signal/wait transitions are sound.
+//! `inv()`, and signal/wait transitions are sound.
 //!
 //! ## Verification Scope
 //!
@@ -152,7 +152,7 @@ impl Fence {
             result.spec_count() == 0,
             result.spec_total() == total as nat,
             result@ == Fence::spec_new_view(total as nat),
-            result.wf(),
+            result.inv(),
             total == 0 ==> result.spec_is_satisfied(),
             total > 0 ==> result.spec_is_waiting(),
     {
@@ -175,7 +175,7 @@ impl Fence {
     /// `signal()`. In the sequential model, the caller must ensure it.
     pub fn wait(&self)
         requires
-            self.wf(),
+            self.inv(),
             self.spec_is_satisfied(),
         ensures
             self.spec_is_satisfied(),
@@ -198,14 +198,14 @@ impl Fence {
     /// past the total and ensures count does not overflow.
     pub fn signal(&mut self)
         requires
-            old(self).wf(),
+            old(self).inv(),
             old(self).spec_is_waiting(),
         ensures
             self.count == old(self).count + 1,
             self.total == old(self).total,
             self.spec_count() == old(self).spec_count() + 1,
             self.spec_total() == old(self).spec_total(),
-            self.wf(),
+            self.inv(),
             old(self).spec_remaining() > 0 ==> self.spec_remaining() == old(self).spec_remaining() - 1,
             self.spec_remaining() == 0 ==> self.spec_is_satisfied(),
     {
@@ -223,7 +223,7 @@ impl Fence {
     /// `true` if all signals have been received, `false` otherwise.
     pub fn is_satisfied(&self) -> (result: bool)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             result == self.spec_is_satisfied(),
             result == (self.count as nat >= self.total as nat),

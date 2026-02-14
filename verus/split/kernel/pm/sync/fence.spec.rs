@@ -29,7 +29,7 @@ pub struct FenceView {
 //==================================================================================================
 
 impl Fence {
-    /// Spec function: well-formedness predicate.
+    /// Invariant predicate for internal consistency.
     ///
     /// # Description
     ///
@@ -38,7 +38,7 @@ impl Fence {
     /// - `new(total)` produces `count == 0`, so `count <= total` holds.
     /// - `signal()` increments `count` by 1, but only when `count < total`.
     /// - `wait()` is a pure observer and does not modify state.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         self.count as nat <= self.total as nat
     }
 
@@ -66,10 +66,10 @@ impl Fence {
     ///
     /// # Note
     ///
-    /// This function assumes `wf()` for meaningful results. Without `wf()`,
+    /// This function assumes `inv()` for meaningful results. Without `inv()`,
     /// if `count > total`, nat subtraction saturates to 0.
     pub open spec fn spec_remaining(&self) -> nat
-        recommends self.wf(),
+        recommends self.inv(),
     {
         (self.total as nat - self.count as nat) as nat
     }
@@ -84,6 +84,10 @@ impl Fence {
 // View Implementation
 //==================================================================================================
 
+/// NOTE: `view()` must be `open spec fn` because the Verus `View` trait requires it.
+/// The trait signature mandates `open`, so this cannot be `closed`. Users observe
+/// only the abstract `FenceView` (which uses `nat` instead of `usize`), not the
+/// concrete `Fence` fields directly.
 impl View for Fence {
     type V = FenceView;
 
