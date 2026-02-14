@@ -118,6 +118,9 @@ pub struct ScoreBoardSlotView {
 impl View for KcallArgs {
     type V = KcallArgsView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> KcallArgsView {
         KcallArgsView {
             pid: self.pid as int,
@@ -134,6 +137,9 @@ impl View for KcallArgs {
 impl View for KcallResult {
     type V = KcallResultView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> KcallResultView {
         KcallResultView { is_success: self.is_success, value: self.value as int }
     }
@@ -142,6 +148,9 @@ impl View for KcallResult {
 impl View for ScoreBoard {
     type V = ScoreBoardView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ScoreBoardView {
         ScoreBoardView {
             phase: self.phase,
@@ -158,6 +167,9 @@ impl View for ScoreBoard {
 impl View for ScoreBoardSlot {
     type V = ScoreBoardSlotView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ScoreBoardSlotView {
         ScoreBoardSlotView {
             initialized: self.initialized,
@@ -172,7 +184,7 @@ impl View for ScoreBoardSlot {
 
 impl KcallArgs {
     /// Spec function: returns the abstract view of the arguments.
-    pub open spec fn spec_view(&self) -> KcallArgsView {
+    pub closed spec fn spec_view(&self) -> KcallArgsView {
         self@
     }
 
@@ -181,7 +193,7 @@ impl KcallArgs {
     /// # Description
     ///
     /// The initial arguments before any dispatch has occurred.
-    pub open spec fn spec_default_view() -> KcallArgsView {
+    pub closed spec fn spec_default_view() -> KcallArgsView {
         KcallArgsView {
             pid: i32::MAX as int,
             tid: i32::MAX as int,
@@ -202,17 +214,17 @@ impl KcallResult {
     /// Models the original enum constraints:
     /// - `Success(KcallSuccess(i64))`: any i64 value is valid.
     /// - `Error(KcallError(i32))`: the value must fit in an i32.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.is_success || (i32::MIN as i64 <= self.value && self.value <= i32::MAX as i64)
     }
 
     /// Spec function: the default (ok) result view.
-    pub open spec fn spec_ok_view() -> KcallResultView {
+    pub closed spec fn spec_ok_view() -> KcallResultView {
         KcallResultView { is_success: true, value: 0 }
     }
 
     /// Spec function: whether the result represents a success variant.
-    pub open spec fn spec_is_ok(&self) -> bool {
+    pub closed spec fn spec_is_ok(&self) -> bool {
         self.is_success
     }
 }
@@ -227,7 +239,7 @@ impl ScoreBoard {
     /// 2. The dispatched/handled semaphore values match phase expectations.
     /// 3. The mutex is held in all non-Idle phases (Signaled, Dispatched, Handled).
     /// 4. The mutex is released in the Idle phase.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         &&& self.result.wf()
         &&& self.dispatched_value as nat == self.spec_dispatched_count()
         &&& self.handled_value as nat == self.spec_handled_count()
@@ -243,7 +255,7 @@ impl ScoreBoard {
     /// - Signaled: 1 (dispatcher called `dispatched.up()`, handler has not consumed).
     /// - Dispatched: 0 (handler consumed the signal via `try_down()`).
     /// - Handled: 0 (handler consumed the signal earlier).
-    pub open spec fn spec_dispatched_count(&self) -> nat {
+    pub closed spec fn spec_dispatched_count(&self) -> nat {
         if self.phase == ScoreBoardPhase::Signaled { 1 } else { 0 }
     }
 
@@ -255,32 +267,32 @@ impl ScoreBoard {
     /// - Signaled: 0 (handler has not started yet).
     /// - Dispatched: 0 (handler hasn't finished yet).
     /// - Handled: 1 (handler has signaled completion via `handled.up()`).
-    pub open spec fn spec_handled_count(&self) -> nat {
+    pub closed spec fn spec_handled_count(&self) -> nat {
         if self.phase == ScoreBoardPhase::Handled { 1 } else { 0 }
     }
 
     /// Spec function: the scoreboard is in the idle phase.
-    pub open spec fn spec_is_idle(&self) -> bool {
+    pub closed spec fn spec_is_idle(&self) -> bool {
         self.phase == ScoreBoardPhase::Idle
     }
 
     /// Spec function: the scoreboard is in the signaled phase.
-    pub open spec fn spec_is_signaled(&self) -> bool {
+    pub closed spec fn spec_is_signaled(&self) -> bool {
         self.phase == ScoreBoardPhase::Signaled
     }
 
     /// Spec function: the scoreboard is in the dispatched phase.
-    pub open spec fn spec_is_dispatched(&self) -> bool {
+    pub closed spec fn spec_is_dispatched(&self) -> bool {
         self.phase == ScoreBoardPhase::Dispatched
     }
 
     /// Spec function: the scoreboard is in the handled phase.
-    pub open spec fn spec_is_handled(&self) -> bool {
+    pub closed spec fn spec_is_handled(&self) -> bool {
         self.phase == ScoreBoardPhase::Handled
     }
 
     /// Spec function: the initial view of a newly created scoreboard.
-    pub open spec fn spec_initial_view() -> ScoreBoardView {
+    pub closed spec fn spec_initial_view() -> ScoreBoardView {
         ScoreBoardView {
             phase: ScoreBoardPhase::Idle,
             args: KcallArgs::spec_default_view(),
@@ -308,7 +320,7 @@ impl ScoreBoard {
     /// # Returns
     ///
     /// The updated view after begin-dispatch.
-    pub open spec fn spec_begin_dispatch(view: ScoreBoardView, new_args: KcallArgsView) -> ScoreBoardView {
+    pub closed spec fn spec_begin_dispatch(view: ScoreBoardView, new_args: KcallArgsView) -> ScoreBoardView {
         ScoreBoardView {
             phase: ScoreBoardPhase::Signaled,
             args: new_args,
@@ -327,7 +339,7 @@ impl ScoreBoard {
     /// Models `handle()`: the handler consumes the dispatched signal
     /// (via `dispatched.try_down()`) and reads args. The phase transitions
     /// from `Signaled` to `Dispatched`, and `dispatched_value` becomes 0.
-    pub open spec fn spec_handle(view: ScoreBoardView) -> ScoreBoardView {
+    pub closed spec fn spec_handle(view: ScoreBoardView) -> ScoreBoardView {
         ScoreBoardView {
             phase: ScoreBoardPhase::Dispatched,
             args: view.args,
@@ -355,7 +367,7 @@ impl ScoreBoard {
     /// # Returns
     ///
     /// The updated view after handled.
-    pub open spec fn spec_handled(view: ScoreBoardView, ret: KcallResultView) -> ScoreBoardView {
+    pub closed spec fn spec_handled(view: ScoreBoardView, ret: KcallResultView) -> ScoreBoardView {
         ScoreBoardView {
             phase: ScoreBoardPhase::Handled,
             args: view.args,
@@ -382,7 +394,7 @@ impl ScoreBoard {
     /// # Returns
     ///
     /// The updated view after completing the dispatch.
-    pub open spec fn spec_complete_dispatch(view: ScoreBoardView) -> ScoreBoardView {
+    pub closed spec fn spec_complete_dispatch(view: ScoreBoardView) -> ScoreBoardView {
         ScoreBoardView {
             phase: ScoreBoardPhase::Idle,
             args: view.args,
@@ -405,7 +417,7 @@ impl ScoreBoard {
     ///
     /// The resulting state violates `wf()` (phase is non-Idle but locked is
     /// false), reflecting a genuine stuck state that requires external recovery.
-    pub open spec fn spec_abandon_dispatch(view: ScoreBoardView) -> ScoreBoardView {
+    pub closed spec fn spec_abandon_dispatch(view: ScoreBoardView) -> ScoreBoardView {
         ScoreBoardView {
             phase: view.phase,
             args: view.args,
@@ -424,7 +436,7 @@ impl ScoreBoard {
     /// Models the successful path of the original `dispatch()`: the board goes
     /// through Idle → Signaled → Dispatched → Handled → Idle, returning the
     /// handler's result. Equivalent to `spec_full_cycle`.
-    pub open spec fn spec_dispatch_success(
+    pub closed spec fn spec_dispatch_success(
         view: ScoreBoardView,
         args: KcallArgsView,
         ret: KcallResultView,
@@ -440,7 +452,7 @@ impl ScoreBoard {
     /// but `dispatched.up()` fails (mapped to `SleepError::Generic` in the
     /// original). The guard drops, releasing the lock. The board returns to
     /// a valid Idle state with the new args but no signal sent.
-    pub open spec fn spec_dispatch_up_failed(
+    pub closed spec fn spec_dispatch_up_failed(
         view: ScoreBoardView,
         args: KcallArgsView,
     ) -> ScoreBoardView {
@@ -465,7 +477,7 @@ impl ScoreBoard {
     ///
     /// For interruption from other phases (Dispatched, Handled), compose
     /// the relevant spec transitions with `spec_abandon_dispatch`.
-    pub open spec fn spec_dispatch_interrupted(
+    pub closed spec fn spec_dispatch_interrupted(
         view: ScoreBoardView,
         args: KcallArgsView,
     ) -> ScoreBoardView {
@@ -479,7 +491,7 @@ impl ScoreBoard {
     ///
     /// Composes the four transitions into one specification of a complete cycle:
     /// `begin_dispatch` → `handle` → `handled` → `complete_dispatch`.
-    pub open spec fn spec_full_cycle(view: ScoreBoardView, args: KcallArgsView, ret: KcallResultView) -> ScoreBoardView {
+    pub closed spec fn spec_full_cycle(view: ScoreBoardView, args: KcallArgsView, ret: KcallResultView) -> ScoreBoardView {
         let after_signal: ScoreBoardView = Self::spec_begin_dispatch(view, args);
         let after_handle: ScoreBoardView = Self::spec_handle(after_signal);
         let after_handled: ScoreBoardView = Self::spec_handled(after_handle, ret);
@@ -497,7 +509,7 @@ impl ScoreBoard {
     /// property (`completed_cycles == initial + n`) generalizes to varying
     /// inputs, since each `spec_full_cycle` increments the counter by 1
     /// regardless of the specific args/ret values.
-    pub open spec fn spec_n_identical_cycles(
+    pub closed spec fn spec_n_identical_cycles(
         view: ScoreBoardView,
         args: KcallArgsView,
         ret: KcallResultView,
@@ -521,17 +533,17 @@ impl ScoreBoardSlot {
     ///
     /// The slot is well-formed when: if initialized, the contained board
     /// is well-formed. An uninitialized slot is trivially well-formed.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.initialized ==> self.board.wf()
     }
 
     /// Spec function: whether the slot has been initialized.
-    pub open spec fn spec_is_initialized(&self) -> bool {
+    pub closed spec fn spec_is_initialized(&self) -> bool {
         self.initialized
     }
 
     /// Spec function: the initial (uninitialized) slot view.
-    pub open spec fn spec_initial_slot_view() -> ScoreBoardSlotView {
+    pub closed spec fn spec_initial_slot_view() -> ScoreBoardSlotView {
         ScoreBoardSlotView {
             initialized: false,
             board: ScoreBoard::spec_initial_view(),

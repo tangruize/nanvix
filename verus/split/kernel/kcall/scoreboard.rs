@@ -339,13 +339,6 @@ impl KcallArgs {
         arg3: u32,
     ) -> (result: Self)
         ensures
-            result.pid == pid,
-            result.tid == tid,
-            result.number == number,
-            result.arg0 == arg0,
-            result.arg1 == arg1,
-            result.arg2 == arg2,
-            result.arg3 == arg3,
             result@ == (KcallArgsView {
                 pid: pid as int,
                 tid: tid as int,
@@ -368,8 +361,8 @@ impl KcallResult {
     /// A `KcallResult` representing success with value 0.
     pub fn ok() -> (result: Self)
         ensures
-            result.is_success,
-            result.value == 0,
+            result@.is_success,
+            result@.value == 0,
             result.wf(),
             result@ == KcallResult::spec_ok_view(),
     {
@@ -387,8 +380,8 @@ impl KcallResult {
     /// A `KcallResult` success variant with the specified value.
     pub fn success(value: i64) -> (result: Self)
         ensures
-            result.is_success,
-            result.value == value,
+            result@.is_success,
+            result@.value == value as int,
             result.wf(),
             result@ == (KcallResultView { is_success: true, value: value as int }),
     {
@@ -406,8 +399,8 @@ impl KcallResult {
     /// A `KcallResult` error variant with the specified code.
     pub fn error(code: i32) -> (result: Self)
         ensures
-            !result.is_success,
-            result.value == code as i64,
+            !result@.is_success,
+            result@.value == code as int,
             result.wf(),
             result@ == (KcallResultView { is_success: false, value: code as int }),
     {
@@ -430,11 +423,11 @@ impl ScoreBoard {
     pub fn new() -> (result: Self)
         ensures
             result.wf(),
-            result.spec_is_idle(),
-            !result.locked,
-            result.dispatched_value == 0,
-            result.handled_value == 0,
-            result.completed_cycles == 0u64,
+            result@.phase == ScoreBoardPhase::Idle,
+            !result@.locked,
+            result@.dispatched_value == 0,
+            result@.handled_value == 0,
+            result@.completed_cycles == 0,
             result@ == ScoreBoard::spec_initial_view(),
     {
         ScoreBoard {
@@ -481,13 +474,13 @@ impl ScoreBoard {
     pub fn begin_dispatch(&mut self, args: KcallArgs) -> (result: Ghost<KcallArgsView>)
         requires
             old(self).wf(),
-            old(self).spec_is_idle(),
+            old(self)@.phase == ScoreBoardPhase::Idle,
         ensures
             self.wf(),
-            self.spec_is_signaled(),
-            self.locked,
-            self.dispatched_value == 1,
-            self.args@ == args@,
+            self@.phase == ScoreBoardPhase::Signaled,
+            self@.locked,
+            self@.dispatched_value == 1,
+            self@.args == args@,
             self@ == ScoreBoard::spec_begin_dispatch(old(self)@, args@),
             result@ == args@,
     {
@@ -520,14 +513,14 @@ impl ScoreBoard {
     pub fn handle(&mut self) -> (result: Ghost<KcallArgsView>)
         requires
             old(self).wf(),
-            old(self).spec_is_signaled(),
+            old(self)@.phase == ScoreBoardPhase::Signaled,
         ensures
             self.wf(),
-            self.spec_is_dispatched(),
-            self.dispatched_value == 0,
-            self.args@ == old(self).args@,
+            self@.phase == ScoreBoardPhase::Dispatched,
+            self@.dispatched_value == 0,
+            self@.args == old(self)@.args,
             self@ == ScoreBoard::spec_handle(old(self)@),
-            result@ == self.args@,
+            result@ == self@.args,
     {
         self.dispatched_value = 0;
         self.phase = ScoreBoardPhase::Dispatched;
@@ -554,12 +547,12 @@ impl ScoreBoard {
         requires
             old(self).wf(),
         ensures
-            success == old(self).spec_is_signaled(),
+            success == (old(self)@.phase == ScoreBoardPhase::Signaled),
             success ==> (
                 self.wf()
-                && self.spec_is_dispatched()
-                && self.dispatched_value == 0
-                && self.args@ == old(self).args@
+                && self@.phase == ScoreBoardPhase::Dispatched
+                && self@.dispatched_value == 0
+                && self@.args == old(self)@.args
                 && self@ == ScoreBoard::spec_handle(old(self)@)
             ),
             !success ==> self@ == old(self)@,
@@ -597,15 +590,15 @@ impl ScoreBoard {
     pub fn try_begin_dispatch(&mut self, args: KcallArgs, lock_acquired: bool) -> (success: bool)
         requires
             old(self).wf(),
-            old(self).spec_is_idle(),
+            old(self)@.phase == ScoreBoardPhase::Idle,
         ensures
             success == lock_acquired,
             success ==> (
                 self.wf()
-                && self.spec_is_signaled()
-                && self.locked
-                && self.dispatched_value == 1
-                && self.args@ == args@
+                && self@.phase == ScoreBoardPhase::Signaled
+                && self@.locked
+                && self@.dispatched_value == 1
+                && self@.args == args@
                 && self@ == ScoreBoard::spec_begin_dispatch(old(self)@, args@)
             ),
             !success ==> self@ == old(self)@,
@@ -636,14 +629,14 @@ impl ScoreBoard {
     pub fn abandon_dispatch(&mut self)
         requires
             old(self).wf(),
-            !old(self).spec_is_idle(),
+            old(self)@.phase != ScoreBoardPhase::Idle,
         ensures
-            !self.locked,
-            self.phase == old(self).phase,
-            self.result@ == old(self).result@,
-            self.args@ == old(self).args@,
-            self.dispatched_value == old(self).dispatched_value,
-            self.handled_value == old(self).handled_value,
+            !self@.locked,
+            self@.phase == old(self)@.phase,
+            self@.result == old(self)@.result,
+            self@.args == old(self)@.args,
+            self@.dispatched_value == old(self)@.dispatched_value,
+            self@.handled_value == old(self)@.handled_value,
             self@ == ScoreBoard::spec_abandon_dispatch(old(self)@),
     {
         self.locked = false;
@@ -664,9 +657,9 @@ impl ScoreBoard {
     pub fn get_args(&self) -> (result: &KcallArgs)
         requires
             self.wf(),
-            self.spec_is_dispatched(),
+            self@.phase == ScoreBoardPhase::Dispatched,
         ensures
-            (*result)@ == self.args@,
+            (*result)@ == self@.args,
     {
         &self.args
     }
@@ -687,14 +680,14 @@ impl ScoreBoard {
     pub fn handled(&mut self, ret: KcallResult)
         requires
             old(self).wf(),
-            old(self).spec_is_dispatched(),
+            old(self)@.phase == ScoreBoardPhase::Dispatched,
             ret.wf(),
         ensures
             self.wf(),
-            self.spec_is_handled(),
-            self.handled_value == 1,
-            self.result@ == ret@,
-            self.args@ == old(self).args@,
+            self@.phase == ScoreBoardPhase::Handled,
+            self@.handled_value == 1,
+            self@.result == ret@,
+            self@.args == old(self)@.args,
             self@ == ScoreBoard::spec_handled(old(self)@, ret@),
     {
         self.result = ret;
@@ -720,19 +713,19 @@ impl ScoreBoard {
     pub fn complete_dispatch(&mut self) -> (result: KcallResult)
         requires
             old(self).wf(),
-            old(self).spec_is_handled(),
-            old(self).completed_cycles < u64::MAX,
+            old(self)@.phase == ScoreBoardPhase::Handled,
+            old(self)@.completed_cycles < u64::MAX as nat,
         ensures
             self.wf(),
-            self.spec_is_idle(),
-            !self.locked,
-            self.dispatched_value == 0,
-            self.handled_value == 0,
-            self.result@ == old(self).result@,
-            result@ == old(self).result@,
+            self@.phase == ScoreBoardPhase::Idle,
+            !self@.locked,
+            self@.dispatched_value == 0,
+            self@.handled_value == 0,
+            self@.result == old(self)@.result,
+            result@ == old(self)@.result,
             result.wf(),
             self@ == ScoreBoard::spec_complete_dispatch(old(self)@),
-            self.completed_cycles as nat == old(self).completed_cycles as nat + 1,
+            self@.completed_cycles == old(self)@.completed_cycles + 1,
     {
         let ret: KcallResult = KcallResult { is_success: self.result.is_success, value: self.result.value };
         self.handled_value = 0;
@@ -802,10 +795,10 @@ impl ScoreBoard {
     ) -> (outcome: DispatchOutcome)
         requires
             old(self).wf(),
-            old(self).spec_is_idle(),
+            old(self)@.phase == ScoreBoardPhase::Idle,
             ret.wf(),
             handler_progress <= 2,
-            old(self).completed_cycles < u64::MAX,
+            old(self)@.completed_cycles < u64::MAX as nat,
         ensures
             // Case 1: Lock failure — state preserved.
             !lock_acquired ==> (
@@ -817,54 +810,54 @@ impl ScoreBoard {
             (lock_acquired && up_failed) ==> (
                 outcome == DispatchOutcome::UpFailed
                 && self.wf()
-                && self.spec_is_idle()
-                && !self.locked
-                && self.args@ == args@
-                && self.result@ == old(self).result@
-                && self.dispatched_value == 0
-                && self.handled_value == 0
-                && self.completed_cycles as nat == old(self).completed_cycles as nat
+                && self@.phase == ScoreBoardPhase::Idle
+                && !self@.locked
+                && self@.args == args@
+                && self@.result == old(self)@.result
+                && self@.dispatched_value == 0
+                && self@.handled_value == 0
+                && self@.completed_cycles == old(self)@.completed_cycles
             ),
             // Case 3a: Down interrupted, handler hasn't started (Signaled).
             (lock_acquired && !up_failed && down_interrupted && handler_progress == 0) ==> (
                 outcome == DispatchOutcome::DownInterrupted
-                && !self.locked
-                && self.phase == ScoreBoardPhase::Signaled
-                && self.args@ == args@
-                && self.result@ == old(self).result@
-                && self.dispatched_value == 1
-                && self.handled_value == 0
-                && self.completed_cycles as nat == old(self).completed_cycles as nat
+                && !self@.locked
+                && self@.phase == ScoreBoardPhase::Signaled
+                && self@.args == args@
+                && self@.result == old(self)@.result
+                && self@.dispatched_value == 1
+                && self@.handled_value == 0
+                && self@.completed_cycles == old(self)@.completed_cycles
             ),
             // Case 3b: Down interrupted, handler consumed signal (Dispatched).
             (lock_acquired && !up_failed && down_interrupted && handler_progress == 1) ==> (
                 outcome == DispatchOutcome::DownInterrupted
-                && !self.locked
-                && self.phase == ScoreBoardPhase::Dispatched
-                && self.args@ == args@
-                && self.result@ == old(self).result@
-                && self.dispatched_value == 0
-                && self.handled_value == 0
-                && self.completed_cycles as nat == old(self).completed_cycles as nat
+                && !self@.locked
+                && self@.phase == ScoreBoardPhase::Dispatched
+                && self@.args == args@
+                && self@.result == old(self)@.result
+                && self@.dispatched_value == 0
+                && self@.handled_value == 0
+                && self@.completed_cycles == old(self)@.completed_cycles
             ),
             // Case 3c: Down interrupted, handler finished (Handled).
             (lock_acquired && !up_failed && down_interrupted && handler_progress == 2) ==> (
                 outcome == DispatchOutcome::DownInterrupted
-                && !self.locked
-                && self.phase == ScoreBoardPhase::Handled
-                && self.args@ == args@
-                && self.result@ == ret@
-                && self.dispatched_value == 0
-                && self.handled_value == 1
-                && self.completed_cycles as nat == old(self).completed_cycles as nat
+                && !self@.locked
+                && self@.phase == ScoreBoardPhase::Handled
+                && self@.args == args@
+                && self@.result == ret@
+                && self@.dispatched_value == 0
+                && self@.handled_value == 1
+                && self@.completed_cycles == old(self)@.completed_cycles
             ),
             // Case 4: Success — full cycle completed, result returned.
             (lock_acquired && !up_failed && !down_interrupted) ==> (
                 outcome == DispatchOutcome::Success(KcallResult { is_success: ret.is_success, value: ret.value })
                 && self.wf()
-                && self.spec_is_idle()
-                && !self.locked
-                && self.completed_cycles as nat == old(self).completed_cycles as nat + 1
+                && self@.phase == ScoreBoardPhase::Idle
+                && !self@.locked
+                && self@.completed_cycles == old(self)@.completed_cycles + 1
                 && self@ == ScoreBoard::spec_dispatch_success(old(self)@, args@, ret@)
             ),
     {
@@ -931,7 +924,7 @@ impl ScoreBoard {
         requires
             self.wf(),
         ensures
-            result == self.spec_is_idle(),
+            result == (self@.phase == ScoreBoardPhase::Idle),
     {
         matches!(self.phase, ScoreBoardPhase::Idle)
     }
@@ -945,7 +938,7 @@ impl ScoreBoard {
         requires
             self.wf(),
         ensures
-            result == self.spec_is_signaled(),
+            result == (self@.phase == ScoreBoardPhase::Signaled),
     {
         matches!(self.phase, ScoreBoardPhase::Signaled)
     }
@@ -959,7 +952,7 @@ impl ScoreBoard {
         requires
             self.wf(),
         ensures
-            result == self.spec_is_dispatched(),
+            result == (self@.phase == ScoreBoardPhase::Dispatched),
     {
         matches!(self.phase, ScoreBoardPhase::Dispatched)
     }
@@ -973,7 +966,7 @@ impl ScoreBoard {
         requires
             self.wf(),
         ensures
-            result == self.spec_is_handled(),
+            result == (self@.phase == ScoreBoardPhase::Handled),
     {
         matches!(self.phase, ScoreBoardPhase::Handled)
     }
@@ -1012,7 +1005,7 @@ impl ScoreBoardSlot {
     /// An uninitialized `ScoreBoardSlot`.
     pub fn new() -> (result: Self)
         ensures
-            !result.spec_is_initialized(),
+            !result@.initialized,
             result.wf(),
             result@ == ScoreBoardSlot::spec_initial_slot_view(),
     {
@@ -1031,12 +1024,11 @@ impl ScoreBoardSlot {
     /// prior state (including already-initialized slots) for idempotent re-init.
     pub fn init(&mut self)
         ensures
-            self.spec_is_initialized(),
             self.wf(),
-            self.board.wf(),
-            self.board.spec_is_idle(),
-            !self.board.locked,
-            self.board.completed_cycles == 0u64,
+            self@.initialized,
+            self@.board.phase == ScoreBoardPhase::Idle,
+            !self@.board.locked,
+            self@.board.completed_cycles == 0,
     {
         self.board = ScoreBoard::new();
         self.initialized = true;
@@ -1053,7 +1045,7 @@ impl ScoreBoardSlot {
     /// `true` if initialized (modeling `Some`), `false` otherwise (`None`).
     pub fn is_initialized(&self) -> (result: bool)
         ensures
-            result == self.spec_is_initialized(),
+            result == self@.initialized,
     {
         self.initialized
     }
@@ -1075,7 +1067,10 @@ impl ScoreBoardSlot {
         requires
             self.wf(),
         ensures
-            result == self.spec_is_initialized(),
+            result == self@.initialized,
+            // NOTE: When result is true, the contained board is well-formed.
+            // This follows from slot.wf() (precondition) and self@.initialized.
+            // Expressed via subcomponent invariant since ScoreBoardView has no wf().
             result ==> self.board.wf(),
     {
         self.initialized
@@ -1096,10 +1091,10 @@ impl ScoreBoardSlot {
     pub fn get_board(&self) -> (result: &ScoreBoard)
         requires
             self.wf(),
-            self.spec_is_initialized(),
+            self@.initialized,
         ensures
             (*result).wf(),
-            (*result)@ == self.board@,
+            (*result)@ == self@.board,
     {
         &self.board
     }
