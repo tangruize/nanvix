@@ -61,9 +61,9 @@
 //! | `Mutex::try_lock(&self)`  | `try_lock(&mut self)`  | `&mut self` for state mutation. |
 //! | `Mutex::lock(&self, t)`   | `lock(&mut self)`      | Timeout not modeled.          |
 //! | `MutexGuard::drop()`      | `unlock(&mut self)`    | Explicit token consumption.   |
-//! | `Mutex::reference_count()`| (not modeled)          | Arc-specific, out of scope.   |
-//! | `MutexInner::unlock_unchecked()` | `unlock(&mut self)` | Safe wrapper with token.   |
-//! | `fmt::Debug for MutexGuard` | (not modeled)       | Display-only, no state mutation. |
+//! | `Mutex::reference_count()`| `reference_count(&self)` | Returns 1; Arc not modeled. |
+//! | `MutexInner::unlock_unchecked()` | `unlock_unchecked(&mut self)` | Called by `unlock()`. |
+//! | `fmt::Debug for MutexGuard` | (not modeled)       | Verus lacks `fmt::Debug` trait support. |
 //! | (none in original)          | `is_locked(&self)`   | Verification-only helper.     |
 //!
 //! ## API Divergence
@@ -206,6 +206,24 @@ impl Mutex {
         Mutex { locked: false, id: id, token_issued: false }
     }
 
+    /// Returns the reference count of the mutex.
+    ///
+    /// # Description
+    ///
+    /// In the original implementation, returns `Arc::strong_count()`. In the
+    /// sequential verification model, `Arc` shared ownership is not modeled,
+    /// so the reference count is always 1 (single owner).
+    ///
+    /// # Returns
+    ///
+    /// The reference count of the mutex (always 1 in the sequential model).
+    pub fn reference_count(&self) -> (result: usize)
+        ensures
+            result == 1usize,
+    {
+        1
+    }
+
     /// Attempts to acquire the mutex without blocking.
     ///
     /// # Description
@@ -285,18 +303,46 @@ impl Mutex {
         Tracked(token)
     }
 
+    /// Releases the mutex without requiring a token.
+    ///
+    /// # Description
+    ///
+    /// Models `MutexInner::unlock_unchecked()` from the original implementation,
+    /// which stores `false` to the `AtomicBool` and notifies the first sleeping
+    /// thread via `Condvar::notify_first()`. The Condvar notification is an
+    /// external dependency not modeled here.
+    ///
+    /// In the original, this is `unsafe` because the caller must ensure the lock
+    /// is held. In Verus, safety is enforced via the `requires` clause instead.
+    /// The original returns `Result<(), Error>` due to the `notify_first()` error
+    /// path; here it returns `()` since condvar notification is not modeled.
+    fn unlock_unchecked(&mut self)
+        requires
+            old(self)@.locked,
+            old(self).wf(),
+            old(self)@.token_issued,
+        ensures
+            !self@.locked,
+            self@.is_unlocked(),
+            self@.id == old(self)@.id,
+            !self@.token_issued,
+            self@ == MutexView::spec_new(old(self)@.id),
+            self.wf(),
+    {
+        proof { reveal(Mutex::wf); }
+        self.locked = false;
+        self.token_issued = false;
+    }
+
     /// Releases the mutex.
     ///
     /// # Description
     ///
-    /// Sets the lock state to unlocked. Models the `MutexGuard::drop()` which
-    /// calls `MutexInner::unlock_unchecked()` to store `false` and notify the
-    /// first sleeping thread. The original `notify_first()` error path (handled
-    /// with `warn!()` in `Drop`) is not modeled; condvar notification is an
-    /// external dependency verified separately.
-    ///
-    /// Consumes the `MutexToken` produced by `lock()` or `try_lock()`, discharging
-    /// the lock-release obligation.
+    /// Models `MutexGuard::drop()` from the original implementation. The original
+    /// `Drop` impl calls `MutexInner::unlock_unchecked()` to store `false` and
+    /// notify the first sleeping thread. This function consumes the `MutexToken`
+    /// (modeling the `MutexGuard` RAII pattern) and delegates to `unlock_unchecked()`
+    /// for the actual state transition.
     ///
     /// # Precondition
     ///
@@ -316,9 +362,7 @@ impl Mutex {
             self@ == MutexView::spec_new(old(self)@.id),
             self.wf(),
     {
-        proof { reveal(Mutex::wf); }
-        self.locked = false;
-        self.token_issued = false;
+        self.unlock_unchecked();
     }
 
     /// Checks if the mutex is currently locked.
