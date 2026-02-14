@@ -77,14 +77,14 @@ impl UpoolView {
         self.allocator_view.is_allocated(frame_idx)
     }
 
-    /// Returns the number of allocated frames.
+    /// Returns the number of allocated frames (concrete count).
     pub open spec fn num_allocated(&self) -> int {
-        self.allocator_view.num_allocated()
+        self.num_allocated_count
     }
 
     /// Returns the number of free frames.
     pub open spec fn num_free(&self) -> int {
-        self.allocator_view.num_free()
+        self.capacity() - self.num_allocated_count
     }
 
     /// Returns true if the pool has at least one free frame (existential).
@@ -167,6 +167,7 @@ impl View for Upool {
     closed spec fn view(&self) -> UpoolView {
         UpoolView {
             allocator_view: self.frame_allocator@,
+            num_allocated_count: self.frame_allocator.spec_num_allocated(),
             // Base address is abstract (default 0).
             base_addr: 0,
         }
@@ -187,15 +188,10 @@ impl Upool {
 
     //==============================================================================================
 
-    /// Returns the capacity (total number of frames).
-    pub open spec fn spec_capacity(&self) -> int {
-        self@.capacity()
-    }
-
-
-    /// Returns the number of allocated frames (bitmap-based, closed).
-    /// This is used for counting postconditions.
-    pub closed spec fn spec_num_allocated(&self) -> int {
+    /// Returns the number of allocated frames (bitmap-based).
+    /// Private: used only in internal loop invariants and proof blocks.
+    /// Public method specs use `self@.num_allocated()` instead.
+    spec fn spec_num_allocated(&self) -> int {
         self.frame_allocator.spec_num_allocated()
     }
 }

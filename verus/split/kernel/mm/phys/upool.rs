@@ -94,10 +94,12 @@ pub enum FramePermission {
 ///
 /// # Field Visibility
 ///
-/// The `addr` field is public to allow spec functions to access it in Verus.
+/// The `addr` field is public because Verus requires struct fields referenced
+/// by `pub open spec fn` methods to be visible at the method's scope.
+/// Making it private would prevent `pub open spec fn` bodies from compiling.
+/// This is a known limitation of Verus's visibility model.
 /// Callers should use `UserFrame::new()` to construct frames, which enforces
-/// alignment preconditions. The `free()` method validates that the frame is
-/// actually allocated before freeing.
+/// alignment preconditions.
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 pub struct UserFrame {
     /// Frame address (page-aligned).
@@ -145,6 +147,19 @@ impl UserFrame {
 /// Abstract view of the user frame pool for specification purposes.
 /// This mirrors FrameAllocatorView but provides pool-specific semantics.
 ///
+/// # Description
+///
+/// This view encapsulates the abstract state of the user frame pool.
+/// Methods delegate to `allocator_view` for allocation state, while
+/// `num_allocated_count` provides concrete counting for public method specs.
+///
+/// # Note on `allocator_view`
+///
+/// The `allocator_view` field remains public because Verus requires struct fields
+/// referenced by `pub open spec fn` methods to be visible at the method's scope.
+/// Making it private would prevent `pub open spec fn` bodies from compiling.
+/// This is a known limitation of Verus's visibility model.
+///
 /// # Region Properties
 ///
 /// The view includes:
@@ -154,7 +169,11 @@ impl UserFrame {
 #[verifier::ext_equal]
 pub struct UpoolView {
     /// The underlying frame allocator view.
+    /// Public due to Verus visibility constraints on `pub open spec fn`.
     pub allocator_view: FrameAllocatorView,
+    /// Concrete count of allocated frames (from bitmap).
+    /// Exposed via `num_allocated()` for public method specs.
+    pub num_allocated_count: int,
     /// Base physical address of the pool region.
     /// Frame i has address: base_addr + i * FRAME_SIZE.
     pub base_addr: int,
@@ -264,7 +283,7 @@ impl Upool {
                 &&& uframe.spec_permission_from_pool(*self) == FramePermission::ReadOnly
             },
             // EXPLICIT COUNT: exactly one more frame allocated.
-            result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + 1,
+            result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() + 1,
             // On failure: state unchanged.
             result is Err ==> self@ == old(self)@,
     {
@@ -331,7 +350,7 @@ impl Upool {
             old(self).inv(),
             count > 0,
             // Precondition: must have at least `count` free frames.
-            old(self).spec_num_allocated() + count as int <= old(self).spec_capacity(),
+            old(self)@.num_allocated() + count as int <= old(self)@.capacity(),
         ensures
             self.inv(),
             // Capacity is preserved.
@@ -355,14 +374,14 @@ impl Upool {
                 0 <= i < result@.len() && 0 <= j < result@.len() && i != j ==>
                 self@.frames_are_disjoint(result@[i], result@[j]),
             // EXPLICIT COUNT: exactly count more frames allocated.
-            self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
+            self@.num_allocated() == old(self)@.num_allocated() + count as int,
             // MONOTONICITY: Previously allocated frames remain allocated.
             forall|i: int| #![trigger self@.is_allocated(i)]
                 0 <= i < self@.capacity() && old(self)@.is_allocated(i) ==>
                 self@.is_allocated(i),
     {
         let ghost original_self: Upool = *self;
-        let ghost original_capacity: int = self.spec_capacity();
+        let ghost original_capacity: int = self@.capacity();
         let ghost original_num_allocated: int = self.spec_num_allocated();
 
         let ghost mut frame_indices: Seq<int> = Seq::empty();
@@ -527,7 +546,7 @@ impl Upool {
                 0 <= i < self@.capacity() && i != uframe.spec_frame_number() ==>
                 self@.is_allocated(i) == old(self)@.is_allocated(i),
             // Count decreases by exactly 1.
-            self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
+            self@.num_allocated() == old(self)@.num_allocated() - 1,
     {
         self.frame_allocator.free(uframe.address())
     }
@@ -578,7 +597,7 @@ impl Upool {
                 0 <= i < self@.capacity() && i != addr as int / FRAME_SIZE as int ==>
                 self@.is_allocated(i) == (old(self))@.is_allocated(i),
             // Count decreases by exactly 1.
-            self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
+            self@.num_allocated() == old(self)@.num_allocated() - 1,
     {
         let frame_addr: FrameAddress = FrameAddress { raw_addr: addr };
         self.frame_allocator.free(frame_addr)
