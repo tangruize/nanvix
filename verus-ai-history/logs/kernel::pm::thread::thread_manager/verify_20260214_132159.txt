@@ -1,0 +1,31 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 13:21:59 CST 2026
+Module: kernel::pm::thread::thread_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::thread_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::thread_manager
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/thread_manager.rs:285:13
+    |
+285 |               result.spec_drop_safe(),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+289 | /         ReadyThread {
+290 | |             state: ThreadState::new(id, kernel_stack, user_stack, user_tda),
+291 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 21 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 21
+Errors: 1
+Status: FAILED
+No changes to commit in verus/
