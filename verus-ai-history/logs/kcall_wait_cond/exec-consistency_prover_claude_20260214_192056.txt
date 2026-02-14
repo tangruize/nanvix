@@ -1,0 +1,190 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T19:22:38.282107
+Model: claude-opus-4.6-fast
+Session: 226dc98f-16d8-492e-b03f-dec83f6bebb6
+Duration: 101.3s
+Exit code: 0
+
+=== Prompt ===
+Fix exec code inconsistencies for kcall_wait_cond detected by AST analysis.
+
+Original source: src/kernel/src/pm/kcall/wait_cond.rs
+Verified code directory: verus/split/kernel/pm/kcall/
+  - wait_cond.rs (exec)
+  - wait_cond.spec.rs (spec)
+  - wait_cond.proof.rs (proof)
+
+== TREE-SITTER AST DIFF REPORT ==
+
+The following inconsistencies were detected by comparing AST hashes of exec
+functions between the original source and the verified version (ghost/proof
+annotations are stripped before comparison):
+
+# Exec Consistency Report
+
+**Source:** `/home/ubuntu/nanvix/src/kernel/src/pm/kcall/wait_cond.rs`
+**Verus:** `/home/ubuntu/nanvix/verus/split/kernel/pm/kcall/wait_cond.rs`
+
+## Summary
+
+- Functions matched: 0/1
+- Functions mismatched: 0
+- Missing in Verus: 1
+- Extra in Verus: 5
+- **Consistent: NO**
+
+## Inconsistent Functions
+
+| Function | Status | Source Lines | Verus Lines |
+|----------|--------|-------------|-------------|
+| `wait_cond` | MISSING_IN_VERUS | 72-138 |  |
+| `cond_wait_model` | EXTRA_IN_VERUS |  | 412-424 |
+| `get_cond_and_wait_model` | EXTRA_IN_VERUS |  | 536-863 |
+| `mutex_lock_model` | EXTRA_IN_VERUS |  | 463-471 |
+| `parse_timeout_model` | EXTRA_IN_VERUS |  | 504-517 |
+| `wait_cond_model` | EXTRA_IN_VERUS |  | 619-861 |
+
+## All Functions
+
+| Function | Status | Hash Match |
+|----------|--------|------------|
+| `wait_cond` | MISSING_IN_VERUS | ❌ |
+| `cond_wait_model` | EXTRA_IN_VERUS | ❌ |
+| `get_cond_and_wait_model` | EXTRA_IN_VERUS | ❌ |
+| `mutex_lock_model` | EXTRA_IN_VERUS | ❌ |
+| `parse_timeout_model` | EXTRA_IN_VERUS | ❌ |
+| `wait_cond_model` | EXTRA_IN_VERUS | ❌ |
+
+
+== YOUR TASK ==
+
+For each inconsistency:
+
+1. **MISMATCH functions**: Compare the source and verus versions side by side.
+   - If the verus version changed executable logic: RESTORE the original logic
+     and update specs/proofs to verify the original code.
+   - If the change is purely structural but semantically equivalent (e.g.,
+     variable renaming, reordering): document WHY it is equivalent.
+   - If the change was necessary for verification (Verus limitation): document
+     the limitation and prove the equivalence informally.
+
+2. **MISSING_IN_VERUS functions**: Add the missing function to the verus exec
+   file with proper verification (requires/ensures).
+
+3. **EXTRA_IN_VERUS exec functions**: Remove unless justified (helper functions
+   extracted for verification are acceptable if documented).
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+- For each change, write a brief justification comment.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh kcall_wait_cond
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/ast-consistency/kcall_wait_cond_20260214_192056_fix.md:
+
+```markdown
+# Exec Consistency Fix: kcall_wait_cond
+
+## Summary
+- Mismatches fixed: N
+- Missing functions added: M
+- Documented equivalences: K
+
+## Changes
+| Function | Action | Justification |
+|----------|--------|---------------|
+
+## Verification: PASS/FAIL
+```
+
+=== Output ===
+
+
+
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs
+  └ 1 line read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.proof.rs
+  └ 1 line read
+
+● Read src/kernel/src/pm/kcall/wait_cond.rs
+  └ 138 lines read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.spec.rs
+  └ 518 lines read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs lines 1-100
+  └ 100 lines read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs lines 100-250
+  └ 151 lines read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs lines 250-450
+  └ 201 lines read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs lines 450-650
+  └ 201 lines read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs lines 650-870
+  └ 214 lines read
+
+● Explore: Explore verus patterns
+  ● Read verus/split/kernel/pm/kcall/sleep.rs lines 490-560
+    └ 71 lines read
+  ● Read verus/split/kernel/pm/kcall/unlock_mutex.rs lines 440-510
+    └ 28 lines read
+
+Now let me look at concrete examples of wrapper functions in sibling files.
+
+● Grep "^pub fn (sleep|lock_mutex|unlock_mutex)\b" (/home/ubuntu/nanvix/verus/split/kernel/pm/kcall)
+  └ 68 lines found
+
+Now I have a clear picture. I need to add a `wait_cond` wrapper function that delegates to `wait_cond_model`, following the established pattern. Let me also check the verify script.
+
+● Check verification script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh
+  └ 199 lines...
+
+Now I'll add the `wait_cond` wrapper function and run verification.
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs lines 855-863
+  └ 9 lines read
+
+● Edit verus/split/kernel/pm/kcall/wait_cond.rs (+49)
+
+Now run the verification:
+
+● Run verus verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh kcall_wait_cond 2>&1 | tail -30
+  └ 25 lines...
+
+Verification passed (31 verified, 0 errors). Now write the report.
+
+● Create report directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/ast-consistency
+  └ 1 line...
+
+● Create verus-ai-history/ast-consistency/kcall_wait_cond_20260214_192056_fix.md (+22)
+
+● Commit fix report
+  $ cd /home/ubuntu/nanvix && git add
+  verus-ai-history/ast-consistency/kcall_wait_cond_20260214_192056_fix.md && git commit -m
+  "[verus-ai] AST consistency fix report for kcall_wait_cond
+
+  Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+  └ 4 lines...
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 19.241s
+Total session time:     1m 40.105s
+Total code changes:     +71 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    690.4k in, 5.2k out, 640.7k cached (Est. 9 Premium requests)
+ claude-haiku-4.5        141.3k in, 3.4k out, 104.7k cached (Est. 0 Premium requests)
+
+=== End ===
