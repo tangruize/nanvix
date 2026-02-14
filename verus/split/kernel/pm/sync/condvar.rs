@@ -688,6 +688,210 @@ impl Condvar {
         old_len
     }
 
+    //==============================================================================================
+    // Original API Wrappers
+    //==============================================================================================
+    //
+    // The following functions provide wrappers matching the original API names.
+    // They delegate to the decomposed verification functions above.
+    //
+    // Functions not modeled:
+    // - `reference_count()`: Arc-specific, not relevant to queue management.
+    //   See trust assumption T6.
+    // - `fmt()` (Debug for Condvar/CondvarInner): Trait implementations for
+    //   formatting are not modeled in the verification.
+
+    /// Wakes up a single thread waiting on the condition variable.
+    ///
+    /// # Description
+    ///
+    /// Models the original `notify_first()`. Removes the front entry from the
+    /// sleeping queue (FIFO). The original also calls `ProcessManager::wakeup()`
+    /// which is not modeled. Returns the number of threads dequeued (0 or 1).
+    /// The original returns `Result<u32, Error>` where the error comes from
+    /// `ProcessManager::wakeup()`; since wakeup is not modeled, the error
+    /// case is omitted.
+    ///
+    /// # Returns
+    ///
+    /// The number of threads dequeued (0 or 1).
+    pub fn notify_first(&mut self) -> (awakened: u32)
+        requires
+            old(self).wf(),
+        ensures
+            self.wf(),
+            awakened <= 1,
+            old(self)@.spec_is_empty() ==> (awakened == 0 && self@ == old(self)@),
+            !old(self)@.spec_is_empty() ==> (
+                awakened == 1
+                && self@.spec_len() == old(self)@.spec_len() - 1
+            ),
+    {
+        if self.dequeue_first() {
+            1u32
+        } else {
+            0u32
+        }
+    }
+
+    /// Wakes up a thread of a specific process.
+    ///
+    /// # Description
+    ///
+    /// Models the original `notify_process(pid)`. Removes the first entry
+    /// matching the given pid from the sleeping queue. The original also calls
+    /// `ProcessManager::wakeup()` which is not modeled. The `has_match` and
+    /// `match_idx` parameters externalize the `position()` search result.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid_val`: Process identifier value to search for.
+    /// - `has_match`: Whether a matching entry exists.
+    /// - `match_idx`: Index of the first matching entry (when found).
+    pub fn notify_process(&mut self, pid_val: i32, has_match: bool, match_idx: usize)
+        requires
+            old(self).wf(),
+            has_match ==> (
+                (match_idx as int) < old(self)@.sleeping.len() as int
+                && old(self)@.sleeping[match_idx as int].0 == pid_val as int
+                && forall|k: int|
+                    #![trigger old(self)@.sleeping[k]]
+                    0 <= k < match_idx as int
+                    ==> old(self)@.sleeping[k].0 != pid_val as int
+            ),
+            !has_match ==> !old(self)@.spec_contains_pid(pid_val as int),
+        ensures
+            self.wf(),
+            has_match ==> self@.spec_len() == old(self)@.spec_len() - 1,
+            !has_match ==> self@ == old(self)@,
+    {
+        let _found: bool = self.try_remove_by_pid(pid_val, has_match, match_idx);
+    }
+
+    /// Wakes up a specific thread.
+    ///
+    /// # Description
+    ///
+    /// Models the original `notify_thread(tid)`. Removes the first entry
+    /// matching the given tid from the sleeping queue. The original also calls
+    /// `ProcessManager::wakeup()` which is not modeled. The `has_match` and
+    /// `match_idx` parameters externalize the `position()` search result.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid_val`: Thread identifier value to search for.
+    /// - `has_match`: Whether a matching entry exists.
+    /// - `match_idx`: Index of the first matching entry (when found).
+    pub fn notify_thread(&mut self, tid_val: i32, has_match: bool, match_idx: usize)
+        requires
+            old(self).wf(),
+            has_match ==> (
+                (match_idx as int) < old(self)@.sleeping.len() as int
+                && old(self)@.sleeping[match_idx as int].1 == tid_val as int
+                && forall|k: int|
+                    #![trigger old(self)@.sleeping[k]]
+                    0 <= k < match_idx as int
+                    ==> old(self)@.sleeping[k].1 != tid_val as int
+            ),
+            !has_match ==> !old(self)@.spec_contains_tid(tid_val as int),
+        ensures
+            self.wf(),
+            has_match ==> self@.spec_len() == old(self)@.spec_len() - 1,
+            !has_match ==> self@ == old(self)@,
+    {
+        let _found: bool = self.try_remove_by_tid(tid_val, has_match, match_idx);
+    }
+
+    /// Wakes up all threads waiting on the condition variable.
+    ///
+    /// # Description
+    ///
+    /// Models the original `notify_all()`. Drains all entries from the sleeping
+    /// queue. The original calls `ProcessManager::wakeup()` for each entry and
+    /// returns the count of successful wakeups; since wakeup is not modeled,
+    /// this returns the total number of entries removed. The relationship
+    /// between total entries and successful wakeups is captured by the
+    /// `spec_notify_all_result` predicate.
+    ///
+    /// # Returns
+    ///
+    /// The total number of entries that were in the queue.
+    pub fn notify_all(&mut self) -> (count: usize)
+        requires
+            old(self).wf(),
+        ensures
+            self.wf(),
+            count as nat == old(self)@.spec_len(),
+            self@.spec_is_empty(),
+            self@ == CondvarView::spec_new(),
+    {
+        self.clear()
+    }
+
+    /// Waits on the condition variable.
+    ///
+    /// # Description
+    ///
+    /// Models the queue insertion part of the original `wait(alarm)`. The
+    /// original also calls `ProcessManager::get()` to obtain pid/tid and
+    /// `ProcessManager::sleep()` to block; these are not modeled.
+    /// The `alarm_expired` parameter models the `clock::now() >= alarm` check.
+    /// If the alarm has expired, the queue is unchanged and `false` is returned.
+    /// Otherwise, the (pid, tid) entry is enqueued and `true` is returned.
+    ///
+    /// The original's error cleanup path (`retain()` on sleep failure) is
+    /// modeled separately by `remove_entry()`. The proof lemma
+    /// `lemma_wait_cleanup_restores_state` proves the combined protocol.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid_val`: Process identifier value.
+    /// - `tid_val`: Thread identifier value.
+    /// - `alarm_expired`: Whether the alarm has already expired.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the entry was enqueued, `false` if the alarm was expired.
+    pub fn wait(
+        &mut self,
+        pid_val: i32,
+        tid_val: i32,
+        alarm_expired: bool,
+    ) -> (enqueued: bool)
+        requires
+            old(self).wf(),
+            old(self)@.spec_len() < usize::MAX,
+            !old(self)@.spec_contains_entry(pid_val as int, tid_val as int),
+            pid_val as int != CondvarView::spec_kernel_pid(),
+        ensures
+            enqueued == !alarm_expired,
+            enqueued ==> self@.spec_len() == old(self)@.spec_len() + 1,
+            enqueued ==> self@.sleeping =~= old(self)@.sleeping.push(
+                (pid_val as int, tid_val as int),
+            ),
+            !enqueued ==> self@ == old(self)@,
+            self.wf(),
+    {
+        self.try_enqueue(pid_val, tid_val, alarm_expired)
+    }
+
+    /// Models the drop safety check from the original `CondvarInner::drop()`.
+    ///
+    /// # Description
+    ///
+    /// The original `Drop::drop()` for `CondvarInner` panics if the sleeping
+    /// queue is non-empty. This function models that check: the precondition
+    /// `spec_drop_safe()` enforces statically that the queue is empty,
+    /// replacing the runtime panic with a verification-time check.
+    pub fn drop_check(&self)
+        requires
+            self.wf(),
+            self@.spec_drop_safe(),
+        ensures
+            self@.spec_is_empty(),
+    {
+    }
+
     /// Checks if the sleeping queue is empty.
     ///
     /// # Returns
