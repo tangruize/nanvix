@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 11:05:33 CST 2026
+Module: libs::sys::sys::pm::capability
+Command: verus --crate-type lib lib.rs --verify-module libs::sys::sys::pm::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible
+  --> libs/sys/sys/pm/capability.spec.rs:72:15
+   |
+72 |     open spec fn spec_discriminant(&self) -> int {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for libs::sys::sys::pm::capability (verified:0, errors:0)
