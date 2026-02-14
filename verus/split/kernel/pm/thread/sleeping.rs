@@ -415,8 +415,19 @@ impl SleepingThread {
 
 } // verus!
 
+/// Opaque stub for the `Condvar` sync primitive (not modeled in verification).
+///
+/// The original `Condvar` from `crate::pm::sync::condvar` is a shared
+/// synchronization primitive with interior mutability. It is elided from
+/// the entire verification model (ThreadState, ReadyThread, RunningThread,
+/// SleepingThread, InterruptedThread) because its semantics cannot be
+/// expressed in a pure spec. This stub exists solely to give `join_cond()`
+/// a return type so the function signature matches the original source.
+pub struct Condvar;
+
 /// Non-verus impl block for functions that cannot be expressed inside `verus!`
-/// due to Verus language limitations (e.g., `&mut T` return types).
+/// due to Verus language limitations (e.g., `&mut T` return types, opaque
+/// boundary types like `Condvar`).
 impl SleepingThread {
     /// Returns a mutable reference to the thread state.
     ///
@@ -452,5 +463,30 @@ impl SleepingThread {
     #[verifier::external]
     pub fn thread_state_mut(&mut self) -> &mut ThreadState {
         &mut self.state
+    }
+
+    /// Returns the join condition variable of the sleeping thread.
+    ///
+    /// # Returns
+    ///
+    /// An opaque `Condvar` stub (sync boundary type, not verified).
+    ///
+    /// # Trust Boundary
+    ///
+    /// Marked `#[verifier::external]` because the `Condvar` type is an opaque
+    /// sync primitive elided from the entire verification model. The original
+    /// function returns `self.state.join_cond()` which clones the `Condvar`
+    /// from `ThreadState`. Since the Verus `ThreadState` model does not
+    /// contain a `join_cond` field (it is elided along with `context` and
+    /// `fpu_state`), the body is a stub returning a dummy `Condvar`.
+    ///
+    /// This function is a read-only accessor with no effect on thread state,
+    /// identity, or well-formedness. It is safe to call without affecting any
+    /// verified property.
+    ///
+    /// This is consistent with the `join_cond()` stub in `interrupted.rs`.
+    #[verifier::external]
+    pub fn join_cond(&self) -> Condvar {
+        Condvar
     }
 }
