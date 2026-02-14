@@ -168,6 +168,7 @@ impl ThreadState {
             !result@.is_interrupted(),
             result@.locked_mutex_count == 0,
             result@.drop_safe(),
+            result.spec_drop_safe(),
             result.wf(),
     {
         proof { reveal(ThreadState::wf); }
