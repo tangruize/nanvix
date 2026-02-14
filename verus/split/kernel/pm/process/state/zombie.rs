@@ -150,7 +150,8 @@ impl ZombieProcess {
         requires
             zombie_count as nat == zombie_ids@.len(),
             zombie_ids@.len() >= 1,
-            Self::spec_no_duplicates(zombie_ids@),
+            forall|i: int, j: int| 0 <= i < j < zombie_ids@.len()
+                ==> zombie_ids@[i] != zombie_ids@[j],
         ensures
             result@.pid == pid as int,
             result@.zombie_thread_ids =~= Seq::new(zombie_ids@.len(), |i: int| zombie_ids@[i] as int),
@@ -265,7 +266,8 @@ impl ZombieProcess {
         requires
             self.inv(),
         ensures
-            result@ == self.spec_find_thread(tid),
+            self@.spec_has_zombie_thread(tid as int) ==> result@ == Some(0u64),
+            !self@.spec_has_zombie_thread(tid as int) ==> result@ == None::<u64>,
     {
         unimplemented!()
     }
@@ -301,7 +303,8 @@ impl ZombieProcess {
         requires
             old(self).inv(),
         ensures
-            result@ == old(self).spec_find_thread(tid),
+            old(self)@.spec_has_zombie_thread(tid as int) ==> result@ == Some(0u64),
+            !old(self)@.spec_has_zombie_thread(tid as int) ==> result@ == None::<u64>,
             self@ == old(self)@,
             self.inv(),
     {
