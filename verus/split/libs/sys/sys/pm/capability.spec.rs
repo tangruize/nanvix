@@ -88,8 +88,8 @@ impl View for Capability {
     type V = CapabilityView;
 
     // Closed per methodology Step 1: hides implementation internals from users.
-    // `pub` is inherited from the View trait.
-    pub closed spec fn view(&self) -> CapabilityView {
+    // Visibility is inherited from the View trait (implicitly pub).
+    closed spec fn view(&self) -> CapabilityView {
         CapabilityView { value: self.spec_discriminant() }
     }
 }
