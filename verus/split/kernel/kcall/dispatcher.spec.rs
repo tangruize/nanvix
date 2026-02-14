@@ -380,7 +380,7 @@ pub open spec fn spec_ok_result() -> DispatchResultView {
 
 impl DispatchResult {
     /// Spec function: returns the abstract view.
-    pub open spec fn spec_view(&self) -> DispatchResultView {
+    pub closed spec fn spec_view(&self) -> DispatchResultView {
         DispatchResultView {
             is_success: self.is_success,
             value: self.value as int,
@@ -388,7 +388,7 @@ impl DispatchResult {
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         if self.is_success {
             true
         } else {
@@ -400,6 +400,8 @@ impl DispatchResult {
 impl View for DispatchResult {
     type V = DispatchResultView;
 
+    // Note: View trait requires `open spec fn`. The body delegates to
+    // closed `spec_view()`, so internals remain hidden.
     open spec fn view(&self) -> DispatchResultView {
         self.spec_view()
     }
@@ -407,7 +409,7 @@ impl View for DispatchResult {
 
 impl DispatchArgs {
     /// Spec function: returns the abstract view.
-    pub open spec fn spec_view(&self) -> DispatchArgsView {
+    pub closed spec fn spec_view(&self) -> DispatchArgsView {
         DispatchArgsView {
             number: self.number as nat,
             arg0: self.arg0 as nat,
@@ -425,7 +427,7 @@ impl DispatchArgs {
     /// match arm handles any kcall number (including Invalid/undefined) by
     /// dispatching to the scoreboard. No u32 value is rejected at the
     /// argument level.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         true
     }
 }
@@ -433,6 +435,8 @@ impl DispatchArgs {
 impl View for DispatchArgs {
     type V = DispatchArgsView;
 
+    // Note: View trait requires `open spec fn`. The body delegates to
+    // closed `spec_view()`, so internals remain hidden.
     open spec fn view(&self) -> DispatchArgsView {
         self.spec_view()
     }
@@ -450,7 +454,7 @@ impl SleepError {
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         match self.kind {
             SleepErrorKind::Generic => {
                 self.error_code >= i32::MIN as i64 && self.error_code <= i32::MAX as i64
@@ -469,7 +473,7 @@ impl SleepableOutcome {
     /// - On success: always true (any i64 value is valid).
     /// - On failure with Generic: the error code fits in i32 range.
     /// - On failure with other kinds: always true.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         if self.succeeded {
             true
         } else {
@@ -490,7 +494,7 @@ impl FallibleOutcome {
     /// # Description
     ///
     /// Always true because `error_code` is i32 (automatically in range).
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         true
     }
 }
@@ -504,7 +508,7 @@ impl ScoreboardDispatchOutcome {
     /// - On success with error result: the value fits in i32 range.
     /// - On failure with Generic: the sleep error code fits in i32 range.
     /// - Otherwise: always true.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         if self.succeeded {
             if self.result_is_success {
                 true
