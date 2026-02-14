@@ -421,7 +421,8 @@ impl Capabilities {
         ensures
             a.spec_bits() == b.spec_bits(),
     {
-        reveal(Capabilities::view);
+        a.lemma_view_bits();
+        b.lemma_view_bits();
     }
 
     /// Lemma: All capabilities are well-formed (when only valid bits are used).

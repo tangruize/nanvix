@@ -264,4 +264,20 @@ impl View for Capabilities {
     }
 }
 
+impl Capabilities {
+    /// Lemma: relates the view's `bits` field to `spec_bits()`.
+    ///
+    /// # Description
+    ///
+    /// Because `view()` is closed, callers cannot directly see that
+    /// `self@.bits == self.spec_bits() as int`. This lemma exposes
+    /// that relationship without revealing the full view definition.
+    pub proof fn lemma_view_bits(&self)
+        ensures
+            self@.bits == self.spec_bits() as int,
+            self@.granted == self.spec_as_set(),
+    {
+    }
+}
+
 } // verus!
