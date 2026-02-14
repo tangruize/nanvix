@@ -1,0 +1,183 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:51:56 CST 2026
+Module: kernel::mm::phys::kpool
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::phys::kpool
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::phys::kpool
+
+note: verifying module kernel::mm::phys::kpool::test
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/mm/phys/kpool.rs:360:5
+    |
+360 |     pub fn alloc(&mut self) -> (result: Result<KernelFrame, Error>)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:371:13
+    |
+371 |               old(self)@.has_free_frame() ==> result is Ok,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+398 | /         match self.frame_allocator.alloc() {
+399 | |             Ok(addr) => {
+400 | |                 let kframe: KernelFrame = KernelFrame::new_internal(addr, self.pool_id);
+401 | |                 Ok(kframe)
+402 | |             },
+403 | |             Err(error) => Err(error),
+404 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:373:13
+    |
+373 |               !old(self)@.has_free_frame() ==> result is Err,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+398 | /         match self.frame_allocator.alloc() {
+399 | |             Ok(addr) => {
+400 | |                 let kframe: KernelFrame = KernelFrame::new_internal(addr, self.pool_id);
+401 | |                 Ok(kframe)
+402 | |             },
+403 | |             Err(error) => Err(error),
+404 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:375:13
+    |
+375 | /             result is Ok ==> {
+376 | |                 let kframe = result->Ok_0;
+377 | |                 let frame_idx: int = kframe@.frame_number;
+...   |
+391 | |                     self@.is_allocated(i) == old(self)@.is_allocated(i)
+392 | |             },
+    | |_____________^ failed this postcondition
+...
+398 | /         match self.frame_allocator.alloc() {
+399 | |             Ok(addr) => {
+400 | |                 let kframe: KernelFrame = KernelFrame::new_internal(addr, self.pool_id);
+401 | |                 Ok(kframe)
+402 | |             },
+403 | |             Err(error) => Err(error),
+404 | |         }
+    | |_________- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/mm/phys/kpool.rs:441:5
+    |
+441 |     pub fn alloc_range(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:459:13
+    |
+459 | /             forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+460 | |                 self@.is_allocated(i),
+    | |_____________________________________^ failed this postcondition
+...
+476 |           self.frame_allocator.alloc_range_checked(start_frame, count)
+    |           ------------------------------------------------------------ at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:462:13
+    |
+462 | /             forall|i: int| #![trigger self@.is_allocated(i)]
+463 | |                 (0 <= i < start_frame as int || start_frame as int + count as int <= i < self@.capacity()) ==>
+464 | |                 self@.is_allocated(i) == old(self)@.is_allocated(i),
+    | |___________________________________________________________________^ failed this postcondition
+...
+476 |           self.frame_allocator.alloc_range_checked(start_frame, count)
+    |           ------------------------------------------------------------ at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/mm/phys/kpool.rs:512:5
+    |
+512 |     pub fn alloc_contiguous(&mut self, count: usize) -> (result: Result<usize, Error>)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:543:13
+    |
+543 |               result is Err ==> self@ == old(self)@,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+547 | /         match self.frame_allocator.alloc_contiguous_range(count) {
+548 | |             Ok(start) => {
+549 | |                 proof {
+...   |
+572 | |             Err(e) => Err(e),
+573 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:545:13
+    |
+545 |               (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+546 |       {
+547 | /         match self.frame_allocator.alloc_contiguous_range(count) {
+548 | |             Ok(start) => {
+549 | |                 proof {
+...   |
+572 | |             Err(e) => Err(e),
+573 | |         }
+    | |_________- at the end of the function body
+
+error: assertion failed
+   --> kernel/mm/phys/kpool.rs:708:36
+    |
+708 |                     proof { assert(false); }
+    |                                    ^^^^^ assertion failed
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:802:13
+    |
+802 | /             forall|i: int| #![trigger self@.is_allocated(i)]
+803 | |                 0 <= i < self@.capacity() && i != kframe@.frame_number ==>
+804 | |                 self@.is_allocated(i) == old(self)@.is_allocated(i),
+    | |___________________________________________________________________^ failed this postcondition
+...
+808 |           self.frame_allocator.free(kframe.address())
+    |           ------------------------------------------- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/mm/phys/kpool.rs:832:5
+    |
+832 |     pub fn free_range(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:850:13
+    |
+850 | /             forall|i: int| start_frame as int <= i < start_frame as int + count as int ==>
+851 | |                 !self@.is_allocated(i),
+    | |______________________________________^ failed this postcondition
+...
+867 |           self.frame_allocator.free_range(start_frame, count)
+    |           --------------------------------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:853:13
+    |
+853 | /             forall|i: int| #![trigger self@.is_allocated(i)]
+854 | |                 (0 <= i < start_frame as int || start_frame as int + count as int <= i < self@.capacity()) ==>
+855 | |                 self@.is_allocated(i) == old(self)@.is_allocated(i),
+    | |___________________________________________________________________^ failed this postcondition
+...
+867 |           self.frame_allocator.free_range(start_frame, count)
+    |           --------------------------------------------------- at the end of the function body
+
+verification results:: 27 verified, 6 errors (partial verification with `--verify-*`)
+error: aborting due to 11 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 27
+Errors: 6
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::phys::kpool (verified:27, errors:6)
