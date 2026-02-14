@@ -480,10 +480,12 @@ impl TimerTicks {
         proof {
             // Prove minor_ticks == self@.ticks % MINOR_MODULUS (for nanoseconds equivalence).
             let m: nat = Self::MINOR_MODULUS();
-            assert(minor_ticks as nat < m);
-            assert(major_ticks as nat * m + minor_ticks as nat == self.spec_ticks());
-            assert((major_ticks as nat * m + minor_ticks as nat) % m == minor_ticks as nat) by(nonlinear_arith)
-                requires(minor_ticks as nat < m && m > 0);
+            let minor_nat: nat = minor_ticks as nat;
+            let major_nat: nat = major_ticks as nat;
+            assert(minor_nat < m);
+            assert(major_nat * m + minor_nat == self.spec_ticks());
+            assert((major_nat * m + minor_nat) % m == minor_nat) by(nonlinear_arith)
+                requires(minor_nat < m && m > 0);
         }
         (seconds, nanoseconds)
     }

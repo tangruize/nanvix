@@ -58,7 +58,7 @@ impl TimerTicksView {
     pub open spec fn nanoseconds(&self, timer_freq: nat) -> nat
         recommends timer_freq > 0,
     {
-        (self.minor() % timer_freq) * (1_000_000_000 / timer_freq)
+        (self.minor() % timer_freq) * (1_000_000_000nat / timer_freq)
     }
 }
 
@@ -78,12 +78,14 @@ impl TimerTicks {
     }
 
     /// Spec function: returns the minor tick count (internal).
-    open spec fn spec_minor(&self) -> nat {
+    /// Use `self@.minor()` for public-facing specs.
+    pub closed spec fn spec_minor(&self) -> nat {
         self.minor as nat
     }
 
     /// Spec function: returns the major tick count (internal).
-    open spec fn spec_major(&self) -> nat {
+    /// Use `self@.ticks` for public-facing specs.
+    pub closed spec fn spec_major(&self) -> nat {
         self.major as nat
     }
 
