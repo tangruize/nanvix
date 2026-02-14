@@ -27,7 +27,7 @@ pub struct CondvarView {
 //==================================================================================================
 
 impl Condvar {
-    /// Spec function: well-formedness predicate.
+    /// Spec function: well-formedness predicate (invariant).
     ///
     /// # Description
     ///
@@ -35,7 +35,11 @@ impl Condvar {
     /// length, that all queue entries are unique (trust assumption T1), and
     /// that no kernel process entry exists in the queue (safety invariant
     /// from the original `wait()` panic guard).
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// This is `pub closed` per the spec methodology (Step 2): public so
+    /// callers can require/ensure it, but closed so implementation
+    /// invariant details are not leaked to users.
+    pub closed spec fn wf(&self) -> bool {
         &&& self.len as nat == self.sleeping@.len()
         &&& self.spec_all_unique()
         &&& self.spec_no_kernel_pid()
@@ -176,6 +180,11 @@ impl Condvar {
 impl View for Condvar {
     type V = CondvarView;
 
+    // NOTE: `open` is required here because the `View` trait in Verus
+    // declares `view()` as `open spec fn`. Trait implementations must
+    // match the trait's openness. Per Step 1, this would ideally be
+    // `pub closed spec fn`, but the View trait constraint makes that
+    // impossible.
     open spec fn view(&self) -> CondvarView {
         CondvarView { sleeping: self.sleeping@ }
     }
