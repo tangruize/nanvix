@@ -1,0 +1,35 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 12:26:36 CST 2026
+Module: kernel::pm::thread::interrupted
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::interrupted
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::interrupted
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/interrupted.proof.rs:159:13
+    |
+154 |       pub proof fn lemma_resume_preserves_drop_safety(&self)
+    |       ------------------------------------------------------ at the end of the function body
+...
+159 | /             ({
+160 | |                 let post_state: ThreadState = ThreadState {
+161 | |                     interrupt_reason: Some(self.reason),
+162 | |                     ..self.state
+163 | |                 };
+164 | |                 post_state.spec_drop_safe()
+165 | |             }),
+    | |______________^ failed this postcondition
+
+verification results:: 20 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 20
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::interrupted (verified:20, errors:1)
