@@ -459,8 +459,11 @@ impl Condvar {
             0 <= i < s.len() as int
         implies s[i] != entry by {
             if s[i] == entry {
-                // Contradicts !self@.spec_contains_entry.
+                // Bridge: concrete equality implies abstract equality,
+                // contradicting !self@.spec_contains_entry.
                 assert(s[i].0 == pid_val && s[i].1 == tid_val);
+                assert(self@.sleeping[i] == (s[i].0 as int, s[i].1 as int));
+                assert(self@.sleeping[i] == (pid_val as int, tid_val as int));
             }
         }
 

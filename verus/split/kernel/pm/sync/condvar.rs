@@ -274,6 +274,9 @@ impl Condvar {
             implies s[i] != entry by {
                 if s[i] == entry {
                     assert(s[i].0 == pid_val && s[i].1 == tid_val);
+                    // Bridge: concrete equality implies abstract equality.
+                    assert(self@.sleeping[i] == (s[i].0 as int, s[i].1 as int));
+                    assert(self@.sleeping[i] == (pid_val as int, tid_val as int));
                 }
             }
             Condvar::lemma_enqueue_preserves_unique(s, entry);
