@@ -1,0 +1,75 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:33:46 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/process/state/runnable.proof.rs:707:5
+    |
+707 |     pub proof fn lemma_run_view_eq(&self, result: &RunningProcess)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+[rust_verify/src/verifier.rs:100:17] &note = "recommendation not met"
+[rust_verify/src/verifier.rs:100:17] &sp.as_string = "vstd/seq.rs:62:13: 62:32 (#0)"
+note: recommendation not met
+   --> kernel/pm/process/state/runnable.proof.rs:713:52
+    |
+713 |                 result.running_thread_id as int == self.ready_thread_ids@[sel] as int
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: recommendation not met
+   --> kernel/pm/process/state/runnable.proof.rs:715:21
+    |
+715 |                     Self::spec_remove_at(self.ready_thread_ids@, sel)
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: kernel/pm/process/state/runnable.spec.rs:337:20
+    |
+337 |         recommends 0 <= idx < s.len()
+    |                    ------------------ recommendation not met
+
+error: assertion failed
+   --> kernel/pm/process/state/runnable.proof.rs:737:16
+    |
+737 |         assert(result@.running_thread_id == self@.ready_thread_ids[sel_view]);
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> kernel/pm/process/state/runnable.proof.rs:739:16
+    |
+739 |           assert(spec_i64_seq_as_int(
+    |  ________________^
+740 | |             Self::spec_remove_at(self.ready_thread_ids@, sel_exec))
+741 | |             =~= RunnableProcessView::spec_remove_at(self@.ready_thread_ids, sel_view));
+    | |_____________________________________________________________________________________^ assertion failed
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/runnable.rs:619:17
+    |
+619 |                   Ok(r) => {
+    |                   ^^^^^ failed this postcondition
+...
+769 | /         Ok(RunnableProcess {
+770 | |             pid: self.pid,
+771 | |             ready_thread_ids: new_ready_ids,
+772 | |             ready_admission_times: new_ready_times,
+...   |
+777 | |             sleeping_count: self.sleeping_count - 1,
+778 | |         })
+    | |__________- at the end of the function body
+
+verification results:: 65 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 3 previous errors
+
+
+Duration: 8s
+Exit code: 1
+
+=== Summary ===
+Verified: 65
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:65, errors:2)
