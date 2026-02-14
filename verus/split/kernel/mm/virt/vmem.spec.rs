@@ -7,6 +7,21 @@ verus! {
 
 
 impl PageMapping {
+    /// Invariant for a single page mapping entry.
+    ///
+    /// # Description
+    ///
+    /// When the entry is valid, both addresses must be page-aligned and the
+    /// virtual address must lie in user space. Invalid entries are trivially
+    /// well-formed.
+    pub closed spec fn inv(&self) -> bool {
+        self.valid ==> {
+            &&& self.vaddr as int % PAGE_SIZE as int == 0
+            &&& self.frame_addr as int % FRAME_SIZE as int == 0
+            &&& spec_is_user_addr(self.vaddr as int)
+        }
+    }
+
     /// Spec function to check if this mapping is for the given vaddr.
     pub open spec fn spec_is_for_vaddr(&self, vaddr: int) -> bool {
         self.valid && self.vaddr as int == vaddr
