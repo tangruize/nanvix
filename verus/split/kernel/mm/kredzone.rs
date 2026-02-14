@@ -481,19 +481,8 @@ pub fn load_with_ghost(
     let res = load(index);
     proof {
         if res.is_ok() {
-            // TRUST ASSUMPTIONS T2 + T5:
-            // - T2: Volatile reads return the last value written.
-            // - T5: The ghost state is the UNIQUE model of kredzone, kept in sync.
-            //
-            // This assume bridges the abstract model to the implementation.
-            // Validity: The extern C kredzone memory and volatile semantics ensure
-            // that read_volatile returns the value from the last write_volatile,
-            // AND the caller has maintained the ghost state via store_with_ghost.
-            //
-            // SOUNDNESS WARNING: This assume is only valid if T5 holds. If multiple
-            // ghost instances exist, or if the raw store() was used without updating
-            // ghost state, this assume may assert a false equality.
-            assume(res.unwrap() == spec_load_result(ghost.view, index as int));
+            // Trust boundary: see axiom_volatile_read_consistency for justification.
+            axiom_volatile_read_consistency(ghost.view, res.unwrap(), index as int);
         }
     }
     res

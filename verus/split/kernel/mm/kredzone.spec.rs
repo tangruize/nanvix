@@ -95,12 +95,12 @@ pub tracked struct KernelRedZoneGhost {
 
 impl KernelRedZoneGhost {
     /// Returns true if the ghost state is well-formed.
-    pub open spec fn inv(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         self.view.is_well_formed()
     }
 
     /// Returns the abstract view.
-    pub open spec fn view(&self) -> KernelRedZoneView {
+    pub closed spec fn view(&self) -> KernelRedZoneView {
         self.view
     }
 }

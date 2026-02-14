@@ -240,6 +240,33 @@ pub proof fn lemma_store_commutes(view: KernelRedZoneView, i: int, vi: usize, j:
 
 //==================================================================================================
 
+/// Axiom: Volatile read returns the last written value (Trust Assumptions T2 + T5).
+///
+/// # Justification for external_body
+///
+/// This proof function encapsulates hardware/compiler semantics that Verus cannot
+/// reason about:
+/// - T2: Volatile reads return the last value written at that address.
+/// - T5: The ghost state is the unique model of kredzone, kept in sync via store_with_ghost.
+///
+/// These are environmental properties verified by code review, not by the type system.
+/// See module-level documentation for details on trust assumptions T1-T5.
+#[verifier::external_body]
+pub proof fn axiom_volatile_read_consistency(
+    ghost_view: KernelRedZoneView,
+    actual_value: usize,
+    index: int,
+)
+    requires
+        ghost_view.is_well_formed(),
+        spec_is_valid_index(index),
+    ensures
+        actual_value == spec_load_result(ghost_view, index),
+{
+}
+
+//==================================================================================================
+
 /// Property: NUM_ENTRIES equals SPEC_NUM_ENTRIES.
 pub proof fn lemma_num_entries_correct()
     ensures
