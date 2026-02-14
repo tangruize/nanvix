@@ -711,3 +711,227 @@ After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
 Iterate until verification passes (0 errors).
 """.strip()
 
+
+
+#==================================================================================================
+# Spec Methodology and Exec Consistency Prompts
+#==================================================================================================
+
+SPEC_METHODOLOGY_PROMPT = """
+Fix spec methodology violations for {module_name} per the project guidelines.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+== METHODOLOGY GUIDELINES (from specifying-and-proving-types.md) ==
+
+Step 1 - ABSTRACTION:
+  - View types must use abstract types: int not i32, Seq<int> not Vec<u64>.
+  - view() must be `pub closed spec fn` (not open), so users can't see internals.
+  - Hide implementation-only fields from View types.
+
+Step 2 - INVARIANT:
+  - Each type needs `pub closed spec fn inv(&self) -> bool` (or wf()).
+  - Captures all internal consistency invariants.
+
+Step 3 - PUBLIC SPECS:
+  - Public method specs use only self@.field (view), not self.field (implementation).
+  - Public methods require self.inv() and ensure self.inv() for &self/&mut self.
+  - No Self spec functions other than inv() and view() in public specs.
+
+Step 5 - NO CHEATING:
+  - No assume(), admit(), or unjustified external_body.
+
+== VIOLATIONS FOUND ==
+
+The following violations were detected by automated analysis:
+
+{violations_report}
+
+== YOUR TASK ==
+
+1. Read each violation and fix it in the appropriate file (.rs, .spec.rs, .proof.rs).
+2. For view() openness: if it MUST stay open (e.g., View trait impl), document why.
+3. For missing inv(): add one, or document why it's not needed for this type.
+4. For self.field in public specs: rewrite using self@.field or self.view().field.
+5. Do NOT break existing verification.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh {module_name}
+Iterate until verification passes (0 errors).
+""".strip()
+
+
+SPEC_METHODOLOGY_REVIEW_PROMPT = """
+Review spec methodology fixes for {module_name}.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+Guidelines reference: specifying-and-proving-types.md
+
+Review criteria:
+1. Do View types use abstract types (int, Seq, Set, Map) not concrete (i32, Vec)?
+2. Is view() declared as `pub closed spec fn` (or justified if open)?
+3. Does inv()/wf() exist and is it `pub closed spec fn`?
+4. Do public method specs avoid self.field, using self@.field instead?
+5. Do public methods require/ensure inv()/wf() for self parameters?
+6. Are there any remaining assume/admit/unjustified external_body?
+7. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh {module_name}
+
+Write review to {review_file}.
+
+Output format:
+```markdown
+# Review: {module_name} Spec Methodology ({model_name})
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+### High
+- ...
+
+## Summary
+[Overall assessment]
+```
+""".strip()
+
+
+SPEC_METHODOLOGY_FIX_PROMPT = """
+A reviewer has identified issues in your spec methodology fixes for {module_name}.
+
+Review file: {review_file}
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
+
+Address each issue. After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
+Iterate until verification passes (0 errors).
+""".strip()
+
+
+EXEC_CONSISTENCY_PROMPT = """
+Fix exec code inconsistencies for {module_name} detected by AST analysis.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+== TREE-SITTER AST DIFF REPORT ==
+
+The following inconsistencies were detected by comparing AST hashes of exec
+functions between the original source and the verified version (ghost/proof
+annotations are stripped before comparison):
+
+{consistency_report}
+
+== YOUR TASK ==
+
+For each inconsistency:
+
+1. **MISMATCH functions**: Compare the source and verus versions side by side.
+   - If the verus version changed executable logic: RESTORE the original logic
+     and update specs/proofs to verify the original code.
+   - If the change is purely structural but semantically equivalent (e.g.,
+     variable renaming, reordering): document WHY it is equivalent.
+   - If the change was necessary for verification (Verus limitation): document
+     the limitation and prove the equivalence informally.
+
+2. **MISSING_IN_VERUS functions**: Add the missing function to the verus exec
+   file with proper verification (requires/ensures).
+
+3. **EXTRA_IN_VERUS exec functions**: Remove unless justified (helper functions
+   extracted for verification are acceptable if documented).
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+- For each change, write a brief justification comment.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh {module_name}
+
+== OUTPUT ==
+Write report to {report_file}:
+
+```markdown
+# Exec Consistency Fix: {module_name}
+
+## Summary
+- Mismatches fixed: N
+- Missing functions added: M
+- Documented equivalences: K
+
+## Changes
+| Function | Action | Justification |
+|----------|--------|---------------|
+
+## Verification: PASS/FAIL
+```
+""".strip()
+
+
+EXEC_CONSISTENCY_REVIEW_PROMPT = """
+Review exec consistency fixes for {module_name}.
+
+Original source: {source_path}
+Verified code directory: {output_dir}/
+  - {file_stem}.rs (exec)
+  - {file_stem}.spec.rs (spec)
+  - {file_stem}.proof.rs (proof)
+
+Consistency report: {report_file}
+
+Review criteria:
+1. Were all MISMATCH functions properly restored or equivalence documented?
+2. Were MISSING functions added with proper verification?
+3. Are equivalence justifications sound?
+4. Does the exec code now faithfully represent the original source?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh {module_name}
+
+Write review to {review_file}.
+
+Output format:
+```markdown
+# Review: {module_name} Exec Consistency ({model_name})
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+""".strip()
+
+
+EXEC_CONSISTENCY_FIX_PROMPT = """
+A reviewer has identified issues in your exec consistency fixes for {module_name}.
+
+Review file: {review_file}
+Report: {report_file}
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
+
+Address each issue. After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
+Iterate until verification passes (0 errors).
+""".strip()

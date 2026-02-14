@@ -50,6 +50,9 @@ from guardrails import (
 from prompts import (
     CHEATING_JUSTIFICATION_PROMPT,
     CHECK_CONSISTENCY_PROMPT,
+    EXEC_CONSISTENCY_FIX_PROMPT,
+    EXEC_CONSISTENCY_PROMPT,
+    EXEC_CONSISTENCY_REVIEW_PROMPT,
     EXEC_INTEGRITY_FIX_PROMPT,
     EXEC_INTEGRITY_PROMPT,
     EXEC_INTEGRITY_REVIEW_PROMPT,
@@ -63,6 +66,9 @@ from prompts import (
     REVIEW_FOLLOWUP_PROMPT,
     REVIEWER_PROMPT,
     SIMPLIFY_PROOF_PROMPT,
+    SPEC_METHODOLOGY_FIX_PROMPT,
+    SPEC_METHODOLOGY_PROMPT,
+    SPEC_METHODOLOGY_REVIEW_PROMPT,
     STRENGTHEN_SPECS_PROMPT,
 )
 
@@ -1159,12 +1165,137 @@ def run_exec_integrity(module_name: str, source_path: Optional[str] = None) -> b
         fix_prompt_template=EXEC_INTEGRITY_FIX_PROMPT,
         report_file=report_file,
     )
-    """
-    Run full polish pipeline: consistency check -> simplify -> strengthen specs.
 
-    This is the recommended post-processing after initial verification.
+
+def run_spec_methodology(module_name: str, source_path: Optional[str] = None) -> bool:
     """
-    # Find source path early so we can use it for all steps.
+    Check and fix spec methodology compliance using tree-sitter analysis.
+
+    Runs check_spec_methodology.py to detect violations, then has AI fix them.
+    Followed by one round of review + fix.
+    """
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"ERROR: Could not find source for {module_name}")
+            return False
+
+    module = _find_module_config(module_name, source_path)
+    fmt = _module_fmt(module)
+
+    print(f"\n{'#'*60}")
+    print(f"SPEC METHODOLOGY: {module_name}")
+    print(f"Source: {source_path}")
+    print(f"Output: {module.output_dir()}/")
+    print(f"{'#'*60}")
+
+    # Step 0: Run tree-sitter analysis to generate violations report.
+    import subprocess
+    verus_dir = str(PROJECT_ROOT / module.output_dir().replace("verus/split/", ""))
+    # The output_dir() returns "verus/split/xxx", we need just the verus split path.
+    verus_split_path = str(PROJECT_ROOT / module.output_dir())
+    report_path = str(HISTORY_DIR / "methodology" / f"{module_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md")
+    Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+
+    check_cmd = [
+        sys.executable, str(PROJECT_ROOT / "scripts" / "check_spec_methodology.py"),
+        verus_split_path, "--module", module.file_stem, "--output", report_path,
+    ]
+    print(f"[ANALYSIS] Running spec methodology check...")
+    result = subprocess.run(check_cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+    print(result.stderr.strip() if result.stderr else "")
+
+    # Read the violations report.
+    violations_report = ""
+    if Path(report_path).exists():
+        violations_report = Path(report_path).read_text()
+    if not violations_report or "No methodology violations" in violations_report:
+        print("[ANALYSIS] No violations found. Skipping.")
+        return True
+
+    prompt = SPEC_METHODOLOGY_PROMPT.format(**fmt, violations_report=violations_report)
+
+    return _run_single_step_with_review(
+        module_name=module_name,
+        source_path=source_path,
+        step_name="spec-methodology",
+        prover_prompt=prompt,
+        review_prompt_template=SPEC_METHODOLOGY_REVIEW_PROMPT,
+        fix_prompt_template=SPEC_METHODOLOGY_FIX_PROMPT,
+    )
+
+
+def run_exec_consistency(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Check and fix exec code consistency using tree-sitter AST hashing.
+
+    Runs check_exec_consistency.py to detect AST-level differences, then has
+    AI fix or document them. Followed by one round of review + fix.
+    """
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"ERROR: Could not find source for {module_name}")
+            return False
+
+    module = _find_module_config(module_name, source_path)
+    fmt = _module_fmt(module)
+
+    print(f"\n{'#'*60}")
+    print(f"EXEC CONSISTENCY (tree-sitter): {module_name}")
+    print(f"Source: {source_path}")
+    print(f"Output: {module.output_dir()}/")
+    print(f"{'#'*60}")
+
+    # Step 0: Run tree-sitter consistency check.
+    import subprocess
+    verus_exec_path = str(PROJECT_ROOT / module.output_dir() / f"{module.file_stem}.rs")
+    source_abs = str(PROJECT_ROOT / source_path)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    consistency_report_path = str(HISTORY_DIR / "ast-consistency" / f"{module_name}_{timestamp}.md")
+    Path(consistency_report_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Also generate a fix report path for the AI.
+    fix_report_path = str(HISTORY_DIR / "ast-consistency" / f"{module_name}_{timestamp}_fix.md")
+
+    check_cmd = [
+        sys.executable, str(PROJECT_ROOT / "scripts" / "check_exec_consistency.py"),
+        source_abs, verus_exec_path, "--output", consistency_report_path,
+    ]
+    print(f"[ANALYSIS] Running tree-sitter AST consistency check...")
+    result = subprocess.run(check_cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+    print(result.stderr.strip() if result.stderr else "")
+
+    # Read the consistency report.
+    consistency_report = ""
+    if Path(consistency_report_path).exists():
+        consistency_report = Path(consistency_report_path).read_text()
+    if not consistency_report:
+        print("[ANALYSIS] Could not generate consistency report.")
+        return False
+
+    if "All exec functions consistent" in (result.stderr or ""):
+        print("[ANALYSIS] All exec functions consistent. Skipping.")
+        return True
+
+    prompt = EXEC_CONSISTENCY_PROMPT.format(
+        **fmt,
+        consistency_report=consistency_report,
+        report_file=fix_report_path,
+    )
+
+    return _run_single_step_with_review(
+        module_name=module_name,
+        source_path=source_path,
+        step_name="exec-consistency",
+        prover_prompt=prompt,
+        review_prompt_template=EXEC_CONSISTENCY_REVIEW_PROMPT,
+        fix_prompt_template=EXEC_CONSISTENCY_FIX_PROMPT,
+        report_file=fix_report_path,
+    )
+
+
+def run_polish(module_name: str, source_path: Optional[str] = None) -> bool:
     if source_path is None:
         source_path = find_source_path(module_name)
         if source_path is None:
@@ -1287,6 +1418,14 @@ Post-processing commands:
     integrity_parser.add_argument("module", help="Module name to check")
     integrity_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
 
+    methodology_parser = subparsers.add_parser("spec-methodology", help="Check and fix spec methodology per guidelines")
+    methodology_parser.add_argument("module", help="Module name to check")
+    methodology_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
+    ast_consistency_parser = subparsers.add_parser("exec-consistency", help="Check exec consistency via tree-sitter AST hashing")
+    ast_consistency_parser.add_argument("module", help="Module name to check")
+    ast_consistency_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
     args = parser.parse_args()
 
     if args.command == "verify":
@@ -1393,6 +1532,14 @@ Post-processing commands:
 
     elif args.command == "exec-integrity":
         success = run_exec_integrity(args.module, getattr(args, 'source', None))
+        return 0 if success else 1
+
+    elif args.command == "spec-methodology":
+        success = run_spec_methodology(args.module, getattr(args, 'source', None))
+        return 0 if success else 1
+
+    elif args.command == "exec-consistency":
+        success = run_exec_consistency(args.module, getattr(args, 'source', None))
         return 0 if success else 1
 
     else:
