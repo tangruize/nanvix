@@ -1,0 +1,355 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 13:41:22 CST 2026
+Module: kernel::pm::clock
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::clock
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: expected `,`
+   --> kernel/pm/clock.rs:483:19
+    |
+483 |             assert(minor_ticks as nat < m);
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+  --> kernel/pm/clock.spec.rs:69:6
+   |
+69 | impl TimerTicks {
+   |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.spec.rs:335:62
+    |
+335 |     pub open spec fn spec_timer_handler_effect(&self, post: &TimerTicks) -> bool {
+    |                                                              ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.spec.rs:370:15
+    |
+370 | impl View for TimerTicks {
+    |               ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+  --> kernel/pm/clock.proof.rs:13:6
+   |
+13 | impl TimerTicks {
+   |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+  --> kernel/pm/clock.proof.rs:60:42
+   |
+60 |     pub proof fn lemma_view_equality(a: &TimerTicks, b: &TimerTicks)
+   |                                          ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+  --> kernel/pm/clock.proof.rs:60:58
+   |
+60 |     pub proof fn lemma_view_equality(a: &TimerTicks, b: &TimerTicks)
+   |                                                          ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+  --> kernel/pm/clock.proof.rs:84:6
+   |
+84 | impl TimerTicks {
+   |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+  --> kernel/pm/clock.proof.rs:86:58
+   |
+86 |     pub proof fn lemma_increment_no_minor_overflow(pre: &TimerTicks)
+   |                                                          ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+  --> kernel/pm/clock.proof.rs:91:28
+   |
+91 |                 let post = TimerTicks { minor: (pre.minor + 1) as u32, major: pre.major };
+   |                            ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:101:55
+    |
+101 |     pub proof fn lemma_increment_minor_overflow(pre: &TimerTicks)
+    |                                                       ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:107:28
+    |
+107 |                 let post = TimerTicks { minor: 0u32, major: (pre.major + 1) as u32 };
+    |                            ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:117:54
+    |
+117 |     pub proof fn lemma_increment_full_overflow(pre: &TimerTicks)
+    |                                                      ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:123:28
+    |
+123 |                 let post = TimerTicks { minor: 0u32, major: 0u32 };
+    |                            ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:133:49
+    |
+133 |     pub proof fn lemma_increment_monotone(pre: &TimerTicks, post: &TimerTicks)
+    |                                                 ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:133:68
+    |
+133 |     pub proof fn lemma_increment_monotone(pre: &TimerTicks, post: &TimerTicks)
+    |                                                                    ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:163:6
+    |
+163 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:204:6
+    |
+204 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:206:46
+    |
+206 |     pub proof fn lemma_max_is_terminal(pre: &TimerTicks)
+    |                                              ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:248:6
+    |
+248 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:353:6
+    |
+353 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:408:6
+    |
+408 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:436:30
+    |
+436 |                 let actual = TimerTicks { major: major, minor: u32::MAX };
+    |                              ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:438:28
+    |
+438 |                 let torn = TimerTicks { major: (major + 1) as u32, minor: u32::MAX };
+    |                            ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:476:35
+    |
+476 |                 let actual_post = TimerTicks { major: (major + 1) as u32, minor: 0u32 };
+    |                                   ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:478:28
+    |
+478 |                 let torn = TimerTicks { major: major, minor: 0u32 };
+    |                            ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:484:34
+    |
+484 |                 let actual_pre = TimerTicks { major: major, minor: u32::MAX };
+    |                                  ^^^^^^^^^^ not found in this scope
+
+error[E0422]: cannot find struct, variant or union type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:485:28
+    |
+485 |                 let torn = TimerTicks { major: major, minor: 0u32 };
+    |                            ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:505:6
+    |
+505 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:517:61
+    |
+517 |     pub proof fn lemma_timer_handler_single_increment(pre: &TimerTicks)
+    |                                                             ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:538:69
+    |
+538 |     pub proof fn lemma_timer_handler_effect_matches_increment(pre: &TimerTicks, post: &TimerTicks)
+    |                                                                     ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:538:88
+    |
+538 |     pub proof fn lemma_timer_handler_effect_matches_increment(pre: &TimerTicks, post: &TimerTicks)
+    |                                                                                        ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:566:68
+    |
+566 |     pub proof fn lemma_timer_handler_side_effects_orthogonal(pre: &TimerTicks, post: &TimerTicks)
+    |                                                                    ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:566:87
+    |
+566 |     pub proof fn lemma_timer_handler_side_effects_orthogonal(pre: &TimerTicks, post: &TimerTicks)
+    |                                                                                       ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:581:6
+    |
+581 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:622:51
+    |
+622 |     pub proof fn lemma_now_seconds_monotone(pre: &TimerTicks, post: &TimerTicks, timer_freq: u32)
+    |                                                   ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:622:70
+    |
+622 |     pub proof fn lemma_now_seconds_monotone(pre: &TimerTicks, post: &TimerTicks, timer_freq: u32)
+    |                                                                      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:664:6
+    |
+664 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:725:6
+    |
+725 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `TimerTicks` in this scope
+   --> kernel/pm/clock.proof.rs:757:6
+    |
+757 | impl TimerTicks {
+    |      ^^^^^^^^^^ not found in this scope
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+  --> kernel/pm/clock.proof.rs:17:13
+   |
+17 |             TimerTicks::spec_new_view() == (TimerTicksView { ticks: 0 }),
+   |             ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+  --> kernel/pm/clock.proof.rs:24:13
+   |
+24 |             TimerTicks::MINOR_MODULUS() == u32::MAX as nat + 1,
+   |             ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+  --> kernel/pm/clock.proof.rs:25:13
+   |
+25 |             TimerTicks::MINOR_MODULUS() > 0,
+   |             ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+  --> kernel/pm/clock.proof.rs:39:16
+   |
+39 |         reveal(TimerTicks::wf);
+   |                ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+  --> kernel/pm/clock.proof.rs:48:31
+   |
+48 |             u32::MAX as nat * TimerTicks::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat,
+   |                               ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:145:16
+    |
+145 |         reveal(TimerTicks::wf);
+    |                ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:185:34
+    |
+185 |         assert(u32::MAX as nat * TimerTicks::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
+    |                                  ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:196:16
+    |
+196 |         reveal(TimerTicks::wf);
+    |                ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:229:38
+    |
+229 |                 let minor: nat = n % TimerTicks::MINOR_MODULUS();
+    |                                      ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:230:38
+    |
+230 |                 let major: nat = n / TimerTicks::MINOR_MODULUS();
+    |                                      ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:231:25
+    |
+231 |                 major * TimerTicks::MINOR_MODULUS() + minor == n
+    |                         ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:234:22
+    |
+234 |         let m: nat = TimerTicks::MINOR_MODULUS();
+    |                      ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:341:66
+    |
+341 |             (x as u64 as nat) * 0x1_0000_0000nat == (x as nat) * TimerTicks::MINOR_MODULUS(),
+    |                                                                  ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:440:60
+    |
+440 |                 torn.spec_ticks() == actual.spec_ticks() + TimerTicks::MINOR_MODULUS()
+    |                                                            ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:480:65
+    |
+480 |                 actual_post.spec_ticks() == torn.spec_ticks() + TimerTicks::MINOR_MODULUS()
+    |                                                                 ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error[E0433]: failed to resolve: use of undeclared type `TimerTicks`
+   --> kernel/pm/clock.proof.rs:527:16
+    |
+527 |         reveal(TimerTicks::wf);
+    |                ^^^^^^^^^^ use of undeclared type `TimerTicks`
+
+error: aborting due to 56 previous errors
+
+Some errors have detailed explanations: E0412, E0422, E0433.
+For more information about an error, try `rustc --explain E0412`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::clock (verified:0, errors:0)
