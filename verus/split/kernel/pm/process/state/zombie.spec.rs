@@ -194,11 +194,11 @@ impl ZombieProcess {
     /// Spec function: frame condition for mutable accessor (`state_mut()`).
     ///
     /// Mutations via `state_mut()` must not change any modeled fields.
-    /// In the original code, `state_mut()` allows changing ProcessState
-    /// fields (e.g., capabilities) but must not change the process identity
-    /// (PID), the zombie thread list, or the exit status.
+    /// Private per Step 3 — only `inv()` and `view()` are pub on Self.
     spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
-        &&& new_self@ == old_self@
+        &&& new_self.pid == old_self.pid
+        &&& new_self.zombie_thread_ids@ == old_self.zombie_thread_ids@
+        &&& new_self.status == old_self.status
         &&& new_self.zombie_count == old_self.zombie_count
     }
 
