@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 13:17:07 CST 2026
+Module: kernel::pm::thread::zombie
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::zombie
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible
+   --> kernel/pm/thread/zombie.spec.rs:102:15
+    |
+102 |     open spec fn spec_id(&self) -> int {
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::zombie (verified:0, errors:0)
