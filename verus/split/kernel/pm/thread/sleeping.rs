@@ -377,6 +377,17 @@ impl SleepingThread {
     {
         proof { reveal(SleepingThread::wf); }
         self.state.store_thread_data_area(user_tda);
+        proof {
+            // Bridge from ThreadStateView ensures to SleepingThread spec functions.
+            assert forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
+            by {
+                assert(self.spec_has_mutex(a) == self.state@.has_mutex(a));
+                assert(old(self).spec_has_mutex(a) == old(self).state@.has_mutex(a));
+            }
+            assert(self.spec_drop_safe() == old(self).spec_drop_safe()) by {
+                assert(self.state@.locked_mutex_count == old(self).state@.locked_mutex_count);
+            };
+        }
     }
 
     /// Gets the base address for user-space thread data area.
