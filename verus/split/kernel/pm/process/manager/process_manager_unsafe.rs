@@ -128,9 +128,8 @@
 
 use vstd::prelude::*;
 
-// Include the inner ProcessManagerInner from the verified module.
-use crate::kernel::pm::process::manager::process_manager::ProcessManagerInner;
-use crate::kernel::pm::process::manager::process_manager::ProcessManagerInnerView;
+// ProcessManagerInner and ProcessManagerInnerView are in the same module scope
+// (included via mod.rs) so no cross-module import is needed.
 
 // Include specifications.
 include!("process_manager_unsafe.spec.rs");

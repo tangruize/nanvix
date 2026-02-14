@@ -81,7 +81,7 @@
 //! - Pin projection safety.
 
 use crate::kernel::pm::sys::tid::ThreadIdentifier;
-use crate::kernel::pm::process::manager::process_manager::{
+use crate::kernel::pm::process::manager::{
     seq_to_set,
     lemma_seq_to_set_finite,
     lemma_seq_to_set_len,
