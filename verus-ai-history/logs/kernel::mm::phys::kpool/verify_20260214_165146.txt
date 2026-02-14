@@ -1,0 +1,34 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:51:46 CST 2026
+Module: kernel::mm::phys::kpool
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::phys::kpool
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0449]: visibility qualifiers are not permitted here
+  --> kernel/mm/phys/kpool.spec.rs:30:5
+   |
+30 |     pub closed spec fn view(&self) -> KernelFrameView {
+   |     ^^^ help: remove the qualifier
+   |
+   = note: trait items always share the visibility of their trait
+
+error[E0449]: visibility qualifiers are not permitted here
+   --> kernel/mm/phys/kpool.spec.rs:210:5
+    |
+210 |     pub closed spec fn view(&self) -> KpoolView {
+    |     ^^^ help: remove the qualifier
+    |
+    = note: trait items always share the visibility of their trait
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0449`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::phys::kpool (verified:0, errors:0)
