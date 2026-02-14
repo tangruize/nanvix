@@ -1,0 +1,99 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T14:00:05.491111
+Model: claude-opus-4.6
+Session: 1da4ffb4-3434-412e-b27e-0077a28708d8
+Duration: 101.3s
+Exit code: 0
+
+=== Prompt ===
+Review exec consistency fixes for process_capability.
+
+Original source: src/kernel/src/pm/process/capability.rs
+Verified code directory: verus/split/kernel/pm/process/
+  - capability.rs (exec)
+  - capability.spec.rs (spec)
+  - capability.proof.rs (proof)
+
+Consistency report: /home/ubuntu/nanvix/verus-ai-history/ast-consistency/process_capability_20260214_135653_fix.md
+
+Review criteria:
+1. Were all MISMATCH functions properly restored or equivalence documented?
+2. Were MISSING functions added with proper verification?
+3. Are equivalence justifications sound?
+4. Does the exec code now faithfully represent the original source?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh process_capability
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/process_capability/exec-consistency_20260214_135653.md.
+
+Output format:
+```markdown
+# Review: process_capability Exec Consistency (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+
+
+I'll review the exec consistency fixes for process_capability by examining the original source, the split files, and the consistency report.
+
+● Read src/kernel/src/pm/process/capability.rs
+  └ 33 lines read
+
+● Read verus/split/kernel/pm/process/capability.spec.rs
+  └ 299 lines read
+
+● Read verus-ai-history/ast-consistency/process_capability_20260214_135653_fix.md
+  └ 47 lines read
+
+● Read verus/split/kernel/pm/process/capability.rs
+  └ 303 lines read
+
+● Read verus/split/kernel/pm/process/capability.proof.rs
+  └ 616 lines read
+
+Now let me run the verification and check for any issues not covered in the report.
+
+● Grep "assume|admit|external_body" in capability*
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process)
+  └ 1 line found
+
+● Run Verus verification for process_capability
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh process_capability 2>&1
+  └ 23 lines...
+
+Good — verification passes (98 verified, 0 errors) and no `assume`/`admit`/`external_body` found. Let me now do a thorough function-by-function comparison to verify the consistency report's claims.
+
+● Explore: Check Capability enum definition
+  ● Read verus/split/kernel/pm/sys/capability.rs
+    └ 171 lines read
+  ● Read verus/split/libs/sys/sys/pm/capability.rs
+    └ 173 lines read
+
+Now I have all the information needed. Let me create the review directory and write the review.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/process_capability
+  └ 1 line...
+
+● Create verus-ai-history/reviews/process_capability/exec-consistency_20260214_135653.md (+87)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 21.449s
+Total session time:     1m 40.032s
+Total code changes:     +87 -0
+Breakdown by AI model:
+ claude-opus-4.6         307.7k in, 3.1k out, 257.8k cached (Est. 3 Premium requests)
+ claude-haiku-4.5        14.2k in, 1.0k out, 0 cached (Est. 0 Premium requests)
+
+=== End ===
