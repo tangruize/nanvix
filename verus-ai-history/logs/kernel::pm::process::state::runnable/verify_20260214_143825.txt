@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:38:25 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/runnable.rs:650:17
+    |
+650 |                 Ok(r) => {
+    |                 ^^^^^ failed this postcondition
+...
+865 |         Ok(result_proc)
+    |         --------------- at the end of the function body
+
+verification results:: 66 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 66
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:66, errors:1)
