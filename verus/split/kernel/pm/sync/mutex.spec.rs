@@ -66,7 +66,7 @@ impl Mutex {
         !self.locked
     }
 
-    /// Spec function: well-formedness predicate.
+    /// Spec function: well-formedness predicate (invariant).
     ///
     /// # Description
     ///
@@ -76,11 +76,15 @@ impl Mutex {
     /// - `lock()`/`try_lock()` transitions to `(locked=true, token_issued=true)`.
     /// - `unlock()` transitions to `(locked=false, token_issued=false)`.
     ///
+    /// This is `pub closed` per the spec methodology (Step 2): public so
+    /// callers can require/ensure it, but closed so implementation
+    /// invariant details are not leaked to users.
+    ///
     /// **Note:** This is a local (per-mutex) invariant. It does not capture the
     /// global uniqueness property that at most one token exists per mutex `id`
     /// across the entire system. A global resource algebra would be needed for
     /// that, which is beyond Verus's current tracked-token model.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.locked == self.token_issued()
     }
 
@@ -99,6 +103,10 @@ impl Mutex {
 // View Implementation
 //==================================================================================================
 
+/// NOTE: `view()` must be `open spec fn` because the Verus `View` trait requires it.
+/// The trait signature mandates `open`, so this cannot be `closed`. Users observe
+/// only the abstract `MutexView` (which uses `nat` instead of `usize`), not the
+/// concrete `Mutex` fields directly.
 impl View for Mutex {
     type V = MutexView;
 

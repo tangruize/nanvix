@@ -103,6 +103,7 @@ impl Mutex {
         ensures
             !s@.token_issued,
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: A well-formed, locked mutex has token_issued, and the token's
@@ -116,6 +117,7 @@ impl Mutex {
             s@.locked,
             s@ == (MutexView { locked: true, id: s@.id, token_issued: true }),
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: `try_lock()` on a locked, well-formed mutex fails.
@@ -127,6 +129,7 @@ impl Mutex {
             s.locked,
             s@.token_issued,
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: `lock()` requires `spec_is_unlocked()` to prevent sequential deadlock.
@@ -138,6 +141,7 @@ impl Mutex {
             s@.token_issued,
             !s.spec_is_unlocked(),
     {
+        reveal(Mutex::wf);
     }
 }
 
@@ -170,6 +174,7 @@ impl Mutex {
             &&& after_unlock.wf()
         }),
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: An unlocked mutex has the same view as a new mutex with its id.
@@ -180,6 +185,7 @@ impl Mutex {
         ensures
             s@ == Mutex::spec_new_view(s@.id),
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: After `new()` followed by `try_lock()`, the result is always `true`.
@@ -192,6 +198,7 @@ impl Mutex {
             !s@.token_issued,
             s.wf(),
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: A `MutexToken` produced by a locked mutex is valid for unlock.
@@ -236,6 +243,7 @@ impl Mutex {
             &&& !after_unlock.token_issued()
         }),
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: Mutual exclusion — a well-formed mutex with a valid lock token
@@ -258,6 +266,7 @@ impl Mutex {
             s@.token_issued,
             s@.locked,
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: No double-unlock — a well-formed, unlocked mutex cannot satisfy
@@ -276,6 +285,7 @@ impl Mutex {
             !s.locked,
             !s@.token_issued,
     {
+        reveal(Mutex::wf);
     }
 
     /// Lemma: Contention resolution protocol — demonstrates the state transition
@@ -312,6 +322,7 @@ impl Mutex {
             &&& unlocked@ == Mutex::spec_new_view(id as nat)
         }),
     {
+        reveal(Mutex::wf);
     }
 }
 

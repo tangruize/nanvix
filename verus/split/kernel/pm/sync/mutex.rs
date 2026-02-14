@@ -202,6 +202,7 @@ impl Mutex {
             result@.id == id as nat,
             result.wf(),
     {
+        proof { reveal(Mutex::wf); }
         Mutex { locked: false, id: id, token_issued: false }
     }
 
@@ -242,6 +243,7 @@ impl Mutex {
             !result.0 ==> self@.token_issued == old(self)@.token_issued,
             self.wf(),
     {
+        proof { reveal(Mutex::wf); }
         if !self.locked {
             self.locked = true;
             self.token_issued = true;
@@ -314,6 +316,7 @@ impl Mutex {
             self@ == Mutex::spec_new_view(old(self)@.id),
             self.wf(),
     {
+        proof { reveal(Mutex::wf); }
         self.locked = false;
         self.token_issued = false;
     }
