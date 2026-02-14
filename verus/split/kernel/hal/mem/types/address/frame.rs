@@ -28,7 +28,8 @@ pub const FRAME_SIZE: usize = 4096;
 
 /// Maximum frame number (for a 32-bit address space with 4KB frames).
 /// This represents the upper bound of frame numbers.
-pub const MAX_FRAME_NUMBER: usize = 0xFFFF_FFFF / FRAME_SIZE;
+/// Matches original `FrameNumber::MAX = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1`.
+pub const MAX_FRAME_NUMBER: usize = 0xFFFF_FFFF / FRAME_SIZE - 1;
 
 //==================================================================================================
 
@@ -111,6 +112,9 @@ impl FrameAddress {
     /// Original: `Self(address)` where address is `PageAligned<PhysicalAddress>`.
     /// Verus: copies `raw_addr` from `PageAlignedPhysAddr` (the Verus equivalent).
     /// Both produce a FrameAddress holding the same page-aligned address value.
+    /// In the original, the `PhysicalAddress` layer guarantees the address is
+    /// within the valid physical memory range (`< config::kernel::MEMORY_SIZE`),
+    /// so the page-aligned invariant is always satisfied.
     pub fn new(address: PageAlignedPhysAddr) -> (result: FrameAddress)
         requires address.inv(),
         ensures
@@ -148,6 +152,14 @@ impl FrameAddress {
     /// FRAME_SIZE, with the original delegating through `PhysicalAddress::from_number`
     /// and `PageAligned::from_address` which perform the same arithmetic.
     /// Precondition: spec_raw_value() <= MAX_FRAME_NUMBER ensures no overflow.
+    ///
+    /// # Deviation
+    ///
+    /// The original error path propagates through `PageAligned::from_address`
+    /// which returns `ErrorCode::BadAddress`. The Verus version uses
+    /// `ErrorCode::InvalidArgument` since the error path represents an overflow
+    /// condition rather than an address bounds violation. With the precondition
+    /// satisfied, the error path is unreachable in both versions.
     pub fn from_frame_number(frame_number: FrameNumber) -> (result: Result<FrameAddress, Error>)
         requires
             frame_number.inv(),
@@ -180,11 +192,18 @@ impl FrameAddress {
     /// # Equivalence
     ///
     /// Original: `self.0.into_frame_number()` which delegates to
-    /// `PageAligned<PhysicalAddress>::into_frame_number()`, computing `raw_addr / FRAME_SIZE`.
-    /// Verus: directly computes `self.raw_addr / FRAME_SIZE`.
+    /// `PageAligned<PhysicalAddress>::into_frame_number()`, computing
+    /// `raw_addr / FRAME_SIZE`. The original then calls
+    /// `FrameNumber::from_raw_value(frame_number).unwrap()`, asserting the
+    /// result is within bounds. The Verus version makes this bound explicit
+    /// as a precondition instead of using unwrap.
     /// Both divide the raw address by FRAME_SIZE to obtain the frame number.
     pub fn into_frame_number(self) -> (result: FrameNumber)
-        requires self.inv(),
+        requires
+            self.inv(),
+            // The original ensures this via PhysicalAddress bounds checking
+            // (addr < MEMORY_SIZE implies addr / FRAME_SIZE <= MAX).
+            self.spec_raw_value() / FRAME_SIZE as int <= MAX_FRAME_NUMBER as int,
         ensures
             result.inv(),
             result.spec_raw_value() == self.spec_frame_number(),
@@ -200,6 +219,16 @@ impl FrameAddress {
     /// Original: `Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))`.
     /// Verus: directly checks page-alignment and constructs.
     /// Both validate that the address is page-aligned before constructing.
+    ///
+    /// # Deviation
+    ///
+    /// The original `PhysicalAddress::from_raw_value` also performs an
+    /// address-range check (`addr < config::kernel::MEMORY_SIZE`) and returns
+    /// `ErrorCode::BadAddress` for out-of-bounds addresses. This check is
+    /// intentionally omitted: `MEMORY_SIZE` is a kernel configuration constant
+    /// not available in the Verus verification scope. The alignment check is
+    /// the frame-address-specific validation; the bounds check belongs to the
+    /// PhysicalAddress layer above.
     pub fn from_raw_value(raw_addr: usize) -> (result: Result<FrameAddress, Error>)
         ensures
             result is Ok ==> {
@@ -272,8 +301,16 @@ impl PageAlignedPhysAddr {
 
 
     /// Gets the frame number.
+    ///
+    /// # Note
+    ///
+    /// The precondition on the address bound mirrors FrameAddress::into_frame_number.
+    /// In the original, PhysicalAddress bounds checking ensures this is always satisfied.
     pub fn into_frame_number(self) -> (result: FrameNumber)
-        requires self.inv(),
+        requires
+            self.inv(),
+            // The original ensures this via PhysicalAddress bounds checking.
+            self.spec_raw_value() / FRAME_SIZE as int <= MAX_FRAME_NUMBER as int,
         ensures
             result.inv(),
             result.spec_raw_value() == self.spec_frame_number(),

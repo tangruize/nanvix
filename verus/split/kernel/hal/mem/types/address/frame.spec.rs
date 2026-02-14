@@ -139,12 +139,19 @@ impl FrameNumber {
     ///
     /// # Description
     ///
-    /// FrameNumber is a simple newtype wrapper around usize with a single field.
-    /// Any usize value is a valid frame number representation, so inv is
-    /// trivially true. Domain-specific bounds (e.g., <= MAX_FRAME_NUMBER) are
-    /// checked at construction time.
+    /// A FrameNumber must be within the valid range [0, MAX_FRAME_NUMBER].
+    /// This matches the original `FrameNumber::from_raw_value` which rejects
+    /// values greater than `FrameNumber::MAX`.
+    ///
+    /// # Note on pub fields
+    ///
+    /// The `value` field is `pub` due to a Verus limitation: `pub open spec fn`
+    /// definitions require field expressions to be visible at all scopes, and
+    /// Verus does not support `pub(crate)` or private fields in this context.
+    /// Direct struct literal construction can bypass this invariant. Callers
+    /// must use `from_raw_value()` to ensure the invariant is established.
     pub closed spec fn inv(&self) -> bool {
-        true
+        self.value as int <= MAX_FRAME_NUMBER as int
     }
 
     // NOTE: spec_raw_value is kept as a pub open backward-compatible helper
@@ -163,6 +170,13 @@ impl FrameAddress {
     ///
     /// A FrameAddress must be page-aligned (a multiple of FRAME_SIZE).
     /// This is the structural invariant maintained by all constructors.
+    ///
+    /// # Note on pub fields
+    ///
+    /// The `raw_addr` field is `pub` due to a Verus limitation (same as
+    /// FrameNumber). Direct struct literal construction can bypass this
+    /// invariant. Callers must use constructors (`new`, `from_frame_number`,
+    /// `from_raw_value`) to ensure the invariant is established.
     pub closed spec fn inv(&self) -> bool {
         self.raw_addr as int % FRAME_SIZE as int == 0
     }
@@ -196,6 +210,13 @@ impl PageAlignedPhysAddr {
     ///
     /// A PageAlignedPhysAddr must be page-aligned (a multiple of FRAME_SIZE).
     /// This is the structural invariant maintained by all constructors.
+    ///
+    /// # Note on pub fields
+    ///
+    /// The `raw_addr` field is `pub` due to a Verus limitation (same as
+    /// FrameNumber). Direct struct literal construction can bypass this
+    /// invariant. Callers must use `from_raw_value()` to ensure the invariant
+    /// is established.
     pub closed spec fn inv(&self) -> bool {
         self.raw_addr as int % FRAME_SIZE as int == 0
     }
