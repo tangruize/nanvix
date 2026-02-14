@@ -480,7 +480,7 @@ impl RunnableProcess {
             assert(spec_i64_seq_as_int(s.subrange(0, sel))
                 =~= s_int.subrange(0, sel));
             assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))
-                =~= s_int.subrange(sel + 1, s_int.len()));
+                =~= s_int.subrange(sel + 1, s_int.len() as int));
             let left: Seq<i64> = s.subrange(0, sel);
             let right: Seq<i64> = s.subrange(sel + 1, s.len() as int);
             assert(spec_i64_seq_as_int(left.add(right))
@@ -771,7 +771,7 @@ impl RunnableProcess {
             assert(spec_i64_seq_as_int(sl.subrange(0, fi))
                 =~= sl_int.subrange(0, fi));
             assert(spec_i64_seq_as_int(sl.subrange(fi + 1, sl.len() as int))
-                =~= sl_int.subrange(fi + 1, sl_int.len()));
+                =~= sl_int.subrange(fi + 1, sl_int.len() as int));
             let sl_left: Seq<i64> = sl.subrange(0, fi);
             let sl_right: Seq<i64> = sl.subrange(fi + 1, sl.len() as int);
             assert(spec_i64_seq_as_int(sl_left.add(sl_right))
