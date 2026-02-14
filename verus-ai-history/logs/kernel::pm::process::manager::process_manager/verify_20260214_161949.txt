@@ -1,0 +1,2414 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:19:49 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager.rs:4:1
+  |
+4 | //! # ProcessManagerInner Implementation
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+4 - //! # ProcessManagerInner Implementation
+4 + // # ProcessManagerInner Implementation
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager.rs:5:1
+  |
+5 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+5 - //!
+5 + //
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager.rs:6:1
+  |
+6 | //! Verified model of the kernel process manager state machine.
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+6 - //! Verified model of the kernel process manager state machine.
+6 + // Verified model of the kernel process manager state machine.
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager.rs:7:1
+  |
+7 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+7 - //!
+7 + //
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager.rs:8:1
+  |
+8 | //! ## Verified Properties
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+8 - //! ## Verified Properties
+8 + // ## Verified Properties
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager.rs:9:1
+  |
+9 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+9 - //!
+9 + //
+  |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:10:1
+   |
+10 | //! - Construction produces a well-formed state with the kernel (PID 0) running.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+10 - //! - Construction produces a well-formed state with the kernel (PID 0) running.
+10 + // - Construction produces a well-formed state with the kernel (PID 0) running.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:11:1
+   |
+11 | //! - PID allocation is monotonic: new PIDs are always fresh.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+11 - //! - PID allocation is monotonic: new PIDs are always fresh.
+11 + // - PID allocation is monotonic: new PIDs are always fresh.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:12:1
+   |
+12 | //! - Schedule preserves wf: swaps running↔ready without losing processes.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+12 - //! - Schedule preserves wf: swaps running↔ready without losing processes.
+12 + // - Schedule preserves wf: swaps running↔ready without losing processes.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:13:1
+   |
+13 | //! - Full schedule preserves wf: composes resume_all_interrupted + schedule to
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+13 - //! - Full schedule preserves wf: composes resume_all_interrupted + schedule to
+13 + // - Full schedule preserves wf: composes resume_all_interrupted + schedule to
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:14:1
+   |
+14 | //!   match the original scheduler's semantics (alarm + resume + swap).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+14 - //!   match the original scheduler's semantics (alarm + resume + swap).
+14 + //   match the original scheduler's semantics (alarm + resume + swap).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:15:1
+   |
+15 | //! - Sleep preserves wf: non-kernel running→suspended, ready→running.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+15 - //! - Sleep preserves wf: non-kernel running→suspended, ready→running.
+15 + // - Sleep preserves wf: non-kernel running→suspended, ready→running.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:16:1
+   |
+16 | //! - Exit preserves wf: non-kernel running→zombie, ready→running.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+16 - //! - Exit preserves wf: non-kernel running→zombie, ready→running.
+16 + // - Exit preserves wf: non-kernel running→zombie, ready→running.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:17:1
+   |
+17 | //! - Wakeup preserves wf: suspended→ready, plus no-op variants for running/ready.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+17 - //! - Wakeup preserves wf: suspended→ready, plus no-op variants for running/ready.
+17 + // - Wakeup preserves wf: suspended→ready, plus no-op variants for running/ready.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:18:1
+   |
+18 | //! - Resume preserves wf: all interrupted→ready (batch transition).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+18 - //! - Resume preserves wf: all interrupted→ready (batch transition).
+18 + // - Resume preserves wf: all interrupted→ready (batch transition).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:19:1
+   |
+19 | //! - Terminate preserves wf: ready→zombie or suspended→interrupted.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+19 - //! - Terminate preserves wf: ready→zombie or suspended→interrupted.
+19 + // - Terminate preserves wf: ready→zombie or suspended→interrupted.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:20:1
+   |
+20 | //! - Harvest preserves wf: removes from zombie queue.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+20 - //! - Harvest preserves wf: removes from zombie queue.
+20 + // - Harvest preserves wf: removes from zombie queue.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:21:1
+   |
+21 | //! - Kernel safety: the kernel process (PID 0) is always alive (running or ready).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+21 - //! - Kernel safety: the kernel process (PID 0) is always alive (running or ready).
+21 + // - Kernel safety: the kernel process (PID 0) is always alive (running or ready).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:22:1
+   |
+22 | //!   The kernel process cannot be slept, exited, or terminated.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+22 - //!   The kernel process cannot be slept, exited, or terminated.
+22 + //   The kernel process cannot be slept, exited, or terminated.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:23:1
+   |
+23 | //! - Process partitioning: every PID is in exactly one queue at any time.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+23 - //! - Process partitioning: every PID is in exactly one queue at any time.
+23 + // - Process partitioning: every PID is in exactly one queue at any time.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:24:1
+   |
+24 | //! - Overflow safety: arithmetic on counts and PIDs is proven within bounds.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+24 - //! - Overflow safety: arithmetic on counts and PIDs is proven within bounds.
+24 + // - Overflow safety: arithmetic on counts and PIDs is proven within bounds.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:25:1
+   |
+25 | //! - Query/sync/thread stubs: all remaining original functions are modeled as
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+25 - //! - Query/sync/thread stubs: all remaining original functions are modeled as
+25 + // - Query/sync/thread stubs: all remaining original functions are modeled as
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:26:1
+   |
+26 | //!   verified no-ops that preserve wf() with appropriate preconditions.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+26 - //!   verified no-ops that preserve wf() with appropriate preconditions.
+26 + //   verified no-ops that preserve wf() with appropriate preconditions.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:27:1
+   |
+27 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+27 - //!
+27 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:28:1
+   |
+28 | //! ## Verification Model
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+28 - //! ## Verification Model
+28 + // ## Verification Model
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:29:1
+   |
+29 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+29 - //!
+29 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:30:1
+   |
+30 | //! The original `ProcessManagerInner` contains complex kernel types
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+30 - //! The original `ProcessManagerInner` contains complex kernel types
+30 + // The original `ProcessManagerInner` contains complex kernel types
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:31:1
+   |
+31 | //! (`RunningProcess`, `RunnableProcess`, `SleepingProcess`, `InterruptedProcess`,
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+31 - //! (`RunningProcess`, `RunnableProcess`, `SleepingProcess`, `InterruptedProcess`,
+31 + // (`RunningProcess`, `RunnableProcess`, `SleepingProcess`, `InterruptedProcess`,
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:32:1
+   |
+32 | //! `ZombieProcess`, `ThreadManager`, `LinkedList`) from various kernel subsystems.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+32 - //! `ZombieProcess`, `ThreadManager`, `LinkedList`) from various kernel subsystems.
+32 + // `ZombieProcess`, `ThreadManager`, `LinkedList`) from various kernel subsystems.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:33:1
+   |
+33 | //! For verification, we abstract these into:
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+33 - //! For verification, we abstract these into:
+33 + // For verification, we abstract these into:
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:34:1
+   |
+34 | //! - `running_pid: i32` — the PID of the single running process.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+34 - //! - `running_pid: i32` — the PID of the single running process.
+34 + // - `running_pid: i32` — the PID of the single running process.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:35:1
+   |
+35 | //! - `ready_count`, `suspended_count`, `interrupted_count`, `zombie_count` — runtime
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+35 - //! - `ready_count`, `suspended_count`, `interrupted_count`, `zombie_count` — runtime
+35 + // - `ready_count`, `suspended_count`, `interrupted_count`, `zombie_count` — runtime
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:36:1
+   |
+36 | //!   counts of processes in each queue.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+36 - //!   counts of processes in each queue.
+36 + //   counts of processes in each queue.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:37:1
+   |
+37 | //! - Ghost `Set<int>` for each queue — tracks PID membership for spec reasoning.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+37 - //! - Ghost `Set<int>` for each queue — tracks PID membership for spec reasoning.
+37 + // - Ghost `Set<int>` for each queue — tracks PID membership for spec reasoning.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:38:1
+   |
+38 | //! - `next_pid: i32` — the next PID to allocate, always > all existing PIDs.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+38 - //! - `next_pid: i32` — the next PID to allocate, always > all existing PIDs.
+38 + // - `next_pid: i32` — the next PID to allocate, always > all existing PIDs.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:39:1
+   |
+39 | //! - `number_buffered_messages: usize` — count of undelivered IPC messages.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+39 - //! - `number_buffered_messages: usize` — count of undelivered IPC messages.
+39 + // - `number_buffered_messages: usize` — count of undelivered IPC messages.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:40:1
+   |
+40 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+40 - //!
+40 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:41:1
+   |
+41 | //! The `wf()` predicate ties the ghost sets to the runtime state and encodes:
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+41 - //! The `wf()` predicate ties the ghost sets to the runtime state and encodes:
+41 + // The `wf()` predicate ties the ghost sets to the runtime state and encodes:
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:42:1
+   |
+42 | //! - Finiteness and cardinality matching.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+42 - //! - Finiteness and cardinality matching.
+42 + // - Finiteness and cardinality matching.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:43:1
+   |
+43 | //! - Pairwise disjointness of all queues (including running).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+43 - //! - Pairwise disjointness of all queues (including running).
+43 + // - Pairwise disjointness of all queues (including running).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:44:1
+   |
+44 | //! - Kernel liveness: PID 0 is running or ready, never elsewhere.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+44 - //! - Kernel liveness: PID 0 is running or ready, never elsewhere.
+44 + // - Kernel liveness: PID 0 is running or ready, never elsewhere.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:45:1
+   |
+45 | //! - PID bounds: all PIDs in [0, next_pid).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+45 - //! - PID bounds: all PIDs in [0, next_pid).
+45 + // - PID bounds: all PIDs in [0, next_pid).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:46:1
+   |
+46 | //! - Overflow bounds on all counts.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+46 - //! - Overflow bounds on all counts.
+46 + // - Overflow bounds on all counts.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:47:1
+   |
+47 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+47 - //!
+47 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:48:1
+   |
+48 | //! ## Trust Boundaries
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+48 - //! ## Trust Boundaries
+48 + // ## Trust Boundaries
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:49:1
+   |
+49 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+49 - //!
+49 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:50:1
+   |
+50 | //! - **T1: Scheduler choice.** The `schedule`, `sleep_running`, `exit_running`, and
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+50 - //! - **T1: Scheduler choice.** The `schedule`, `sleep_running`, `exit_running`, and
+50 + // - **T1: Scheduler choice.** The `schedule`, `sleep_running`, `exit_running`, and
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:51:1
+   |
+51 | //!   `exit_thread_running` functions accept a `chosen_next` parameter modeling the PID
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+51 - //!   `exit_thread_running` functions accept a `chosen_next` parameter modeling the PID
+51 + //   `exit_thread_running` functions accept a `chosen_next` parameter modeling the PID
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:52:1
+   |
+52 | //!   selected by the scheduler (originally `take_earliest_ready`). The precondition
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+52 - //!   selected by the scheduler (originally `take_earliest_ready`). The precondition
+52 + //   selected by the scheduler (originally `take_earliest_ready`). The precondition
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:53:1
+   |
+53 | //!   requires it to be a valid ready PID.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+53 - //!   requires it to be a valid ready PID.
+53 + //   requires it to be a valid ready PID.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:54:1
+   |
+54 | //! - **T2: RefCell borrow.** The outer `ProcessManager` wraps `ProcessManagerInner`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+54 - //! - **T2: RefCell borrow.** The outer `ProcessManager` wraps `ProcessManagerInner`
+54 + // - **T2: RefCell borrow.** The outer `ProcessManager` wraps `ProcessManagerInner`
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:55:1
+   |
+55 | //!   in `Rc<RefCell<_>>`. Runtime borrow checking (try_borrow/try_borrow_mut) is not
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+55 - //!   in `Rc<RefCell<_>>`. Runtime borrow checking (try_borrow/try_borrow_mut) is not
+55 + //   in `Rc<RefCell<_>>`. Runtime borrow checking (try_borrow/try_borrow_mut) is not
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:56:1
+   |
+56 | //!   modeled; it is an external boundary.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+56 - //!   modeled; it is an external boundary.
+56 + //   modeled; it is an external boundary.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:57:1
+   |
+57 | //! - **T3: Thread-level details.** The original manager tracks per-process thread
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+57 - //! - **T3: Thread-level details.** The original manager tracks per-process thread
+57 + // - **T3: Thread-level details.** The original manager tracks per-process thread
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:58:1
+   |
+58 | //!   sets. Thread-level state transitions (create_thread, exit_thread, etc.) affect
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+58 - //!   sets. Thread-level state transitions (create_thread, exit_thread, etc.) affect
+58 + //   sets. Thread-level state transitions (create_thread, exit_thread, etc.) affect
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:59:1
+   |
+59 | //!   whether a process goes to ready vs. suspended vs. zombie. We model the outcome
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+59 - //!   whether a process goes to ready vs. suspended vs. zombie. We model the outcome
+59 + //   whether a process goes to ready vs. suspended vs. zombie. We model the outcome
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:60:1
+   |
+60 | //!   as parameters (e.g., `to_zombie: bool`), trusting the thread-level logic.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+60 - //!   as parameters (e.g., `to_zombie: bool`), trusting the thread-level logic.
+60 + //   as parameters (e.g., `to_zombie: bool`), trusting the thread-level logic.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:61:1
+   |
+61 | //! - **T4: Cross-module operations.** The `recv_message` decrement originates from
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+61 - //! - **T4: Cross-module operations.** The `recv_message` decrement originates from
+61 + // - **T4: Cross-module operations.** The `recv_message` decrement originates from
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:62:1
+   |
+62 | //!   the `unsafe` submodule, not from `ProcessManagerInner` directly. The verified
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+62 - //!   the `unsafe` submodule, not from `ProcessManagerInner` directly. The verified
+62 + //   the `unsafe` submodule, not from `ProcessManagerInner` directly. The verified
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager.rs:63:1
+   |
+63 | //!   model captures the queue-level effect; call-site correctness is trusted.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+64 |
+65 | use vstd::prelude::*;
+   | --------------------- the inner doc comment doesn't annotate this `use` import
+   |
+help: to annotate the `use` import, change the doc comment from inner to outer style
+   |
+63 - //!   model captures the queue-level effect; call-site correctness is trusted.
+63 + ///   model captures the queue-level effect; call-site correctness is trusted.
+   |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager_unsafe.rs:4:1
+  |
+4 | //! # ProcessManagerUnsafe Verification Model
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+4 - //! # ProcessManagerUnsafe Verification Model
+4 + // # ProcessManagerUnsafe Verification Model
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager_unsafe.rs:5:1
+  |
+5 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+5 - //!
+5 + //
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager_unsafe.rs:6:1
+  |
+6 | //! Verified model of the global unsafe ProcessManager interface (unsafe.rs).
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+6 - //! Verified model of the global unsafe ProcessManager interface (unsafe.rs).
+6 + // Verified model of the global unsafe ProcessManager interface (unsafe.rs).
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager_unsafe.rs:7:1
+  |
+7 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+7 - //!
+7 + //
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager_unsafe.rs:8:1
+  |
+8 | //! ## Verified Properties
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+8 - //! ## Verified Properties
+8 + // ## Verified Properties
+  |
+
+error[E0753]: expected outer doc comment
+ --> kernel/pm/process/manager/process_manager_unsafe.rs:9:1
+  |
+9 | //!
+  | ^^^
+  |
+  = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+  |
+9 - //!
+9 + //
+  |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:10:1
+   |
+10 | //! - Initialization produces a well-formed global state (init).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+10 - //! - Initialization produces a well-formed global state (init).
+10 + // - Initialization produces a well-formed global state (init).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:11:1
+   |
+11 | //! - Singleton accessors (get/get_mut) require initialization and preserve wf().
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+11 - //! - Singleton accessors (get/get_mut) require initialization and preserve wf().
+11 + // - Singleton accessors (get/get_mut) require initialization and preserve wf().
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:12:1
+   |
+12 | //!   get_mut() exclusive access is enforced via the `unsafe` contract (T7).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+12 - //!   get_mut() exclusive access is enforced via the `unsafe` contract (T7).
+12 + //   get_mut() exclusive access is enforced via the `unsafe` contract (T7).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:13:1
+   |
+13 | //! - Context switch (switch) correctly models the original code flow:
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+13 - //! - Context switch (switch) correctly models the original code flow:
+13 + // - Context switch (switch) correctly models the original code flow:
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:14:1
+   |
+14 | //!   inner mutation + atomic updates in one step, comparing next_pid against
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+14 - //!   inner mutation + atomic updates in one step, comparing next_pid against
+14 + //   inner mutation + atomic updates in one step, comparing next_pid against
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:15:1
+   |
+15 | //!   the OLD current_pid (pre-mutation) to detect PID changes and reset quantum.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+15 - //!   the OLD current_pid (pre-mutation) to detect PID changes and reset quantum.
+15 + //   the OLD current_pid (pre-mutation) to detect PID changes and reset quantum.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:16:1
+   |
+16 | //! - Quantum management (giveup) preserves wf(): unified entry point covering
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+16 - //! - Quantum management (giveup) preserves wf(): unified entry point covering
+16 + // - Quantum management (giveup) preserves wf(): unified entry point covering
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:17:1
+   |
+17 | //!   both decrement and context-switch paths with complete postconditions.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+17 - //!   both decrement and context-switch paths with complete postconditions.
+17 + //   both decrement and context-switch paths with complete postconditions.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:18:1
+   |
+18 | //! - Sleep preserves wf(): delegates to switch for inner+atomic updates.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+18 - //! - Sleep preserves wf(): delegates to switch for inner+atomic updates.
+18 + // - Sleep preserves wf(): delegates to switch for inner+atomic updates.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:19:1
+   |
+19 | //!   Post-wakeup interrupt-reason check modeled by sleep_post_wakeup().
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+19 - //!   Post-wakeup interrupt-reason check modeled by sleep_post_wakeup().
+19 + //   Post-wakeup interrupt-reason check modeled by sleep_post_wakeup().
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:20:1
+   |
+20 | //! - Exit/exit_thread preserve wf() through switch, then set ghost_diverged flag.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+20 - //! - Exit/exit_thread preserve wf() through switch, then set ghost_diverged flag.
+20 + // - Exit/exit_thread preserve wf() through switch, then set ghost_diverged flag.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:21:1
+   |
+21 | //!   Machine-checked divergence: wf() requires !diverged, so no operations
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+21 - //!   Machine-checked divergence: wf() requires !diverged, so no operations
+21 + //   Machine-checked divergence: wf() requires !diverged, so no operations
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:22:1
+   |
+22 | //!   can be called after exit. Hard-switch precondition made explicit.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+22 - //!   can be called after exit. Hard-switch precondition made explicit.
+22 + //   can be called after exit. Hard-switch precondition made explicit.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:23:1
+   |
+23 | //! - is_kernel_running() correctly reflects current_tid == 0.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+23 - //! - is_kernel_running() correctly reflects current_tid == 0.
+23 + // - is_kernel_running() correctly reflects current_tid == 0.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:24:1
+   |
+24 | //! - Delegation functions (get_mutex, get_cond, etc.) preserve wf() and model
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+24 - //! - Delegation functions (get_mutex, get_cond, etc.) preserve wf() and model
+24 + // - Delegation functions (get_mutex, get_cond, etc.) preserve wf() and model
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:25:1
+   |
+25 | //!   Result-like success/failure outcomes.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+25 - //!   Result-like success/failure outcomes.
+25 + //   Result-like success/failure outcomes.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:26:1
+   |
+26 | //! - try_recv with thread-specific message decrement preserves wf().
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+26 - //! - try_recv with thread-specific message decrement preserves wf().
+26 + // - try_recv with thread-specific message decrement preserves wf().
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:27:1
+   |
+27 | //! - Wakeup preserves wf() by delegating to inner wakeup.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+27 - //! - Wakeup preserves wf() by delegating to inner wakeup.
+27 + // - Wakeup preserves wf() by delegating to inner wakeup.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:28:1
+   |
+28 | //! - join_thread models all three paths: harvest, condvar-wait, and error.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+28 - //! - join_thread models all three paths: harvest, condvar-wait, and error.
+28 + // - join_thread models all three paths: harvest, condvar-wait, and error.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:29:1
+   |
+29 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+29 - //!
+29 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:30:1
+   |
+30 | //! ## Verification Model
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+30 - //! ## Verification Model
+30 + // ## Verification Model
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:31:1
+   |
+31 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+31 - //!
+31 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:32:1
+   |
+32 | //! The original module uses `static mut PROCESS_MANAGER: Option<ProcessManager>`,
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+32 - //! The original module uses `static mut PROCESS_MANAGER: Option<ProcessManager>`,
+32 + // The original module uses `static mut PROCESS_MANAGER: Option<ProcessManager>`,
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:33:1
+   |
+33 | //! plus atomic globals (CURRENT_PID, CURRENT_TID, REMAINING_QUANTUM, FPU_OWNER_TID).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+33 - //! plus atomic globals (CURRENT_PID, CURRENT_TID, REMAINING_QUANTUM, FPU_OWNER_TID).
+33 + // plus atomic globals (CURRENT_PID, CURRENT_TID, REMAINING_QUANTUM, FPU_OWNER_TID).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:34:1
+   |
+34 | //! We model this as a single `ProcessManagerUnsafeState` struct that contains
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+34 - //! We model this as a single `ProcessManagerUnsafeState` struct that contains
+34 + // We model this as a single `ProcessManagerUnsafeState` struct that contains
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:35:1
+   |
+35 | //! a `ProcessManagerInner` (from the verified process_manager module) plus the
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+35 - //! a `ProcessManagerInner` (from the verified process_manager module) plus the
+35 + // a `ProcessManagerInner` (from the verified process_manager module) plus the
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:36:1
+   |
+36 | //! global atomic state.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+36 - //! global atomic state.
+36 + // global atomic state.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:37:1
+   |
+37 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+37 - //!
+37 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:38:1
+   |
+38 | //! ## Trust Boundaries
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+38 - //! ## Trust Boundaries
+38 + // ## Trust Boundaries
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:39:1
+   |
+39 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+39 - //!
+39 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:40:1
+   |
+40 | //! - **T5: Raw pointer context switch.** The actual `ContextInformation::switch(from, to)`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+40 - //! - **T5: Raw pointer context switch.** The actual `ContextInformation::switch(from, to)`
+40 + // - **T5: Raw pointer context switch.** The actual `ContextInformation::switch(from, to)`
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:41:1
+   |
+41 | //!   is a hardware-level operation. We verify the state-level effects (inner mutation,
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+41 - //!   is a hardware-level operation. We verify the state-level effects (inner mutation,
+41 + //   is a hardware-level operation. We verify the state-level effects (inner mutation,
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:42:1
+   |
+42 | //!   PID/TID/quantum updates) but not the raw pointer manipulation. The `user_tda`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+42 - //!   PID/TID/quantum updates) but not the raw pointer manipulation. The `user_tda`
+42 + //   PID/TID/quantum updates) but not the raw pointer manipulation. The `user_tda`
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:43:1
+   |
+43 | //!   parameter (user-space thread data area virtual address) is also abstracted away;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+43 - //!   parameter (user-space thread data area virtual address) is also abstracted away;
+43 + //   parameter (user-space thread data area virtual address) is also abstracted away;
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:44:1
+   |
+44 | //!   it affects address space setup for the next thread but not queue-level state.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+44 - //!   it affects address space setup for the next thread but not queue-level state.
+44 + //   it affects address space setup for the next thread but not queue-level state.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:45:1
+   |
+45 | //! - **T6: Atomic ordering.** Atomic loads/stores use `ORDER` (Relaxed/SeqCst).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+45 - //! - **T6: Atomic ordering.** Atomic loads/stores use `ORDER` (Relaxed/SeqCst).
+45 + // - **T6: Atomic ordering.** Atomic loads/stores use `ORDER` (Relaxed/SeqCst).
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:46:1
+   |
+46 | //!   Memory ordering correctness is not modeled; Nanvix is single-core cooperative.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+46 - //!   Memory ordering correctness is not modeled; Nanvix is single-core cooperative.
+46 + //   Memory ordering correctness is not modeled; Nanvix is single-core cooperative.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:47:1
+   |
+47 | //! - **T7: Singleton exclusive access.** `get_mut()` returns `&mut ProcessManager` from
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+47 - //! - **T7: Singleton exclusive access.** `get_mut()` returns `&mut ProcessManager` from
+47 + // - **T7: Singleton exclusive access.** `get_mut()` returns `&mut ProcessManager` from
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:48:1
+   |
+48 | //!   `static mut`. Exclusive access is enforced by the `unsafe` contract: callers must
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+48 - //!   `static mut`. Exclusive access is enforced by the `unsafe` contract: callers must
+48 + //   `static mut`. Exclusive access is enforced by the `unsafe` contract: callers must
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:49:1
+   |
+49 | //!   ensure no other references exist. In Nanvix, this is guaranteed by disabling
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+49 - //!   ensure no other references exist. In Nanvix, this is guaranteed by disabling
+49 + //   ensure no other references exist. In Nanvix, this is guaranteed by disabling
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:50:1
+   |
+50 | //!   interrupts (single-core, cooperative scheduling). The RefCell `try_borrow_mut()`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+50 - //!   interrupts (single-core, cooperative scheduling). The RefCell `try_borrow_mut()`
+50 + //   interrupts (single-core, cooperative scheduling). The RefCell `try_borrow_mut()`
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:51:1
+   |
+51 | //!   provides a runtime check; re-entrant calls return `Err(ResourceBusy)`.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+51 - //!   provides a runtime check; re-entrant calls return `Err(ResourceBusy)`.
+51 + //   provides a runtime check; re-entrant calls return `Err(ResourceBusy)`.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:52:1
+   |
+52 | //! - **T8: Interrupt enable/disable.** `Interrupts::enable()` and `interrupts.wait()`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+52 - //! - **T8: Interrupt enable/disable.** `Interrupts::enable()` and `interrupts.wait()`
+52 + // - **T8: Interrupt enable/disable.** `Interrupts::enable()` and `interrupts.wait()`
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:53:1
+   |
+53 | //!   in the kernel-idle path are HAL operations, modeled as external.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+53 - //!   in the kernel-idle path are HAL operations, modeled as external.
+53 + //   in the kernel-idle path are HAL operations, modeled as external.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:54:1
+   |
+54 | //! - **T9: TID-to-PID mapping (PID↔TID membership).** The invariant that current_tid
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+54 - //! - **T9: TID-to-PID mapping (PID↔TID membership).** The invariant that current_tid
+54 + // - **T9: TID-to-PID mapping (PID↔TID membership).** The invariant that current_tid
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:55:1
+   |
+55 | //!   belongs to current_pid's thread set is maintained by the thread manager (T3
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+55 - //!   belongs to current_pid's thread set is maintained by the thread manager (T3
+55 + //   belongs to current_pid's thread set is maintained by the thread manager (T3
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:56:1
+   |
+56 | //!   boundary from inner module). The inner ProcessManagerInner model uses `Set<int>`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+56 - //!   boundary from inner module). The inner ProcessManagerInner model uses `Set<int>`
+56 + //   boundary from inner module). The inner ProcessManagerInner model uses `Set<int>`
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:57:1
+   |
+57 | //!   for PID-level queue tracking and does NOT store per-process thread sets. Extending
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+57 - //!   for PID-level queue tracking and does NOT store per-process thread sets. Extending
+57 + //   for PID-level queue tracking and does NOT store per-process thread sets. Extending
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:58:1
+   |
+58 | //!   wf() with a `current_tid ∈ threads(current_pid)` constraint would require adding
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+58 - //!   wf() with a `current_tid ∈ threads(current_pid)` constraint would require adding
+58 + //   wf() with a `current_tid ∈ threads(current_pid)` constraint would require adding
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:59:1
+   |
+59 | //!   a ghost `Map<int, Set<int>>` (PID→thread set) to ProcessManagerInner and propagating
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+59 - //!   a ghost `Map<int, Set<int>>` (PID→thread set) to ProcessManagerInner and propagating
+59 + //   a ghost `Map<int, Set<int>>` (PID→thread set) to ProcessManagerInner and propagating
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:60:1
+   |
+60 | //!   it through all inner operations (create_thread, exit_thread, schedule, etc.) — a
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+60 - //!   it through all inner operations (create_thread, exit_thread, schedule, etc.) — a
+60 + //   it through all inner operations (create_thread, exit_thread, schedule, etc.) — a
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:61:1
+   |
+61 | //!   cross-module change that is outside the scope of this module's verification. The
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+61 - //!   cross-module change that is outside the scope of this module's verification. The
+61 + //   cross-module change that is outside the scope of this module's verification. The
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:62:1
+   |
+62 | //!   current model verifies all state transitions that THIS module performs (inner
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+62 - //!   current model verifies all state transitions that THIS module performs (inner
+62 + //   current model verifies all state transitions that THIS module performs (inner
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:63:1
+   |
+63 | //!   mutation + atomic updates); the TID↔PID membership is an orthogonal invariant
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+63 - //!   mutation + atomic updates); the TID↔PID membership is an orthogonal invariant
+63 + //   mutation + atomic updates); the TID↔PID membership is an orthogonal invariant
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:64:1
+   |
+64 | //!   maintained by a different subsystem.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+64 - //!   maintained by a different subsystem.
+64 + //   maintained by a different subsystem.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:65:1
+   |
+65 | //! - **T10: Divergence (exit/exit_thread non-returning) — Machine-Checked.**
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+65 - //! - **T10: Divergence (exit/exit_thread non-returning) — Machine-Checked.**
+65 + // - **T10: Divergence (exit/exit_thread non-returning) — Machine-Checked.**
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:66:1
+   |
+66 | //!   exit() and exit_thread() return `Result<!, Error>` in the original code: on the
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+66 - //!   exit() and exit_thread() return `Result<!, Error>` in the original code: on the
+66 + //   exit() and exit_thread() return `Result<!, Error>` in the original code: on the
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:67:1
+   |
+67 | //!   success path, `Self::switch()` performs a hardware context switch that swaps the
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+67 - //!   success path, `Self::switch()` performs a hardware context switch that swaps the
+67 + //   success path, `Self::switch()` performs a hardware context switch that swaps the
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:68:1
+   |
+68 | //!   stack pointer and never returns to the caller. The verified model captures
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+68 - //!   stack pointer and never returns to the caller. The verified model captures
+68 + //   stack pointer and never returns to the caller. The verified model captures
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:69:1
+   |
+69 | //!   divergence via the `ghost_diverged` flag: after exit/exit_thread, the flag is
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+69 - //!   divergence via the `ghost_diverged` flag: after exit/exit_thread, the flag is
+69 + //   divergence via the `ghost_diverged` flag: after exit/exit_thread, the flag is
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:70:1
+   |
+70 | //!   set to true, which invalidates wf() (wf requires spec_not_diverged()). Since all
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+70 - //!   set to true, which invalidates wf() (wf requires spec_not_diverged()). Since all
+70 + //   set to true, which invalidates wf() (wf requires spec_not_diverged()). Since all
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:71:1
+   |
+71 | //!   other operations require wf(), no further operations can be called on a diverged
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+71 - //!   other operations require wf(), no further operations can be called on a diverged
+71 + //   other operations require wf(), no further operations can be called on a diverged
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:72:1
+   |
+72 | //!   state — providing machine-checked divergence prevention. The postconditions of
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+72 - //!   state — providing machine-checked divergence prevention. The postconditions of
+72 + //   state — providing machine-checked divergence prevention. The postconditions of
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:73:1
+   |
+73 | //!   exit/exit_thread describe the system state as seen by the NEXT scheduled process
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+73 - //!   exit/exit_thread describe the system state as seen by the NEXT scheduled process
+73 + //   exit/exit_thread describe the system state as seen by the NEXT scheduled process
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:74:1
+   |
+74 | //!   (for global invariant reasoning), not the exiting process's continuation.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+74 - //!   (for global invariant reasoning), not the exiting process's continuation.
+74 + //   (for global invariant reasoning), not the exiting process's continuation.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:75:1
+   |
+75 | //! - **T11: Per-thread message delivery.** try_recv_some/try_recv_none model message
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+75 - //! - **T11: Per-thread message delivery.** try_recv_some/try_recv_none model message
+75 + // - **T11: Per-thread message delivery.** try_recv_some/try_recv_none model message
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:76:1
+   |
+76 | //!   reception as a count decrement. The inner model tracks only
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+76 - //!   reception as a count decrement. The inner model tracks only
+76 + //   reception as a count decrement. The inner model tracks only
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:77:1
+   |
+77 | //!   `number_buffered_messages: usize` (a per-process aggregate count), not per-thread
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+77 - //!   `number_buffered_messages: usize` (a per-process aggregate count), not per-thread
+77 + //   `number_buffered_messages: usize` (a per-process aggregate count), not per-thread
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:78:1
+   |
+78 | //!   message queues. Verifying that a specific TID receives the correct message would
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+78 - //!   message queues. Verifying that a specific TID receives the correct message would
+78 + //   message queues. Verifying that a specific TID receives the correct message would
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:79:1
+   |
+79 | //!   require extending ProcessManagerInner with ghost per-thread message queues — a
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+79 - //!   require extending ProcessManagerInner with ghost per-thread message queues — a
+79 + //   require extending ProcessManagerInner with ghost per-thread message queues — a
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:80:1
+   |
+80 | //!   cross-module concern outside this module's scope.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+80 - //!   cross-module concern outside this module's scope.
+80 + //   cross-module concern outside this module's scope.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:81:1
+   |
+81 | //! - **T12: Synchronization object state.** Delegation functions (get_mutex, get_cond,
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+81 - //! - **T12: Synchronization object state.** Delegation functions (get_mutex, get_cond,
+81 + // - **T12: Synchronization object state.** Delegation functions (get_mutex, get_cond,
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:82:1
+   |
+82 | //!   put_mutex_guard, put_cond, take_mutex_guard) are thin wrappers that delegate to
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+82 - //!   put_mutex_guard, put_cond, take_mutex_guard) are thin wrappers that delegate to
+82 + //   put_mutex_guard, put_cond, take_mutex_guard) are thin wrappers that delegate to
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:83:1
+   |
+83 | //!   ProcessManagerInner methods. The synchronization object tables and guard ownership
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+83 - //!   ProcessManagerInner methods. The synchronization object tables and guard ownership
+83 + //   ProcessManagerInner methods. The synchronization object tables and guard ownership
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:84:1
+   |
+84 | //!   state live inside the inner module and are not duplicated here. This module verifies
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+84 - //!   state live inside the inner module and are not duplicated here. This module verifies
+84 + //   state live inside the inner module and are not duplicated here. This module verifies
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:85:1
+   |
+85 | //!   that delegation preserves wf() (no queue-level side effects); the actual mutex/condvar
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+85 - //!   that delegation preserves wf() (no queue-level side effects); the actual mutex/condvar
+85 + //   that delegation preserves wf() (no queue-level side effects); the actual mutex/condvar
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:86:1
+   |
+86 | //!   correctness is verified in the inner module.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+86 - //!   correctness is verified in the inner module.
+86 + //   correctness is verified in the inner module.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:87:1
+   |
+87 | //! - **T13: Uninitialized panic.** get() and get_mut() panic if called before init().
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+87 - //! - **T13: Uninitialized panic.** get() and get_mut() panic if called before init().
+87 + // - **T13: Uninitialized panic.** get() and get_mut() panic if called before init().
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:88:1
+   |
+88 | //!   The model requires `wf()` (which includes `initialized == true`) as a precondition,
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+88 - //!   The model requires `wf()` (which includes `initialized == true`) as a precondition,
+88 + //   The model requires `wf()` (which includes `initialized == true`) as a precondition,
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:89:1
+   |
+89 | //!   so the uninitialized path is excluded by construction. This is standard Verus practice:
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+89 - //!   so the uninitialized path is excluded by construction. This is standard Verus practice:
+89 + //   so the uninitialized path is excluded by construction. This is standard Verus practice:
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:90:1
+   |
+90 | //!   precondition violations (programming errors) are not modeled as execution paths.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+90 - //!   precondition violations (programming errors) are not modeled as execution paths.
+90 + //   precondition violations (programming errors) are not modeled as execution paths.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:91:1
+   |
+91 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+91 - //!
+91 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:92:1
+   |
+92 | //! ## Scope and Limitations
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+92 - //! ## Scope and Limitations
+92 + // ## Scope and Limitations
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:93:1
+   |
+93 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+93 - //!
+93 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:94:1
+   |
+94 | //! This module verifies the **unsafe wrapper layer**: the global singleton lifecycle,
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+94 - //! This module verifies the **unsafe wrapper layer**: the global singleton lifecycle,
+94 + // This module verifies the **unsafe wrapper layer**: the global singleton lifecycle,
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:95:1
+   |
+95 | //! atomic PID/TID/quantum management, and context-switch control flow. The verification
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+95 - //! atomic PID/TID/quantum management, and context-switch control flow. The verification
+95 + // atomic PID/TID/quantum management, and context-switch control flow. The verification
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:96:1
+   |
+96 | //! boundary is deliberately scoped to state that this module owns or mutates directly.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+96 - //! boundary is deliberately scoped to state that this module owns or mutates directly.
+96 + // boundary is deliberately scoped to state that this module owns or mutates directly.
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:97:1
+   |
+97 | //!
+   | ^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+97 - //!
+97 + //
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:98:1
+   |
+98 | //! **What is verified:**
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+98 - //! **What is verified:**
+98 + // **What is verified:**
+   |
+
+error[E0753]: expected outer doc comment
+  --> kernel/pm/process/manager/process_manager_unsafe.rs:99:1
+   |
+99 | //! - All state transitions preserve wf() (40 verified functions, 0 errors).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+   |
+99 - //! - All state transitions preserve wf() (40 verified functions, 0 errors).
+99 + // - All state transitions preserve wf() (40 verified functions, 0 errors).
+   |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:100:1
+    |
+100 | //! - switch() correctly models stale-atomic PID comparison and quantum reset.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+100 - //! - switch() correctly models stale-atomic PID comparison and quantum reset.
+100 + // - switch() correctly models stale-atomic PID comparison and quantum reset.
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:101:1
+    |
+101 | //! - giveup() correctly branches on quantum and preserves/updates state.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+101 - //! - giveup() correctly branches on quantum and preserves/updates state.
+101 + // - giveup() correctly branches on quantum and preserves/updates state.
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:102:1
+    |
+102 | //! - Machine-checked divergence: exit/exit_thread set ghost_diverged, invalidating wf().
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+102 - //! - Machine-checked divergence: exit/exit_thread set ghost_diverged, invalidating wf().
+102 + // - Machine-checked divergence: exit/exit_thread set ghost_diverged, invalidating wf().
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:103:1
+    |
+103 | //! - No `assume` or `external_body` in this module.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+103 - //! - No `assume` or `external_body` in this module.
+103 + // - No `assume` or `external_body` in this module.
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:104:1
+    |
+104 | //!
+    | ^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+104 - //!
+104 + //
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:105:1
+    |
+105 | //! **Verification scope — global state consistency, not operation semantics:**
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+105 - //! **Verification scope — global state consistency, not operation semantics:**
+105 + // **Verification scope — global state consistency, not operation semantics:**
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:106:1
+    |
+106 | //! This module uses compositional verification: functions accept `new_inner` as a
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+106 - //! This module uses compositional verification: functions accept `new_inner` as a
+106 + // This module uses compositional verification: functions accept `new_inner` as a
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:107:1
+    |
+107 | //! parameter rather than computing it from operation arguments (e.g., `ExitStatus`).
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+107 - //! parameter rather than computing it from operation arguments (e.g., `ExitStatus`).
+107 + // parameter rather than computing it from operation arguments (e.g., `ExitStatus`).
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:108:1
+    |
+108 | //! This means the module verifies that *given any valid inner transition* (any
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+108 - //! This means the module verifies that *given any valid inner transition* (any
+108 + // This means the module verifies that *given any valid inner transition* (any
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:109:1
+    |
+109 | //! `new_inner` satisfying `wf()` and `spec_running_pid() == next_pid`), the global
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+109 - //! `new_inner` satisfying `wf()` and `spec_running_pid() == next_pid`), the global
+109 + // `new_inner` satisfying `wf()` and `spec_running_pid() == next_pid`), the global
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:110:1
+    |
+110 | //! state (atomics, quantum, divergence) is updated correctly. It does NOT verify
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+110 - //! state (atomics, quantum, divergence) is updated correctly. It does NOT verify
+110 + // state (atomics, quantum, divergence) is updated correctly. It does NOT verify
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:111:1
+    |
+111 | //! that `exit()` actually terminates a process, `sleep()` actually suspends a thread,
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+111 - //! that `exit()` actually terminates a process, `sleep()` actually suspends a thread,
+111 + // that `exit()` actually terminates a process, `sleep()` actually suspends a thread,
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:112:1
+    |
+112 | //! etc. — those operation semantics are verified in the inner ProcessManagerInner module
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+112 - //! etc. — those operation semantics are verified in the inner ProcessManagerInner module
+112 + // etc. — those operation semantics are verified in the inner ProcessManagerInner module
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:113:1
+    |
+113 | //! (96 verified functions). The composability contract is `new_inner.wf()`: the inner
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+113 - //! (96 verified functions). The composability contract is `new_inner.wf()`: the inner
+113 + // (96 verified functions). The composability contract is `new_inner.wf()`: the inner
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:114:1
+    |
+114 | //! module proves each operation produces a wf() state, and this module proves the
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+114 - //! module proves each operation produces a wf() state, and this module proves the
+114 + // module proves each operation produces a wf() state, and this module proves the
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:115:1
+    |
+115 | //! global wrapper handles any such state correctly.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+115 - //! global wrapper handles any such state correctly.
+115 + // global wrapper handles any such state correctly.
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:116:1
+    |
+116 | //!
+    | ^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+116 - //!
+116 + //
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:117:1
+    |
+117 | //! **What is deferred to dependency modules (cross-module concerns):**
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+117 - //! **What is deferred to dependency modules (cross-module concerns):**
+117 + // **What is deferred to dependency modules (cross-module concerns):**
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:118:1
+    |
+118 | //! - PID↔TID thread membership (T9): ProcessManagerInner tracks PIDs in `Set<int>`
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+118 - //! - PID↔TID thread membership (T9): ProcessManagerInner tracks PIDs in `Set<int>`
+118 + // - PID↔TID thread membership (T9): ProcessManagerInner tracks PIDs in `Set<int>`
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:119:1
+    |
+119 | //!   queues but has no per-process thread sets. Adding `current_tid ∈ threads(current_pid)`
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+119 - //!   queues but has no per-process thread sets. Adding `current_tid ∈ threads(current_pid)`
+119 + //   queues but has no per-process thread sets. Adding `current_tid ∈ threads(current_pid)`
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:120:1
+    |
+120 | //!   to wf() requires a `Ghost<Map<int, Set<int>>>` in ProcessManagerInner plus updates
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+120 - //!   to wf() requires a `Ghost<Map<int, Set<int>>>` in ProcessManagerInner plus updates
+120 + //   to wf() requires a `Ghost<Map<int, Set<int>>>` in ProcessManagerInner plus updates
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:121:1
+    |
+121 | //!   to all 96 verified inner functions — a separate verification task.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+121 - //!   to all 96 verified inner functions — a separate verification task.
+121 + //   to all 96 verified inner functions — a separate verification task.
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:122:1
+    |
+122 | //! - Per-thread message queues (T11): Inner model uses aggregate `number_buffered_messages`.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+122 - //! - Per-thread message queues (T11): Inner model uses aggregate `number_buffered_messages`.
+122 + // - Per-thread message queues (T11): Inner model uses aggregate `number_buffered_messages`.
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:123:1
+    |
+123 | //! - Synchronization object tables (T12): Mutex/condvar state lives inside inner module.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+123 - //! - Synchronization object tables (T12): Mutex/condvar state lives inside inner module.
+123 + // - Synchronization object tables (T12): Mutex/condvar state lives inside inner module.
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:124:1
+    |
+124 | //!
+    | ^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+124 - //!
+124 + //
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:125:1
+    |
+125 | //! **What is beyond Verus expressiveness:**
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+125 - //! **What is beyond Verus expressiveness:**
+125 + // **What is beyond Verus expressiveness:**
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:126:1
+    |
+126 | //! - Temporal/liveness properties: join_thread loop termination depends on eventual
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: inner doc comments like this (starting with `//!` or `/*!`) can only appear before items
+help: you might have meant to write a regular comment
+    |
+126 - //! - Temporal/liveness properties: join_thread loop termination depends on eventual
+126 + // - Temporal/liveness properties: join_thread loop termination depends on eventual
+    |
+
+error[E0753]: expected outer doc comment
+   --> kernel/pm/process/manager/process_manager_unsafe.rs:127:1
+    |
+127 | //!   notify_all, which requires fair scheduling assumptions outside first-order logic.
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+128 |
+129 | use vstd::prelude::*;
+    | --------------------- the inner doc comment doesn't annotate this `use` import
+    |
+help: to annotate the `use` import, change the doc comment from inner to outer style
+    |
+127 - //!   notify_all, which requires fair scheduling assumptions outside first-order logic.
+127 + ///   notify_all, which requires fair scheduling assumptions outside first-order logic.
+    |
+
+error: aborting due to 184 previous errors
+
+For more information about this error, try `rustc --explain E0753`.
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager (verified:0, errors:0)
