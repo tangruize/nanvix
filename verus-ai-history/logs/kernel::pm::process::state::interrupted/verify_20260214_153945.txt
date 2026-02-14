@@ -1,0 +1,28 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 15:39:45 CST 2026
+Module: kernel::pm::process::state::interrupted
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::interrupted
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::interrupted
+
+error: assertion failed
+   --> kernel/pm/process/state/interrupted.proof.rs:438:16
+    |
+438 |           assert(p.spec_has_sleeping_thread(tid) ==>
+    |  ________________^
+439 | |             p@.spec_has_sleeping_thread(tid as int)) by {
+    | |___________________________________________________^ assertion failed
+
+verification results:: 37 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 37
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::interrupted (verified:37, errors:1)
