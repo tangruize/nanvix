@@ -98,38 +98,46 @@ use vstd::prelude::*;
 
 verus! {
 
+/// Used by view() implementations to lift `Vec<u64>@` (`Seq<u64>`) to the
+/// abstract `Seq<int>` representation required by View types (Step 1).
+pub open spec fn spec_u64_seq_as_int(s: Seq<u64>) -> Seq<int> {
+    Seq::new(s.len(), |i: int| s[i] as int)
+}
+
 //==================================================================================================
 // View Types
 //==================================================================================================
+// Per Step 1 of the methodology, View types use abstract types (`int`, `Seq<int>`)
+// instead of concrete types (`u64`, `Seq<u64>`).
 
 /// Abstract view of an InterruptedProcess (this module's primary type).
 #[verifier::ext_equal]
 pub struct InterruptedProcessView {
     /// Process identifier value.
-    pub pid: u64,
+    pub pid: int,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<u64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Seq<u64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<u64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 /// Abstract view of a RunnableProcess (boundary type).
 #[verifier::ext_equal]
 pub struct RunnableProcessView {
     /// Process identifier value.
-    pub pid: u64,
+    pub pid: int,
     /// Ready thread IDs (non-empty).
-    pub ready_thread_ids: Seq<u64>,
+    pub ready_thread_ids: Seq<int>,
     /// Ready thread admission times, parallel to ready_thread_ids.
-    pub ready_admission_times: Seq<u64>,
+    pub ready_admission_times: Seq<int>,
     /// Interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Seq<u64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<u64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<u64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 //==================================================================================================
@@ -233,7 +241,11 @@ impl InterruptedProcess {
     /// - There is at least one interrupted thread (NonEmptyVecDeque invariant).
     /// - No duplicate thread IDs within any list.
     /// - All thread lists are pairwise disjoint.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(InterruptedProcess::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(&self) -> bool {
         &&& self.interrupted_thread_ids@.len() >= 1
         &&& Self::spec_no_duplicates(self.interrupted_thread_ids@)
         &&& Self::spec_no_duplicates(self.sleeping_thread_ids@)
@@ -369,7 +381,11 @@ impl RunnableProcess {
     /// - Ready thread IDs and admission times have matching lengths.
     /// - No duplicate thread IDs within any list.
     /// - All thread lists are pairwise disjoint.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(RunnableProcess::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(&self) -> bool {
         &&& self.ready_thread_ids@.len() >= 1
         &&& self.ready_thread_ids@.len() == self.ready_admission_times@.len()
         &&& Self::spec_no_duplicates(self.ready_thread_ids@)
@@ -403,20 +419,37 @@ impl RunnableProcess {
 //==================================================================================================
 
 impl InterruptedProcessView {
+    /// View-level helper: checks whether a sequence has no duplicate elements.
+    pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
+        forall|i: int, j: int| 0 <= i < j < s.len()
+            ==> s[i] != s[j]
+    }
+
+    /// View-level helper: checks whether two sequences share no common elements.
+    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+        forall|i: int, j: int|
+            0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
+    }
+
     /// View-level well-formedness predicate.
     ///
     /// Mirrors `InterruptedProcess::wf()` but operates directly on
-    /// abstract `Seq<u64>` fields.
-    pub open spec fn wf(self) -> bool {
+    /// abstract `Seq<int>` fields.
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(InterruptedProcessView::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(self) -> bool {
         &&& self.interrupted_thread_ids.len() >= 1
-        &&& InterruptedProcess::spec_no_duplicates(self.interrupted_thread_ids)
-        &&& InterruptedProcess::spec_no_duplicates(self.sleeping_thread_ids)
-        &&& InterruptedProcess::spec_no_duplicates(self.zombie_thread_ids)
-        &&& InterruptedProcess::spec_seqs_disjoint(
+        &&& Self::spec_no_duplicates(self.interrupted_thread_ids)
+        &&& Self::spec_no_duplicates(self.sleeping_thread_ids)
+        &&& Self::spec_no_duplicates(self.zombie_thread_ids)
+        &&& Self::spec_seqs_disjoint(
             self.interrupted_thread_ids, self.sleeping_thread_ids)
-        &&& InterruptedProcess::spec_seqs_disjoint(
+        &&& Self::spec_seqs_disjoint(
             self.interrupted_thread_ids, self.zombie_thread_ids)
-        &&& InterruptedProcess::spec_seqs_disjoint(
+        &&& Self::spec_seqs_disjoint(
             self.sleeping_thread_ids, self.zombie_thread_ids)
     }
 
@@ -424,7 +457,7 @@ impl InterruptedProcessView {
     ///
     /// Returns the expected view after constructing with no sleeping threads.
     pub open spec fn spec_new(
-        pid: u64, interrupted_ids: Seq<u64>, zombie_ids: Seq<u64>,
+        pid: int, interrupted_ids: Seq<int>, zombie_ids: Seq<int>,
     ) -> InterruptedProcessView {
         InterruptedProcessView {
             pid: pid,
@@ -438,10 +471,10 @@ impl InterruptedProcessView {
     ///
     /// Returns the expected view after constructing with sleeping threads.
     pub open spec fn spec_from_sleeping(
-        pid: u64,
-        sleeping_ids: Seq<u64>,
-        interrupted_ids: Seq<u64>,
-        zombie_ids: Seq<u64>,
+        pid: int,
+        sleeping_ids: Seq<int>,
+        interrupted_ids: Seq<int>,
+        zombie_ids: Seq<int>,
     ) -> InterruptedProcessView {
         InterruptedProcessView {
             pid: pid,
@@ -456,7 +489,7 @@ impl InterruptedProcessView {
     /// Pops the front interrupted thread and produces a `RunnableProcessView`
     /// with that thread as the single ready thread at `admission_time`.
     /// Remaining interrupted, sleeping, and zombie threads are preserved.
-    pub open spec fn spec_resume(self, admission_time: u64) -> RunnableProcessView {
+    pub open spec fn spec_resume(self, admission_time: int) -> RunnableProcessView {
         RunnableProcessView {
             pid: self.pid,
             ready_thread_ids: seq![self.interrupted_thread_ids[0]],
@@ -488,51 +521,74 @@ impl InterruptedProcessView {
 }
 
 impl RunnableProcessView {
+    /// View-level helper: checks whether a sequence has no duplicate elements.
+    pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
+        forall|i: int, j: int| 0 <= i < j < s.len()
+            ==> s[i] != s[j]
+    }
+
+    /// View-level helper: checks whether two sequences share no common elements.
+    pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
+        forall|i: int, j: int|
+            0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
+    }
+
     /// View-level well-formedness predicate for `RunnableProcess`.
     ///
     /// Mirrors `RunnableProcess::wf()` but operates directly on
-    /// abstract `Seq<u64>` fields. Enables downstream proofs to reason
+    /// abstract `Seq<int>` fields. Enables downstream proofs to reason
     /// about `pre@.spec_resume(t).wf()` entirely at the view level.
-    pub open spec fn wf(self) -> bool {
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(RunnableProcessView::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(self) -> bool {
         &&& self.ready_thread_ids.len() >= 1
         &&& self.ready_thread_ids.len() == self.ready_admission_times.len()
-        &&& RunnableProcess::spec_no_duplicates(self.ready_thread_ids)
-        &&& RunnableProcess::spec_no_duplicates(self.interrupted_thread_ids)
-        &&& RunnableProcess::spec_no_duplicates(self.sleeping_thread_ids)
-        &&& RunnableProcess::spec_no_duplicates(self.zombie_thread_ids)
-        &&& RunnableProcess::spec_seqs_disjoint(self.ready_thread_ids, self.interrupted_thread_ids)
-        &&& RunnableProcess::spec_seqs_disjoint(self.ready_thread_ids, self.sleeping_thread_ids)
-        &&& RunnableProcess::spec_seqs_disjoint(self.ready_thread_ids, self.zombie_thread_ids)
-        &&& RunnableProcess::spec_seqs_disjoint(self.interrupted_thread_ids, self.sleeping_thread_ids)
-        &&& RunnableProcess::spec_seqs_disjoint(self.interrupted_thread_ids, self.zombie_thread_ids)
-        &&& RunnableProcess::spec_seqs_disjoint(self.sleeping_thread_ids, self.zombie_thread_ids)
+        &&& Self::spec_no_duplicates(self.ready_thread_ids)
+        &&& Self::spec_no_duplicates(self.interrupted_thread_ids)
+        &&& Self::spec_no_duplicates(self.sleeping_thread_ids)
+        &&& Self::spec_no_duplicates(self.zombie_thread_ids)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids, self.interrupted_thread_ids)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids, self.sleeping_thread_ids)
+        &&& Self::spec_seqs_disjoint(self.ready_thread_ids, self.zombie_thread_ids)
+        &&& Self::spec_seqs_disjoint(self.interrupted_thread_ids, self.sleeping_thread_ids)
+        &&& Self::spec_seqs_disjoint(self.interrupted_thread_ids, self.zombie_thread_ids)
+        &&& Self::spec_seqs_disjoint(self.sleeping_thread_ids, self.zombie_thread_ids)
     }
 }
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// The methodology recommends `pub closed spec fn view()`, but trait impls
+/// cannot override the trait's openness. Abstraction is preserved because
+/// `InterruptedProcessView` only exposes abstract types (`int`, `Seq<int>`).
 impl View for InterruptedProcess {
     type V = InterruptedProcessView;
 
     open spec fn view(&self) -> InterruptedProcessView {
         InterruptedProcessView {
-            pid: self.pid,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            pid: self.pid as int,
+            sleeping_thread_ids: spec_u64_seq_as_int(self.sleeping_thread_ids@),
+            interrupted_thread_ids: spec_u64_seq_as_int(self.interrupted_thread_ids@),
+            zombie_thread_ids: spec_u64_seq_as_int(self.zombie_thread_ids@),
         }
     }
 }
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// See InterruptedProcess's View impl for rationale.
 impl View for RunnableProcess {
     type V = RunnableProcessView;
 
     open spec fn view(&self) -> RunnableProcessView {
         RunnableProcessView {
-            pid: self.pid,
-            ready_thread_ids: self.ready_thread_ids@,
-            ready_admission_times: self.ready_admission_times@,
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            pid: self.pid as int,
+            ready_thread_ids: spec_u64_seq_as_int(self.ready_thread_ids@),
+            ready_admission_times: spec_u64_seq_as_int(self.ready_admission_times@),
+            interrupted_thread_ids: spec_u64_seq_as_int(self.interrupted_thread_ids@),
+            sleeping_thread_ids: spec_u64_seq_as_int(self.sleeping_thread_ids@),
+            zombie_thread_ids: spec_u64_seq_as_int(self.zombie_thread_ids@),
         }
     }
 }

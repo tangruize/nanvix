@@ -36,8 +36,7 @@ impl InterruptedProcess {
     ///
     /// Proves that `InterruptedProcessView::spec_new(...)` satisfies the
     /// view-level well-formedness predicate when the construction
-    /// preconditions hold. This operates on `Seq<u64>` directly (no
-    /// `Vec<u64>` needed in proof mode).
+    /// preconditions hold.
     pub proof fn lemma_new_is_wf(
         pid: u64,
         interrupted_ids: Seq<u64>,
@@ -49,36 +48,74 @@ impl InterruptedProcess {
             Self::spec_no_duplicates(zombie_ids),
             Self::spec_seqs_disjoint(interrupted_ids, zombie_ids),
         ensures
-            InterruptedProcessView::spec_new(pid, interrupted_ids, zombie_ids).wf(),
+            InterruptedProcessView::spec_new(
+                pid as int,
+                spec_u64_seq_as_int(interrupted_ids),
+                spec_u64_seq_as_int(zombie_ids),
+            ).wf(),
     {
-        let v: InterruptedProcessView =
-            InterruptedProcessView::spec_new(pid, interrupted_ids, zombie_ids);
-        // Empty sleeping list is trivially no-duplicates and disjoint.
-        assert(Self::spec_no_duplicates(v.sleeping_thread_ids)) by {
+        reveal(InterruptedProcessView::wf);
+        let int_interrupted: Seq<int> = spec_u64_seq_as_int(interrupted_ids);
+        let int_zombie: Seq<int> = spec_u64_seq_as_int(zombie_ids);
+        let v: InterruptedProcessView = InterruptedProcessView::spec_new(
+            pid as int, int_interrupted, int_zombie,
+        );
+        // No-duplicates on interrupted (int version from u64 version via injectivity).
+        assert(InterruptedProcessView::spec_no_duplicates(v.interrupted_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.interrupted_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.interrupted_thread_ids[j]
+            by {
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.interrupted_thread_ids[j] == interrupted_ids[j] as int);
+            }
+        }
+        // No-duplicates on sleeping (empty — trivial).
+        assert(InterruptedProcessView::spec_no_duplicates(v.sleeping_thread_ids)) by {
             assert forall|i: int, j: int|
                 0 <= i < j < v.sleeping_thread_ids.len()
                 implies v.sleeping_thread_ids[i] != v.sleeping_thread_ids[j]
+            by { }
+        }
+        // No-duplicates on zombie (int version).
+        assert(InterruptedProcessView::spec_no_duplicates(v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.zombie_thread_ids.len()
+                implies v.zombie_thread_ids[i] != v.zombie_thread_ids[j]
             by {
-                // sleeping_thread_ids is Seq::empty(), length 0 — no i < j pair.
+                assert(v.zombie_thread_ids[i] == zombie_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
             }
         }
-        assert(Self::spec_seqs_disjoint(v.interrupted_thread_ids, v.sleeping_thread_ids)) by {
+        // Disjointness: interrupted ∩ sleeping = ∅ (sleeping empty).
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            v.interrupted_thread_ids, v.sleeping_thread_ids)) by {
             assert forall|i: int, j: int|
                 0 <= i < v.interrupted_thread_ids.len()
                     && 0 <= j < v.sleeping_thread_ids.len()
                 implies v.interrupted_thread_ids[i] != v.sleeping_thread_ids[j]
+            by { }
+        }
+        // Disjointness: interrupted ∩ zombie = ∅.
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            v.interrupted_thread_ids, v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.interrupted_thread_ids.len()
+                    && 0 <= j < v.zombie_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.zombie_thread_ids[j]
             by {
-                // sleeping_thread_ids is empty — no j exists.
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
             }
         }
-        assert(Self::spec_seqs_disjoint(v.sleeping_thread_ids, v.zombie_thread_ids)) by {
+        // Disjointness: sleeping ∩ zombie = ∅ (sleeping empty).
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            v.sleeping_thread_ids, v.zombie_thread_ids)) by {
             assert forall|i: int, j: int|
                 0 <= i < v.sleeping_thread_ids.len()
                     && 0 <= j < v.zombie_thread_ids.len()
                 implies v.sleeping_thread_ids[i] != v.zombie_thread_ids[j]
-            by {
-                // sleeping_thread_ids is empty — no i exists.
-            }
+            by { }
         }
     }
 
@@ -116,8 +153,81 @@ impl InterruptedProcess {
             Self::spec_seqs_disjoint(sleeping_ids, zombie_ids),
         ensures
             InterruptedProcessView::spec_from_sleeping(
-                pid, sleeping_ids, interrupted_ids, zombie_ids).wf(),
+                pid as int,
+                spec_u64_seq_as_int(sleeping_ids),
+                spec_u64_seq_as_int(interrupted_ids),
+                spec_u64_seq_as_int(zombie_ids),
+            ).wf(),
     {
+        reveal(InterruptedProcessView::wf);
+        let v: InterruptedProcessView = InterruptedProcessView::spec_from_sleeping(
+            pid as int,
+            spec_u64_seq_as_int(sleeping_ids),
+            spec_u64_seq_as_int(interrupted_ids),
+            spec_u64_seq_as_int(zombie_ids),
+        );
+        // No-duplicates (int version from u64 version via injectivity).
+        assert(InterruptedProcessView::spec_no_duplicates(v.interrupted_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.interrupted_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.interrupted_thread_ids[j]
+            by {
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.interrupted_thread_ids[j] == interrupted_ids[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_no_duplicates(v.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.sleeping_thread_ids.len()
+                implies v.sleeping_thread_ids[i] != v.sleeping_thread_ids[j]
+            by {
+                assert(v.sleeping_thread_ids[i] == sleeping_ids[i] as int);
+                assert(v.sleeping_thread_ids[j] == sleeping_ids[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_no_duplicates(v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.zombie_thread_ids.len()
+                implies v.zombie_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                assert(v.zombie_thread_ids[i] == zombie_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
+            }
+        }
+        // Pairwise disjointness (int version).
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            v.interrupted_thread_ids, v.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.interrupted_thread_ids.len()
+                    && 0 <= j < v.sleeping_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.sleeping_thread_ids[j]
+            by {
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.sleeping_thread_ids[j] == sleeping_ids[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            v.interrupted_thread_ids, v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.interrupted_thread_ids.len()
+                    && 0 <= j < v.zombie_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            v.sleeping_thread_ids, v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.sleeping_thread_ids.len()
+                    && 0 <= j < v.zombie_thread_ids.len()
+                implies v.sleeping_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                assert(v.sleeping_thread_ids[i] == sleeping_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
+            }
+        }
     }
 
     /// Lemma: If the caller provides a PID matching the real ProcessState PID,
@@ -144,6 +254,7 @@ impl InterruptedProcess {
         ensures
             new_self.wf(),
     {
+        reveal(InterruptedProcess::wf);
     }
 
     //==============================================================================================
@@ -358,6 +469,69 @@ impl InterruptedProcess {
         ensures
             p@.wf(),
     {
+        reveal(InterruptedProcess::wf);
+        reveal(InterruptedProcessView::wf);
+        // Bridge: exec-level no-duplicates/disjointness → view-level equivalents.
+        assert(InterruptedProcessView::spec_no_duplicates(p@.interrupted_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < p@.interrupted_thread_ids.len()
+                implies p@.interrupted_thread_ids[i] != p@.interrupted_thread_ids[j]
+            by {
+                assert(p@.interrupted_thread_ids[i] == p.interrupted_thread_ids@[i] as int);
+                assert(p@.interrupted_thread_ids[j] == p.interrupted_thread_ids@[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_no_duplicates(p@.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < p@.sleeping_thread_ids.len()
+                implies p@.sleeping_thread_ids[i] != p@.sleeping_thread_ids[j]
+            by {
+                assert(p@.sleeping_thread_ids[i] == p.sleeping_thread_ids@[i] as int);
+                assert(p@.sleeping_thread_ids[j] == p.sleeping_thread_ids@[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_no_duplicates(p@.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < p@.zombie_thread_ids.len()
+                implies p@.zombie_thread_ids[i] != p@.zombie_thread_ids[j]
+            by {
+                assert(p@.zombie_thread_ids[i] == p.zombie_thread_ids@[i] as int);
+                assert(p@.zombie_thread_ids[j] == p.zombie_thread_ids@[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            p@.interrupted_thread_ids, p@.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.interrupted_thread_ids.len()
+                    && 0 <= j < p@.sleeping_thread_ids.len()
+                implies p@.interrupted_thread_ids[i] != p@.sleeping_thread_ids[j]
+            by {
+                assert(p@.interrupted_thread_ids[i] == p.interrupted_thread_ids@[i] as int);
+                assert(p@.sleeping_thread_ids[j] == p.sleeping_thread_ids@[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            p@.interrupted_thread_ids, p@.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.interrupted_thread_ids.len()
+                    && 0 <= j < p@.zombie_thread_ids.len()
+                implies p@.interrupted_thread_ids[i] != p@.zombie_thread_ids[j]
+            by {
+                assert(p@.interrupted_thread_ids[i] == p.interrupted_thread_ids@[i] as int);
+                assert(p@.zombie_thread_ids[j] == p.zombie_thread_ids@[j] as int);
+            }
+        }
+        assert(InterruptedProcessView::spec_seqs_disjoint(
+            p@.sleeping_thread_ids, p@.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.sleeping_thread_ids.len()
+                    && 0 <= j < p@.zombie_thread_ids.len()
+                implies p@.sleeping_thread_ids[i] != p@.zombie_thread_ids[j]
+            by {
+                assert(p@.sleeping_thread_ids[i] == p.sleeping_thread_ids@[i] as int);
+                assert(p@.zombie_thread_ids[j] == p.zombie_thread_ids@[j] as int);
+            }
+        }
     }
 
     /// Lemma: `view()` of a well-formed `RunnableProcess` is well-formed
@@ -368,6 +542,112 @@ impl InterruptedProcess {
         ensures
             p@.wf(),
     {
+        reveal(RunnableProcess::wf);
+        reveal(RunnableProcessView::wf);
+        // Bridge: exec-level properties → view-level equivalents.
+        assert(RunnableProcessView::spec_no_duplicates(p@.ready_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < p@.ready_thread_ids.len()
+                implies p@.ready_thread_ids[i] != p@.ready_thread_ids[j]
+            by {
+                assert(p@.ready_thread_ids[i] == p.ready_thread_ids@[i] as int);
+                assert(p@.ready_thread_ids[j] == p.ready_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_no_duplicates(p@.interrupted_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < p@.interrupted_thread_ids.len()
+                implies p@.interrupted_thread_ids[i] != p@.interrupted_thread_ids[j]
+            by {
+                assert(p@.interrupted_thread_ids[i] == p.interrupted_thread_ids@[i] as int);
+                assert(p@.interrupted_thread_ids[j] == p.interrupted_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_no_duplicates(p@.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < p@.sleeping_thread_ids.len()
+                implies p@.sleeping_thread_ids[i] != p@.sleeping_thread_ids[j]
+            by {
+                assert(p@.sleeping_thread_ids[i] == p.sleeping_thread_ids@[i] as int);
+                assert(p@.sleeping_thread_ids[j] == p.sleeping_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_no_duplicates(p@.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < p@.zombie_thread_ids.len()
+                implies p@.zombie_thread_ids[i] != p@.zombie_thread_ids[j]
+            by {
+                assert(p@.zombie_thread_ids[i] == p.zombie_thread_ids@[i] as int);
+                assert(p@.zombie_thread_ids[j] == p.zombie_thread_ids@[j] as int);
+            }
+        }
+        // Pairwise disjointness.
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            p@.ready_thread_ids, p@.interrupted_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.ready_thread_ids.len()
+                    && 0 <= j < p@.interrupted_thread_ids.len()
+                implies p@.ready_thread_ids[i] != p@.interrupted_thread_ids[j]
+            by {
+                assert(p@.ready_thread_ids[i] == p.ready_thread_ids@[i] as int);
+                assert(p@.interrupted_thread_ids[j] == p.interrupted_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            p@.ready_thread_ids, p@.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.ready_thread_ids.len()
+                    && 0 <= j < p@.sleeping_thread_ids.len()
+                implies p@.ready_thread_ids[i] != p@.sleeping_thread_ids[j]
+            by {
+                assert(p@.ready_thread_ids[i] == p.ready_thread_ids@[i] as int);
+                assert(p@.sleeping_thread_ids[j] == p.sleeping_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            p@.ready_thread_ids, p@.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.ready_thread_ids.len()
+                    && 0 <= j < p@.zombie_thread_ids.len()
+                implies p@.ready_thread_ids[i] != p@.zombie_thread_ids[j]
+            by {
+                assert(p@.ready_thread_ids[i] == p.ready_thread_ids@[i] as int);
+                assert(p@.zombie_thread_ids[j] == p.zombie_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            p@.interrupted_thread_ids, p@.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.interrupted_thread_ids.len()
+                    && 0 <= j < p@.sleeping_thread_ids.len()
+                implies p@.interrupted_thread_ids[i] != p@.sleeping_thread_ids[j]
+            by {
+                assert(p@.interrupted_thread_ids[i] == p.interrupted_thread_ids@[i] as int);
+                assert(p@.sleeping_thread_ids[j] == p.sleeping_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            p@.interrupted_thread_ids, p@.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.interrupted_thread_ids.len()
+                    && 0 <= j < p@.zombie_thread_ids.len()
+                implies p@.interrupted_thread_ids[i] != p@.zombie_thread_ids[j]
+            by {
+                assert(p@.interrupted_thread_ids[i] == p.interrupted_thread_ids@[i] as int);
+                assert(p@.zombie_thread_ids[j] == p.zombie_thread_ids@[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            p@.sleeping_thread_ids, p@.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < p@.sleeping_thread_ids.len()
+                    && 0 <= j < p@.zombie_thread_ids.len()
+                implies p@.sleeping_thread_ids[i] != p@.zombie_thread_ids[j]
+            by {
+                assert(p@.sleeping_thread_ids[i] == p.sleeping_thread_ids@[i] as int);
+                assert(p@.zombie_thread_ids[j] == p.zombie_thread_ids@[j] as int);
+            }
+        }
     }
 
     /// Lemma: `new()` result view matches `InterruptedProcessView::spec_new()`.
@@ -383,7 +663,11 @@ impl InterruptedProcess {
             result.interrupted_thread_ids@ =~= interrupted_ids,
             result.zombie_thread_ids@ =~= zombie_ids,
         ensures
-            result@ =~= InterruptedProcessView::spec_new(pid, interrupted_ids, zombie_ids),
+            result@ =~= InterruptedProcessView::spec_new(
+                pid as int,
+                spec_u64_seq_as_int(interrupted_ids),
+                spec_u64_seq_as_int(zombie_ids),
+            ),
     {
     }
 
@@ -403,7 +687,11 @@ impl InterruptedProcess {
             result.zombie_thread_ids@ =~= zombie_ids,
         ensures
             result@ =~= InterruptedProcessView::spec_from_sleeping(
-                pid, sleeping_ids, interrupted_ids, zombie_ids),
+                pid as int,
+                spec_u64_seq_as_int(sleeping_ids),
+                spec_u64_seq_as_int(interrupted_ids),
+                spec_u64_seq_as_int(zombie_ids),
+            ),
     {
     }
 
@@ -412,7 +700,7 @@ impl InterruptedProcess {
     ///
     /// Downstream callers can use this to reason about `resume()` at the
     /// view level:
-    ///   `ensures result@ =~= old(self)@.spec_resume(admission_time)`
+    ///   `ensures result@ =~= old(self)@.spec_resume(admission_time as int)`
     pub proof fn lemma_resume_refines_spec(
         pre: &InterruptedProcess,
         admission_time: u64,
@@ -432,14 +720,14 @@ impl InterruptedProcess {
             result.sleeping_thread_ids@ =~= pre.sleeping_thread_ids@,
             result.zombie_thread_ids@ =~= pre.zombie_thread_ids@,
         ensures
-            result@ =~= pre@.spec_resume(admission_time),
+            result@ =~= pre@.spec_resume(admission_time as int),
             result@.wf(),
     {
         // Establish singleton sequence extensional equality.
         assert(result.ready_thread_ids@ =~=
             seq![pre.interrupted_thread_ids@[0]]);
         assert(result.ready_admission_times@ =~= seq![admission_time]);
-        // View-level wf follows from concrete wf via structural match.
+        // View-level wf follows from concrete wf via bridging.
         Self::lemma_runnable_view_wf(result);
     }
 
@@ -538,6 +826,7 @@ impl InterruptedProcess {
                 && !self.spec_has_sleeping_thread(tid)
             ),
     {
+        reveal(InterruptedProcess::wf);
         // Follows from pairwise disjointness in wf().
         if self.spec_has_interrupted_thread(tid) {
             let i: int = choose|i: int| 0 <= i < self.interrupted_thread_ids@.len()
@@ -592,10 +881,7 @@ impl RunnableProcess {
     /// Lemma: Construction of a `RunnableProcess` produces a well-formed view.
     ///
     /// Proves that a `RunnableProcessView` constructed from sequences
-    /// satisfying the structural invariants is well-formed. The `u64`
-    /// type guarantees non-negativity of admission times (previously
-    /// required as an explicit `ready_times[i] >= 0` precondition when
-    /// times were modeled as `int`).
+    /// satisfying the structural invariants is well-formed.
     pub proof fn lemma_new_wf(
         pid: u64,
         ready_ids: Seq<u64>,
@@ -620,16 +906,129 @@ impl RunnableProcess {
         ensures
             ({
                 let v: RunnableProcessView = RunnableProcessView {
-                    pid: pid,
-                    ready_thread_ids: ready_ids,
-                    ready_admission_times: ready_times,
-                    interrupted_thread_ids: interrupted_ids,
-                    sleeping_thread_ids: sleeping_ids,
-                    zombie_thread_ids: zombie_ids,
+                    pid: pid as int,
+                    ready_thread_ids: spec_u64_seq_as_int(ready_ids),
+                    ready_admission_times: spec_u64_seq_as_int(ready_times),
+                    interrupted_thread_ids: spec_u64_seq_as_int(interrupted_ids),
+                    sleeping_thread_ids: spec_u64_seq_as_int(sleeping_ids),
+                    zombie_thread_ids: spec_u64_seq_as_int(zombie_ids),
                 };
                 v.wf()
             }),
     {
+        reveal(RunnableProcessView::wf);
+        let v: RunnableProcessView = RunnableProcessView {
+            pid: pid as int,
+            ready_thread_ids: spec_u64_seq_as_int(ready_ids),
+            ready_admission_times: spec_u64_seq_as_int(ready_times),
+            interrupted_thread_ids: spec_u64_seq_as_int(interrupted_ids),
+            sleeping_thread_ids: spec_u64_seq_as_int(sleeping_ids),
+            zombie_thread_ids: spec_u64_seq_as_int(zombie_ids),
+        };
+        // No-duplicates (int version from u64 version via injectivity).
+        assert(RunnableProcessView::spec_no_duplicates(v.ready_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.ready_thread_ids.len()
+                implies v.ready_thread_ids[i] != v.ready_thread_ids[j]
+            by {
+                assert(v.ready_thread_ids[i] == ready_ids[i] as int);
+                assert(v.ready_thread_ids[j] == ready_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_no_duplicates(v.interrupted_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.interrupted_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.interrupted_thread_ids[j]
+            by {
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.interrupted_thread_ids[j] == interrupted_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_no_duplicates(v.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.sleeping_thread_ids.len()
+                implies v.sleeping_thread_ids[i] != v.sleeping_thread_ids[j]
+            by {
+                assert(v.sleeping_thread_ids[i] == sleeping_ids[i] as int);
+                assert(v.sleeping_thread_ids[j] == sleeping_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_no_duplicates(v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < j < v.zombie_thread_ids.len()
+                implies v.zombie_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                assert(v.zombie_thread_ids[i] == zombie_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
+            }
+        }
+        // Pairwise disjointness.
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            v.ready_thread_ids, v.interrupted_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.ready_thread_ids.len()
+                    && 0 <= j < v.interrupted_thread_ids.len()
+                implies v.ready_thread_ids[i] != v.interrupted_thread_ids[j]
+            by {
+                assert(v.ready_thread_ids[i] == ready_ids[i] as int);
+                assert(v.interrupted_thread_ids[j] == interrupted_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            v.ready_thread_ids, v.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.ready_thread_ids.len()
+                    && 0 <= j < v.sleeping_thread_ids.len()
+                implies v.ready_thread_ids[i] != v.sleeping_thread_ids[j]
+            by {
+                assert(v.ready_thread_ids[i] == ready_ids[i] as int);
+                assert(v.sleeping_thread_ids[j] == sleeping_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            v.ready_thread_ids, v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.ready_thread_ids.len()
+                    && 0 <= j < v.zombie_thread_ids.len()
+                implies v.ready_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                assert(v.ready_thread_ids[i] == ready_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            v.interrupted_thread_ids, v.sleeping_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.interrupted_thread_ids.len()
+                    && 0 <= j < v.sleeping_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.sleeping_thread_ids[j]
+            by {
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.sleeping_thread_ids[j] == sleeping_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            v.interrupted_thread_ids, v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.interrupted_thread_ids.len()
+                    && 0 <= j < v.zombie_thread_ids.len()
+                implies v.interrupted_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                assert(v.interrupted_thread_ids[i] == interrupted_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
+            }
+        }
+        assert(RunnableProcessView::spec_seqs_disjoint(
+            v.sleeping_thread_ids, v.zombie_thread_ids)) by {
+            assert forall|i: int, j: int|
+                0 <= i < v.sleeping_thread_ids.len()
+                    && 0 <= j < v.zombie_thread_ids.len()
+                implies v.sleeping_thread_ids[i] != v.zombie_thread_ids[j]
+            by {
+                assert(v.sleeping_thread_ids[i] == sleeping_ids[i] as int);
+                assert(v.zombie_thread_ids[j] == zombie_ids[j] as int);
+            }
+        }
     }
 
     /// Projection lemma: Extracts the fields that the runnable module's boundary
@@ -652,10 +1051,10 @@ impl RunnableProcess {
         requires
             ip.wf(),
         ensures
-            // Projection fields match the primary model.
-            projection.0 == ip@.pid,
-            projection.1 == ip@.interrupted_thread_ids,
-            projection.2 == ip@.zombie_thread_ids,
+            // Projection fields match the primary model (concrete level).
+            projection.0 == ip.pid,
+            projection.1 =~= ip.interrupted_thread_ids@,
+            projection.2 =~= ip.zombie_thread_ids@,
             // The projected fields satisfy the runnable module's boundary wf()
             // preconditions (interrupted_thread_ids non-empty, no-duplicates,
             // disjointness between interrupted and zombie).
@@ -666,11 +1065,12 @@ impl RunnableProcess {
             // The primary model carries additional sleeping_thread_ids not
             // present in the runnable module's boundary.
             InterruptedProcess::spec_seqs_disjoint(
-                ip@.sleeping_thread_ids, projection.1),
+                ip.sleeping_thread_ids@, projection.1),
             InterruptedProcess::spec_seqs_disjoint(
-                ip@.sleeping_thread_ids, projection.2),
+                ip.sleeping_thread_ids@, projection.2),
     {
-        (ip@.pid, ip@.interrupted_thread_ids, ip@.zombie_thread_ids)
+        reveal(InterruptedProcess::wf);
+        (ip.pid, ip.interrupted_thread_ids@, ip.zombie_thread_ids@)
     }
 }
 

@@ -181,6 +181,9 @@ impl InterruptedProcess {
             result.zombie_thread_ids@ == zombie_ids@,
             result.wf(),
     {
+        proof {
+            reveal(InterruptedProcess::wf);
+        }
         InterruptedProcess {
             pid,
             sleeping_thread_ids: Vec::new(),
@@ -225,6 +228,9 @@ impl InterruptedProcess {
             result.zombie_thread_ids@ == zombie_ids@,
             result.wf(),
     {
+        proof {
+            reveal(InterruptedProcess::wf);
+        }
         InterruptedProcess {
             pid,
             sleeping_thread_ids: sleeping_ids,
@@ -268,6 +274,9 @@ impl InterruptedProcess {
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf(),
     {
+        proof {
+            reveal(InterruptedProcess::wf);
+        }
         self.pid
     }
 
@@ -343,6 +352,9 @@ impl InterruptedProcess {
         admit_times.push(admission_time);
 
         proof {
+            reveal(InterruptedProcess::wf);
+            reveal(RunnableProcess::wf);
+
             // Connect Vec::remove(0) with subrange(1, len).
             assert(old_interrupted.remove(0int) =~=
                 old_interrupted.subrange(1, old_interrupted.len() as int));
@@ -525,6 +537,9 @@ impl InterruptedProcess {
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf(),
     {
+        proof {
+            reveal(InterruptedProcess::wf);
+        }
         Ghost(old(self).spec_find_thread(tid))
     }
 }
