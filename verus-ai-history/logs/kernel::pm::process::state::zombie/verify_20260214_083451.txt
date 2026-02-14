@@ -1,0 +1,38 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 08:34:51 CST 2026
+Module: kernel::pm::process::state::zombie
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::zombie
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::zombie
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/zombie.proof.rs:387:13
+    |
+383 |     pub proof fn lemma_find_thread_matches_view_spec(&self, tid: u64)
+    |     ----------------------------------------------------------------- at the end of the function body
+...
+387 |             self.spec_find_thread(tid) == self@.spec_find_thread(tid),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/zombie.proof.rs:412:13
+    |
+410 |     pub proof fn lemma_has_zombie_thread_matches_view(&self, tid: u64)
+    |     ------------------------------------------------------------------ at the end of the function body
+411 |         ensures
+412 |             self.spec_has_zombie_thread(tid) == self@.spec_has_zombie_thread(tid),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 22 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 22
+Errors: 2
+Status: FAILED
+No changes to commit in verus/
