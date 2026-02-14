@@ -255,6 +255,59 @@ impl InterruptedProcess {
             new_self.wf(),
     {
         reveal(InterruptedProcess::wf);
+        // mutation_frame_preserved uses view-level =~=. Bridge back to concrete.
+        // View equality of Seq<int> implies concrete Seq<u64> equality via injectivity.
+        assert(new_self@.interrupted_thread_ids =~= old_self@.interrupted_thread_ids);
+        assert(new_self@.sleeping_thread_ids =~= old_self@.sleeping_thread_ids);
+        assert(new_self@.zombie_thread_ids =~= old_self@.zombie_thread_ids);
+
+        // Interrupted: view equality → concrete equality.
+        assert(new_self.interrupted_thread_ids@.len() == old_self.interrupted_thread_ids@.len()) by {
+            assert(spec_u64_seq_as_int(new_self.interrupted_thread_ids@).len()
+                == spec_u64_seq_as_int(old_self.interrupted_thread_ids@).len());
+        };
+        assert forall|i: int| 0 <= i < new_self.interrupted_thread_ids@.len()
+            implies new_self.interrupted_thread_ids@[i] == old_self.interrupted_thread_ids@[i]
+        by {
+            let a: u64 = new_self.interrupted_thread_ids@[i];
+            let b: u64 = old_self.interrupted_thread_ids@[i];
+            assert(a as int == spec_u64_seq_as_int(new_self.interrupted_thread_ids@)[i]);
+            assert(b as int == spec_u64_seq_as_int(old_self.interrupted_thread_ids@)[i]);
+            assert(a as int == b as int);
+        };
+        assert(new_self.interrupted_thread_ids@ =~= old_self.interrupted_thread_ids@);
+
+        // Sleeping: view equality → concrete equality.
+        assert(new_self.sleeping_thread_ids@.len() == old_self.sleeping_thread_ids@.len()) by {
+            assert(spec_u64_seq_as_int(new_self.sleeping_thread_ids@).len()
+                == spec_u64_seq_as_int(old_self.sleeping_thread_ids@).len());
+        };
+        assert forall|i: int| 0 <= i < new_self.sleeping_thread_ids@.len()
+            implies new_self.sleeping_thread_ids@[i] == old_self.sleeping_thread_ids@[i]
+        by {
+            let a: u64 = new_self.sleeping_thread_ids@[i];
+            let b: u64 = old_self.sleeping_thread_ids@[i];
+            assert(a as int == spec_u64_seq_as_int(new_self.sleeping_thread_ids@)[i]);
+            assert(b as int == spec_u64_seq_as_int(old_self.sleeping_thread_ids@)[i]);
+            assert(a as int == b as int);
+        };
+        assert(new_self.sleeping_thread_ids@ =~= old_self.sleeping_thread_ids@);
+
+        // Zombie: view equality → concrete equality.
+        assert(new_self.zombie_thread_ids@.len() == old_self.zombie_thread_ids@.len()) by {
+            assert(spec_u64_seq_as_int(new_self.zombie_thread_ids@).len()
+                == spec_u64_seq_as_int(old_self.zombie_thread_ids@).len());
+        };
+        assert forall|i: int| 0 <= i < new_self.zombie_thread_ids@.len()
+            implies new_self.zombie_thread_ids@[i] == old_self.zombie_thread_ids@[i]
+        by {
+            let a: u64 = new_self.zombie_thread_ids@[i];
+            let b: u64 = old_self.zombie_thread_ids@[i];
+            assert(a as int == spec_u64_seq_as_int(new_self.zombie_thread_ids@)[i]);
+            assert(b as int == spec_u64_seq_as_int(old_self.zombie_thread_ids@)[i]);
+            assert(a as int == b as int);
+        };
+        assert(new_self.zombie_thread_ids@ =~= old_self.zombie_thread_ids@);
     }
 
     //==============================================================================================
@@ -352,6 +405,75 @@ impl InterruptedProcess {
     //==============================================================================================
     // find_thread() Lemmas
     //==============================================================================================
+
+    /// Bridging lemma: connects the concrete `u64`-based `spec_find_thread`
+    /// with the abstract `int`-based view-level `spec_find_thread`, proving
+    /// they produce identical results.
+    proof fn lemma_find_thread_view_equiv(p: &InterruptedProcess, tid: u64)
+        ensures
+            p.spec_find_thread(tid) == p@.spec_find_thread(tid as int),
+    {
+        // Bridge interrupted thread containment: exec ↔ view.
+        assert(p.spec_has_interrupted_thread(tid) ==>
+            p@.spec_has_interrupted_thread(tid as int)) by {
+            if p.spec_has_interrupted_thread(tid) {
+                let i: int = choose|i: int| 0 <= i < p.interrupted_thread_ids@.len()
+                    && p.interrupted_thread_ids@[i] == tid;
+                assert(spec_u64_seq_as_int(p.interrupted_thread_ids@)[i] == tid as int);
+            }
+        };
+        assert(!p.spec_has_interrupted_thread(tid) ==>
+            !p@.spec_has_interrupted_thread(tid as int)) by {
+            if !p.spec_has_interrupted_thread(tid) {
+                assert forall|i: int|
+                    0 <= i < spec_u64_seq_as_int(p.interrupted_thread_ids@).len()
+                    implies spec_u64_seq_as_int(p.interrupted_thread_ids@)[i] != tid as int
+                by {
+                    assert(p.interrupted_thread_ids@[i] != tid);
+                };
+            }
+        };
+
+        // Bridge sleeping thread containment: exec ↔ view.
+        assert(p.spec_has_sleeping_thread(tid) ==>
+            p@.spec_has_sleeping_thread(tid as int)) by {
+            if p.spec_has_sleeping_thread(tid) {
+                let i: int = choose|i: int| 0 <= i < p.sleeping_thread_ids@.len()
+                    && p.sleeping_thread_ids@[i] == tid;
+                assert(spec_u64_seq_as_int(p.sleeping_thread_ids@)[i] == tid as int);
+            }
+        };
+        assert(!p.spec_has_sleeping_thread(tid) ==>
+            !p@.spec_has_sleeping_thread(tid as int)) by {
+            if !p.spec_has_sleeping_thread(tid) {
+                assert forall|i: int|
+                    0 <= i < spec_u64_seq_as_int(p.sleeping_thread_ids@).len()
+                    implies spec_u64_seq_as_int(p.sleeping_thread_ids@)[i] != tid as int
+                by {
+                    assert(p.sleeping_thread_ids@[i] != tid);
+                };
+            }
+        };
+
+        // Bridge zombie thread containment: exec ↔ view.
+        if p.spec_has_zombie_thread(tid) {
+            let j: int = choose|j: int| 0 <= j < p.zombie_thread_ids@.len()
+                && p.zombie_thread_ids@[j] == tid;
+            assert(p.zombie_thread_ids@[j] as int == tid as int);
+            assert(p@.zombie_thread_ids[j] == tid as int);
+            assert(p@.spec_has_zombie_thread(tid as int));
+        } else {
+            assert forall|j: int|
+                0 <= j < p@.zombie_thread_ids.len()
+                implies p@.zombie_thread_ids[j] != tid as int
+            by {
+                let a: u64 = p.zombie_thread_ids@[j];
+                assert(a != tid);
+                assert(p@.zombie_thread_ids[j] == a as int);
+            };
+            assert(!p@.spec_has_zombie_thread(tid as int));
+        }
+    }
 
     /// Lemma: spec_find_thread returns None iff the thread is not in any list.
     pub proof fn lemma_find_thread_not_found(&self, tid: u64)

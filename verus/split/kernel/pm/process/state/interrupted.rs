@@ -175,10 +175,10 @@ impl InterruptedProcess {
             Self::spec_no_duplicates(zombie_ids@),
             Self::spec_seqs_disjoint(interrupted_ids@, zombie_ids@),
         ensures
-            result.spec_pid() == pid,
-            result.sleeping_thread_ids@.len() == 0,
-            result.interrupted_thread_ids@ == interrupted_ids@,
-            result.zombie_thread_ids@ == zombie_ids@,
+            result@.pid == pid as int,
+            result@.sleeping_thread_ids.len() == 0,
+            result@.interrupted_thread_ids =~= spec_u64_seq_as_int(interrupted_ids@),
+            result@.zombie_thread_ids =~= spec_u64_seq_as_int(zombie_ids@),
             result.wf(),
     {
         proof {
@@ -222,10 +222,10 @@ impl InterruptedProcess {
             Self::spec_seqs_disjoint(interrupted_ids@, zombie_ids@),
             Self::spec_seqs_disjoint(sleeping_ids@, zombie_ids@),
         ensures
-            result.spec_pid() == pid,
-            result.sleeping_thread_ids@ == sleeping_ids@,
-            result.interrupted_thread_ids@ == interrupted_ids@,
-            result.zombie_thread_ids@ == zombie_ids@,
+            result@.pid == pid as int,
+            result@.sleeping_thread_ids =~= spec_u64_seq_as_int(sleeping_ids@),
+            result@.interrupted_thread_ids =~= spec_u64_seq_as_int(interrupted_ids@),
+            result@.zombie_thread_ids =~= spec_u64_seq_as_int(zombie_ids@),
             result.wf(),
     {
         proof {
@@ -247,8 +247,10 @@ impl InterruptedProcess {
     ///
     /// The process identifier.
     pub fn state(&self) -> (result: u64)
+        requires
+            self.wf(),
         ensures
-            result == self.spec_pid(),
+            result as int == self@.pid,
     {
         self.pid
     }
@@ -267,11 +269,11 @@ impl InterruptedProcess {
         requires
             old(self).wf(),
         ensures
-            result == self.spec_pid(),
-            self.spec_pid() == old(self).spec_pid(),
-            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
-            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
-            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            result as int == self@.pid,
+            self@.pid == old(self)@.pid,
+            self@.interrupted_thread_ids =~= old(self)@.interrupted_thread_ids,
+            self@.sleeping_thread_ids =~= old(self)@.sleeping_thread_ids,
+            self@.zombie_thread_ids =~= old(self)@.zombie_thread_ids,
             self.wf(),
     {
         proof {
@@ -316,22 +318,22 @@ impl InterruptedProcess {
         requires
             self.wf(),
         ensures
-            result.spec_pid() == self.spec_pid(),
+            result@.pid == self@.pid,
             result.wf(),
             // Exactly one ready thread: the front interrupted thread.
-            result.ready_thread_ids@.len() == 1,
-            result.ready_thread_ids@[0] == self.interrupted_thread_ids@[0],
+            result@.ready_thread_ids.len() == 1,
+            result@.ready_thread_ids[0] == self@.interrupted_thread_ids[0],
             // Admission time matches the oracle parameter.
-            result.ready_admission_times@.len() == 1,
-            result.ready_admission_times@[0] == admission_time,
+            result@.ready_admission_times.len() == 1,
+            result@.ready_admission_times[0] == admission_time as int,
             // Remaining interrupted threads (tail of original list).
-            result.interrupted_thread_ids@ ==
-                self.interrupted_thread_ids@.subrange(1, self.interrupted_thread_ids@.len() as int),
-            result.interrupted_thread_ids@.len() == self.spec_interrupted_count() - 1,
+            result@.interrupted_thread_ids =~=
+                self@.interrupted_thread_ids.subrange(
+                    1, self@.interrupted_thread_ids.len() as int),
             // Sleeping threads preserved.
-            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
+            result@.sleeping_thread_ids =~= self@.sleeping_thread_ids,
             // Zombie threads preserved.
-            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+            result@.zombie_thread_ids =~= self@.zombie_thread_ids,
     {
         // Destructure self to work with individual fields.
         let pid: u64 = self.pid;
@@ -460,20 +462,19 @@ impl InterruptedProcess {
             self.wf(),
             Self::spec_admission_time_valid(admission_time as int, clock_state@),
         ensures
-            result.spec_pid() == self.spec_pid(),
+            result@.pid == self@.pid,
             result.wf(),
-            result.ready_thread_ids@.len() == 1,
-            result.ready_thread_ids@[0] == self.interrupted_thread_ids@[0],
-            result.ready_admission_times@.len() == 1,
-            result.ready_admission_times@[0] == admission_time,
+            result@.ready_thread_ids.len() == 1,
+            result@.ready_thread_ids[0] == self@.interrupted_thread_ids[0],
+            result@.ready_admission_times.len() == 1,
+            result@.ready_admission_times[0] == admission_time as int,
             Self::spec_admission_time_valid(
-                result.ready_admission_times@[0] as int, clock_state@),
-            result.interrupted_thread_ids@ ==
-                self.interrupted_thread_ids@.subrange(
-                    1, self.interrupted_thread_ids@.len() as int),
-            result.interrupted_thread_ids@.len() == self.spec_interrupted_count() - 1,
-            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
-            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+                result@.ready_admission_times[0], clock_state@),
+            result@.interrupted_thread_ids =~=
+                self@.interrupted_thread_ids.subrange(
+                    1, self@.interrupted_thread_ids.len() as int),
+            result@.sleeping_thread_ids =~= self@.sleeping_thread_ids,
+            result@.zombie_thread_ids =~= self@.zombie_thread_ids,
     {
         self.resume(admission_time)
     }
@@ -507,9 +508,14 @@ impl InterruptedProcess {
     ///
     /// The ghost list variant.
     pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<int>>)
+        requires
+            self.wf(),
         ensures
-            result@ == self.spec_find_thread(tid),
+            result@ == self@.spec_find_thread(tid as int),
     {
+        proof {
+            Self::lemma_find_thread_view_equiv(self, tid);
+        }
         Ghost(self.spec_find_thread(tid))
     }
 
@@ -530,15 +536,16 @@ impl InterruptedProcess {
         requires
             old(self).wf(),
         ensures
-            result@ == old(self).spec_find_thread(tid),
-            self.spec_pid() == old(self).spec_pid(),
-            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
-            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
-            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            result@ == old(self)@.spec_find_thread(tid as int),
+            self@.pid == old(self)@.pid,
+            self@.interrupted_thread_ids =~= old(self)@.interrupted_thread_ids,
+            self@.sleeping_thread_ids =~= old(self)@.sleeping_thread_ids,
+            self@.zombie_thread_ids =~= old(self)@.zombie_thread_ids,
             self.wf(),
     {
         proof {
             reveal(InterruptedProcess::wf);
+            Self::lemma_find_thread_view_equiv(self, tid);
         }
         Ghost(old(self).spec_find_thread(tid))
     }

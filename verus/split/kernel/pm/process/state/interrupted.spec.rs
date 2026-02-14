@@ -256,11 +256,13 @@ impl InterruptedProcess {
     }
 
     /// Spec function: frame condition for mutable accessor (`state_mut()`).
+    ///
+    /// Uses view-level fields per methodology Step 3.
     pub open spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
-        &&& new_self.spec_pid() == old_self.spec_pid()
-        &&& new_self.interrupted_thread_ids@ == old_self.interrupted_thread_ids@
-        &&& new_self.sleeping_thread_ids@ == old_self.sleeping_thread_ids@
-        &&& new_self.zombie_thread_ids@ == old_self.zombie_thread_ids@
+        &&& new_self@.pid == old_self@.pid
+        &&& new_self@.interrupted_thread_ids =~= old_self@.interrupted_thread_ids
+        &&& new_self@.sleeping_thread_ids =~= old_self@.sleeping_thread_ids
+        &&& new_self@.zombie_thread_ids =~= old_self@.zombie_thread_ids
     }
 
     /// Spec constant: interrupt reason for `Killed`.
@@ -430,6 +432,57 @@ impl InterruptedProcessView {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
+    }
+
+    /// View-level helper: checks if a sequence contains a given value.
+    pub open spec fn spec_seq_contains(s: Seq<int>, val: int) -> bool {
+        exists|i: int| 0 <= i < s.len() && s[i] == val
+    }
+
+    /// View-level helper: checks if a thread ID is in the interrupted list.
+    pub open spec fn spec_has_interrupted_thread(&self, tid: int) -> bool {
+        exists|i: int| 0 <= i < self.interrupted_thread_ids.len()
+            && self.interrupted_thread_ids[i] == tid
+    }
+
+    /// View-level helper: checks if a thread ID is in the sleeping list.
+    pub open spec fn spec_has_sleeping_thread(&self, tid: int) -> bool {
+        exists|i: int| 0 <= i < self.sleeping_thread_ids.len()
+            && self.sleeping_thread_ids[i] == tid
+    }
+
+    /// View-level helper: checks if a thread ID is in the zombie list.
+    pub open spec fn spec_has_zombie_thread(&self, tid: int) -> bool {
+        exists|i: int| 0 <= i < self.zombie_thread_ids.len()
+            && self.zombie_thread_ids[i] == tid
+    }
+
+    /// View-level helper: checks if a thread ID is in any list.
+    pub open spec fn spec_has_thread(&self, tid: int) -> bool {
+        self.spec_has_interrupted_thread(tid)
+        || self.spec_has_sleeping_thread(tid)
+        || self.spec_has_zombie_thread(tid)
+    }
+
+    /// View-level spec function: models `find_thread()` — returns which list
+    /// a thread is in.
+    ///
+    /// - `Some(0)` if found in interrupted threads.
+    /// - `Some(1)` if found in sleeping threads.
+    /// - `Some(2)` if found in zombie threads.
+    /// - `None` if not found.
+    ///
+    /// Search order matches original: interrupted → sleeping → zombie.
+    pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+        if self.spec_has_interrupted_thread(tid) {
+            Some(0int)
+        } else if self.spec_has_sleeping_thread(tid) {
+            Some(1int)
+        } else if self.spec_has_zombie_thread(tid) {
+            Some(2int)
+        } else {
+            None
+        }
     }
 
     /// View-level well-formedness predicate.
