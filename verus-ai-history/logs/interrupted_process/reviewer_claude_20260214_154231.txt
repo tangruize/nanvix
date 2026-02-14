@@ -1,0 +1,128 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T15:44:24.188302
+Model: claude-opus-4.6
+Session: dad37e2e-0ffb-4a35-a785-e1f37963e64b
+Duration: 112.7s
+Exit code: 0
+
+=== Prompt ===
+Review exec consistency fixes for interrupted_process.
+
+Original source: src/kernel/src/pm/process/state/interrupted.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - interrupted.rs (exec)
+  - interrupted.spec.rs (spec)
+  - interrupted.proof.rs (proof)
+
+Consistency report: /home/ubuntu/nanvix/verus-ai-history/ast-consistency/interrupted_process_20260214_154057_fix.md
+
+Review criteria:
+1. Were all MISMATCH functions properly restored or equivalence documented?
+2. Were MISSING functions added with proper verification?
+3. Are equivalence justifications sound?
+4. Does the exec code now faithfully represent the original source?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh interrupted_process
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/interrupted_process/exec-consistency_20260214_154057.md.
+
+Output format:
+```markdown
+# Review: interrupted_process Exec Consistency (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+
+
+I'll review the exec consistency fixes for `interrupted_process` by examining the original source, the verified code, and the consistency report.
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs
+  └ 1 line read
+
+● Read verus/split/kernel/pm/process/state/interrupted.rs
+  └ 580 lines read
+
+● Read src/kernel/src/pm/process/state/interrupted.rs
+  └ 184 lines read
+
+● Read verus-ai-history/ast-consistency/interrupted_process_20260214_154057_fix.md
+  └ 59 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.spec.rs
+  └ 649 lines read
+
+Let me view sections of the proof file and run verification.
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs lines 1-100
+  └ 100 lines read
+
+● Compare function signatures between original and Verus
+  $ cd /home/ubuntu/nanvix && diff <(grep -E '^\s*(pub\s+)?(fn |pub fn )'
+  src/kernel/src/pm/process/state/interrupted.rs | sed 's/^\s*//' | sort) <(grep -E
+  '^\s*(pub\s+)?(fn |pub fn )' verus/split/kernel/pm/process/state/interrupted.rs | sed 's/^\s*//' |
+   sort) 2>&1
+  └ 16 lines...
+
+● Run verification for interrupted_process
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh interrupted_process 2>&1 | tail -30
+  └ 23 lines...
+
+Now let me check some key details in the proof file and verify the `find_thread` spec model against the original search semantics.
+
+● Count proof functions
+  $ cd /home/ubuntu/nanvix && grep -c 'proof fn\|pub fn'
+  verus/split/kernel/pm/process/state/interrupted.proof.rs
+  └ 2 lines...
+
+● Check proof lemmas in proof file
+  $ cd /home/ubuntu/nanvix && grep -n
+  'lemma_find_thread_refinement_assumption\|spec_find_thread_integration_obligation\|lemma_find_
+  thread_result_unique\|lemma_find_thread_obligation_implies\|lemma_find_thread_view_equiv\|lemm
+  a_pid_obligation_preserved\|lemma_project_to_runnable_boundary\|lemma_resume_refines_spec\|lem
+  ma_subrange_preserves_no_duplicates\|lemma_front_not_in_tail\|lemma_tail_disjoint' ...
+  └ 14 lines...
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs lines 504-560
+  └ 57 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs lines 822-940
+  └ 119 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs lines 1166-1250
+  └ 30 lines read
+
+Now let me verify the `resume()` function's algorithm faithfulness more closely — comparing original's `pop_front` + `resume()` + `RunnableProcess::from_state()` with the Verus version.
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs lines 412-504
+  └ 93 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs lines 940-1000
+  └ 61 lines read
+
+Now let me create the review directory and write the review.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/interrupted_process
+  └ 1 line...
+
+● Create verus-ai-history/reviews/interrupted_process/exec-consistency_20260214_154057.md (+93)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 32.459s
+Total session time:     1m 51.421s
+Total code changes:     +93 -0
+Breakdown by AI model:
+ claude-opus-4.6         461.7k in, 4.1k out, 376.4k cached (Est. 3 Premium requests)
+
+=== End ===
