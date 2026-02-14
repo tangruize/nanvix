@@ -17,8 +17,8 @@ impl Condvar {
     /// Lemma: A newly created condvar has an empty sleeping queue.
     pub proof fn lemma_new_is_empty()
         ensures
-            Condvar::spec_new_view() == (CondvarView { sleeping: Seq::<(i32, i32)>::empty() }),
-            Condvar::spec_new_view().sleeping.len() == 0,
+            CondvarView::spec_new() == (CondvarView { sleeping: Seq::<(int, int)>::empty() }),
+            CondvarView::spec_new().sleeping.len() == 0,
     {
     }
 
@@ -27,7 +27,7 @@ impl Condvar {
         requires
             self.wf(),
         ensures
-            self.spec_is_empty() == !self.spec_is_nonempty(),
+            self@.spec_is_empty() == !self@.spec_is_nonempty(),
     {
     }
 
@@ -36,15 +36,19 @@ impl Condvar {
         requires
             self.wf(),
         ensures
-            self.spec_is_empty() || self.spec_is_nonempty(),
-            !(self.spec_is_empty() && self.spec_is_nonempty()),
+            self@.spec_is_empty() || self@.spec_is_nonempty(),
+            !(self@.spec_is_empty() && self@.spec_is_nonempty()),
     {
     }
 
     /// Lemma: View reflects the queue state.
     pub proof fn lemma_view_reflects_state(&self)
         ensures
-            self@.sleeping =~= self.sleeping@,
+            self@.sleeping.len() == self.sleeping@.len(),
+            forall|i: int|
+                #![trigger self@.sleeping[i]]
+                0 <= i < self@.sleeping.len() as int ==>
+                    self@.sleeping[i] == (self.sleeping@[i].0 as int, self.sleeping@[i].1 as int),
     {
     }
 
@@ -53,8 +57,8 @@ impl Condvar {
         requires
             a@ == b@,
         ensures
-            a.spec_len() == b.spec_len(),
-            a.spec_is_empty() == b.spec_is_empty(),
+            a@.spec_len() == b@.spec_len(),
+            a@.spec_is_empty() == b@.spec_is_empty(),
     {
     }
 
@@ -63,8 +67,8 @@ impl Condvar {
         requires
             self.wf(),
         ensures
-            self.len as nat == self.spec_len(),
-            (self.len == 0) == self.spec_is_empty(),
+            self.len as nat == self@.spec_len(),
+            (self.len == 0) == self@.spec_is_empty(),
     {
     }
 
@@ -142,7 +146,7 @@ impl Condvar {
         requires
             0 <= idx < s.len(),
         ensures
-            Condvar::spec_remove_at_seq(s, idx).len() == s.len() - 1,
+            Condvar::concrete_remove_at_seq(s, idx).len() == s.len() - 1,
     {
     }
 
@@ -152,9 +156,9 @@ impl Condvar {
             0 <= idx < s.len(),
         ensures
             forall|i: int|
-                #![trigger Condvar::spec_remove_at_seq(s, idx)[i]]
+                #![trigger Condvar::concrete_remove_at_seq(s, idx)[i]]
                 0 <= i < idx
-                    ==> Condvar::spec_remove_at_seq(s, idx)[i] == s[i],
+                    ==> Condvar::concrete_remove_at_seq(s, idx)[i] == s[i],
     {
     }
 
@@ -164,9 +168,9 @@ impl Condvar {
             0 <= idx < s.len(),
         ensures
             forall|i: int|
-                #![trigger Condvar::spec_remove_at_seq(s, idx)[i]]
+                #![trigger Condvar::concrete_remove_at_seq(s, idx)[i]]
                 idx <= i < s.len() as int - 1
-                    ==> Condvar::spec_remove_at_seq(s, idx)[i] == s[i + 1],
+                    ==> Condvar::concrete_remove_at_seq(s, idx)[i] == s[i + 1],
     {
     }
 
@@ -246,8 +250,8 @@ impl Condvar {
     /// Lemma: Clear produces an empty queue equal to a new condvar's view.
     pub proof fn lemma_clear_produces_new_view()
         ensures
-            Seq::<(i32, i32)>::empty().len() == 0,
-            (CondvarView { sleeping: Seq::<(i32, i32)>::empty() }) == Condvar::spec_new_view(),
+            Seq::<(int, int)>::empty().len() == 0,
+            (CondvarView { sleeping: Seq::<(int, int)>::empty() }) == CondvarView::spec_new(),
     {
     }
 
@@ -255,8 +259,8 @@ impl Condvar {
     pub proof fn lemma_empty_not_contains_pid(pid_val: int)
         ensures
             !exists|i: int|
-                #![trigger Seq::<(i32, i32)>::empty()[i]]
-                0 <= i < 0 && Seq::<(i32, i32)>::empty()[i].0 == pid_val,
+                #![trigger Seq::<(int, int)>::empty()[i]]
+                0 <= i < 0 && Seq::<(int, int)>::empty()[i].0 == pid_val,
     {
     }
 
@@ -264,8 +268,8 @@ impl Condvar {
     pub proof fn lemma_empty_not_contains_tid(tid_val: int)
         ensures
             !exists|i: int|
-                #![trigger Seq::<(i32, i32)>::empty()[i]]
-                0 <= i < 0 && Seq::<(i32, i32)>::empty()[i].1 == tid_val,
+                #![trigger Seq::<(int, int)>::empty()[i]]
+                0 <= i < 0 && Seq::<(int, int)>::empty()[i].1 == tid_val,
     {
     }
 }
@@ -384,7 +388,7 @@ impl Condvar {
                 && i != j
                 ==> s[i] != s[j],
         ensures ({
-            let result: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(s, idx);
+            let result: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(s, idx);
             forall|i: int, j: int|
                 #![trigger result[i], result[j]]
                 0 <= i < result.len() as int
@@ -393,7 +397,7 @@ impl Condvar {
                 ==> result[i] != result[j]
         }),
     {
-        let result: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(s, idx);
+        let result: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(s, idx);
         assert forall|i: int, j: int|
             #![trigger result[i], result[j]]
             0 <= i < result.len() as int
@@ -431,14 +435,14 @@ impl Condvar {
 // providing a `&self`-based interface using `spec_all_unique()`.
 
 impl Condvar {
-    /// Lemma: Enqueue preserves `spec_all_unique` when the entry is not present.
+    /// Lemma: Enqueue preserves uniqueness when the entry is not present.
     pub proof fn lemma_enqueue_preserves_unique_cv(&self, pid_val: i32, tid_val: i32)
         requires
             self.wf(),
-            self.spec_all_unique(),
-            !self.spec_contains_entry(pid_val as int, tid_val as int),
+            self.concrete_all_unique(),
+            !self@.spec_contains_entry(pid_val as int, tid_val as int),
         ensures ({
-            let new_sleeping: Seq<(i32, i32)> = self@.sleeping.push((pid_val, tid_val));
+            let new_sleeping: Seq<(i32, i32)> = self.sleeping@.push((pid_val, tid_val));
             forall|i: int, j: int|
                 #![trigger new_sleeping[i], new_sleeping[j]]
                 0 <= i < new_sleeping.len() as int
@@ -448,7 +452,7 @@ impl Condvar {
         }),
     {
         let entry: (i32, i32) = (pid_val, tid_val);
-        let s: Seq<(i32, i32)> = self@.sleeping;
+        let s: Seq<(i32, i32)> = self.sleeping@;
 
         // Prove that no existing element equals the new entry.
         assert forall|i: int|
@@ -456,7 +460,7 @@ impl Condvar {
             0 <= i < s.len() as int
         implies s[i] != entry by {
             if s[i] == entry {
-                // Contradicts !self.spec_contains_entry.
+                // Contradicts !self@.spec_contains_entry.
                 assert(s[i].0 == pid_val && s[i].1 == tid_val);
             }
         }
@@ -464,15 +468,15 @@ impl Condvar {
         Condvar::lemma_enqueue_preserves_unique(s, entry);
     }
 
-    /// Lemma: Dequeue preserves `spec_all_unique`.
+    /// Lemma: Dequeue preserves uniqueness.
     pub proof fn lemma_dequeue_preserves_unique_cv(&self)
         requires
             self.wf(),
-            self.spec_all_unique(),
-            !self.spec_is_empty(),
+            self.concrete_all_unique(),
+            self.sleeping@.len() > 0,
         ensures ({
             let new_sleeping: Seq<(i32, i32)> =
-                self@.sleeping.subrange(1, self@.sleeping.len() as int);
+                self.sleeping@.subrange(1, self.sleeping@.len() as int);
             forall|i: int, j: int|
                 #![trigger new_sleeping[i], new_sleeping[j]]
                 0 <= i < new_sleeping.len() as int
@@ -481,18 +485,18 @@ impl Condvar {
                 ==> new_sleeping[i] != new_sleeping[j]
         }),
     {
-        Condvar::lemma_dequeue_preserves_unique(self@.sleeping);
+        Condvar::lemma_dequeue_preserves_unique(self.sleeping@);
     }
 
-    /// Lemma: Remove-at preserves `spec_all_unique`.
+    /// Lemma: Remove-at preserves uniqueness.
     pub proof fn lemma_remove_at_preserves_unique_cv(&self, idx: int)
         requires
             self.wf(),
-            self.spec_all_unique(),
-            0 <= idx < self.len as int,
+            self.concrete_all_unique(),
+            0 <= idx < self.sleeping@.len() as int,
         ensures ({
             let new_sleeping: Seq<(i32, i32)> =
-                Condvar::spec_remove_at_seq(self@.sleeping, idx);
+                Condvar::concrete_remove_at_seq(self.sleeping@, idx);
             forall|i: int, j: int|
                 #![trigger new_sleeping[i], new_sleeping[j]]
                 0 <= i < new_sleeping.len() as int
@@ -501,7 +505,7 @@ impl Condvar {
                 ==> new_sleeping[i] != new_sleeping[j]
         }),
     {
-        Condvar::lemma_remove_at_preserves_unique(self@.sleeping, idx);
+        Condvar::lemma_remove_at_preserves_unique(self.sleeping@, idx);
     }
 
     /// Lemma: Clear preserves `spec_all_unique`.
@@ -543,14 +547,14 @@ impl Condvar {
                 && i != j
                 ==> s[i] != s[j],
         ensures ({
-            let result: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(s, idx);
+            let result: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(s, idx);
             let entry: (i32, i32) = s[idx];
             forall|k: int|
                 #![trigger result[k]]
                 0 <= k < result.len() as int ==> result[k] != entry
         }),
     {
-        let result: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(s, idx);
+        let result: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(s, idx);
         let entry: (i32, i32) = s[idx];
         assert forall|k: int|
             #![trigger result[k]]
@@ -580,7 +584,7 @@ impl Condvar {
                 && i != j
                 ==> s[i] != s[j],
         ensures ({
-            let result: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(s, idx);
+            let result: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(s, idx);
             !exists|k: int|
                 #![trigger result[k]]
                 0 <= k < result.len() as int
@@ -618,7 +622,7 @@ impl Condvar {
                 && i != j
                 ==> s[i] != s[j],
         ensures ({
-            let result: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(s, idx);
+            let result: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(s, idx);
             // (1) The entry is absent from the result.
             &&& forall|k: int|
                 #![trigger result[k]]
@@ -636,7 +640,7 @@ impl Condvar {
         }),
     {
         Condvar::lemma_remove_entry_absent(s, idx);
-        let result: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(s, idx);
+        let result: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(s, idx);
         // Each element in result maps back to the original sequence.
         assert forall|k: int|
             #![trigger result[k]]
@@ -696,14 +700,14 @@ impl Condvar {
             // The entry is at the last index:
             let idx: int = s.len() as int;
             // After remove_entry at that index:
-            let after_cleanup: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(after_enqueue, idx);
+            let after_cleanup: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(after_enqueue, idx);
             // The queue is restored to its original state:
             after_cleanup =~= s
         }),
     {
         let after_enqueue: Seq<(i32, i32)> = s.push(entry);
         let idx: int = s.len() as int;
-        let after_cleanup: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(after_enqueue, idx);
+        let after_cleanup: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(after_enqueue, idx);
         // after_cleanup == after_enqueue[0..idx] + after_enqueue[idx+1..len]
         // == s[0..s.len()] + empty == s
         assert(after_cleanup =~= s);
@@ -742,12 +746,12 @@ impl Condvar {
             forall|i: int|
                 #![trigger s[i]]
                 0 <= i < s.len() as int
-                ==> s[i].0 != Condvar::spec_kernel_pid(),
+                ==> s[i].0 as int != CondvarView::spec_kernel_pid(),
         ensures ({
             // After enqueue then cleanup, the original state is restored.
             let after_enqueue: Seq<(i32, i32)> = s.push(entry);
             let idx: int = s.len() as int;
-            let after_cleanup: Seq<(i32, i32)> = Condvar::spec_remove_at_seq(after_enqueue, idx);
+            let after_cleanup: Seq<(i32, i32)> = Condvar::concrete_remove_at_seq(after_enqueue, idx);
             after_cleanup =~= s
         }),
     {
@@ -772,18 +776,18 @@ impl Condvar {
     /// Lemma: A condvar is drop-safe if and only if the queue is empty.
     pub proof fn lemma_drop_safe_iff_empty(&self)
         ensures
-            self.spec_drop_safe() == self.spec_is_empty(),
+            self@.spec_drop_safe() == self@.spec_is_empty(),
     {
     }
 
     /// Lemma: After `clear()`, the condvar is drop-safe.
     pub proof fn lemma_clear_is_drop_safe()
         ensures
-            Seq::<(i32, i32)>::empty().len() == 0,
+            Seq::<(int, int)>::empty().len() == 0,
     {
     }
 
-    /// Lemma: Any well-formed condvar with `len == 0` is drop-safe.
+    /// Lemma: Any well-formed condvar with an empty queue is drop-safe.
     ///
     /// # Description
     ///
@@ -794,9 +798,9 @@ impl Condvar {
     pub proof fn lemma_empty_is_drop_safe(&self)
         requires
             self.wf(),
-            self.len == 0,
+            self@.spec_len() == 0,
         ensures
-            self.spec_drop_safe(),
+            self@.spec_drop_safe(),
     {
     }
 }

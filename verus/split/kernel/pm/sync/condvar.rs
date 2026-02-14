@@ -222,9 +222,8 @@ impl Condvar {
     /// A new `Condvar` with no sleeping threads.
     pub fn new() -> (result: Self)
         ensures
-            result.len == 0,
-            result.spec_is_empty(),
-            result@ == Condvar::spec_new_view(),
+            result@.spec_is_empty(),
+            result@ == CondvarView::spec_new(),
             result.wf(),
     {
         Condvar { len: 0, sleeping: Vec::new() }
@@ -244,30 +243,29 @@ impl Condvar {
     pub fn enqueue(&mut self, pid_val: i32, tid_val: i32)
         requires
             old(self).wf(),
-            old(self).len < usize::MAX,
-            !old(self).spec_contains_entry(pid_val as int, tid_val as int),
+            old(self)@.spec_len() < usize::MAX,
+            !old(self)@.spec_contains_entry(pid_val as int, tid_val as int),
             // The kernel process must not sleep (matches original panic guard).
-            pid_val as int != Condvar::spec_kernel_pid(),
+            pid_val as int != CondvarView::spec_kernel_pid(),
         ensures
-            self.len as nat == old(self).len as nat + 1,
-            self@.sleeping =~= old(self)@.sleeping.push((pid_val, tid_val)),
-            !self.spec_is_empty(),
+            self@.spec_len() == old(self)@.spec_len() + 1,
+            self@.sleeping =~= old(self)@.sleeping.push((pid_val as int, tid_val as int)),
+            !self@.spec_is_empty(),
             self.wf(),
     {
         proof {
-            // Bridge from self.spec_all_unique() to raw-Seq uniqueness.
+            // Bridge from wf() to raw-Seq uniqueness on concrete fields.
             let entry: (i32, i32) = (pid_val, tid_val);
             let s: Seq<(i32, i32)> = self.sleeping@;
-            assert(s =~= self@.sleeping);
-            // Uniqueness of s follows from wf() which includes spec_all_unique().
+            // Uniqueness of s follows from wf() which includes concrete_all_unique().
             assert forall|i: int, j: int|
                 #![trigger s[i], s[j]]
                 0 <= i < s.len() as int
                 && 0 <= j < s.len() as int
                 && i != j
             implies s[i] != s[j] by {
-                assert(self@.sleeping[i] == s[i]);
-                assert(self@.sleeping[j] == s[j]);
+                assert(self.sleeping@[i] == s[i]);
+                assert(self.sleeping@[j] == s[j]);
             }
             // No existing element equals the new entry (from !spec_contains_entry).
             assert forall|i: int|
@@ -284,10 +282,10 @@ impl Condvar {
             assert forall|i: int|
                 #![trigger new_s[i]]
                 0 <= i < new_s.len() as int
-            implies new_s[i].0 != Condvar::spec_kernel_pid() by {
+            implies new_s[i].0 as int != CondvarView::spec_kernel_pid() by {
                 if i < s.len() as int {
                     assert(new_s[i] == s[i]);
-                    assert(self@.sleeping[i] == s[i]);
+                    assert(self.sleeping@[i] == s[i]);
                 } else {
                     assert(new_s[i] == entry);
                 }
@@ -324,19 +322,18 @@ impl Condvar {
     ) -> (enqueued: bool)
         requires
             old(self).wf(),
-            old(self).len < usize::MAX,
-            !old(self).spec_contains_entry(pid_val as int, tid_val as int),
-            pid_val as int != Condvar::spec_kernel_pid(),
+            old(self)@.spec_len() < usize::MAX,
+            !old(self)@.spec_contains_entry(pid_val as int, tid_val as int),
+            pid_val as int != CondvarView::spec_kernel_pid(),
         ensures
             enqueued == !alarm_expired,
             // If enqueued: queue grew by one.
-            enqueued ==> self.len as nat == old(self).len as nat + 1,
+            enqueued ==> self@.spec_len() == old(self)@.spec_len() + 1,
             enqueued ==> self@.sleeping =~= old(self)@.sleeping.push(
-                (pid_val, tid_val),
+                (pid_val as int, tid_val as int),
             ),
             // If alarm expired: queue unchanged.
             !enqueued ==> self@ == old(self)@,
-            !enqueued ==> self.len == old(self).len,
             self.wf(),
     {
         if !alarm_expired {
@@ -361,14 +358,14 @@ impl Condvar {
         requires
             old(self).wf(),
         ensures
-            dequeued == !old(self).spec_is_empty(),
-            dequeued ==> self.len as nat == old(self).len as nat - 1,
+            dequeued == !old(self)@.spec_is_empty(),
+            dequeued ==> self@.spec_len() == old(self)@.spec_len() - 1,
             dequeued ==> self@.sleeping =~= old(self)@.sleeping.subrange(
                 1,
                 old(self)@.sleeping.len() as int,
             ),
             // When dequeued, the removed entry was the front of the queue.
-            dequeued ==> old(self)@.sleeping[0] == old(self).spec_front(),
+            dequeued ==> old(self)@.sleeping[0] == old(self)@.spec_front(),
             !dequeued ==> self@ == old(self)@,
             self.wf(),
     {
@@ -400,27 +397,27 @@ impl Condvar {
     pub fn remove_at(&mut self, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            idx < old(self).len,
+            (idx as int) < old(self)@.sleeping.len() as int,
         ensures
             removed,
-            self.len as nat == old(self).len as nat - 1,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
+            self@.spec_len() == old(self)@.spec_len() - 1,
+            self@.sleeping =~= CondvarView::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
         proof {
             // Uniqueness preservation (uses _cv variant to avoid trigger mismatch).
             self.lemma_remove_at_preserves_unique_cv(idx as int);
             // No-kernel-pid preservation: map result elements back to originals.
-            let s: Seq<(i32, i32)> = self@.sleeping;
+            let s: Seq<(i32, i32)> = self.sleeping@;
             let idx_int: int = idx as int;
             let sub1: Seq<(i32, i32)> = s.subrange(0, idx_int);
             let sub2: Seq<(i32, i32)> = s.subrange(idx_int + 1, s.len() as int);
             let result: Seq<(i32, i32)> = sub1 + sub2;
-            assert(result =~= Condvar::spec_remove_at_seq(s, idx_int));
+            assert(result =~= Condvar::concrete_remove_at_seq(s, idx_int));
             assert forall|i: int|
                 #![trigger result[i]]
                 0 <= i < result.len() as int
-            implies result[i].0 != Condvar::spec_kernel_pid() by {
+            implies result[i].0 as int != CondvarView::spec_kernel_pid() by {
                 if i < sub1.len() as int {
                     assert(result[i] == sub1[i]);
                     assert(sub1[i] == s[i]);
@@ -463,12 +460,12 @@ impl Condvar {
     pub fn remove_entry(&mut self, pid_val: i32, tid_val: i32, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            idx < old(self).len,
-            old(self)@.sleeping[idx as int] == (pid_val, tid_val),
+            (idx as int) < old(self)@.sleeping.len() as int,
+            old(self)@.sleeping[idx as int] == (pid_val as int, tid_val as int),
         ensures
             removed,
-            self.len as nat == old(self).len as nat - 1,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
+            self@.spec_len() == old(self)@.spec_len() - 1,
+            self@.sleeping =~= CondvarView::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
         self.remove_at(idx)
@@ -494,7 +491,7 @@ impl Condvar {
     pub fn remove_by_pid(&mut self, pid_val: i32, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            idx < old(self).len,
+            (idx as int) < old(self)@.sleeping.len() as int,
             old(self)@.sleeping[idx as int].0 == pid_val as int,
             // The index is the first match, modeling `position()` semantics.
             forall|k: int|
@@ -502,9 +499,9 @@ impl Condvar {
                 0 <= k < idx as int ==> old(self)@.sleeping[k].0 != pid_val as int,
         ensures
             removed,
-            self.len as nat == old(self).len as nat - 1,
+            self@.spec_len() == old(self)@.spec_len() - 1,
             old(self)@.sleeping[idx as int].0 == pid_val as int,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
+            self@.sleeping =~= CondvarView::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
         self.remove_at(idx)
@@ -530,7 +527,7 @@ impl Condvar {
     pub fn remove_by_tid(&mut self, tid_val: i32, idx: usize) -> (removed: bool)
         requires
             old(self).wf(),
-            idx < old(self).len,
+            (idx as int) < old(self)@.sleeping.len() as int,
             old(self)@.sleeping[idx as int].1 == tid_val as int,
             // The index is the first match, modeling `position()` semantics.
             forall|k: int|
@@ -538,9 +535,9 @@ impl Condvar {
                 0 <= k < idx as int ==> old(self)@.sleeping[k].1 != tid_val as int,
         ensures
             removed,
-            self.len as nat == old(self).len as nat - 1,
+            self@.spec_len() == old(self)@.spec_len() - 1,
             old(self)@.sleeping[idx as int].1 == tid_val as int,
-            self@.sleeping =~= Condvar::spec_remove_at_seq(old(self)@.sleeping, idx as int),
+            self@.sleeping =~= CondvarView::spec_remove_at_seq(old(self)@.sleeping, idx as int),
             self.wf(),
     {
         self.remove_at(idx)
@@ -576,24 +573,23 @@ impl Condvar {
             old(self).wf(),
             // If match exists: match_idx is the first valid match.
             has_match ==> (
-                match_idx < old(self).len
+                (match_idx as int) < old(self)@.sleeping.len() as int
                 && old(self)@.sleeping[match_idx as int].0 == pid_val as int
                 && forall|k: int|
                     #![trigger old(self)@.sleeping[k]]
                     0 <= k < match_idx as int ==> old(self)@.sleeping[k].0 != pid_val as int
             ),
             // If no match: no entry has matching pid.
-            !has_match ==> !old(self).spec_contains_pid(pid_val as int),
+            !has_match ==> !old(self)@.spec_contains_pid(pid_val as int),
         ensures
             found == has_match,
             // If found: removal happened.
-            found ==> self.len as nat == old(self).len as nat - 1,
-            found ==> self@.sleeping =~= Condvar::spec_remove_at_seq(
+            found ==> self@.spec_len() == old(self)@.spec_len() - 1,
+            found ==> self@.sleeping =~= CondvarView::spec_remove_at_seq(
                 old(self)@.sleeping, match_idx as int,
             ),
             // If not found: state unchanged.
             !found ==> self@ == old(self)@,
-            !found ==> self.len == old(self).len,
             self.wf(),
     {
         if has_match {
@@ -628,24 +624,23 @@ impl Condvar {
             old(self).wf(),
             // If match exists: match_idx is the first valid match.
             has_match ==> (
-                match_idx < old(self).len
+                (match_idx as int) < old(self)@.sleeping.len() as int
                 && old(self)@.sleeping[match_idx as int].1 == tid_val as int
                 && forall|k: int|
                     #![trigger old(self)@.sleeping[k]]
                     0 <= k < match_idx as int ==> old(self)@.sleeping[k].1 != tid_val as int
             ),
             // If no match: no entry has matching tid.
-            !has_match ==> !old(self).spec_contains_tid(tid_val as int),
+            !has_match ==> !old(self)@.spec_contains_tid(tid_val as int),
         ensures
             found == has_match,
             // If found: removal happened.
-            found ==> self.len as nat == old(self).len as nat - 1,
-            found ==> self@.sleeping =~= Condvar::spec_remove_at_seq(
+            found ==> self@.spec_len() == old(self)@.spec_len() - 1,
+            found ==> self@.sleeping =~= CondvarView::spec_remove_at_seq(
                 old(self)@.sleeping, match_idx as int,
             ),
             // If not found: state unchanged.
             !found ==> self@ == old(self)@,
-            !found ==> self.len == old(self).len,
             self.wf(),
     {
         if has_match {
@@ -676,13 +671,12 @@ impl Condvar {
         requires
             old(self).wf(),
         ensures
-            count == old(self).len,
+            count as nat == old(self)@.spec_len(),
             // Any actual awakened count from the original satisfies this.
-            Condvar::spec_notify_all_result(0, count as nat),
-            Condvar::spec_notify_all_result(count as nat, count as nat),
-            self.len == 0,
-            self.spec_is_empty(),
-            self@ == Condvar::spec_new_view(),
+            CondvarView::spec_notify_all_result(0, count as nat),
+            CondvarView::spec_notify_all_result(count as nat, count as nat),
+            self@.spec_is_empty(),
+            self@ == CondvarView::spec_new(),
             self.wf(),
     {
         let old_len: usize = self.len;
@@ -700,8 +694,7 @@ impl Condvar {
         requires
             self.wf(),
         ensures
-            result == self.spec_is_empty(),
-            result == (self.len == 0),
+            result == self@.spec_is_empty(),
     {
         self.len == 0
     }
@@ -712,8 +705,10 @@ impl Condvar {
     ///
     /// The current queue length.
     pub fn get_len(&self) -> (result: usize)
+        requires
+            self.wf(),
         ensures
-            result == self.len,
+            result as nat == self@.spec_len(),
     {
         self.len
     }
