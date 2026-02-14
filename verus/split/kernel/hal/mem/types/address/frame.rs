@@ -210,6 +210,8 @@ impl TruncatedMemoryRegion {
     ///
     /// Upon success, the region is returned. Upon failure, an error is returned.
     pub fn new(start: PageAlignedPhysAddr, size: usize) -> (result: Result<TruncatedMemoryRegion, Error>)
+        requires
+            start.inv(),
         ensures
             result is Ok ==> {
                 let region = result->Ok_0;

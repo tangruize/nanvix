@@ -245,8 +245,10 @@ impl TruncatedMemoryRegion {
     ///
     /// # Description
     ///
-    /// The size must be page-aligned and positive.
+    /// The size must be page-aligned and positive, and the start address
+    /// must satisfy its own invariant (page-aligned).
     pub closed spec fn inv(&self) -> bool {
+        &&& self.start.inv()
         &&& self.size as int % FRAME_SIZE as int == 0
         &&& self.size > 0
     }
