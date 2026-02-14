@@ -54,7 +54,7 @@ impl Capability {
         requires
             CapabilityView::is_valid_discriminant(v as int),
         ensures
-            CapabilityView::from_discriminant(v as int).spec_discriminant() == v as int,
+            CapabilityView::from_discriminant(v as int)@.value == v as int,
     {
     }
 
