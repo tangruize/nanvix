@@ -1,0 +1,106 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T08:37:50.021427
+Model: claude-opus-4.6
+Session: 2b82146a-a3f7-4905-9c93-c01efaba209e
+Duration: 122.5s
+Exit code: 0
+
+=== Prompt ===
+Review the abstraction improvements made to zombie_process.
+
+Original source: src/kernel/src/pm/process/state/zombie.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - zombie.rs (exec)
+  - zombie.spec.rs (spec)
+  - zombie.proof.rs (proof)
+
+The prover has added abstract state transition spec functions to the View types.
+
+Review criteria:
+1. COMPLETENESS: Every exec function that changes state has a matching spec
+   transition function on the View type.
+2. CORRECTNESS: Each spec transition function accurately models what the exec
+   function does (field changes, collection operations, etc.).
+3. ABSTRACTION: Spec functions use abstract types (Set, Seq, predicates) rather
+   than mirroring implementation details (bit ops, raw indices).
+4. NO EXEC CHANGES: The .rs exec file must be unmodified from original.
+5. VERIFICATION: Code still verifies (0 errors).
+
+Verification command: ./verus-ai/scripts/verify.sh zombie_process
+
+For each issue, provide:
+- Priority: Critical / High / Medium / Low
+- Location: Function or spec name (and which file)
+- Description: What is wrong or missing
+- Suggested Fix: How to address it
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process/improve-abstraction_20260214_083317.md.
+
+Output format:
+```markdown
+# Review: zombie_process Abstraction (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+### High
+- ...
+### Medium
+- ...
+### Low
+- ...
+
+## Positive Observations
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+
+
+
+
+● Read src/kernel/src/pm/process/state/zombie.rs
+  └ 106 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.rs
+  └ 313 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.proof.rs
+  └ 417 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.spec.rs
+  └ 441 lines read
+
+Now let me run the verification and diff the exec file against the original.
+
+● Diff original vs exec file
+  $ cd /home/ubuntu/nanvix && diff src/kernel/src/pm/process/state/zombie.rs
+  verus/split/kernel/pm/process/state/zombie.rs 2>&1 | head -100
+  └ 101 lines...
+
+● Run verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh zombie_process 2>&1
+  └ 23 lines...
+
+Verification passes: 24 verified, 0 errors. Now let me create the review directory and write the review.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process
+  └ 1 line...
+
+● Create verus-ai-history/reviews/zombie_process/improve-abstraction_20260214_083317.md (+52)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 46.711s
+Total session time:     2m 1.246s
+Total code changes:     +52 -0
+Breakdown by AI model:
+ claude-opus-4.6         263.9k in, 5.1k out, 219.4k cached (Est. 3 Premium requests)
+
+=== End ===
