@@ -23,6 +23,46 @@ pub struct TimerTicksView {
 }
 
 //==================================================================================================
+// TimerTicksView Spec Helpers
+//==================================================================================================
+
+impl TimerTicksView {
+    /// Whether the tick count equals u64::MAX.
+    pub open spec fn is_max(&self) -> bool {
+        self.ticks == u64::MAX as nat
+    }
+
+    /// Whether the tick count is zero.
+    pub open spec fn is_zero(&self) -> bool {
+        self.ticks == 0
+    }
+
+    /// The next tick count (wrapping from u64::MAX to 0).
+    pub open spec fn next_ticks(&self) -> nat {
+        if self.is_max() { 0 } else { self.ticks + 1 }
+    }
+
+    /// The minor (low 32-bit) component of the tick count.
+    pub open spec fn minor(&self) -> nat {
+        self.ticks % (u32::MAX as nat + 1)
+    }
+
+    /// Seconds component for a given timer frequency.
+    pub open spec fn seconds(&self, timer_freq: nat) -> nat
+        recommends timer_freq > 0,
+    {
+        self.ticks / timer_freq
+    }
+
+    /// Nanoseconds component for a given timer frequency.
+    pub open spec fn nanoseconds(&self, timer_freq: nat) -> nat
+        recommends timer_freq > 0,
+    {
+        (self.minor() % timer_freq) * (1_000_000_000 / timer_freq)
+    }
+}
+
+//==================================================================================================
 // Spec Functions
 //==================================================================================================
 
@@ -37,13 +77,13 @@ impl TimerTicks {
         u32::MAX as nat + 1
     }
 
-    /// Spec function: returns the minor tick count.
-    pub open spec fn spec_minor(&self) -> nat {
+    /// Spec function: returns the minor tick count (internal).
+    open spec fn spec_minor(&self) -> nat {
         self.minor as nat
     }
 
-    /// Spec function: returns the major tick count.
-    pub open spec fn spec_major(&self) -> nat {
+    /// Spec function: returns the major tick count (internal).
+    open spec fn spec_major(&self) -> nat {
         self.major as nat
     }
 

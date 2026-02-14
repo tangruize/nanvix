@@ -185,10 +185,8 @@ impl TimerTicks {
     /// A new TimerTicks with both halves set to zero.
     pub fn new() -> (result: Self)
         ensures
-            result.minor == 0,
-            result.major == 0,
-            result.spec_ticks() == 0,
-            result.spec_is_zero(),
+            result@.ticks == 0,
+            result@.is_zero(),
             result@ == TimerTicks::spec_new_view(),
             result.wf(),
     {
@@ -216,14 +214,11 @@ impl TimerTicks {
     /// A tuple of (major, minor) tick counts.
     pub fn get(&self) -> (result: (u32, u32))
         requires
+            self.wf(),
             // Trust Boundary T1: the caller must establish that no concurrent
             // writer can modify major/minor between the two reads.
             Self::spec_no_concurrent_writer_assumption(),
         ensures
-            result.0 == self.major,
-            result.1 == self.minor,
-            result.0 as nat == self.spec_major(),
-            result.1 as nat == self.spec_minor(),
             self.spec_get_consistent(result.0, result.1),
             Self::spec_no_concurrent_writer_assumption(),
     {
@@ -256,10 +251,9 @@ impl TimerTicks {
             old(self).wf(),
         ensures
             self.wf(),
-            result == self.minor,
-            old(self).spec_is_max() ==> self.spec_ticks() == 0,
-            !old(self).spec_is_max() ==> self.spec_ticks() == old(self).spec_ticks() + 1,
-            self.spec_ticks() == old(self).spec_next_ticks(),
+            old(self)@.is_max() ==> self@.ticks == 0,
+            !old(self)@.is_max() ==> self@.ticks == old(self)@.ticks + 1,
+            self@.ticks == old(self)@.next_ticks(),
     {
         if self.minor < u32::MAX {
             self.minor = self.minor + 1;
@@ -324,8 +318,10 @@ impl TimerTicks {
     ///
     /// The combined tick count as u64.
     pub fn ticks(&self) -> (result: u64)
+        requires
+            self.wf(),
         ensures
-            result as nat == self.spec_ticks(),
+            result as nat == self@.ticks,
     {
         proof {
             assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
@@ -343,8 +339,10 @@ impl TimerTicks {
     ///
     /// `true` if ticks == u64::MAX, `false` otherwise.
     pub fn is_max(&self) -> (result: bool)
+        requires
+            self.wf(),
         ensures
-            result == self.spec_is_max(),
+            result == self@.is_max(),
     {
         proof {
             Self::lemma_max_ticks_value();
@@ -362,8 +360,10 @@ impl TimerTicks {
     ///
     /// `true` if ticks == 0, `false` otherwise.
     pub fn is_zero(&self) -> (result: bool)
+        requires
+            self.wf(),
         ensures
-            result == self.spec_is_zero(),
+            result == self@.is_zero(),
     {
         proof {
             assert(Self::MINOR_MODULUS() > 0);
@@ -466,18 +466,25 @@ impl TimerTicks {
     pub fn now(&self, timer_freq: u32) -> (result: (u64, u32))
         requires
             timer_freq > 0,
+            self.wf(),
             Self::spec_no_concurrent_writer_assumption(),
         ensures
-            result.0 as nat == Self::spec_compute_seconds(self.major, self.minor, timer_freq),
-            result.1 as nat == Self::spec_compute_nanoseconds(self.minor, timer_freq),
+            result.0 as nat == self@.ticks / timer_freq as nat,
+            result.1 as nat == self@.nanoseconds(timer_freq as nat),
             Self::spec_nanoseconds_valid(result.1 as nat),
             result.1 < 1_000_000_000u32,
-            result.0 as nat == self.spec_ticks() / timer_freq as nat,
-            self.spec_now(timer_freq) == (result.0 as nat, result.1 as nat),
     {
         let (major_ticks, minor_ticks): (u32, u32) = self.get();
         let seconds: u64 = Self::compute_seconds(major_ticks, minor_ticks, timer_freq);
         let nanoseconds: u32 = Self::compute_nanoseconds(minor_ticks, timer_freq);
+        proof {
+            // Prove minor_ticks == self@.ticks % MINOR_MODULUS (for nanoseconds equivalence).
+            let m: nat = Self::MINOR_MODULUS();
+            assert(minor_ticks as nat < m);
+            assert(major_ticks as nat * m + minor_ticks as nat == self.spec_ticks());
+            assert((major_ticks as nat * m + minor_ticks as nat) % m == minor_ticks as nat) by(nonlinear_arith)
+                requires(minor_ticks as nat < m && m > 0);
+        }
         (seconds, nanoseconds)
     }
 
@@ -509,10 +516,9 @@ impl TimerTicks {
             old(self).wf(),
         ensures
             self.wf(),
-            old(self).spec_timer_handler_effect(self),
-            self.spec_ticks() == old(self).spec_next_ticks(),
-            old(self).spec_is_max() ==> self.spec_ticks() == 0,
-            !old(self).spec_is_max() ==> self.spec_ticks() == old(self).spec_ticks() + 1,
+            self@.ticks == old(self)@.next_ticks(),
+            old(self)@.is_max() ==> self@.ticks == 0,
+            !old(self)@.is_max() ==> self@.ticks == old(self)@.ticks + 1,
     {
         self.increment();
     }
@@ -533,9 +539,10 @@ impl TimerTicks {
 /// dependency on snapshot consistency (Trust Boundary T1).
 pub fn standalone_ticks(timer: &TimerTicks) -> (result: u64)
     requires
+        timer.wf(),
         TimerTicks::spec_no_concurrent_writer_assumption(),
     ensures
-        result as nat == timer.spec_ticks(),
+        result as nat == timer@.ticks,
 {
     let (major, minor): (u32, u32) = timer.get();
     proof {
@@ -570,14 +577,13 @@ pub fn standalone_ticks(timer: &TimerTicks) -> (result: u64)
 pub fn standalone_now(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32))
     requires
         timer_freq > 0,
+        timer.wf(),
         TimerTicks::spec_no_concurrent_writer_assumption(),
     ensures
-        result.0 as nat == TimerTicks::spec_compute_seconds(timer.major, timer.minor, timer_freq),
-        result.1 as nat == TimerTicks::spec_compute_nanoseconds(timer.minor, timer_freq),
+        result.0 as nat == timer@.ticks / timer_freq as nat,
+        result.1 as nat == timer@.nanoseconds(timer_freq as nat),
         TimerTicks::spec_nanoseconds_valid(result.1 as nat),
         result.1 < 1_000_000_000u32,
-        result.0 as nat == timer.spec_ticks() / timer_freq as nat,
-        timer.spec_now(timer_freq) == (result.0 as nat, result.1 as nat),
         TimerTicks::spec_system_time_new_succeeds(result.1 as nat),
 {
     timer.now(timer_freq)
@@ -602,15 +608,14 @@ pub fn standalone_now(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32
 /// `spec_system_time_new_succeeds`.
 pub fn now_fallback_model(timer: &TimerTicks) -> (result: (u64, u32))
     requires
+        timer.wf(),
         TimerTicks::spec_no_concurrent_writer_assumption(),
     ensures
-        result.0 as nat == TimerTicks::spec_compute_seconds(timer.major, timer.minor, 1u32),
-        result.1 as nat == TimerTicks::spec_compute_nanoseconds(timer.minor, 1u32),
+        result.0 as nat == timer@.ticks / 1nat,
+        result.1 as nat == timer@.nanoseconds(1nat),
         TimerTicks::spec_nanoseconds_valid(result.1 as nat),
         result.1 < 1_000_000_000u32,
         TimerTicks::spec_system_time_new_succeeds(result.1 as nat),
-        result.0 as nat == timer.spec_ticks() / 1nat,
-        timer.spec_now(1u32) == (result.0 as nat, result.1 as nat),
 {
     // #[cfg(not(feature = "pit"))]
     let timer_freq: u32 = 1u32;
@@ -637,15 +642,14 @@ pub fn now_fallback_model(timer: &TimerTicks) -> (result: (u64, u32))
 pub fn now_pit_model(timer: &TimerTicks, timer_freq: u32) -> (result: (u64, u32))
     requires
         timer_freq > 0,
+        timer.wf(),
         TimerTicks::spec_no_concurrent_writer_assumption(),
     ensures
-        result.0 as nat == TimerTicks::spec_compute_seconds(timer.major, timer.minor, timer_freq),
-        result.1 as nat == TimerTicks::spec_compute_nanoseconds(timer.minor, timer_freq),
+        result.0 as nat == timer@.ticks / timer_freq as nat,
+        result.1 as nat == timer@.nanoseconds(timer_freq as nat),
         TimerTicks::spec_nanoseconds_valid(result.1 as nat),
         result.1 < 1_000_000_000u32,
         TimerTicks::spec_system_time_new_succeeds(result.1 as nat),
-        result.0 as nat == timer.spec_ticks() / timer_freq as nat,
-        timer.spec_now(timer_freq) == (result.0 as nat, result.1 as nat),
 {
     // #[cfg(feature = "pit")]
     // let timer_freq: u32 = crate::hal::platform::pit::get_timer_frequency();
