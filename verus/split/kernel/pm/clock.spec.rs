@@ -62,7 +62,9 @@ impl TimerTicks {
     ///
     /// The tick count is representable as a u64. This is always true for
     /// valid (u32, u32) pairs, as proved by `lemma_always_wf`.
-    pub open spec fn wf(&self) -> bool {
+    /// Closed so that users cannot see implementation internals;
+    /// use `reveal(TimerTicks::wf)` in proofs that need the body.
+    pub closed spec fn wf(&self) -> bool {
         self.spec_ticks() <= u64::MAX as nat
     }
 
@@ -319,6 +321,12 @@ impl TimerTicks {
 // View Implementation
 //==================================================================================================
 
+/// # Note on `view()` Openness
+///
+/// The `View` trait in vstd requires `open spec fn view()`. Implementing
+/// the trait with `closed` is not permitted by Verus, so `view()` must
+/// remain `open` here. This is an accepted deviation from the guideline
+/// that `view()` be `pub closed spec fn`.
 impl View for TimerTicks {
     type V = TimerTicksView;
 

@@ -192,7 +192,9 @@ impl TimerTicks {
             result@ == TimerTicks::spec_new_view(),
             result.wf(),
     {
-        TimerTicks { minor: 0, major: 0 }
+        let r = TimerTicks { minor: 0, major: 0 };
+        proof { r.lemma_always_wf(); }
+        r
     }
 
     /// Returns the current (major, minor) tick counts.

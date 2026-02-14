@@ -36,6 +36,7 @@ impl TimerTicks {
         ensures
             self.wf(),
     {
+        reveal(TimerTicks::wf);
         assert(self.spec_major() <= u32::MAX as nat);
         assert(self.spec_minor() <= u32::MAX as nat);
         assert(u32::MAX as nat * Self::MINOR_MODULUS() + u32::MAX as nat == u64::MAX as nat);
@@ -141,6 +142,7 @@ impl TimerTicks {
         ensures
             post.spec_ticks() == pre.spec_ticks() + 1,
     {
+        reveal(TimerTicks::wf);
         if pre.minor < u32::MAX {
             Self::lemma_increment_no_minor_overflow(pre);
         } else {
@@ -191,6 +193,7 @@ impl TimerTicks {
         ensures
             self.spec_ticks() < u64::MAX as nat,
     {
+        reveal(TimerTicks::wf);
     }
 }
 
@@ -521,6 +524,7 @@ impl TimerTicks {
             // The next ticks value is always well-defined.
             pre.spec_next_ticks() <= u64::MAX as nat,
     {
+        reveal(TimerTicks::wf);
         pre.lemma_always_wf();
     }
 
