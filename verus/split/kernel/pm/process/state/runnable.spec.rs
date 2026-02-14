@@ -141,7 +141,7 @@ pub struct RunningProcessView {
     /// Process identifier value.
     pub pid: int,
     /// The running thread ID.
-    pub running_thread_id: i64,
+    pub running_thread_id: int,
     /// Ready thread IDs (may be empty).
     pub ready_thread_ids: Seq<i64>,
     /// Interrupted thread IDs (may be empty).
@@ -151,7 +151,7 @@ pub struct RunningProcessView {
     /// Zombie thread IDs (may be empty).
     pub zombie_thread_ids: Seq<i64>,
     /// Interrupt reason (unconstrained at this abstraction level).
-    pub interrupt_reason: i64,
+    pub interrupt_reason: int,
 }
 
 /// Abstract view of an InterruptedProcess (boundary type).
@@ -173,7 +173,7 @@ pub struct ZombieProcessView {
     /// Zombie thread IDs (non-empty).
     pub zombie_thread_ids: Seq<i64>,
     /// Exit status.
-    pub status: i64,
+    pub status: int,
 }
 
 //==================================================================================================
@@ -380,7 +380,11 @@ impl RunnableProcess {
     /// wakeup(), and add_thread() verify that operations move IDs correctly.
     /// See `spec_ids_disjoint()` for an optional disjointness predicate available
     /// to downstream cross-module proofs.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(RunnableProcess::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(&self) -> bool {
         // At least one ready thread (NonEmptyVecDeque invariant).
         &&& self.ready_thread_ids@.len() >= 1
         // Parallel arrays have matching lengths.
@@ -444,10 +448,14 @@ impl RunningProcess {
     /// list) would require thread ID uniqueness, which is a trust assumption
     /// from Rust's ownership model (see Ownership Semantics in spec file).
     ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(RunningProcess::wf)` in proofs
+    /// that need the body.
+    ///
     /// TODO (cross-module): When RunningProcess verification is complete,
     /// add a cross-module linking assertion confirming this boundary model's
     /// postconditions are implied by the real RunningProcess module's specs.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         true
     }
 }
@@ -463,7 +471,11 @@ impl InterruptedProcess {
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(InterruptedProcess::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(&self) -> bool {
         self.interrupted_thread_ids@.len() >= 1
     }
 }
@@ -484,7 +496,11 @@ impl ZombieProcess {
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(ZombieProcess::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(&self) -> bool {
         self.zombie_thread_ids@.len() >= 1
     }
 }
@@ -596,7 +612,7 @@ impl RunnableProcessView {
     /// Abstract state transition: selects earliest-admission-time thread
     /// and returns `RunningProcessView` (models `run()`).
     ///
-    /// Note: `interrupt_reason` is set to `0i64` as a placeholder. The real
+    /// Note: `interrupt_reason` is set to `0` as a placeholder. The real
     /// `run()` returns an opaque `Option<InterruptReason>` from the thread's
     /// previous state, which is unconstrained at this abstraction level.
     /// Downstream proofs must not rely on this specific value; the bridging
@@ -608,12 +624,12 @@ impl RunnableProcessView {
         let sel: int = self.spec_earliest_ready_index();
         RunningProcessView {
             pid: self.pid,
-            running_thread_id: self.ready_thread_ids[sel],
+            running_thread_id: self.ready_thread_ids[sel] as int,
             ready_thread_ids: Self::spec_remove_at(self.ready_thread_ids, sel),
             interrupted_thread_ids: self.interrupted_thread_ids,
             sleeping_thread_ids: self.sleeping_thread_ids,
             zombie_thread_ids: self.zombie_thread_ids,
-            interrupt_reason: 0i64,
+            interrupt_reason: 0int,
         }
     }
 
@@ -642,7 +658,7 @@ impl RunnableProcessView {
         ZombieProcessView {
             pid: self.pid,
             zombie_thread_ids: self.ready_thread_ids.add(self.zombie_thread_ids),
-            status: EXIT_STATUS_INTERRUPTED() as i64,
+            status: EXIT_STATUS_INTERRUPTED(),
         }
     }
 
@@ -681,6 +697,12 @@ impl RunnableProcessView {
 // View Implementations
 //==================================================================================================
 
+// Note: All `view()` implementations below use `open spec fn` because the
+// Verus `View` trait requires its method to be `open`. The methodology
+// guideline "view() should be pub closed spec fn" cannot be applied to
+// trait implementations. The view types themselves use abstract types
+// (`int`, `Seq`) to hide concrete representation details.
+
 impl View for RunnableProcess {
     type V = RunnableProcessView;
 
@@ -702,12 +724,12 @@ impl View for RunningProcess {
     open spec fn view(&self) -> RunningProcessView {
         RunningProcessView {
             pid: self.pid.spec_value(),
-            running_thread_id: self.running_thread_id,
+            running_thread_id: self.running_thread_id as int,
             ready_thread_ids: self.ready_thread_ids@,
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
-            interrupt_reason: self.interrupt_reason,
+            interrupt_reason: self.interrupt_reason as int,
         }
     }
 }
@@ -731,7 +753,7 @@ impl View for ZombieProcess {
         ZombieProcessView {
             pid: self.pid.spec_value(),
             zombie_thread_ids: self.zombie_thread_ids@,
-            status: self.status,
+            status: self.status as int,
         }
     }
 }

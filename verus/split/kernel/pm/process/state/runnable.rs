@@ -315,6 +315,7 @@ impl RunnableProcess {
             result.spec_zombie_count() == 0,
             result.wf(),
     {
+        proof { reveal(RunnableProcess::wf); }
         let mut rid_vec: Vec<i64> = Vec::new();
         rid_vec.push(ready_tid);
         let mut rtime_vec: Vec<i64> = Vec::new();
@@ -375,6 +376,7 @@ impl RunnableProcess {
             result.spec_zombie_count() == zombie_ids@.len(),
             result.wf(),
     {
+        proof { reveal(RunnableProcess::wf); }
         RunnableProcess {
             pid: pid,
             ready_thread_ids: ready_ids,
@@ -428,6 +430,7 @@ impl RunnableProcess {
             result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
     {
+        proof { reveal(RunnableProcess::wf); }
         // Find the index of the thread with earliest admission time via concrete loop.
         let mut min_idx: usize = 0;
         let mut i: usize = 1;
@@ -529,6 +532,11 @@ impl RunnableProcess {
                 },
             },
     {
+        proof {
+            reveal(RunnableProcess::wf);
+            reveal(InterruptedProcess::wf);
+            reveal(ZombieProcess::wf);
+        }
         // Build new zombie list: ready + existing zombie.
         let new_zombie_ids: Vec<i64> = vec_concat(
             &self.ready_thread_ids, &self.zombie_thread_ids);
@@ -623,6 +631,7 @@ impl RunnableProcess {
                 },
             },
     {
+        proof { reveal(RunnableProcess::wf); }
         // Search for tid in the concrete sleeping list.
         let (found, found_idx_usize): (bool, usize) = vec_search(
             &self.sleeping_thread_ids, tid);
@@ -740,6 +749,7 @@ impl RunnableProcess {
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
             result.wf(),
     {
+        proof { reveal(RunnableProcess::wf); }
         // Copy and push to ready lists.
         let mut new_ready_ids: Vec<i64> = Vec::new();
         let mut k: usize = 0;

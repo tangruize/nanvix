@@ -57,6 +57,7 @@ impl RunnableProcess {
         ensures
             p.wf(),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: A RunnableProcess with new() construction constraints has exactly one ready thread.
@@ -117,6 +118,7 @@ impl RunnableProcess {
                 remaining_ready_len + 1 == self.spec_ready_count()
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: run() preserves PID — trivially true since PID is copied.
@@ -126,6 +128,7 @@ impl RunnableProcess {
         ensures
             self.spec_pid() == self.pid.spec_value(),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: If there is exactly one ready thread, removing it empties the ready list.
@@ -140,6 +143,7 @@ impl RunnableProcess {
                 remaining.len() == 0
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: An exec loop finding the min-index matches spec_earliest_ready_index.
@@ -162,6 +166,7 @@ impl RunnableProcess {
             // All ready thread IDs become zombie thread IDs.
             self.ready_thread_ids@.len() >= 1,
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: terminate() preserves PID.
@@ -172,6 +177,7 @@ impl RunnableProcess {
             // PID is immutable, so any resulting state has the same PID.
             self.spec_pid() == self.pid.spec_value(),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: terminate() with no sleeping and no interrupted threads produces ZombieProcess.
@@ -190,6 +196,7 @@ impl RunnableProcess {
                 && zombie_ids.len() >= 1
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: terminate() with interrupted threads produces InterruptedProcess.
@@ -209,6 +216,7 @@ impl RunnableProcess {
                     self.spec_interrupted_count() + self.spec_sleeping_count()
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: terminate() with sleeping (but no interrupted) produces InterruptedProcess.
@@ -228,6 +236,7 @@ impl RunnableProcess {
                 && interrupted_ids.len() >= 1
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     //==============================================================================================
@@ -248,6 +257,7 @@ impl RunnableProcess {
                 && new_sleeping_len == self.spec_sleeping_count() - 1
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: wakeup() preserves PID.
@@ -257,6 +267,7 @@ impl RunnableProcess {
         ensures
             self.spec_pid() == self.pid.spec_value(),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: Successful wakeup() preserves total thread count.
@@ -276,6 +287,7 @@ impl RunnableProcess {
                 new_total == self.spec_total_thread_count() as int
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: Successful wakeup() result satisfies wf() conditions.
@@ -310,6 +322,7 @@ impl RunnableProcess {
                 && (self.sleeping_count - 1) as nat == new_sleeping_ids.len()
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     //==============================================================================================
@@ -329,6 +342,7 @@ impl RunnableProcess {
                 && new_ready_times.len() == self.ready_admission_times@.len() + 1
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: add_thread() result satisfies wf() conditions.
@@ -350,6 +364,7 @@ impl RunnableProcess {
                 && new_ready_ids.len() == self.spec_ready_count() + 1
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Lemma: add_thread() preserves other thread lists unchanged.
@@ -361,6 +376,7 @@ impl RunnableProcess {
             self.spec_sleeping_count() == self.sleeping_thread_ids@.len(),
             self.spec_zombie_count() == self.zombie_thread_ids@.len(),
     {
+        reveal(RunnableProcess::wf);
     }
 
     //==============================================================================================
@@ -378,6 +394,7 @@ impl RunnableProcess {
                     ==> #[trigger] self.ready_admission_times@[idx]
                         <= #[trigger] self.ready_admission_times@[j],
     {
+        reveal(RunnableProcess::wf);
         let s: &Seq<i64> = &self.ready_admission_times@;
         let n: int = s.len() as int;
         Self::lemma_seq_has_min(s, n);
@@ -449,6 +466,7 @@ impl RunnableProcess {
                         <= #[trigger] self.ready_admission_times@[j]
             }),
     {
+        reveal(RunnableProcess::wf);
         Self::lemma_min_index_rec_bounds(
             &self.ready_admission_times@,
             self.ready_admission_times@.len() as int,
@@ -506,6 +524,7 @@ impl RunnableProcess {
                     ==> self.ready_admission_times@[i] >= 0i64
             }),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Refinement lemma: `spec_earliest_admission_time` is the minimum admission time,
@@ -527,6 +546,7 @@ impl RunnableProcess {
                     ==> t <= #[trigger] self.ready_admission_times@[j]
             }),
     {
+        reveal(RunnableProcess::wf);
         self.lemma_earliest_ready_index_bounds();
     }
 
@@ -628,6 +648,7 @@ impl RunnableProcess {
         ensures
             self@.wf(),
     {
+        reveal(RunnableProcess::wf);
     }
 
     /// Bridging lemma: view-level `spec_min_index_rec` equals exec-level `spec_min_index_rec`.
@@ -683,6 +704,7 @@ impl RunnableProcess {
         ensures
             result@ == self@.spec_run(),
     {
+        reveal(RunnableProcess::wf);
         Self::lemma_view_min_index_eq(
             self.ready_admission_times@,
             self.ready_admission_times@.len() as int,
@@ -805,6 +827,7 @@ impl RunnableProcess {
             (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0)
                 == self@.spec_terminate_has_interrupted(),
     {
+        reveal(RunnableProcess::wf);
     }
 }
 
@@ -833,6 +856,7 @@ impl InterruptedProcess {
         ensures
             ip.wf(),
     {
+        reveal(InterruptedProcess::wf);
     }
 }
 
@@ -848,6 +872,7 @@ impl ZombieProcess {
         ensures
             zp.wf(),
     {
+        reveal(ZombieProcess::wf);
     }
 }
 
