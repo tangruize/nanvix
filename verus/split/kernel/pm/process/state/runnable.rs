@@ -837,7 +837,7 @@ impl RunnableProcess {
                 && self@.sleeping_thread_ids[fi] == tid as int);
         }
 
-        Ok(RunnableProcess {
+        let result_proc: RunnableProcess = RunnableProcess {
             pid: self.pid,
             ready_thread_ids: new_ready_ids,
             ready_admission_times: new_ready_times,
@@ -846,7 +846,23 @@ impl RunnableProcess {
             zombie_thread_ids: self.zombie_thread_ids,
             interrupted_count: self.interrupted_count,
             sleeping_count: self.sleeping_count - 1,
-        })
+        };
+
+        proof {
+            // Debug: check each postcondition component.
+            assert(result_proc@.pid == self@.pid);
+            assert(result_proc@.ready_thread_ids.len()
+                == self@.ready_thread_ids.len() + 1);
+            assert(result_proc@.sleeping_thread_ids.len()
+                == self@.sleeping_thread_ids.len() - 1);
+            assert(result_proc@.interrupted_thread_ids
+                == self@.interrupted_thread_ids);
+            assert(result_proc@.zombie_thread_ids == self@.zombie_thread_ids);
+            assert(result_proc@.ready_thread_ids
+                == self@.ready_thread_ids.push(tid as int));
+        }
+
+        Ok(result_proc)
     }
 
     /// Adds a thread to the ready queue.
