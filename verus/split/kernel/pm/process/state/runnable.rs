@@ -818,11 +818,18 @@ impl RunnableProcess {
             let sl_right: Seq<i64> = sl.subrange(fi + 1, sl.len() as int);
             assert(spec_i64_seq_as_int(sl_left.add(sl_right))
                 =~= spec_i64_seq_as_int(sl_left).add(spec_i64_seq_as_int(sl_right)));
+            // Connect new_sleeping_ids@ to spec_remove_at result.
+            assert(new_sleeping_ids@ == sl_left.add(sl_right));
+            assert(spec_i64_seq_as_int(new_sleeping_ids@)
+                =~= RunnableProcessView::spec_remove_at(sl_int, fi));
             // spec_seq_contains bridging: found at found_idx_usize in Seq<i64>,
             // so found at same index in Seq<int>.
             assert(self@.sleeping_thread_ids[found_idx_usize as int] == tid as int);
             assert(RunnableProcessView::spec_seq_contains(
                 self@.sleeping_thread_ids, tid as int));
+            // Existential witness for the postcondition.
+            assert(0 <= fi < self@.sleeping_thread_ids.len()
+                && self@.sleeping_thread_ids[fi] == tid as int);
         }
 
         Ok(RunnableProcess {
