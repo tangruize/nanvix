@@ -1,66 +1,66 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # ProcessManagerInner Implementation
-//!
-//! Verified model of the kernel process manager state machine.
-//!
-//! ## Verified Properties
-//!
-//! - Construction produces a well-formed state with the kernel (PID 0) running.
-//! - PID allocation is monotonic: new PIDs are always fresh.
-//! - Schedule preserves wf: swaps running↔ready without losing processes.
-//! - Full schedule preserves wf: composes resume_all_interrupted + schedule to
-//!   match the original scheduler's semantics (alarm + resume + swap).
-//! - Sleep preserves wf: non-kernel running→suspended, ready→running.
-//! - Exit preserves wf: non-kernel running→zombie, ready→running.
-//! - Wakeup preserves wf: suspended→ready, plus no-op variants for running/ready.
-//! - Resume preserves wf: all interrupted→ready (batch transition).
-//! - Terminate preserves wf: ready→zombie or suspended→interrupted.
-//! - Harvest preserves wf: removes from zombie queue.
-//! - Kernel safety: the kernel process (PID 0) is always alive (running or ready).
-//!   The kernel process cannot be slept, exited, or terminated.
-//! - Process partitioning: every PID is in exactly one queue at any time.
-//! - Overflow safety: arithmetic on counts and PIDs is proven within bounds.
-//! - Query/sync/thread stubs: all remaining original functions are modeled as
-//!   verified no-ops that preserve wf() with appropriate preconditions.
-//!
-//! ## Verification Model
-//!
-//! The original `ProcessManagerInner` contains complex kernel types
-//! (`RunningProcess`, `RunnableProcess`, `SleepingProcess`, `InterruptedProcess`,
-//! `ZombieProcess`, `ThreadManager`, `LinkedList`) from various kernel subsystems.
-//! For verification, we abstract these into:
-//! - `running_pid: i32` — the PID of the single running process.
-//! - `ready_count`, `suspended_count`, `interrupted_count`, `zombie_count` — runtime
-//!   counts of processes in each queue.
-//! - Ghost `Set<int>` for each queue — tracks PID membership for spec reasoning.
-//! - `next_pid: i32` — the next PID to allocate, always > all existing PIDs.
-//! - `number_buffered_messages: usize` — count of undelivered IPC messages.
-//!
-//! The `wf()` predicate ties the ghost sets to the runtime state and encodes:
-//! - Finiteness and cardinality matching.
-//! - Pairwise disjointness of all queues (including running).
-//! - Kernel liveness: PID 0 is running or ready, never elsewhere.
-//! - PID bounds: all PIDs in [0, next_pid).
-//! - Overflow bounds on all counts.
-//!
-//! ## Trust Boundaries
-//!
-//! - **T1: Scheduler choice.** The `schedule`, `sleep_running`, `exit_running`, and
-//!   `exit_thread_running` functions accept a `chosen_next` parameter modeling the PID
-//!   selected by the scheduler (originally `take_earliest_ready`). The precondition
-//!   requires it to be a valid ready PID.
-//! - **T2: RefCell borrow.** The outer `ProcessManager` wraps `ProcessManagerInner`
-//!   in `Rc<RefCell<_>>`. Runtime borrow checking (try_borrow/try_borrow_mut) is not
-//!   modeled; it is an external boundary.
-//! - **T3: Thread-level details.** The original manager tracks per-process thread
-//!   sets. Thread-level state transitions (create_thread, exit_thread, etc.) affect
-//!   whether a process goes to ready vs. suspended vs. zombie. We model the outcome
-//!   as parameters (e.g., `to_zombie: bool`), trusting the thread-level logic.
-//! - **T4: Cross-module operations.** The `recv_message` decrement originates from
-//!   the `unsafe` submodule, not from `ProcessManagerInner` directly. The verified
-//!   model captures the queue-level effect; call-site correctness is trusted.
+// # ProcessManagerInner Implementation
+//
+// Verified model of the kernel process manager state machine.
+//
+// ## Verified Properties
+//
+// - Construction produces a well-formed state with the kernel (PID 0) running.
+// - PID allocation is monotonic: new PIDs are always fresh.
+// - Schedule preserves wf: swaps running↔ready without losing processes.
+// - Full schedule preserves wf: composes resume_all_interrupted + schedule to
+//   match the original scheduler's semantics (alarm + resume + swap).
+// - Sleep preserves wf: non-kernel running→suspended, ready→running.
+// - Exit preserves wf: non-kernel running→zombie, ready→running.
+// - Wakeup preserves wf: suspended→ready, plus no-op variants for running/ready.
+// - Resume preserves wf: all interrupted→ready (batch transition).
+// - Terminate preserves wf: ready→zombie or suspended→interrupted.
+// - Harvest preserves wf: removes from zombie queue.
+// - Kernel safety: the kernel process (PID 0) is always alive (running or ready).
+//   The kernel process cannot be slept, exited, or terminated.
+// - Process partitioning: every PID is in exactly one queue at any time.
+// - Overflow safety: arithmetic on counts and PIDs is proven within bounds.
+// - Query/sync/thread stubs: all remaining original functions are modeled as
+//   verified no-ops that preserve wf() with appropriate preconditions.
+//
+// ## Verification Model
+//
+// The original `ProcessManagerInner` contains complex kernel types
+// (`RunningProcess`, `RunnableProcess`, `SleepingProcess`, `InterruptedProcess`,
+// `ZombieProcess`, `ThreadManager`, `LinkedList`) from various kernel subsystems.
+// For verification, we abstract these into:
+// - `running_pid: i32` — the PID of the single running process.
+// - `ready_count`, `suspended_count`, `interrupted_count`, `zombie_count` — runtime
+//   counts of processes in each queue.
+// - Ghost `Set<int>` for each queue — tracks PID membership for spec reasoning.
+// - `next_pid: i32` — the next PID to allocate, always > all existing PIDs.
+// - `number_buffered_messages: usize` — count of undelivered IPC messages.
+//
+// The `wf()` predicate ties the ghost sets to the runtime state and encodes:
+// - Finiteness and cardinality matching.
+// - Pairwise disjointness of all queues (including running).
+// - Kernel liveness: PID 0 is running or ready, never elsewhere.
+// - PID bounds: all PIDs in [0, next_pid).
+// - Overflow bounds on all counts.
+//
+// ## Trust Boundaries
+//
+// - **T1: Scheduler choice.** The `schedule`, `sleep_running`, `exit_running`, and
+//   `exit_thread_running` functions accept a `chosen_next` parameter modeling the PID
+//   selected by the scheduler (originally `take_earliest_ready`). The precondition
+//   requires it to be a valid ready PID.
+// - **T2: RefCell borrow.** The outer `ProcessManager` wraps `ProcessManagerInner`
+//   in `Rc<RefCell<_>>`. Runtime borrow checking (try_borrow/try_borrow_mut) is not
+//   modeled; it is an external boundary.
+// - **T3: Thread-level details.** The original manager tracks per-process thread
+//   sets. Thread-level state transitions (create_thread, exit_thread, etc.) affect
+//   whether a process goes to ready vs. suspended vs. zombie. We model the outcome
+//   as parameters (e.g., `to_zombie: bool`), trusting the thread-level logic.
+// - **T4: Cross-module operations.** The `recv_message` decrement originates from
+//   the `unsafe` submodule, not from `ProcessManagerInner` directly. The verified
+//   model captures the queue-level effect; call-site correctness is trusted.
 
 use vstd::prelude::*;
 

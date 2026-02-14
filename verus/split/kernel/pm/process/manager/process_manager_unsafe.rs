@@ -1,130 +1,130 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # ProcessManagerUnsafe Verification Model
-//!
-//! Verified model of the global unsafe ProcessManager interface (unsafe.rs).
-//!
-//! ## Verified Properties
-//!
-//! - Initialization produces a well-formed global state (init).
-//! - Singleton accessors (get/get_mut) require initialization and preserve wf().
-//!   get_mut() exclusive access is enforced via the `unsafe` contract (T7).
-//! - Context switch (switch) correctly models the original code flow:
-//!   inner mutation + atomic updates in one step, comparing next_pid against
-//!   the OLD current_pid (pre-mutation) to detect PID changes and reset quantum.
-//! - Quantum management (giveup) preserves wf(): unified entry point covering
-//!   both decrement and context-switch paths with complete postconditions.
-//! - Sleep preserves wf(): delegates to switch for inner+atomic updates.
-//!   Post-wakeup interrupt-reason check modeled by sleep_post_wakeup().
-//! - Exit/exit_thread preserve wf() through switch, then set ghost_diverged flag.
-//!   Machine-checked divergence: wf() requires !diverged, so no operations
-//!   can be called after exit. Hard-switch precondition made explicit.
-//! - is_kernel_running() correctly reflects current_tid == 0.
-//! - Delegation functions (get_mutex, get_cond, etc.) preserve wf() and model
-//!   Result-like success/failure outcomes.
-//! - try_recv with thread-specific message decrement preserves wf().
-//! - Wakeup preserves wf() by delegating to inner wakeup.
-//! - join_thread models all three paths: harvest, condvar-wait, and error.
-//!
-//! ## Verification Model
-//!
-//! The original module uses `static mut PROCESS_MANAGER: Option<ProcessManager>`,
-//! plus atomic globals (CURRENT_PID, CURRENT_TID, REMAINING_QUANTUM, FPU_OWNER_TID).
-//! We model this as a single `ProcessManagerUnsafeState` struct that contains
-//! a `ProcessManagerInner` (from the verified process_manager module) plus the
-//! global atomic state.
-//!
-//! ## Trust Boundaries
-//!
-//! - **T5: Raw pointer context switch.** The actual `ContextInformation::switch(from, to)`
-//!   is a hardware-level operation. We verify the state-level effects (inner mutation,
-//!   PID/TID/quantum updates) but not the raw pointer manipulation. The `user_tda`
-//!   parameter (user-space thread data area virtual address) is also abstracted away;
-//!   it affects address space setup for the next thread but not queue-level state.
-//! - **T6: Atomic ordering.** Atomic loads/stores use `ORDER` (Relaxed/SeqCst).
-//!   Memory ordering correctness is not modeled; Nanvix is single-core cooperative.
-//! - **T7: Singleton exclusive access.** `get_mut()` returns `&mut ProcessManager` from
-//!   `static mut`. Exclusive access is enforced by the `unsafe` contract: callers must
-//!   ensure no other references exist. In Nanvix, this is guaranteed by disabling
-//!   interrupts (single-core, cooperative scheduling). The RefCell `try_borrow_mut()`
-//!   provides a runtime check; re-entrant calls return `Err(ResourceBusy)`.
-//! - **T8: Interrupt enable/disable.** `Interrupts::enable()` and `interrupts.wait()`
-//!   in the kernel-idle path are HAL operations, modeled as external.
-//! - **T9: TID-to-PID mapping (PID↔TID membership).** The invariant that current_tid
-//!   belongs to current_pid's thread set is maintained by the thread manager (T3
-//!   boundary from inner module). The inner ProcessManagerInner model uses `Set<int>`
-//!   for PID-level queue tracking and does NOT store per-process thread sets. Extending
-//!   wf() with a `current_tid ∈ threads(current_pid)` constraint would require adding
-//!   a ghost `Map<int, Set<int>>` (PID→thread set) to ProcessManagerInner and propagating
-//!   it through all inner operations (create_thread, exit_thread, schedule, etc.) — a
-//!   cross-module change that is outside the scope of this module's verification. The
-//!   current model verifies all state transitions that THIS module performs (inner
-//!   mutation + atomic updates); the TID↔PID membership is an orthogonal invariant
-//!   maintained by a different subsystem.
-//! - **T10: Divergence (exit/exit_thread non-returning) — Machine-Checked.**
-//!   exit() and exit_thread() return `Result<!, Error>` in the original code: on the
-//!   success path, `Self::switch()` performs a hardware context switch that swaps the
-//!   stack pointer and never returns to the caller. The verified model captures
-//!   divergence via the `ghost_diverged` flag: after exit/exit_thread, the flag is
-//!   set to true, which invalidates wf() (wf requires spec_not_diverged()). Since all
-//!   other operations require wf(), no further operations can be called on a diverged
-//!   state — providing machine-checked divergence prevention. The postconditions of
-//!   exit/exit_thread describe the system state as seen by the NEXT scheduled process
-//!   (for global invariant reasoning), not the exiting process's continuation.
-//! - **T11: Per-thread message delivery.** try_recv_some/try_recv_none model message
-//!   reception as a count decrement. The inner model tracks only
-//!   `number_buffered_messages: usize` (a per-process aggregate count), not per-thread
-//!   message queues. Verifying that a specific TID receives the correct message would
-//!   require extending ProcessManagerInner with ghost per-thread message queues — a
-//!   cross-module concern outside this module's scope.
-//! - **T12: Synchronization object state.** Delegation functions (get_mutex, get_cond,
-//!   put_mutex_guard, put_cond, take_mutex_guard) are thin wrappers that delegate to
-//!   ProcessManagerInner methods. The synchronization object tables and guard ownership
-//!   state live inside the inner module and are not duplicated here. This module verifies
-//!   that delegation preserves wf() (no queue-level side effects); the actual mutex/condvar
-//!   correctness is verified in the inner module.
-//! - **T13: Uninitialized panic.** get() and get_mut() panic if called before init().
-//!   The model requires `wf()` (which includes `initialized == true`) as a precondition,
-//!   so the uninitialized path is excluded by construction. This is standard Verus practice:
-//!   precondition violations (programming errors) are not modeled as execution paths.
-//!
-//! ## Scope and Limitations
-//!
-//! This module verifies the **unsafe wrapper layer**: the global singleton lifecycle,
-//! atomic PID/TID/quantum management, and context-switch control flow. The verification
-//! boundary is deliberately scoped to state that this module owns or mutates directly.
-//!
-//! **What is verified:**
-//! - All state transitions preserve wf() (40 verified functions, 0 errors).
-//! - switch() correctly models stale-atomic PID comparison and quantum reset.
-//! - giveup() correctly branches on quantum and preserves/updates state.
-//! - Machine-checked divergence: exit/exit_thread set ghost_diverged, invalidating wf().
-//! - No `assume` or `external_body` in this module.
-//!
-//! **Verification scope — global state consistency, not operation semantics:**
-//! This module uses compositional verification: functions accept `new_inner` as a
-//! parameter rather than computing it from operation arguments (e.g., `ExitStatus`).
-//! This means the module verifies that *given any valid inner transition* (any
-//! `new_inner` satisfying `wf()` and `spec_running_pid() == next_pid`), the global
-//! state (atomics, quantum, divergence) is updated correctly. It does NOT verify
-//! that `exit()` actually terminates a process, `sleep()` actually suspends a thread,
-//! etc. — those operation semantics are verified in the inner ProcessManagerInner module
-//! (96 verified functions). The composability contract is `new_inner.wf()`: the inner
-//! module proves each operation produces a wf() state, and this module proves the
-//! global wrapper handles any such state correctly.
-//!
-//! **What is deferred to dependency modules (cross-module concerns):**
-//! - PID↔TID thread membership (T9): ProcessManagerInner tracks PIDs in `Set<int>`
-//!   queues but has no per-process thread sets. Adding `current_tid ∈ threads(current_pid)`
-//!   to wf() requires a `Ghost<Map<int, Set<int>>>` in ProcessManagerInner plus updates
-//!   to all 96 verified inner functions — a separate verification task.
-//! - Per-thread message queues (T11): Inner model uses aggregate `number_buffered_messages`.
-//! - Synchronization object tables (T12): Mutex/condvar state lives inside inner module.
-//!
-//! **What is beyond Verus expressiveness:**
-//! - Temporal/liveness properties: join_thread loop termination depends on eventual
-//!   notify_all, which requires fair scheduling assumptions outside first-order logic.
+// # ProcessManagerUnsafe Verification Model
+//
+// Verified model of the global unsafe ProcessManager interface (unsafe.rs).
+//
+// ## Verified Properties
+//
+// - Initialization produces a well-formed global state (init).
+// - Singleton accessors (get/get_mut) require initialization and preserve wf().
+//   get_mut() exclusive access is enforced via the `unsafe` contract (T7).
+// - Context switch (switch) correctly models the original code flow:
+//   inner mutation + atomic updates in one step, comparing next_pid against
+//   the OLD current_pid (pre-mutation) to detect PID changes and reset quantum.
+// - Quantum management (giveup) preserves wf(): unified entry point covering
+//   both decrement and context-switch paths with complete postconditions.
+// - Sleep preserves wf(): delegates to switch for inner+atomic updates.
+//   Post-wakeup interrupt-reason check modeled by sleep_post_wakeup().
+// - Exit/exit_thread preserve wf() through switch, then set ghost_diverged flag.
+//   Machine-checked divergence: wf() requires !diverged, so no operations
+//   can be called after exit. Hard-switch precondition made explicit.
+// - is_kernel_running() correctly reflects current_tid == 0.
+// - Delegation functions (get_mutex, get_cond, etc.) preserve wf() and model
+//   Result-like success/failure outcomes.
+// - try_recv with thread-specific message decrement preserves wf().
+// - Wakeup preserves wf() by delegating to inner wakeup.
+// - join_thread models all three paths: harvest, condvar-wait, and error.
+//
+// ## Verification Model
+//
+// The original module uses `static mut PROCESS_MANAGER: Option<ProcessManager>`,
+// plus atomic globals (CURRENT_PID, CURRENT_TID, REMAINING_QUANTUM, FPU_OWNER_TID).
+// We model this as a single `ProcessManagerUnsafeState` struct that contains
+// a `ProcessManagerInner` (from the verified process_manager module) plus the
+// global atomic state.
+//
+// ## Trust Boundaries
+//
+// - **T5: Raw pointer context switch.** The actual `ContextInformation::switch(from, to)`
+//   is a hardware-level operation. We verify the state-level effects (inner mutation,
+//   PID/TID/quantum updates) but not the raw pointer manipulation. The `user_tda`
+//   parameter (user-space thread data area virtual address) is also abstracted away;
+//   it affects address space setup for the next thread but not queue-level state.
+// - **T6: Atomic ordering.** Atomic loads/stores use `ORDER` (Relaxed/SeqCst).
+//   Memory ordering correctness is not modeled; Nanvix is single-core cooperative.
+// - **T7: Singleton exclusive access.** `get_mut()` returns `&mut ProcessManager` from
+//   `static mut`. Exclusive access is enforced by the `unsafe` contract: callers must
+//   ensure no other references exist. In Nanvix, this is guaranteed by disabling
+//   interrupts (single-core, cooperative scheduling). The RefCell `try_borrow_mut()`
+//   provides a runtime check; re-entrant calls return `Err(ResourceBusy)`.
+// - **T8: Interrupt enable/disable.** `Interrupts::enable()` and `interrupts.wait()`
+//   in the kernel-idle path are HAL operations, modeled as external.
+// - **T9: TID-to-PID mapping (PID↔TID membership).** The invariant that current_tid
+//   belongs to current_pid's thread set is maintained by the thread manager (T3
+//   boundary from inner module). The inner ProcessManagerInner model uses `Set<int>`
+//   for PID-level queue tracking and does NOT store per-process thread sets. Extending
+//   wf() with a `current_tid ∈ threads(current_pid)` constraint would require adding
+//   a ghost `Map<int, Set<int>>` (PID→thread set) to ProcessManagerInner and propagating
+//   it through all inner operations (create_thread, exit_thread, schedule, etc.) — a
+//   cross-module change that is outside the scope of this module's verification. The
+//   current model verifies all state transitions that THIS module performs (inner
+//   mutation + atomic updates); the TID↔PID membership is an orthogonal invariant
+//   maintained by a different subsystem.
+// - **T10: Divergence (exit/exit_thread non-returning) — Machine-Checked.**
+//   exit() and exit_thread() return `Result<!, Error>` in the original code: on the
+//   success path, `Self::switch()` performs a hardware context switch that swaps the
+//   stack pointer and never returns to the caller. The verified model captures
+//   divergence via the `ghost_diverged` flag: after exit/exit_thread, the flag is
+//   set to true, which invalidates wf() (wf requires spec_not_diverged()). Since all
+//   other operations require wf(), no further operations can be called on a diverged
+//   state — providing machine-checked divergence prevention. The postconditions of
+//   exit/exit_thread describe the system state as seen by the NEXT scheduled process
+//   (for global invariant reasoning), not the exiting process's continuation.
+// - **T11: Per-thread message delivery.** try_recv_some/try_recv_none model message
+//   reception as a count decrement. The inner model tracks only
+//   `number_buffered_messages: usize` (a per-process aggregate count), not per-thread
+//   message queues. Verifying that a specific TID receives the correct message would
+//   require extending ProcessManagerInner with ghost per-thread message queues — a
+//   cross-module concern outside this module's scope.
+// - **T12: Synchronization object state.** Delegation functions (get_mutex, get_cond,
+//   put_mutex_guard, put_cond, take_mutex_guard) are thin wrappers that delegate to
+//   ProcessManagerInner methods. The synchronization object tables and guard ownership
+//   state live inside the inner module and are not duplicated here. This module verifies
+//   that delegation preserves wf() (no queue-level side effects); the actual mutex/condvar
+//   correctness is verified in the inner module.
+// - **T13: Uninitialized panic.** get() and get_mut() panic if called before init().
+//   The model requires `wf()` (which includes `initialized == true`) as a precondition,
+//   so the uninitialized path is excluded by construction. This is standard Verus practice:
+//   precondition violations (programming errors) are not modeled as execution paths.
+//
+// ## Scope and Limitations
+//
+// This module verifies the **unsafe wrapper layer**: the global singleton lifecycle,
+// atomic PID/TID/quantum management, and context-switch control flow. The verification
+// boundary is deliberately scoped to state that this module owns or mutates directly.
+//
+// **What is verified:**
+// - All state transitions preserve wf() (40 verified functions, 0 errors).
+// - switch() correctly models stale-atomic PID comparison and quantum reset.
+// - giveup() correctly branches on quantum and preserves/updates state.
+// - Machine-checked divergence: exit/exit_thread set ghost_diverged, invalidating wf().
+// - No `assume` or `external_body` in this module.
+//
+// **Verification scope — global state consistency, not operation semantics:**
+// This module uses compositional verification: functions accept `new_inner` as a
+// parameter rather than computing it from operation arguments (e.g., `ExitStatus`).
+// This means the module verifies that *given any valid inner transition* (any
+// `new_inner` satisfying `wf()` and `spec_running_pid() == next_pid`), the global
+// state (atomics, quantum, divergence) is updated correctly. It does NOT verify
+// that `exit()` actually terminates a process, `sleep()` actually suspends a thread,
+// etc. — those operation semantics are verified in the inner ProcessManagerInner module
+// (96 verified functions). The composability contract is `new_inner.wf()`: the inner
+// module proves each operation produces a wf() state, and this module proves the
+// global wrapper handles any such state correctly.
+//
+// **What is deferred to dependency modules (cross-module concerns):**
+// - PID↔TID thread membership (T9): ProcessManagerInner tracks PIDs in `Set<int>`
+//   queues but has no per-process thread sets. Adding `current_tid ∈ threads(current_pid)`
+//   to wf() requires a `Ghost<Map<int, Set<int>>>` in ProcessManagerInner plus updates
+//   to all 96 verified inner functions — a separate verification task.
+// - Per-thread message queues (T11): Inner model uses aggregate `number_buffered_messages`.
+// - Synchronization object tables (T12): Mutex/condvar state lives inside inner module.
+//
+// **What is beyond Verus expressiveness:**
+// - Temporal/liveness properties: join_thread loop termination depends on eventual
+//   notify_all, which requires fair scheduling assumptions outside first-order logic.
 
 use vstd::prelude::*;
 
