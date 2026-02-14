@@ -603,7 +603,7 @@ impl FrameAllocator {
     ///
     /// Upon success, all frames in [start_frame, start_frame + count) are allocated.
     /// Upon failure (any frame already allocated), an error is returned.
-    fn alloc_range_checked(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+    pub fn alloc_range_checked(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
             count > 0,
