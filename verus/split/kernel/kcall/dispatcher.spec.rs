@@ -444,12 +444,12 @@ impl View for DispatchArgs {
 
 impl SleepError {
     /// Spec function: returns the kind of this sleep error.
-    pub open spec fn spec_kind(&self) -> SleepErrorKind {
+    pub closed spec fn spec_kind(&self) -> SleepErrorKind {
         self.kind
     }
 
     /// Spec function: returns the error code (meaningful only for Generic kind).
-    pub open spec fn spec_error_code(&self) -> int {
+    pub closed spec fn spec_error_code(&self) -> int {
         self.error_code as int
     }
 

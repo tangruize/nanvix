@@ -258,8 +258,8 @@ impl DispatchResult {
     /// A well-formed success DispatchResult with value 0.
     pub fn ok() -> (result: DispatchResult)
         ensures
-            result.is_success,
-            result.value == 0,
+            result@.is_success,
+            result@.value == 0,
             result.wf(),
             result@ == spec_ok_result(),
     {
@@ -277,8 +277,8 @@ impl DispatchResult {
     /// A well-formed success DispatchResult.
     pub fn success(value: i64) -> (result: DispatchResult)
         ensures
-            result.is_success,
-            result.value == value,
+            result@.is_success,
+            result@.value == value as int,
             result.wf(),
             result@ == spec_success_result(value as int),
     {
@@ -296,8 +296,8 @@ impl DispatchResult {
     /// A well-formed error DispatchResult.
     pub fn error(code: i32) -> (result: DispatchResult)
         ensures
-            !result.is_success,
-            result.value == code as i64,
+            !result@.is_success,
+            result@.value == code as int,
             result.wf(),
             result@ == spec_error_result(code as int),
     {
@@ -322,11 +322,11 @@ impl DispatchArgs {
     /// A well-formed DispatchArgs.
     pub fn new(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> (result: DispatchArgs)
         ensures
-            result.number == number,
-            result.arg0 == arg0,
-            result.arg1 == arg1,
-            result.arg2 == arg2,
-            result.arg3 == arg3,
+            result@.number == number as nat,
+            result@.arg0 == arg0 as nat,
+            result@.arg1 == arg1 as nat,
+            result@.arg2 == arg2 as nat,
+            result@.arg3 == arg3 as nat,
             result.wf(),
     {
         DispatchArgs { number, arg0, arg1, arg2, arg3 }
@@ -349,8 +349,8 @@ impl SleepError {
     /// A well-formed SleepError of Generic kind.
     pub fn generic(error_code: i32) -> (result: SleepError)
         ensures
-            result.kind =~= SleepErrorKind::Generic,
-            result.error_code == error_code as i64,
+            result.spec_kind() =~= SleepErrorKind::Generic,
+            result.spec_error_code() == error_code as int,
             result.wf(),
     {
         SleepError { kind: SleepErrorKind::Generic, error_code: error_code as i64 }
@@ -363,7 +363,7 @@ impl SleepError {
     /// A SleepError representing a killed interruption.
     pub fn interrupted_killed() -> (result: SleepError)
         ensures
-            result.kind =~= SleepErrorKind::InterruptedKilled,
+            result.spec_kind() =~= SleepErrorKind::InterruptedKilled,
             result.wf(),
     {
         SleepError { kind: SleepErrorKind::InterruptedKilled, error_code: 0 }
@@ -376,7 +376,7 @@ impl SleepError {
     /// A SleepError representing a timed-out interruption.
     pub fn interrupted_timed_out() -> (result: SleepError)
         ensures
-            result.kind =~= SleepErrorKind::InterruptedTimedOut,
+            result.spec_kind() =~= SleepErrorKind::InterruptedTimedOut,
             result.wf(),
     {
         SleepError { kind: SleepErrorKind::InterruptedTimedOut, error_code: 0 }
@@ -496,10 +496,10 @@ pub fn is_sleepable(number: u32) -> (result: bool)
 pub fn handle_sleep_error(sleep_error: SleepError) -> (result: DispatchResult)
     requires
         sleep_error.wf(),
-        spec_sleep_error_returns(sleep_error.kind),
+        spec_sleep_error_returns(sleep_error.spec_kind()),
     ensures
-        result@ == spec_handle_sleep_error(sleep_error.kind, sleep_error.error_code as int),
-        !result.is_success,
+        result@ == spec_handle_sleep_error(sleep_error.spec_kind(), sleep_error.spec_error_code()),
+        !result@.is_success,
         result.wf(),
 {
     match sleep_error.kind {
@@ -616,7 +616,7 @@ fn pm_get_tid() -> (result: FallibleOutcome)
 /// `exit()` returns `unwrap_err()`).
 #[verifier::external_body]
 fn pm_exit(arg0: u32) -> (result: DispatchResult)
-    ensures !result.is_success, result.wf(),
+    ensures !result@.is_success, result.wf(),
 { unimplemented!() }
 
 /// Models ProcessManager::exit_thread (ExitThread kcall).
@@ -626,7 +626,7 @@ fn pm_exit(arg0: u32) -> (result: DispatchResult)
 /// ExitThread always returns Err in the original code.
 #[verifier::external_body]
 fn pm_exit_thread(arg0: u32) -> (result: DispatchResult)
-    ensures !result.is_success, result.wf(),
+    ensures !result@.is_success, result.wf(),
 { unimplemented!() }
 
 /// Models pm::join_thread (JoinThread kcall).
@@ -839,8 +839,8 @@ fn convert_sleepable(outcome: SleepableOutcome) -> (result: DispatchResult)
         outcome.wf(),
     ensures
         result.wf(),
-        outcome.succeeded ==> (result.is_success && result.value == outcome.value),
-        !outcome.succeeded ==> !result.is_success,
+        outcome.succeeded ==> (result@.is_success && result@.value == outcome.value as int),
+        !outcome.succeeded ==> !result@.is_success,
 {
     if outcome.succeeded {
         DispatchResult::success(outcome.value)
@@ -888,8 +888,8 @@ fn convert_fallible(outcome: FallibleOutcome) -> (result: DispatchResult)
         outcome.wf(),
     ensures
         result.wf(),
-        outcome.succeeded ==> (result.is_success && result.value == outcome.value),
-        !outcome.succeeded ==> (!result.is_success && result.value == outcome.error_code as i64),
+        outcome.succeeded ==> (result@.is_success && result@.value == outcome.value as int),
+        !outcome.succeeded ==> (!result@.is_success && result@.value == outcome.error_code as int),
 {
     if outcome.succeeded {
         DispatchResult::success(outcome.value)
@@ -928,30 +928,30 @@ fn do_kcall_dispatch(pid: i64, tid: i64, args: DispatchArgs) -> (result: Dispatc
     ensures
         result.wf(),
         // GetPid returns the pid value.
-        args.number == 1u32 ==> (result.is_success && result.value == pid),
+        args@.number == 1 ==> (result@.is_success && result@.value == pid as int),
         // GetTid returns the tid value.
-        args.number == 2u32 ==> (result.is_success && result.value == tid),
+        args@.number == 2 ==> (result@.is_success && result@.value == tid as int),
         // Terminal calls always return error.
         spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal
-            ==> !result.is_success,
+            ==> !result@.is_success,
         // ok()-returning sleepable calls: success value is 0.
-        (args.number == 9u32 || args.number == 24u32
-            || args.number == 27u32 || args.number == 29u32)
-            && result.is_success ==> result.value == 0,
+        (args@.number == 9 || args@.number == 24
+            || args@.number == 27 || args@.number == 29)
+            && result@.is_success ==> result@.value == 0,
         // JoinThread: success value >= 0 (u32 exit status).
-        args.number == 23u32 && result.is_success ==> result.value >= 0,
+        args@.number == 23 && result@.is_success ==> result@.value >= 0,
         // ok()-returning fallible calls: success value is 0.
-        (args.number == 25u32 || args.number == 20u32)
-            && result.is_success ==> result.value == 0,
+        (args@.number == 25 || args@.number == 20)
+            && result@.is_success ==> result@.value == 0,
         // CondSignal: success value >= 0 (count of woken threads).
-        args.number == 26u32 && result.is_success ==> result.value >= 0,
+        args@.number == 26 && result@.is_success ==> result@.value >= 0,
         // Sleepable/fallible error paths produce well-formed error results.
-        (args.number == 9u32 || args.number == 23u32 || args.number == 24u32
-            || args.number == 27u32 || args.number == 29u32
-            || args.number == 25u32 || args.number == 26u32
-            || args.number == 20u32)
-            && !result.is_success ==> (result.value >= i32::MIN as i64
-                                        && result.value <= i32::MAX as i64),
+        (args@.number == 9 || args@.number == 23 || args@.number == 24
+            || args@.number == 27 || args@.number == 29
+            || args@.number == 25 || args@.number == 26
+            || args@.number == 20)
+            && !result@.is_success ==> (result@.value >= i32::MIN as int
+                                        && result@.value <= i32::MAX as int),
 {
     let number: u32 = args.number;
     if number == 1u32 {
@@ -1045,19 +1045,19 @@ pub fn do_kcall_context(args: DispatchArgs) -> (result: DispatchResult)
         result.wf(),
         // Terminal calls always return error, even if pid/tid retrieval fails.
         spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal
-            ==> !result.is_success,
+            ==> !result@.is_success,
         // GetPid/GetTid: if success, value is non-negative (pids/tids >= 0).
-        (args.number == 1u32 || args.number == 2u32)
-            && result.is_success ==> result.value >= 0,
+        (args@.number == 1 || args@.number == 2)
+            && result@.is_success ==> result@.value >= 0,
         // ok()-returning calls: success value is 0.
-        (args.number == 9u32 || args.number == 24u32
-            || args.number == 27u32 || args.number == 29u32
-            || args.number == 25u32 || args.number == 20u32)
-            && result.is_success ==> result.value == 0,
+        (args@.number == 9 || args@.number == 24
+            || args@.number == 27 || args@.number == 29
+            || args@.number == 25 || args@.number == 20)
+            && result@.is_success ==> result@.value == 0,
         // CondSignal: success value >= 0 (count of woken threads).
-        args.number == 26u32 && result.is_success ==> result.value >= 0,
+        args@.number == 26 && result@.is_success ==> result@.value >= 0,
         // JoinThread: success value >= 0 (u32 exit status).
-        args.number == 23u32 && result.is_success ==> result.value >= 0,
+        args@.number == 23 && result@.is_success ==> result@.value >= 0,
 {
     let pid_outcome: FallibleOutcome = pm_get_pid();
     if !pid_outcome.succeeded {
@@ -1103,21 +1103,21 @@ pub fn do_kcall(args: DispatchArgs) -> (result: DispatchResult)
     ensures
         result.wf(),
         // Terminal calls (Exit, ExitThread) always produce error results.
-        spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal ==> !result.is_success,
+        spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal ==> !result@.is_success,
         // General category constraint.
         spec_dispatch_result_constrained(spec_classify_kcall(args.number), result@),
         // GetPid/GetTid: if success, value is non-negative.
-        (args.number == 1u32 || args.number == 2u32)
-            && result.is_success ==> result.value >= 0,
+        (args@.number == 1 || args@.number == 2)
+            && result@.is_success ==> result@.value >= 0,
         // ok()-returning calls: success value is 0.
-        (args.number == 9u32 || args.number == 24u32
-            || args.number == 27u32 || args.number == 29u32
-            || args.number == 25u32 || args.number == 20u32)
-            && result.is_success ==> result.value == 0,
+        (args@.number == 9 || args@.number == 24
+            || args@.number == 27 || args@.number == 29
+            || args@.number == 25 || args@.number == 20)
+            && result@.is_success ==> result@.value == 0,
         // CondSignal: success value >= 0 (count of woken threads).
-        args.number == 26u32 && result.is_success ==> result.value >= 0,
+        args@.number == 26 && result@.is_success ==> result@.value >= 0,
         // JoinThread: success value >= 0.
-        args.number == 23u32 && result.is_success ==> result.value >= 0,
+        args@.number == 23 && result@.is_success ==> result@.value >= 0,
 {
     do_kcall_context(args)
 }
@@ -1180,16 +1180,16 @@ pub fn do_kcall_encoded(args: DispatchArgs) -> (pair: (DispatchResult, i64))
         &&& encoded as int == spec_encode_result(result@)
         // The result satisfies all do_kcall postconditions.
         &&& (spec_classify_kcall(args.number) =~= DispatchCategory::LocalTerminal
-                ==> !result.is_success)
+                ==> !result@.is_success)
         &&& spec_dispatch_result_constrained(spec_classify_kcall(args.number), result@)
-        &&& ((args.number == 1u32 || args.number == 2u32)
-                && result.is_success ==> result.value >= 0)
-        &&& ((args.number == 9u32 || args.number == 24u32
-                || args.number == 27u32 || args.number == 29u32
-                || args.number == 25u32 || args.number == 20u32)
-                && result.is_success ==> result.value == 0)
-        &&& (args.number == 26u32 && result.is_success ==> result.value >= 0)
-        &&& (args.number == 23u32 && result.is_success ==> result.value >= 0)
+        &&& ((args@.number == 1 || args@.number == 2)
+                && result@.is_success ==> result@.value >= 0)
+        &&& ((args@.number == 9 || args@.number == 24
+                || args@.number == 27 || args@.number == 29
+                || args@.number == 25 || args@.number == 20)
+                && result@.is_success ==> result@.value == 0)
+        &&& (args@.number == 26 && result@.is_success ==> result@.value >= 0)
+        &&& (args@.number == 23 && result@.is_success ==> result@.value >= 0)
     }),
 {
     let result: DispatchResult = do_kcall(args);
