@@ -80,6 +80,12 @@ verus! {
 ///
 /// This is the verification model of `src/kernel/src/pm/process/state/mod.rs::ProcessState`.
 /// Complex kernel types are abstracted to concrete Vecs.
+///
+/// **Field visibility:** All fields are `pub` because the Verus `View` trait requires
+/// `open spec fn view()`, which in turn requires accessed fields to be visible outside
+/// the module. This is a Verus framework constraint, not a design choice. The `wf()`
+/// invariant ensures field consistency; callers should use the public API methods
+/// rather than accessing fields directly.
 pub struct ProcessState {
     /// Process identifier (verified dependency).
     pub pid: ProcessIdentifier,
@@ -877,23 +883,45 @@ impl ProcessState {
     // Frame-Condition Stubs for Omitted Functions
     //==============================================================================================
 
-    /// Stub: copy_from_user_unaligned preserves verified state.
+    /// Stub: copy_from_user_unaligned is read-only on verified state.
+    ///
+    /// # Trust Boundary
+    ///
+    /// Justified external_body: operates on opaque `Vmem` (HAL boundary type)
+    /// which is outside the verification scope. Read-only (`&self`) so verified
+    /// state cannot be modified.
     #[verifier::external_body]
     pub fn copy_from_user_unaligned_stub(&self) -> (result: Result<(), Error>)
+        requires
+            self.wf(),
         ensures true,
     {
         unimplemented!()
     }
 
-    /// Stub: copy_to_user_unaligned preserves verified state.
+    /// Stub: copy_to_user_unaligned is read-only on verified state.
+    ///
+    /// # Trust Boundary
+    ///
+    /// Justified external_body: operates on opaque `Vmem` (HAL boundary type).
+    /// Read-only (`&self`).
     #[verifier::external_body]
     pub fn copy_to_user_unaligned_stub(&self) -> (result: Result<(), Error>)
+        requires
+            self.wf(),
         ensures true,
     {
         unimplemented!()
     }
 
     /// Stub: add_event preserves verified state.
+    ///
+    /// # Trust Boundary
+    ///
+    /// Justified external_body: operates on opaque `EventOwnership`/`LinkedList`
+    /// (HAL boundary types) which are outside the verification scope.
+    /// Frame conditions ensure verified state (PID, capabilities, mutexes,
+    /// condvars, PMIO) is not modified.
     #[verifier::external_body]
     pub fn add_event_stub(&mut self)
         requires
@@ -1001,9 +1029,16 @@ impl ProcessState {
         unimplemented!()
     }
 
-    /// Stub: read_pmio preserves verified state.
+    /// Stub: read_pmio is read-only on verified state.
+    ///
+    /// # Trust Boundary
+    ///
+    /// Justified external_body: reads from opaque `AnyIoPort` (HAL boundary type).
+    /// Read-only (`&self`).
     #[verifier::external_body]
     pub fn read_pmio_stub(&self) -> (result: Result<u32, Error>)
+        requires
+            self.wf(),
         ensures true,
     {
         unimplemented!()
@@ -1027,9 +1062,16 @@ impl ProcessState {
         unimplemented!()
     }
 
-    /// Stub: vmem returns a reference, no state mutation.
+    /// Stub: vmem returns a reference to opaque Vmem, no state mutation.
+    ///
+    /// # Trust Boundary
+    ///
+    /// Justified external_body: returns opaque `Vmem` reference (HAL boundary type).
+    /// Read-only (`&self`).
     #[verifier::external_body]
     pub fn vmem_stub(&self)
+        requires
+            self.wf(),
         ensures true,
     {
         unimplemented!()
@@ -1058,8 +1100,15 @@ impl ProcessState {
     //==============================================================================================
 
     /// Stub: get_pmio finds a port by number (read-only).
+    ///
+    /// # Trust Boundary
+    ///
+    /// Justified external_body: searches opaque `AnyIoPort` list (HAL boundary type).
+    /// Read-only (`&self`).
     #[verifier::external_body]
     fn get_pmio_stub(&self) -> (result: Result<(), Error>)
+        requires
+            self.wf(),
         ensures true,
     {
         unimplemented!()
@@ -1084,8 +1133,15 @@ impl ProcessState {
     }
 
     /// Stub: Debug::fmt formats the ProcessState for display (read-only).
+    ///
+    /// # Trust Boundary
+    ///
+    /// Justified external_body: formatting is outside verification scope.
+    /// Read-only (`&self`).
     #[verifier::external_body]
     fn debug_fmt_stub(&self)
+        requires
+            self.wf(),
         ensures true,
     {
         unimplemented!()
