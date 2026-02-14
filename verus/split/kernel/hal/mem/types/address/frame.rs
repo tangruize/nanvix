@@ -36,6 +36,8 @@ pub const MAX_FRAME_NUMBER: usize = 0xFFFF_FFFF / FRAME_SIZE;
 /// A frame number is in the range from `0` to `MAX_FRAME_NUMBER` (inclusive).
 #[derive(Debug, Clone, Copy)]
 pub struct FrameNumber {
+    /// NOTE: Field is pub for cross-module struct literal construction.
+    /// Per methodology Step 1, new callers should use from_raw_value() instead.
     pub value: usize,
 }
 
@@ -62,6 +64,7 @@ impl FrameNumber {
 
     /// Converts a FrameNumber into a raw value.
     pub fn into_raw_value(self) -> (result: usize)
+        requires self.inv(),
         ensures result as int == self.spec_raw_value()
     {
         self.value
@@ -74,15 +77,18 @@ impl FrameNumber {
 /// A frame address is page-aligned (multiple of FRAME_SIZE).
 #[derive(Debug, Clone, Copy)]
 pub struct FrameAddress {
+    /// NOTE: Field is pub for cross-module struct literal construction.
+    /// Per methodology Step 1, new callers should use from_frame_number() instead.
     pub raw_addr: usize,
 }
 
 impl FrameAddress {
 
     /// Constructs a FrameAddress from a frame number.
-    /// Precondition: frame_number.value <= MAX_FRAME_NUMBER ensures no overflow.
+    /// Precondition: spec_raw_value() <= MAX_FRAME_NUMBER ensures no overflow.
     pub fn from_frame_number(frame_number: FrameNumber) -> (result: Result<FrameAddress, Error>)
         requires
+            frame_number.inv(),
             frame_number.spec_raw_value() <= MAX_FRAME_NUMBER as int,
         ensures
             // Always succeeds when precondition is met.
@@ -109,7 +115,7 @@ impl FrameAddress {
 
     /// Converts a FrameAddress into a frame number.
     pub fn into_frame_number(self) -> (result: FrameNumber)
-        requires self.spec_is_aligned(),
+        requires self.inv(),
         ensures
             result.inv(),
             result.spec_raw_value() == self.spec_frame_number(),
@@ -120,6 +126,7 @@ impl FrameAddress {
 
     /// Gets the raw address value.
     pub fn into_raw_value(self) -> (result: usize)
+        requires self.inv(),
         ensures result as int == self.spec_raw_value()
     {
         self.raw_addr
@@ -131,6 +138,8 @@ impl FrameAddress {
 /// A page-aligned physical address (simplified for verification).
 #[derive(Debug, Clone, Copy)]
 pub struct PageAlignedPhysAddr {
+    /// NOTE: Field is pub for cross-module struct literal construction.
+    /// Per methodology Step 1, new callers should use from_raw_value() instead.
     pub raw_addr: usize,
 }
 
@@ -227,7 +236,9 @@ impl TruncatedMemoryRegion {
 
     /// Returns the page-aligned start address.
     pub fn start(&self) -> (result: PageAlignedPhysAddr)
+        requires self.inv(),
         ensures
+            result.inv(),
             result.spec_raw_value() == self.spec_start(),
             result.spec_frame_number() == self.spec_start_frame(),
     {
@@ -241,6 +252,7 @@ impl TruncatedMemoryRegion {
 
     /// Returns the size of the region in bytes.
     pub fn size(&self) -> (result: usize)
+        requires self.inv(),
         ensures result as int == self.spec_size()
     {
         self.size

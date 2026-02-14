@@ -2,8 +2,137 @@
 // Licensed under the MIT License.
 
 // Specifications.
+// Methodology: Step 1 (abstraction), Step 2 (invariant), Step 3 (public specs).
 
 verus! {
+
+//==================================================================================================
+// View Types (Step 1)
+//==================================================================================================
+
+/// Abstract view of a FrameNumber.
+///
+/// # Description
+///
+/// Uses `int` instead of `usize` for abstract reasoning (methodology Step 1).
+pub struct FrameNumberView {
+    /// The abstract value of the frame number.
+    pub value: int,
+}
+
+/// Abstract view of a FrameAddress.
+///
+/// # Description
+///
+/// Uses `int` instead of `usize` for abstract reasoning (methodology Step 1).
+pub struct FrameAddressView {
+    /// The abstract raw address value.
+    pub raw_value: int,
+}
+
+/// Abstract view of a PageAlignedPhysAddr.
+///
+/// # Description
+///
+/// Uses `int` instead of `usize` for abstract reasoning (methodology Step 1).
+pub struct PageAlignedPhysAddrView {
+    /// The abstract raw address value.
+    pub raw_value: int,
+}
+
+/// Abstract view of a TruncatedMemoryRegion.
+///
+/// # Description
+///
+/// Uses `int` instead of `usize` for abstract reasoning (methodology Step 1).
+pub struct TruncatedMemoryRegionView {
+    /// The abstract start address value.
+    pub start: int,
+    /// The abstract size in bytes.
+    pub size: int,
+}
+
+//==================================================================================================
+// View Type Helpers
+//==================================================================================================
+
+impl FrameAddressView {
+    /// The frame number derived from this address.
+    pub open spec fn frame_number(&self) -> int {
+        self.raw_value / FRAME_SIZE as int
+    }
+
+    /// Whether this address is page-aligned.
+    pub open spec fn is_aligned(&self) -> bool {
+        self.raw_value % FRAME_SIZE as int == 0
+    }
+}
+
+impl PageAlignedPhysAddrView {
+    /// The frame number derived from this address.
+    pub open spec fn frame_number(&self) -> int {
+        self.raw_value / FRAME_SIZE as int
+    }
+}
+
+impl TruncatedMemoryRegionView {
+    /// The start frame number.
+    pub open spec fn start_frame(&self) -> int {
+        self.start / FRAME_SIZE as int
+    }
+
+    /// The number of frames in this region.
+    pub open spec fn frame_count(&self) -> int {
+        self.size / FRAME_SIZE as int
+    }
+}
+
+//==================================================================================================
+// View Implementations (closed per Step 1)
+//==================================================================================================
+
+impl View for FrameNumber {
+    type V = FrameNumberView;
+
+    // Closed per methodology Step 1: hides implementation internals from users.
+    closed spec fn view(&self) -> FrameNumberView {
+        FrameNumberView { value: self.value as int }
+    }
+}
+
+impl View for FrameAddress {
+    type V = FrameAddressView;
+
+    // Closed per methodology Step 1: hides implementation internals from users.
+    closed spec fn view(&self) -> FrameAddressView {
+        FrameAddressView { raw_value: self.raw_addr as int }
+    }
+}
+
+impl View for PageAlignedPhysAddr {
+    type V = PageAlignedPhysAddrView;
+
+    // Closed per methodology Step 1: hides implementation internals from users.
+    closed spec fn view(&self) -> PageAlignedPhysAddrView {
+        PageAlignedPhysAddrView { raw_value: self.raw_addr as int }
+    }
+}
+
+impl View for TruncatedMemoryRegion {
+    type V = TruncatedMemoryRegionView;
+
+    // Closed per methodology Step 1: hides implementation internals from users.
+    closed spec fn view(&self) -> TruncatedMemoryRegionView {
+        TruncatedMemoryRegionView {
+            start: self.start.raw_addr as int,
+            size: self.size as int,
+        }
+    }
+}
+
+//==================================================================================================
+// Invariants (Step 2)
+//==================================================================================================
 
 impl FrameNumber {
     /// Invariant for FrameNumber (methodology Step 2).
@@ -18,6 +147,9 @@ impl FrameNumber {
         true
     }
 
+    // NOTE: spec_raw_value is kept as a pub open backward-compatible helper
+    // for cross-module callers. Per methodology Step 3, new callers should
+    // prefer self@.value instead.
     /// Spec function to get the raw value.
     pub open spec fn spec_raw_value(&self) -> int {
         self.value as int
@@ -34,6 +166,10 @@ impl FrameAddress {
     pub closed spec fn inv(&self) -> bool {
         self.raw_addr as int % FRAME_SIZE as int == 0
     }
+
+    // NOTE: The following spec functions are kept as pub open backward-compatible
+    // helpers for cross-module callers. Per methodology Step 3, new callers
+    // should prefer self@.raw_value, self@.frame_number(), self@.is_aligned().
 
     /// Spec function to get the raw address value.
     pub open spec fn spec_raw_value(&self) -> int {
@@ -63,6 +199,10 @@ impl PageAlignedPhysAddr {
     pub closed spec fn inv(&self) -> bool {
         self.raw_addr as int % FRAME_SIZE as int == 0
     }
+
+    // NOTE: The following spec functions are kept as pub open backward-compatible
+    // helpers for cross-module callers. Per methodology Step 3, new callers
+    // should prefer self@.raw_value, self@.frame_number().
 
     /// Spec function to get the raw address value.
     pub open spec fn spec_raw_value(&self) -> int {
@@ -101,7 +241,11 @@ impl TruncatedMemoryRegion {
     }
 
 
-    /// Spec function: invariant that size is page-aligned and positive.
+    /// Invariant for TruncatedMemoryRegion (methodology Step 2).
+    ///
+    /// # Description
+    ///
+    /// The size must be page-aligned and positive.
     pub closed spec fn inv(&self) -> bool {
         &&& self.size as int % FRAME_SIZE as int == 0
         &&& self.size > 0
