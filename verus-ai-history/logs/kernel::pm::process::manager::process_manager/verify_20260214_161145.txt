@@ -1,0 +1,68 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:11:45 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::manager::process_manager
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+    --> kernel/pm/process/manager/process_manager.rs:1896:5
+     |
+1896 |     pub fn inner_create_thread(&mut self, pid: i32, from_suspended: bool)
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+    --> kernel/pm/process/manager/process_manager.rs:1907:13
+     |
+1896 |     pub fn inner_create_thread(&mut self, pid: i32, from_suspended: bool)
+     |     --------------------------------------------------------------------- at the end of the function body
+...
+1907 |             self@.ready_pids =~= old(self)@.ready_pids,
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+    --> kernel/pm/process/manager/process_manager.rs:1908:13
+     |
+1896 |     pub fn inner_create_thread(&mut self, pid: i32, from_suspended: bool)
+     |     --------------------------------------------------------------------- at the end of the function body
+...
+1908 |             self@.suspended_pids =~= old(self)@.suspended_pids,
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+    --> kernel/pm/process/manager/process_manager.rs:1930:5
+     |
+1930 |     pub fn inner_try_add_thread(&mut self, pid: i32, from_suspended: bool)
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+    --> kernel/pm/process/manager/process_manager.rs:1941:13
+     |
+1930 |     pub fn inner_try_add_thread(&mut self, pid: i32, from_suspended: bool)
+     |     ---------------------------------------------------------------------- at the end of the function body
+...
+1941 |             self@.ready_pids =~= old(self)@.ready_pids,
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+    --> kernel/pm/process/manager/process_manager.rs:1942:13
+     |
+1930 |     pub fn inner_try_add_thread(&mut self, pid: i32, from_suspended: bool)
+     |     ---------------------------------------------------------------------- at the end of the function body
+...
+1942 |             self@.suspended_pids =~= old(self)@.suspended_pids,
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 110 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 4 previous errors
+
+
+Duration: 8s
+Exit code: 1
+
+=== Summary ===
+Verified: 110
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager (verified:110, errors:2)
