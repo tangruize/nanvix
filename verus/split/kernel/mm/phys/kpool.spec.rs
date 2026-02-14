@@ -27,7 +27,7 @@ impl View for KernelFrame {
     type V = KernelFrameView;
 
     /// View maps the concrete KernelFrame to the abstract KernelFrameView.
-    pub closed spec fn view(&self) -> KernelFrameView {
+    closed spec fn view(&self) -> KernelFrameView {
         KernelFrameView {
             frame_number: self.addr.spec_frame_number(),
             pool_id: self.pool_id as int,
@@ -207,7 +207,9 @@ impl KpoolView {
 impl View for Kpool {
     type V = KpoolView;
 
-    pub closed spec fn view(&self) -> KpoolView {
+    // NOTE: The `pub` keyword cannot be used on trait impl methods in Rust.
+    // The View trait is public, so view() inherits its visibility.
+    closed spec fn view(&self) -> KpoolView {
         KpoolView {
             allocated_frames: self.frame_allocator@.allocated_frames,
             capacity: self.frame_allocator@.capacity,
