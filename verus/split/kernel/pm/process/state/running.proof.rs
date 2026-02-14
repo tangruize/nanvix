@@ -16,7 +16,7 @@ impl RunningProcess {
     ///
     /// This is essentially the definition of inv(), but stated as a lemma for callers
     /// that hold a reference to a well-formed process.
-    pub proof fn lemma_new_is_wf(&self)
+    proof fn lemma_new_is_wf(&self)
         requires
             self.ready_count as nat == self.ready_thread_ids@.len(),
             self.interrupted_count as nat == self.interrupted_thread_ids@.len(),
@@ -39,7 +39,7 @@ impl RunningProcess {
     }
 
     /// Two RunningProcesses with identical views have equal abstract fields.
-    pub proof fn lemma_view_equality(a: &RunningProcess, b: &RunningProcess)
+    proof fn lemma_view_equality(a: &RunningProcess, b: &RunningProcess)
         requires
             a@ == b@,
         ensures
@@ -53,7 +53,7 @@ impl RunningProcess {
     }
 
     /// Removing an element from a sequence decreases its length by one.
-    pub proof fn lemma_remove_at_length(s: Seq<u64>, idx: int)
+    proof fn lemma_remove_at_length(s: Seq<u64>, idx: int)
         requires
             0 <= idx < s.len(),
         ensures
@@ -67,7 +67,7 @@ impl RunningProcess {
     }
 
     /// After removing a zombie thread via try_join_thread, the zombie list shrinks by one.
-    pub proof fn lemma_try_join_zombie_post_shrinks(&self, tid: u64)
+    proof fn lemma_try_join_zombie_post_shrinks(&self, tid: u64)
         requires
             self.spec_try_join_thread(tid) == JOIN_TAG_ZOMBIE as int,
             self.spec_has_zombie_thread(tid),
@@ -91,7 +91,7 @@ impl RunningProcess {
 
 impl RunnableProcess {
     /// A RunnableProcess with non-empty ready list satisfies inv().
-    pub proof fn lemma_new_wf(&self)
+    proof fn lemma_new_wf(&self)
         requires
             self.ready_thread_ids@.len() >= 1,
         ensures
@@ -107,7 +107,7 @@ impl RunnableProcess {
 
 impl SleepingProcess {
     /// A SleepingProcess with non-empty sleeping list satisfies inv().
-    pub proof fn lemma_new_wf(&self)
+    proof fn lemma_new_wf(&self)
         requires
             self.sleeping_thread_ids@.len() >= 1,
         ensures
@@ -123,7 +123,7 @@ impl SleepingProcess {
 
 impl InterruptedProcess {
     /// An InterruptedProcess with non-empty interrupted list satisfies inv().
-    pub proof fn lemma_new_wf(&self)
+    proof fn lemma_new_wf(&self)
         requires
             self.interrupted_thread_ids@.len() >= 1,
         ensures
@@ -139,7 +139,7 @@ impl InterruptedProcess {
 
 impl ZombieProcess {
     /// A ZombieProcess with non-empty zombie list satisfies inv().
-    pub proof fn lemma_new_wf(&self)
+    proof fn lemma_new_wf(&self)
         requires
             self.zombie_thread_ids@.len() >= 1,
         ensures
@@ -160,7 +160,7 @@ impl ZombieProcess {
 
 impl RunningProcessView {
     /// Connecting lemma for `RunningProcess::schedule()`.
-    pub proof fn lemma_schedule_view_matches(
+    proof fn lemma_schedule_view_matches(
         pre: RunningProcessView,
         post: RunnableProcessView,
     )
@@ -176,7 +176,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::sleep()` — ready branch.
-    pub proof fn lemma_sleep_ready_view_matches(
+    proof fn lemma_sleep_ready_view_matches(
         pre: RunningProcessView,
         post: RunnableProcessView,
     )
@@ -192,7 +192,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::sleep()` — interrupted branch.
-    pub proof fn lemma_sleep_interrupted_view_matches(
+    proof fn lemma_sleep_interrupted_view_matches(
         pre: RunningProcessView,
         post: RunnableProcessView,
     )
@@ -213,7 +213,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::sleep()` — sleeping branch.
-    pub proof fn lemma_sleep_sleeping_view_matches(
+    proof fn lemma_sleep_sleeping_view_matches(
         pre: RunningProcessView,
         post: SleepingProcessView,
     )
@@ -227,7 +227,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::exit()` — runnable branch.
-    pub proof fn lemma_exit_runnable_view_matches(
+    proof fn lemma_exit_runnable_view_matches(
         pre: RunningProcessView,
         post: RunnableProcessView,
     )
@@ -252,7 +252,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::exit()` — zombie branch.
-    pub proof fn lemma_exit_zombie_view_matches(
+    proof fn lemma_exit_zombie_view_matches(
         pre: RunningProcessView,
         post: ZombieProcessView,
         status: int,
@@ -268,7 +268,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::exit_thread()` — ready branch.
-    pub proof fn lemma_exit_thread_ready_view_matches(
+    proof fn lemma_exit_thread_ready_view_matches(
         pre: RunningProcessView,
         post: RunnableProcessView,
     )
@@ -284,7 +284,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::exit_thread()` — interrupted branch.
-    pub proof fn lemma_exit_thread_interrupted_view_matches(
+    proof fn lemma_exit_thread_interrupted_view_matches(
         pre: RunningProcessView,
         post: RunnableProcessView,
     )
@@ -305,7 +305,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::exit_thread()` — sleeping branch.
-    pub proof fn lemma_exit_thread_sleeping_view_matches(
+    proof fn lemma_exit_thread_sleeping_view_matches(
         pre: RunningProcessView,
         post: SleepingProcessView,
     )
@@ -319,7 +319,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::exit_thread()` — zombie branch.
-    pub proof fn lemma_exit_thread_zombie_view_matches(
+    proof fn lemma_exit_thread_zombie_view_matches(
         pre: RunningProcessView,
         post: ZombieProcessView,
         status: int,
@@ -338,7 +338,7 @@ impl RunningProcessView {
     /// Requires `tid` to appear at most once in `sleeping_thread_ids` so that
     /// the existential index from the exec postcondition matches the `choose`
     /// index in `spec_wakeup_ok`.
-    pub proof fn lemma_wakeup_ok_view_matches(
+    proof fn lemma_wakeup_ok_view_matches(
         pre: RunningProcessView,
         post: RunningProcessView,
         tid: int,
@@ -377,7 +377,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::wakeup()` — failure (Err) case.
-    pub proof fn lemma_wakeup_err_view_matches(
+    proof fn lemma_wakeup_err_view_matches(
         pre: RunningProcessView,
         post: RunningProcessView,
     )
@@ -398,7 +398,7 @@ impl RunningProcessView {
     /// Requires `tid` to appear at most once in `zombie_thread_ids` so that
     /// the existential index from the exec postcondition matches the `choose`
     /// index in `spec_join_zombie_result`.
-    pub proof fn lemma_join_zombie_view_matches(
+    proof fn lemma_join_zombie_view_matches(
         pre: RunningProcessView,
         post: RunningProcessView,
         tid: int,
@@ -437,7 +437,7 @@ impl RunningProcessView {
     }
 
     /// Connecting lemma for `RunningProcess::try_join_thread()` — non-zombie case.
-    pub proof fn lemma_join_non_zombie_view_matches(
+    proof fn lemma_join_non_zombie_view_matches(
         pre: RunningProcessView,
         post: RunningProcessView,
     )
