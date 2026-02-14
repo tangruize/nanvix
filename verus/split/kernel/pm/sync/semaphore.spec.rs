@@ -139,7 +139,9 @@ impl Semaphore {
     ///
     /// Enforces the waiter-value constraint on abstract views directly,
     /// used for reasoning about spec-level state transitions.
-    pub open spec fn spec_wf(view: SemaphoreView) -> bool {
+    /// This is `pub closed` since it is only used internally in proofs.
+    /// Use `reveal(Semaphore::spec_wf)` in proofs that need the body.
+    pub closed spec fn spec_wf(view: SemaphoreView) -> bool {
         view.waiters > 0 ==> view.value == 0
     }
 

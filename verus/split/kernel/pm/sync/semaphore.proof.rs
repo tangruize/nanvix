@@ -328,6 +328,7 @@ impl Semaphore {
             Semaphore::spec_down_blocking(view).waiters == view.waiters + 1,
             Semaphore::spec_down_blocking(view).value == 0,
     {
+        reveal(Semaphore::spec_wf);
     }
 
     /// Lemma: `spec_wake` preserves spec well-formedness.
@@ -347,6 +348,7 @@ impl Semaphore {
             Semaphore::spec_wake(view).value == 0,
             Semaphore::spec_wake(view).waiters == (view.waiters - 1) as nat,
     {
+        reveal(Semaphore::spec_wf);
     }
 
     /// Lemma: Full up-then-wake cycle on an exhausted semaphore with waiters.
@@ -370,6 +372,7 @@ impl Semaphore {
             &&& Semaphore::spec_wf(after_wake)
         }),
     {
+        reveal(Semaphore::spec_wf);
     }
 
     /// Lemma: Condvar interface assumption is consistent.
@@ -388,6 +391,7 @@ impl Semaphore {
             Semaphore::spec_condvar_wake_after_notify(v, after_up)
         }),
     {
+        reveal(Semaphore::spec_wf);
     }
 
     /// Lemma: All waiters are eventually served after w up-wake cycles.
@@ -418,6 +422,7 @@ impl Semaphore {
         }),
         decreases w,
     {
+        reveal(Semaphore::spec_wf);
         let initial: SemaphoreView = SemaphoreView { value: 0, waiters: w };
         assert(Semaphore::spec_wf(initial));
 
@@ -497,6 +502,7 @@ impl Semaphore {
             &&& after.waiters == view.waiters
         }),
     {
+        reveal(Semaphore::spec_wf);
     }
 
     /// Lemma: `down_or_block` WouldBlock path preserves `spec_wf`.
@@ -517,6 +523,7 @@ impl Semaphore {
             &&& after.waiters == view.waiters + 1
         }),
     {
+        reveal(Semaphore::spec_wf);
     }
 
     /// Lemma: `down_or_block` outcome matches availability.

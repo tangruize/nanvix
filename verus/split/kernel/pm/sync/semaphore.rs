@@ -211,7 +211,6 @@ impl Semaphore {
     /// A new `Semaphore` with the specified initial value and no waiters.
     pub fn new(value: usize) -> (result: Self)
         ensures
-            result.value == value,
             result@ == Semaphore::spec_new_view(value as nat),
             result@.value == value as nat,
             result@.waiters == 0,
@@ -250,7 +249,6 @@ impl Semaphore {
             old(self).spec_is_available(),
             ctx@.safe_for_down(),
         ensures
-            self.value == old(self).value - 1,
             self@.value == old(self)@.value - 1,
             self@.waiters == old(self)@.waiters,
             self.wf(),
@@ -293,7 +291,6 @@ impl Semaphore {
             ctx@.safe_for_down(),
         ensures
             result == DownOutcome::Acquired ==> old(self).spec_is_available(),
-            result == DownOutcome::Acquired ==> self.value == old(self).value - 1,
             result == DownOutcome::Acquired ==> self@.value == old(self)@.value - 1,
             result == DownOutcome::Acquired ==> self@.waiters == old(self)@.waiters,
             result == DownOutcome::Acquired ==> self@ == Semaphore::spec_down_or_block_ghost_view(old(self)@, result),
@@ -328,7 +325,6 @@ impl Semaphore {
             old(self).wf(),
         ensures
             result == old(self).spec_is_available(),
-            result ==> self.value == old(self).value - 1,
             result ==> self@.value == old(self)@.value - 1,
             !result ==> self@ == old(self)@,
             !result ==> self.spec_is_exhausted(),
@@ -373,10 +369,9 @@ impl Semaphore {
     pub fn up(&mut self, ctx: Ghost<CallerContext>)
         requires
             old(self).wf(),
-            old(self).value < usize::MAX,
+            old(self)@.value < usize::MAX as nat,
             ctx@.safe_for_up(),
         ensures
-            self.value == old(self).value + 1,
             self@.value == old(self)@.value + 1,
             self@.waiters == old(self)@.waiters,
             self.spec_is_available(),
@@ -400,7 +395,6 @@ impl Semaphore {
         requires
             self.wf(),
         ensures
-            result == self.value,
             result as nat == self@.value,
     {
         proof { reveal(Semaphore::wf); }
@@ -422,7 +416,6 @@ impl Semaphore {
             self.wf(),
         ensures
             result == self.spec_is_available(),
-            result == (self.value > 0),
     {
         proof { reveal(Semaphore::wf); }
         self.value > 0
