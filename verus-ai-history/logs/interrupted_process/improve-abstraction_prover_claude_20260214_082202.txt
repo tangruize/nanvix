@@ -1,0 +1,110 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T08:23:52.469276
+Model: claude-opus-4.6-fast
+Session: 1f103fc6-8bfd-43f2-95b8-88b242144039
+Duration: 109.5s
+Exit code: 0
+
+=== Prompt ===
+Improve the spec abstraction for interrupted_process.
+
+Original source: src/kernel/src/pm/process/state/interrupted.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - interrupted.rs (exec)
+  - interrupted.spec.rs (spec)
+  - interrupted.proof.rs (proof)
+
+== YOUR TASK ==
+
+The current spec may mirror the implementation too closely (listing individual
+fields in postconditions instead of using abstract reasoning). Your job is to
+add View-level abstract state transition functions so that downstream modules
+can write postconditions like:
+    ensures result@ =~= old(self)@.spec_foo(args)
+instead of listing every field change individually.
+
+== STEPS ==
+
+1. Read the .spec.rs file and identify all View types (e.g., FooView).
+2. Read the .rs exec file and identify all pub fn that mutate or construct state.
+3. For each exec function, add a corresponding `pub open spec fn` on the View
+   type that returns the expected output View. Use struct update syntax:
+     FooView { changed_field: new_val, ..*self }
+4. Prefer abstract types: Set<T> over raw bits, Seq<T> for ordered collections,
+   high-level predicates over field-level conditions.
+5. If bridging lemmas are needed (e.g., bit-level ↔ set-level), add them to
+   the .proof.rs file.
+6. Do NOT modify exec code in the .rs file. Do NOT change existing ensures.
+   Only ADD new spec functions to the .spec.rs file (and optionally lemmas
+   to .proof.rs).
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh interrupted_process
+Iterate until verification passes (0 errors).
+
+== OUTPUT ==
+Write a brief summary of what was added as a comment at the top of the
+.spec.rs file under the existing module doc comment.
+
+=== Output ===
+
+
+
+
+● List directory verus/split/kernel/pm/process/state
+  └ 25 files found
+
+● Read verus/split/kernel/pm/process/state/interrupted.spec.rs
+  └ 415 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.rs
+  └ 558 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs
+  └ 519 lines read
+
+● Read verification script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh
+  └ 199 lines...
+
+Let me check for Verus `seq!` macro usage in the codebase:
+
+● Grep "seq!\[" (/home/ubuntu/nanvix/verus/split)
+  └ 3 files found
+
+● Check verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh | grep -c 'verify' | head -1
+  └ 2 lines...
+
+● Grep "seq!\[" (/home/ubuntu/nanvix/verus/split/kernel/pm/process/state/runnable.spec.rs)
+  └ 4 lines found
+
+Good, `seq![value]` is confirmed. Now let me implement the changes.
+
+● Edit verus/split/kernel/pm/process/state/interrupted.spec.rs (+18)
+
+Now add the `InterruptedProcessView` impl block with view-level spec functions:
+
+● Edit verus/split/kernel/pm/process/state/interrupted.spec.rs (+85)
+
+Now add the bridging lemmas to the proof file:
+
+● Edit verus/split/kernel/pm/process/state/interrupted.proof.rs (+117)
+
+Now run verification:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh interrupted_process 2>&1
+  └ 25 lines...
+
+Verification passes with 36 verified, 0 errors.
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 30.326s
+Total session time:     1m 48.222s
+Total code changes:     +220 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    563.8k in, 14.3k out, 510.4k cached (Est. 9 Premium requests)
+
+=== End ===
