@@ -4,6 +4,23 @@
 // ProcessManagerInner Specification.
 // This file contains spec functions and View types for the ProcessManagerInner type.
 //
+// ## SleepError Abstraction
+//
+// The original code defines `SleepError` (mod.rs:107-110) with two variants:
+//   - `Interrupted(InterruptReason)`: the sleep was interrupted by a signal.
+//   - `Generic(Error)`: a non-interrupt error occurred (e.g., ResourceBusy).
+//
+// The verified model does not represent `SleepError` as a separate type. Instead:
+// - The `Interrupted` variant is modeled by the `interrupt_reason` field in
+//   `ProcessManagerInner` and the `sleep_post_wakeup` function in the unsafe layer,
+//   which checks whether the wakeup was caused by an interrupt.
+// - The `Generic` variant corresponds to error paths (e.g., try_borrow_mut failure)
+//   that are trivially state-preserving and covered by precondition-based error
+//   elimination (see "Error Path Verification Model" below).
+// - Queue-level effects of sleep are fully captured by `sleep_running` and
+//   `sleep_thread_running` regardless of the error type returned to the caller.
+// Future error-path verification would need to model this enum explicitly.
+//
 // ## Verification Model
 //
 // The process manager tracks processes across five queues: running (single PID),

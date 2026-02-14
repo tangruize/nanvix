@@ -837,6 +837,25 @@ impl ProcessManagerInner {
     }
 
     /// Running thread exits; only sleeping threads remain → process to suspended.
+    ///
+    /// Models the `Err(Ok(...))` branch of `exit_thread` (mod.rs:1008-1010):
+    /// `running_process.exit_thread(status)` returns `Err(Ok((join_cond,
+    /// sleeping_process, previous_context)))`, indicating the process has only
+    /// sleeping threads remaining after this thread exits.
+    ///
+    /// ## Nested Result Pattern (T3 Trust Boundary)
+    ///
+    /// The original `exit_thread` returns a nested `Result`:
+    ///   - `Ok(...)` → remaining runnable threads → process stays ready (branch 0).
+    ///   - `Err(Ok(...))` → only sleeping threads → process to suspended (branch 1, this fn).
+    ///   - `Err(Err(...))` → all threads zombie → process to zombie (branch 2).
+    ///
+    /// The branch selection is determined by the thread-level logic inside
+    /// `RunningProcess::exit_thread()`, which examines the remaining thread states.
+    /// This is trust boundary T3: the verified model parameterizes the branch choice
+    /// rather than computing it from thread state. The precondition ensures a valid
+    /// ready process exists for scheduling (`chosen_next`), and the postcondition
+    /// proves the queue-level transition is correct for this specific branch.
     pub fn exit_thread_to_suspended(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
@@ -985,6 +1004,22 @@ impl ProcessManagerInner {
     /// The net queue-level effect is a no-op: the process remains in the ready queue.
     /// Internal thread state changes (marking the running thread for termination) are
     /// abstracted away as part of trust boundary T3.
+    ///
+    /// ## Transient State Detail
+    ///
+    /// The original code path involves a transient `ready→interrupted→ready` transition
+    /// within the same function call:
+    ///   1. `process.terminate()` returns `Ok(interrupted_process)` — process briefly
+    ///      enters the `InterruptedProcess` type state.
+    ///   2. `interrupted_process.resume()` returns `RunnableProcess` — process transitions
+    ///      back to runnable.
+    ///   3. `self.ready.push_back(runnable_process)` — process re-enters the ready queue.
+    ///
+    /// These transitions are internal to the function and invisible to external observers.
+    /// Since the process never leaves the ready queue from the caller's perspective, the
+    /// verified model correctly captures this as a no-op on queue state. The intermediate
+    /// type-state transitions are enforced by Rust's affine types (move semantics) and
+    /// do not affect queue membership.
     ///
     /// # Note on Verification Power
     ///
