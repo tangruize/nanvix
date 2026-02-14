@@ -29,7 +29,7 @@ impl RunningProcess {
     }
 
     /// wf_strict implies inv.
-    pub proof fn lemma_wf_strict_implies_wf(&self)
+    proof fn lemma_wf_strict_implies_wf(&self)
         requires
             self.wf_strict(),
         ensures
