@@ -709,4 +709,54 @@ pub fn lock_mutex_model(mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (re
     }
 }
 
+/// Verified wrapper matching the original `lock_mutex` function signature.
+///
+/// # Description
+///
+/// This function mirrors the original `pub unsafe fn lock_mutex(pid, tid,
+/// mutex_addr, timeout_s, timeout_ns) -> Result<(), SleepError>` function
+/// signature, adapted for verification model types. The `pid` and `tid`
+/// parameters are included for signature fidelity even though they are used
+/// only in `trace!()` logging in the original and do not affect control flow.
+///
+/// The implementation delegates to `lock_mutex_model`, which performs the
+/// actual verified pipeline logic. The result is independent of `pid`/`tid`
+/// (proven by `lemma_result_independent_of_pid_tid`).
+///
+/// # Parameters
+///
+/// - `pid`: Process identifier (used only in trace logging in original).
+/// - `tid`: Thread identifier (used only in trace logging in original).
+/// - `mutex_addr`: Mutex address (32-bit on x86).
+/// - `timeout_s`: Timeout seconds (32-bit on x86).
+/// - `timeout_ns`: Timeout nanoseconds (32-bit on x86).
+///
+/// # Returns
+///
+/// The result of the lock_mutex pipeline as a `LockMutexResultModel`.
+pub fn lock_mutex(pid: u32, tid: u32, mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (result: LockMutexResultModel)
+    requires
+        // ABI constraint: inputs originate from 32-bit usize on x86-32.
+        timeout_s as nat <= USIZE_MAX_X86_32(),
+        timeout_ns as nat <= USIZE_MAX_X86_32(),
+    ensures
+        // Invalid timeout always produces InvalidTimeoutError.
+        !spec_timeout_parsed_ok(timeout_s as nat, timeout_ns as nat) ==>
+            spec_is_timeout_error(result.spec_view()),
+        // TimedOut impossible with infinite timeout.
+        !spec_is_finite_timeout(timeout_s as nat, timeout_ns as nat) ==>
+            !matches!(result, LockMutexResultModel::LockTimedOut),
+{
+    // pid and tid are intentionally unused — they affect only trace logging
+    // in the original function. See lemma_result_independent_of_pid_tid.
+    let ret: (
+        LockMutexResultModel,
+        Ghost<GetMutexOutcomeView>,
+        Ghost<LockOutcomeView>,
+        Ghost<PutGuardOutcomeView>,
+        Ghost<Option<TimeoutView>>,
+    ) = lock_mutex_model(mutex_addr, timeout_s, timeout_ns);
+    ret.0
+}
+
 } // verus!
