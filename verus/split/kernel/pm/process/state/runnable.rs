@@ -713,6 +713,11 @@ impl RunnableProcess {
             return Err(self);
         }
 
+        proof {
+            // Thread was found, so sleeping list is non-empty.
+            assert(self.sleeping_count >= 1u64);
+        }
+
         // Build new sleeping list by removing the found thread.
         let new_sleeping_ids: Vec<i64> = vec_remove_at(
             &self.sleeping_thread_ids, found_idx_usize);
