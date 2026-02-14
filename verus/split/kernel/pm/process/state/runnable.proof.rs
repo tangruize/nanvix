@@ -736,9 +736,18 @@ impl RunnableProcess {
             == spec_i64_seq_as_int(self.ready_thread_ids@)[sel_exec]);
         assert(result@.running_thread_id == self@.ready_thread_ids[sel_view]);
         // Bridge ready_thread_ids: spec_remove_at distributes over spec_i64_seq_as_int.
-        assert(spec_i64_seq_as_int(
-            Self::spec_remove_at(self.ready_thread_ids@, sel_exec))
-            =~= RunnableProcessView::spec_remove_at(self@.ready_thread_ids, sel_view));
+        // Break down: subrange distributes, then add distributes.
+        let s: Seq<i64> = self.ready_thread_ids@;
+        let s_int: Seq<int> = self@.ready_thread_ids;
+        let sel: int = sel_exec;
+        assert(spec_i64_seq_as_int(s.subrange(0, sel))
+            =~= s_int.subrange(0, sel));
+        assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))
+            =~= s_int.subrange(sel + 1, s_int.len()));
+        let left: Seq<i64> = s.subrange(0, sel);
+        let right: Seq<i64> = s.subrange(sel + 1, s.len() as int);
+        assert(spec_i64_seq_as_int(left.add(right))
+            =~= spec_i64_seq_as_int(left).add(spec_i64_seq_as_int(right)));
     }
 
     /// Bridging lemma: the terminate() InterruptedProcess result view matches

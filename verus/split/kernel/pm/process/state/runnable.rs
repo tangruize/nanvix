@@ -473,10 +473,18 @@ impl RunnableProcess {
                 self.ready_admission_times@.len() as int,
             );
             assert(min_idx as int == self@.spec_earliest_ready_index());
-            assert(spec_i64_seq_as_int(
-                Self::spec_remove_at(self.ready_thread_ids@, min_idx as int))
-                =~= RunnableProcessView::spec_remove_at(
-                    self@.ready_thread_ids, min_idx as int));
+            // Break down spec_remove_at distribution over spec_i64_seq_as_int.
+            let s: Seq<i64> = self.ready_thread_ids@;
+            let s_int: Seq<int> = self@.ready_thread_ids;
+            let sel: int = min_idx as int;
+            assert(spec_i64_seq_as_int(s.subrange(0, sel))
+                =~= s_int.subrange(0, sel));
+            assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))
+                =~= s_int.subrange(sel + 1, s_int.len()));
+            let left: Seq<i64> = s.subrange(0, sel);
+            let right: Seq<i64> = s.subrange(sel + 1, s.len() as int);
+            assert(spec_i64_seq_as_int(left.add(right))
+                =~= spec_i64_seq_as_int(left).add(spec_i64_seq_as_int(right)));
         }
         RunningProcess {
             pid: self.pid,
@@ -756,9 +764,18 @@ impl RunnableProcess {
                 =~= spec_i64_seq_as_int(self.ready_admission_times@).push(
                     new_ready_time as int));
             // Sleeping IDs: spec_remove_at distributes over spec_i64_seq_as_int.
-            assert(spec_i64_seq_as_int(new_sleeping_ids@)
-                =~= RunnableProcessView::spec_remove_at(
-                    self@.sleeping_thread_ids, found_idx_usize as int));
+            // Break down: subrange distributes, then add distributes.
+            let sl: Seq<i64> = self.sleeping_thread_ids@;
+            let sl_int: Seq<int> = self@.sleeping_thread_ids;
+            let fi: int = found_idx_usize as int;
+            assert(spec_i64_seq_as_int(sl.subrange(0, fi))
+                =~= sl_int.subrange(0, fi));
+            assert(spec_i64_seq_as_int(sl.subrange(fi + 1, sl.len() as int))
+                =~= sl_int.subrange(fi + 1, sl_int.len()));
+            let sl_left: Seq<i64> = sl.subrange(0, fi);
+            let sl_right: Seq<i64> = sl.subrange(fi + 1, sl.len() as int);
+            assert(spec_i64_seq_as_int(sl_left.add(sl_right))
+                =~= spec_i64_seq_as_int(sl_left).add(spec_i64_seq_as_int(sl_right)));
             // spec_seq_contains bridging: found at found_idx_usize in Seq<i64>,
             // so found at same index in Seq<int>.
             assert(self@.sleeping_thread_ids[found_idx_usize as int] == tid as int);
