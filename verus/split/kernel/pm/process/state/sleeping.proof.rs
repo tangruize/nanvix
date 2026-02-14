@@ -58,6 +58,7 @@ impl SleepingProcess {
             new_self.wf(),
     {
         reveal(SleepingProcess::wf);
+        reveal(SleepingProcess::mutation_frame_preserved);
     }
 
     //==============================================================================================
@@ -193,6 +194,52 @@ impl SleepingProcess {
             a@ == b@,
     {
     }
+
+    //==============================================================================================
+    // View Bridging Lemmas
+    //==============================================================================================
+
+    /// Lemma: exec-level spec_find_thread equals view-level spec_find_thread.
+    ///
+    /// Bridges the concrete `u64`-based search with the abstract `int`-based
+    /// view-level search, proving they produce identical results.
+    proof fn lemma_find_thread_view_equiv(p: &SleepingProcess, tid: u64)
+        ensures
+            p.spec_find_thread(tid) == p@.spec_find_thread(tid as int),
+    {
+        // Bridge sleeping thread containment.
+        if p.spec_has_sleeping_thread(tid) {
+            let i: int = choose|i: int| 0 <= i < p.sleeping_thread_ids@.len()
+                && p.sleeping_thread_ids@[i] == tid;
+            assert(spec_u64_seq_as_int(p.sleeping_thread_ids@)[i] == tid as int);
+            assert(p@.spec_has_sleeping_thread(tid as int));
+        } else {
+            assert forall|i: int| 0 <= i < p.sleeping_thread_ids@.len()
+                implies p.sleeping_thread_ids@[i] != tid by {};
+            assert forall|i: int| 0 <= i < spec_u64_seq_as_int(p.sleeping_thread_ids@).len()
+                implies spec_u64_seq_as_int(p.sleeping_thread_ids@)[i] != tid as int
+            by {
+                assert(p.sleeping_thread_ids@[i] != tid);
+            };
+            assert(!p@.spec_has_sleeping_thread(tid as int));
+        }
+        // Bridge zombie thread containment.
+        if p.spec_has_zombie_thread(tid) {
+            let j: int = choose|j: int| 0 <= j < p.zombie_thread_ids@.len()
+                && p.zombie_thread_ids@[j] == tid;
+            assert(spec_u64_seq_as_int(p.zombie_thread_ids@)[j] == tid as int);
+            assert(p@.spec_has_zombie_thread(tid as int));
+        } else {
+            assert forall|j: int| 0 <= j < p.zombie_thread_ids@.len()
+                implies p.zombie_thread_ids@[j] != tid by {};
+            assert forall|j: int| 0 <= j < spec_u64_seq_as_int(p.zombie_thread_ids@).len()
+                implies spec_u64_seq_as_int(p.zombie_thread_ids@)[j] != tid as int
+            by {
+                assert(p.zombie_thread_ids@[j] != tid);
+            };
+            assert(!p@.spec_has_zombie_thread(tid as int));
+        }
+    }
 }
 
 //==================================================================================================
@@ -254,6 +301,7 @@ impl SleepingProcessView {
             p.wf() <==> p@.wf(),
     {
         reveal(SleepingProcess::wf);
+        reveal(SleepingProcessView::wf);
         // spec_u64_seq_as_int preserves length.
         assert(spec_u64_seq_as_int(p.sleeping_thread_ids@).len()
             == p.sleeping_thread_ids@.len());

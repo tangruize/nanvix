@@ -135,56 +135,59 @@ pub struct InterruptedProcessView {
 }
 
 //==================================================================================================
-// Spec Functions: SleepingProcess
+// Spec Functions: SleepingProcess (internal)
 //==================================================================================================
+// Per Step 3 of the methodology, no `pub` spec functions beyond `wf()` and
+// `view()` in `impl SleepingProcess`. These helpers are module-private and
+// used only in exec function bodies and proof lemmas.
 
 impl SleepingProcess {
-    /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> u64 {
+    /// Internal spec: returns the process identifier value.
+    open spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
-    /// Spec function: returns the number of sleeping threads.
-    pub open spec fn spec_sleeping_count(&self) -> nat {
+    /// Internal spec: returns the number of sleeping threads.
+    open spec fn spec_sleeping_count(&self) -> nat {
         self.sleeping_thread_ids@.len()
     }
 
-    /// Spec function: returns the number of zombie threads.
-    pub open spec fn spec_zombie_count(&self) -> nat {
+    /// Internal spec: returns the number of zombie threads.
+    open spec fn spec_zombie_count(&self) -> nat {
         self.zombie_thread_ids@.len()
     }
 
-    /// Spec function: returns the total number of threads.
-    pub open spec fn spec_total_thread_count(&self) -> nat {
+    /// Internal spec: returns the total number of threads.
+    open spec fn spec_total_thread_count(&self) -> nat {
         self.spec_sleeping_count() + self.spec_zombie_count()
     }
 
-    /// Spec function: checks if a thread ID is in the sleeping list.
-    pub open spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
+    /// Internal spec: checks if a thread ID is in the sleeping list.
+    open spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.sleeping_thread_ids@.len()
             && self.sleeping_thread_ids@[i] == tid
     }
 
-    /// Spec function: checks if a thread ID is in the zombie list.
-    pub open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
+    /// Internal spec: checks if a thread ID is in the zombie list.
+    open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.zombie_thread_ids@.len()
             && self.zombie_thread_ids@[i] == tid
     }
 
-    /// Spec function: checks if a thread ID is in any list.
-    pub open spec fn spec_has_thread(&self, tid: u64) -> bool {
+    /// Internal spec: checks if a thread ID is in any list.
+    open spec fn spec_has_thread(&self, tid: u64) -> bool {
         self.spec_has_sleeping_thread(tid)
         || self.spec_has_zombie_thread(tid)
     }
 
-    /// Spec function: models `find_thread()` — returns which list a thread is in.
+    /// Internal spec: models `find_thread()` — returns which list a thread is in.
     ///
     /// - `Some(0)` if found in sleeping threads.
     /// - `Some(1)` if found in zombie threads.
     /// - `None` if not found.
     ///
     /// Search order matches original: sleeping → zombie.
-    pub open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
+    open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
         if self.spec_has_sleeping_thread(tid) {
             Some(0int)
         } else if self.spec_has_zombie_thread(tid) {
@@ -194,32 +197,32 @@ impl SleepingProcess {
         }
     }
 
-    /// Spec helper: checks if a sequence contains a given value.
+    /// Internal spec helper: checks if a sequence contains a given value.
     pub open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
-    /// Spec helper: computes the sequence resulting from removing index `idx`.
+    /// Internal spec helper: computes the sequence resulting from removing index `idx`.
     pub open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64>
         recommends 0 <= idx < s.len()
     {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
-    /// Spec helper: checks whether a sequence has no duplicate elements.
+    /// Internal spec helper: checks whether a sequence has no duplicate elements.
     pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
             ==> s[i] != s[j]
     }
 
-    /// Spec helper: checks whether two sequences share no common elements.
+    /// Internal spec helper: checks whether two sequences share no common elements.
     pub open spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
     }
 
-    /// Spec helper: checks whether `sub` is a subsequence of `full`.
+    /// Internal spec helper: checks whether `sub` is a subsequence of `full`.
     ///
     /// A sequence `sub` is a subsequence of `full` if every element of `sub`
     /// appears in `full` in the same relative order. This models the stable
@@ -252,8 +255,11 @@ impl SleepingProcess {
         &&& Self::spec_seqs_disjoint(self.sleeping_thread_ids@, self.zombie_thread_ids@)
     }
 
-    /// Spec function: frame condition for mutable accessor (`state_mut()`).
-    pub open spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
+    /// Internal spec: frame condition for mutable accessor (`state_mut()`).
+    ///
+    /// Closed per methodology: references implementation fields.
+    /// Use `reveal(SleepingProcess::mutation_frame_preserved)` in proofs.
+    closed spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
         &&& new_self.spec_pid() == old_self.spec_pid()
         &&& new_self.sleeping_thread_ids@ == old_self.sleeping_thread_ids@
         &&& new_self.zombie_thread_ids@ == old_self.zombie_thread_ids@
@@ -261,12 +267,14 @@ impl SleepingProcess {
 }
 
 //==================================================================================================
-// Spec Functions: Boundary Types
+// Spec Functions: Boundary Types (internal)
 //==================================================================================================
+// Per Step 3 of the methodology, no `pub` spec functions beyond `wf()` and
+// `view()` in `impl RunnableProcess` / `impl InterruptedProcess`.
 
 impl RunnableProcess {
-    /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> u64 {
+    /// Internal spec: returns the process identifier value.
+    open spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
@@ -286,8 +294,8 @@ impl RunnableProcess {
 }
 
 impl InterruptedProcess {
-    /// Spec function: returns the process identifier value.
-    pub open spec fn spec_pid(&self) -> u64 {
+    /// Internal spec: returns the process identifier value.
+    open spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
@@ -364,25 +372,80 @@ impl View for InterruptedProcess {
 // downstream modules to write postconditions like:
 //     ensures result@ =~= old(self)@.spec_terminate()
 // instead of listing every field change individually.
+//
+// Per Step 3 of the methodology, reusable predicates for public method specs
+// are placed here on the View type rather than on the exec type.
 
 impl SleepingProcessView {
     /// View-level helper: checks whether a sequence has no duplicate elements.
-    /// Self-contained equivalent of `SleepingProcess::spec_no_duplicates`.
     pub open spec fn spec_no_duplicates(s: Seq<int>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
             ==> s[i] != s[j]
     }
 
     /// View-level helper: checks whether two sequences share no common elements.
-    /// Self-contained equivalent of `SleepingProcess::spec_seqs_disjoint`.
     pub open spec fn spec_seqs_disjoint(a: Seq<int>, b: Seq<int>) -> bool {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
     }
 
+    /// View-level helper: checks if a sequence contains a given value.
+    pub open spec fn spec_seq_contains(s: Seq<int>, val: int) -> bool {
+        exists|i: int| 0 <= i < s.len() && s[i] == val
+    }
+
+    /// View-level helper: checks if a thread ID is in the sleeping list.
+    pub open spec fn spec_has_sleeping_thread(&self, tid: int) -> bool {
+        exists|i: int| 0 <= i < self.sleeping_thread_ids.len()
+            && self.sleeping_thread_ids[i] == tid
+    }
+
+    /// View-level helper: checks if a thread ID is in the zombie list.
+    pub open spec fn spec_has_zombie_thread(&self, tid: int) -> bool {
+        exists|i: int| 0 <= i < self.zombie_thread_ids.len()
+            && self.zombie_thread_ids[i] == tid
+    }
+
+    /// View-level helper: checks if a thread ID is in any list.
+    pub open spec fn spec_has_thread(&self, tid: int) -> bool {
+        self.spec_has_sleeping_thread(tid) || self.spec_has_zombie_thread(tid)
+    }
+
+    /// View-level helper: models `find_thread()`.
+    ///
+    /// - `Some(0)` if found in sleeping threads.
+    /// - `Some(1)` if found in zombie threads.
+    /// - `None` if not found.
+    ///
+    /// Search order matches original: sleeping → zombie.
+    pub open spec fn spec_find_thread(&self, tid: int) -> Option<int> {
+        if self.spec_has_sleeping_thread(tid) {
+            Some(0int)
+        } else if self.spec_has_zombie_thread(tid) {
+            Some(1int)
+        } else {
+            None
+        }
+    }
+
+    /// View-level helper: checks whether `sub` is a subsequence of `full`.
+    pub open spec fn spec_is_subsequence(sub: Seq<int>, full: Seq<int>) -> bool {
+        exists|indices: Seq<int>|
+            indices.len() == sub.len()
+            && (forall|k: int| #![auto] 0 <= k < indices.len() ==>
+                0 <= indices[k] < full.len() as int
+                && full[indices[k]] == sub[k])
+            && (forall|k: int, l: int| #![auto] 0 <= k < l < indices.len() ==>
+                indices[k] < indices[l])
+    }
+
     /// View-level well-formedness predicate, equivalent to SleepingProcess::wf().
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: implementation invariants are hidden
+    /// from external users. Use `reveal(SleepingProcessView::wf)` in proofs
+    /// that need the body.
+    pub closed spec fn wf(&self) -> bool {
         &&& self.sleeping_thread_ids.len() >= 1
         &&& Self::spec_no_duplicates(self.sleeping_thread_ids)
         &&& Self::spec_no_duplicates(self.zombie_thread_ids)
