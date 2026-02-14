@@ -143,39 +143,39 @@ pub struct InterruptedProcessView {
 
 impl SleepingProcess {
     /// Internal spec: returns the process identifier value.
-    open spec fn spec_pid(&self) -> u64 {
+    closed spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
     /// Internal spec: returns the number of sleeping threads.
-    open spec fn spec_sleeping_count(&self) -> nat {
+    closed spec fn spec_sleeping_count(&self) -> nat {
         self.sleeping_thread_ids@.len()
     }
 
     /// Internal spec: returns the number of zombie threads.
-    open spec fn spec_zombie_count(&self) -> nat {
+    closed spec fn spec_zombie_count(&self) -> nat {
         self.zombie_thread_ids@.len()
     }
 
     /// Internal spec: returns the total number of threads.
-    open spec fn spec_total_thread_count(&self) -> nat {
+    closed spec fn spec_total_thread_count(&self) -> nat {
         self.spec_sleeping_count() + self.spec_zombie_count()
     }
 
     /// Internal spec: checks if a thread ID is in the sleeping list.
-    open spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
+    closed spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.sleeping_thread_ids@.len()
             && self.sleeping_thread_ids@[i] == tid
     }
 
     /// Internal spec: checks if a thread ID is in the zombie list.
-    open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
+    closed spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
         exists|i: int| 0 <= i < self.zombie_thread_ids@.len()
             && self.zombie_thread_ids@[i] == tid
     }
 
     /// Internal spec: checks if a thread ID is in any list.
-    open spec fn spec_has_thread(&self, tid: u64) -> bool {
+    closed spec fn spec_has_thread(&self, tid: u64) -> bool {
         self.spec_has_sleeping_thread(tid)
         || self.spec_has_zombie_thread(tid)
     }
@@ -187,7 +187,7 @@ impl SleepingProcess {
     /// - `None` if not found.
     ///
     /// Search order matches original: sleeping → zombie.
-    open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
+    closed spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
         if self.spec_has_sleeping_thread(tid) {
             Some(0int)
         } else if self.spec_has_zombie_thread(tid) {
@@ -274,7 +274,7 @@ impl SleepingProcess {
 
 impl RunnableProcess {
     /// Internal spec: returns the process identifier value.
-    open spec fn spec_pid(&self) -> u64 {
+    closed spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
@@ -295,7 +295,7 @@ impl RunnableProcess {
 
 impl InterruptedProcess {
     /// Internal spec: returns the process identifier value.
-    open spec fn spec_pid(&self) -> u64 {
+    closed spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 

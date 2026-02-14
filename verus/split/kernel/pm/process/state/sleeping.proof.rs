@@ -171,6 +171,9 @@ impl SleepingProcess {
         ensures
             self.spec_find_thread(tid) == None::<int>,
     {
+        reveal(SleepingProcess::spec_find_thread);
+        reveal(SleepingProcess::spec_has_sleeping_thread);
+        reveal(SleepingProcess::spec_has_zombie_thread);
     }
 
     /// Lemma: spec_find_thread result is consistent with spec_has_thread.
@@ -178,6 +181,10 @@ impl SleepingProcess {
         ensures
             self.spec_find_thread(tid).is_some() <==> self.spec_has_thread(tid),
     {
+        reveal(SleepingProcess::spec_find_thread);
+        reveal(SleepingProcess::spec_has_sleeping_thread);
+        reveal(SleepingProcess::spec_has_zombie_thread);
+        reveal(SleepingProcess::spec_has_thread);
     }
 
     //==============================================================================================
@@ -207,6 +214,9 @@ impl SleepingProcess {
         ensures
             p.spec_find_thread(tid) == p@.spec_find_thread(tid as int),
     {
+        reveal(SleepingProcess::spec_find_thread);
+        reveal(SleepingProcess::spec_has_sleeping_thread);
+        reveal(SleepingProcess::spec_has_zombie_thread);
         // Bridge sleeping thread containment.
         if p.spec_has_sleeping_thread(tid) {
             let i: int = choose|i: int| 0 <= i < p.sleeping_thread_ids@.len()
