@@ -68,6 +68,12 @@ impl FrameAllocator {
     /// # Parameters
     ///
     /// - `bitmap`: The bitmap to use for tracking frame allocation.
+    ///
+    /// # Note (Verus limitation)
+    ///
+    /// The original Nanvix code logs capacity info via `info!()` macro here.
+    /// The `info!()` macro is unavailable in Verus; this is a known logging limitation.
+    /// The exec logic is otherwise identical: `Self { bitmap }` and return.
     pub fn new(bitmap: Bitmap) -> (result: FrameAllocator)
         requires
             bitmap.inv(),
