@@ -95,18 +95,28 @@ verus! {
 /// **Cross-module dependency:** When `ReadyThread` is verified independently,
 /// the postconditions of this boundary model's `new` must be confirmed
 /// as implied by the real `ReadyThread::new` spec.
+///
+/// **Field visibility:** The `state` field is `pub` because the Verus `View`
+/// trait requires `open spec fn view()`, which in turn requires accessed
+/// fields to be visible outside the module. This is a Verus framework
+/// constraint, not a design choice.
 pub struct ReadyThread {
     /// The underlying thread state.
-    state: ThreadState,
+    pub state: ThreadState,
 }
 
 /// A thread manager responsible for creating and managing threads.
 ///
 /// Verification model of `src/kernel/src/pm/thread/mod.rs::ThreadManager`.
 /// Tracks the next thread identifier to assign.
+///
+/// **Field visibility:** The `next_id` field is `pub` because the Verus `View`
+/// trait requires `open spec fn view()`, which in turn requires accessed
+/// fields to be visible outside the module. This is a Verus framework
+/// constraint, not a design choice.
 pub struct ThreadManager {
     /// Next thread identifier to be assigned.
-    next_id: ThreadIdentifier,
+    pub next_id: ThreadIdentifier,
 }
 
 //==================================================================================================
