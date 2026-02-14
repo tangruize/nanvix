@@ -1,6 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+// Include specifications.
+include!("mod.spec.rs");
+
+// Include proofs.
+include!("mod.proof.rs");
+
 pub mod dispatcher;
 pub mod handler;
 pub mod scoreboard;
