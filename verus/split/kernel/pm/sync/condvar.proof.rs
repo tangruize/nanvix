@@ -75,7 +75,7 @@ impl Condvar {
     /// Lemma: A new condvar is well-formed.
     pub proof fn lemma_new_is_wf()
         ensures ({
-            let view: CondvarView = Condvar::spec_new_view();
+            let view: CondvarView = CondvarView::spec_new();
             view.sleeping.len() == 0
         }),
     {
@@ -769,7 +769,7 @@ impl Condvar {
     /// Lemma: A newly created condvar is safe to drop.
     pub proof fn lemma_new_is_drop_safe()
         ensures
-            Condvar::spec_new_view().sleeping.len() == 0,
+            CondvarView::spec_new().sleeping.len() == 0,
     {
     }
 
