@@ -52,21 +52,32 @@ pub tracked struct MutexToken {
 }
 
 //==================================================================================================
-// Spec Functions
+// Spec Functions — MutexView
 //==================================================================================================
 
-impl Mutex {
-    /// Spec function: returns whether the mutex is locked.
-    pub open spec fn spec_is_locked(&self) -> bool {
+impl MutexView {
+    /// Returns whether the mutex view represents a locked state.
+    pub open spec fn is_locked(&self) -> bool {
         self.locked
     }
 
-    /// Spec function: returns whether the mutex is unlocked.
-    pub open spec fn spec_is_unlocked(&self) -> bool {
+    /// Returns whether the mutex view represents an unlocked state.
+    pub open spec fn is_unlocked(&self) -> bool {
         !self.locked
     }
 
-    /// Spec function: well-formedness predicate (invariant).
+    /// The view of a newly created mutex with the given identity.
+    pub open spec fn spec_new(id: nat) -> MutexView {
+        MutexView { locked: false, id: id, token_issued: false }
+    }
+}
+
+//==================================================================================================
+// Spec Functions — Mutex
+//==================================================================================================
+
+impl Mutex {
+    /// Well-formedness predicate (invariant).
     ///
     /// # Description
     ///
@@ -85,17 +96,7 @@ impl Mutex {
     /// across the entire system. A global resource algebra would be needed for
     /// that, which is beyond Verus's current tracked-token model.
     pub closed spec fn wf(&self) -> bool {
-        self.locked == self.token_issued()
-    }
-
-    /// Spec function: returns whether a token is currently outstanding.
-    pub open spec fn token_issued(&self) -> bool {
-        self@.token_issued
-    }
-
-    /// Spec function: the view of a newly created mutex with the given identity.
-    pub open spec fn spec_new_view(id: nat) -> MutexView {
-        MutexView { locked: false, id: id, token_issued: false }
+        self.locked == self.token_issued
     }
 }
 

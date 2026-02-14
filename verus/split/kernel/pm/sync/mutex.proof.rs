@@ -19,32 +19,32 @@ impl Mutex {
     /// Lemma: A newly created mutex is unlocked with no token outstanding.
     pub proof fn lemma_new_is_unlocked(id: usize)
         ensures
-            Mutex::spec_new_view(id as nat) == (MutexView { locked: false, id: id as nat, token_issued: false }),
-            !Mutex::spec_new_view(id as nat).locked,
-            !Mutex::spec_new_view(id as nat).token_issued,
-            Mutex::spec_new_view(id as nat).id == id as nat,
+            MutexView::spec_new(id as nat) == (MutexView { locked: false, id: id as nat, token_issued: false }),
+            !MutexView::spec_new(id as nat).locked,
+            !MutexView::spec_new(id as nat).token_issued,
+            MutexView::spec_new(id as nat).id == id as nat,
     {
     }
 
     /// Lemma: A mutex is either locked or unlocked (totality).
     pub proof fn lemma_state_is_total(&self)
         ensures
-            self.spec_is_locked() || self.spec_is_unlocked(),
-            !(self.spec_is_locked() && self.spec_is_unlocked()),
+            self@.is_locked() || self@.is_unlocked(),
+            !(self@.is_locked() && self@.is_unlocked()),
     {
     }
 
-    /// Lemma: spec_is_locked and spec_is_unlocked are complementary.
+    /// Lemma: is_locked and is_unlocked are complementary.
     pub proof fn lemma_locked_unlocked_complementary(&self)
         ensures
-            self.spec_is_locked() == !self.spec_is_unlocked(),
+            self@.is_locked() == !self@.is_unlocked(),
     {
     }
 
     /// Lemma: View reflects the locked state.
     pub proof fn lemma_view_reflects_locked(&self)
         ensures
-            self@.locked == self.spec_is_locked(),
+            self@.locked == self@.is_locked(),
     {
     }
 
@@ -53,7 +53,7 @@ impl Mutex {
         requires
             a@ == b@,
         ensures
-            a.spec_is_locked() == b.spec_is_locked(),
+            a@.is_locked() == b@.is_locked(),
             a@.id == b@.id,
             a@.token_issued == b@.token_issued,
     {
@@ -62,33 +62,33 @@ impl Mutex {
     /// Lemma: An unlocked mutex has `locked == false`.
     pub proof fn lemma_unlocked_implies_not_locked(pre: &Mutex)
         requires
-            pre.spec_is_unlocked(),
+            pre@.is_unlocked(),
         ensures
-            !pre.locked,
+            !pre@.locked,
     {
     }
 
     /// Lemma: A locked mutex has `locked == true`.
     pub proof fn lemma_locked_implies_locked(pre: &Mutex)
         requires
-            pre.spec_is_locked(),
+            pre@.is_locked(),
         ensures
-            pre.locked,
+            pre@.locked,
     {
     }
 
     /// Lemma: unlock on a locked mutex produces an unlocked mutex.
     pub proof fn lemma_unlock_produces_unlocked(id: usize)
         ensures
-            !(Mutex { locked: false, id: id, token_issued: false }).locked,
-            (Mutex { locked: false, id: id, token_issued: false }).spec_is_unlocked(),
+            !(Mutex { locked: false, id: id, token_issued: false })@.locked,
+            (Mutex { locked: false, id: id, token_issued: false })@.is_unlocked(),
     {
     }
 
     /// Lemma: Well-formedness is preserved: new mutexes are well-formed.
     pub proof fn lemma_new_is_wf(id: usize)
         ensures ({
-            let view: MutexView = Mutex::spec_new_view(id as nat);
+            let view: MutexView = MutexView::spec_new(id as nat);
             !view.locked && !view.token_issued
         }),
     {
@@ -99,7 +99,7 @@ impl Mutex {
     pub proof fn lemma_wf_unlocked_no_token(s: &Mutex)
         requires
             s.wf(),
-            s.spec_is_unlocked(),
+            s@.is_unlocked(),
         ensures
             !s@.token_issued,
     {
@@ -111,7 +111,7 @@ impl Mutex {
     pub proof fn lemma_locked_wf_implies_token_state(s: &Mutex)
         requires
             s.wf(),
-            s.spec_is_locked(),
+            s@.is_locked(),
         ensures
             s@.token_issued,
             s@.locked,
@@ -124,22 +124,22 @@ impl Mutex {
     pub proof fn lemma_try_lock_contended_fails(s: &Mutex)
         requires
             s.wf(),
-            s.spec_is_locked(),
+            s@.is_locked(),
         ensures
-            s.locked,
+            s@.locked,
             s@.token_issued,
     {
         reveal(Mutex::wf);
     }
 
-    /// Lemma: `lock()` requires `spec_is_unlocked()` to prevent sequential deadlock.
+    /// Lemma: `lock()` requires `is_unlocked()` to prevent sequential deadlock.
     pub proof fn lemma_lock_precondition_prevents_deadlock(s: &Mutex)
         requires
             s.wf(),
-            s.spec_is_locked(),
+            s@.is_locked(),
         ensures
             s@.token_issued,
-            !s.spec_is_unlocked(),
+            !s@.is_unlocked(),
     {
         reveal(Mutex::wf);
     }
@@ -160,9 +160,9 @@ impl Mutex {
             let initial: Mutex = Mutex { locked: false, id: id, token_issued: false };
             let after_lock: Mutex = Mutex { locked: true, id: id, token_issued: true };
             let after_unlock: Mutex = Mutex { locked: false, id: id, token_issued: false };
-            &&& initial.spec_is_unlocked()
-            &&& after_lock.spec_is_locked()
-            &&& after_unlock.spec_is_unlocked()
+            &&& initial@.is_unlocked()
+            &&& after_lock@.is_locked()
+            &&& after_unlock@.is_unlocked()
             &&& initial@ == after_unlock@
             &&& initial@.id == after_lock@.id
             &&& after_lock@.id == after_unlock@.id
@@ -180,10 +180,10 @@ impl Mutex {
     /// Lemma: An unlocked mutex has the same view as a new mutex with its id.
     pub proof fn lemma_unlocked_eq_new_view(s: &Mutex)
         requires
-            s.spec_is_unlocked(),
+            s@.is_unlocked(),
             s.wf(),
         ensures
-            s@ == Mutex::spec_new_view(s@.id),
+            s@ == MutexView::spec_new(s@.id),
     {
         reveal(Mutex::wf);
     }
@@ -191,10 +191,10 @@ impl Mutex {
     /// Lemma: After `new()` followed by `try_lock()`, the result is always `true`.
     pub proof fn lemma_new_then_try_lock_succeeds(s: &Mutex)
         requires
-            s@ == Mutex::spec_new_view(s@.id),
+            s@ == MutexView::spec_new(s@.id),
         ensures
-            s.spec_is_unlocked(),
-            !s.locked,
+            s@.is_unlocked(),
+            !s@.locked,
             !s@.token_issued,
             s.wf(),
     {
@@ -204,10 +204,10 @@ impl Mutex {
     /// Lemma: A `MutexToken` produced by a locked mutex is valid for unlock.
     pub proof fn lemma_lock_token_valid_for_unlock(s: &Mutex, token: &MutexToken)
         requires
-            s.spec_is_locked(),
+            s@.is_locked(),
             token.view == s@,
         ensures
-            s.locked,
+            s@.locked,
             token.view.locked,
             token.view.id == s@.id,
             token.view.token_issued == s@.token_issued,
@@ -220,8 +220,8 @@ impl Mutex {
         s1: &Mutex, s2: &Mutex, token: &MutexToken,
     )
         requires
-            s1.spec_is_locked(),
-            s2.spec_is_locked(),
+            s1@.is_locked(),
+            s2@.is_locked(),
             s1@.id != s2@.id,
             token.view == s1@,
         ensures
@@ -238,9 +238,9 @@ impl Mutex {
     pub proof fn lemma_unlock_enables_relock(id: usize)
         ensures ({
             let after_unlock: Mutex = Mutex { locked: false, id: id, token_issued: false };
-            &&& after_unlock.spec_is_unlocked()
+            &&& after_unlock@.is_unlocked()
             &&& after_unlock.wf()
-            &&& !after_unlock.token_issued()
+            &&& !after_unlock@.token_issued
         }),
     {
         reveal(Mutex::wf);
@@ -262,7 +262,7 @@ impl Mutex {
             token.view == s@,
             token.view.locked,
         ensures
-            s.spec_is_locked(),
+            s@.is_locked(),
             s@.token_issued,
             s@.locked,
     {
@@ -280,9 +280,9 @@ impl Mutex {
     pub proof fn lemma_no_double_unlock(s: &Mutex)
         requires
             s.wf(),
-            s.spec_is_unlocked(),
+            s@.is_unlocked(),
         ensures
-            !s.locked,
+            !s@.locked,
             !s@.token_issued,
     {
         reveal(Mutex::wf);
@@ -309,17 +309,17 @@ impl Mutex {
             let locked: Mutex = Mutex { locked: true, id: id, token_issued: true };
             // Phase 1: Mutex starts unlocked — lock() preconditions hold.
             &&& unlocked.wf()
-            &&& unlocked.spec_is_unlocked()
-            &&& !unlocked.token_issued()
+            &&& unlocked@.is_unlocked()
+            &&& !unlocked@.token_issued
             // Phase 2: Caller A acquires the lock.
             &&& locked.wf()
-            &&& locked.spec_is_locked()
+            &&& locked@.is_locked()
             &&& locked@.token_issued
             // Phase 3: Contention — Caller B cannot acquire.
-            &&& !locked.spec_is_unlocked()
-            &&& locked.locked
+            &&& !locked@.is_unlocked()
+            &&& locked@.locked
             // Phase 4–5: After A releases, B can acquire (same as initial state).
-            &&& unlocked@ == Mutex::spec_new_view(id as nat)
+            &&& unlocked@ == MutexView::spec_new(id as nat)
         }),
     {
         reveal(Mutex::wf);

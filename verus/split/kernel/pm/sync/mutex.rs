@@ -12,7 +12,7 @@
 //! - `try_lock` fails iff the mutex was previously locked, leaving state unchanged.
 //! - `unlock` transitions the mutex from locked to unlocked and consumes the token.
 //! - Lock-then-unlock round-trip restores the original unlocked state.
-//! - `spec_is_locked` and `spec_is_unlocked` are complementary predicates.
+//! - `is_locked` and `is_unlocked` are complementary predicates.
 //! - Mutex instance identity (`id`) is preserved across all state transitions.
 //! - Tokens are bound to the producing mutex instance via view identity.
 //! - Well-formedness (`wf()`) enforces: unlocked implies no token outstanding.
@@ -44,7 +44,7 @@
 //!   concurrent thread access or atomic memory ordering.
 //! - **Liveness and progress**: The blocking behavior of `lock()` (sleeping on a
 //!   `Condvar`) and its termination under fairness assumptions are not modeled.
-//!   The `lock()` precondition (`spec_is_unlocked`) models the instant-success case.
+//!   The `lock()` precondition (`is_unlocked`) models the instant-success case.
 //! - **Condvar interaction**: The sleeping/waking protocol via `Condvar` is an
 //!   external dependency. The condvar module is separately verified.
 //! - **Arc reference counting**: Shared ownership via `Arc<MutexInner>` is not modeled.
@@ -90,7 +90,7 @@
 //! ## Trust Boundaries
 //!
 //! - `lock()`: Fully verified. The sequential model's preconditions (`wf()`,
-//!   `spec_is_unlocked()`, `!token_issued()`) guarantee that the lock is acquirable,
+//!   `spec_is_unlocked()`, `!token_issued`) guarantee that the lock is acquirable,
 //!   so `lock()` delegates to `try_lock()` without needing `external_body`.
 //! - `MutexGuard` and `Drop`: Modeled via tracked `MutexToken` ghost state.
 //!   See spinlock verification for detailed explanation of this pattern.
@@ -196,9 +196,9 @@ impl Mutex {
     /// A new `Mutex` in the unlocked state with the given identity.
     pub fn new(id: usize) -> (result: Self)
         ensures
-            !result.locked,
-            result.spec_is_unlocked(),
-            result@ == Mutex::spec_new_view(id as nat),
+            !result@.locked,
+            result@.is_unlocked(),
+            result@ == MutexView::spec_new(id as nat),
             result@.id == id as nat,
             result.wf(),
     {
@@ -230,10 +230,10 @@ impl Mutex {
         requires
             old(self).wf(),
         ensures
-            result.0 == !old(self).locked,
+            result.0 == !old(self)@.locked,
             // Unconditional: mutex is always held after try_lock (success: acquired;
             // failure: was already locked, state unchanged).
-            self.locked,
+            self@.locked,
             self@.id == old(self)@.id,
             !result.0 ==> self@ == old(self)@,
             result.0 ==> self@.token_issued,
@@ -269,12 +269,12 @@ impl Mutex {
     /// RAII pattern from the original implementation.
     pub fn lock(&mut self) -> (token: Tracked<MutexToken>)
         requires
-            old(self).spec_is_unlocked(),
+            old(self)@.is_unlocked(),
             old(self).wf(),
-            !old(self).token_issued(),
+            !old(self)@.token_issued,
         ensures
-            self.locked,
-            self.spec_is_locked(),
+            self@.locked,
+            self@.is_locked(),
             self@.id == old(self)@.id,
             self@.token_issued,
             token@.view == self@,
@@ -303,17 +303,17 @@ impl Mutex {
     /// The mutex must be held (locked) and the token must match the current state.
     pub fn unlock(&mut self, Tracked(token): Tracked<MutexToken>)
         requires
-            old(self).locked,
+            old(self)@.locked,
             old(self).wf(),
-            old(self).token_issued(),
+            old(self)@.token_issued,
             token.view == old(self)@,
         ensures
-            old(self).spec_is_locked(),
-            !self.locked,
-            self.spec_is_unlocked(),
+            old(self)@.is_locked(),
+            !self@.locked,
+            self@.is_unlocked(),
             self@.id == old(self)@.id,
             !self@.token_issued,
-            self@ == Mutex::spec_new_view(old(self)@.id),
+            self@ == MutexView::spec_new(old(self)@.id),
             self.wf(),
     {
         proof { reveal(Mutex::wf); }
@@ -328,8 +328,8 @@ impl Mutex {
     /// `true` if the mutex is locked, `false` otherwise.
     pub fn is_locked(&self) -> (result: bool)
         ensures
-            result == self.locked,
-            result == self.spec_is_locked(),
+            result == self@.locked,
+            result == self@.is_locked(),
     {
         self.locked
     }
