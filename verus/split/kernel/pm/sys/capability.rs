@@ -77,20 +77,13 @@ impl Capability {
     /// Error message for invalid capability conversions.
     pub const PARSE_ERROR_MESSAGE: &'static str = "invalid capability";
 
-    /// Converts a u32 value to a Capability.
+    /// Verification auxiliary: Converts a u32 value to a Capability.
     ///
-    /// # Parameters
+    /// # Note
     ///
-    /// - `value`: The raw u32 value.
-    ///
-    /// # Returns
-    ///
-    /// On success, the corresponding Capability variant.
-    /// On failure, an error indicating invalid argument.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the value does not correspond to a valid capability.
+    /// This function is a verification auxiliary not present in the original source.
+    /// It provides a standalone verified conversion that can be referenced by proofs
+    /// and other verified code without going through the trait implementation.
     pub fn try_from_u32(value: u32) -> (result: Result<Capability, Error>)
         ensures
             result is Ok ==> {
@@ -146,7 +139,11 @@ impl Capability {
 impl TryFrom<u32> for Capability {
     type Error = Error;
 
-    /// Converts a u32 value to a Capability via the verified `try_from_u32` method.
+    /// Converts a u32 value to a Capability.
+    ///
+    /// # Note
+    ///
+    /// Restored to inline match to match original source.
     fn try_from(value: u32) -> (result: Result<Self, Self::Error>)
         ensures
             result is Ok ==> {
@@ -160,7 +157,14 @@ impl TryFrom<u32> for Capability {
                 &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
             },
     {
-        Self::try_from_u32(value)
+        match value {
+            0u32 => Ok(Capability::ExceptionControl),
+            1u32 => Ok(Capability::InterruptControl),
+            2u32 => Ok(Capability::IoManagement),
+            3u32 => Ok(Capability::MemoryManagement),
+            4u32 => Ok(Capability::ProcessManagement),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE)),
+        }
     }
 }
 
