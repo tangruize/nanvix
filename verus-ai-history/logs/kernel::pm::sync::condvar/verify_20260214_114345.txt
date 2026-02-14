@@ -1,0 +1,32 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 11:43:45 CST 2026
+Module: kernel::pm::sync::condvar
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::condvar
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::sync::condvar
+
+error: assertion failed
+   --> kernel/pm/sync/condvar.proof.rs:460:17
+    |
+460 |         implies s[i] != entry by {
+    |                 ^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> kernel/pm/sync/condvar.rs:274:21
+    |
+274 |             implies s[i] != entry by {
+    |                     ^^^^^^^^^^^^^ assertion failed
+
+verification results:: 51 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 51
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::condvar (verified:51, errors:2)
