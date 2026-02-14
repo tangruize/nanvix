@@ -408,7 +408,7 @@ impl ZombieProcessView {
 
     /// View-level membership test for zombie thread IDs.
     pub open spec fn spec_has_zombie_thread(self, tid: u64) -> bool {
-        exists|i: int| 0 <= i < self.zombie_thread_ids.len() && self.zombie_thread_ids[i] == tid
+        ZombieProcess::spec_seq_contains(self.zombie_thread_ids, tid)
     }
 
     /// View-level well-formedness predicate.
