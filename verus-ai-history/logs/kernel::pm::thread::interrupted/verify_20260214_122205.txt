@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 12:22:05 CST 2026
+Module: kernel::pm::thread::interrupted
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::interrupted
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: reveal/fuel statement is not allowed here because the function `lib::kernel::pm::thread::state::ThreadState::wf` is marked 'closed' and thus its body is not visible here. (Note: 'reveal' statements are intended for functions that are opaque, not functions that are closed)
+   --> kernel/pm/thread/interrupted.proof.rs:133:9
+    |
+133 |         reveal(ThreadState::wf);
+    |         ^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::interrupted (verified:0, errors:0)
