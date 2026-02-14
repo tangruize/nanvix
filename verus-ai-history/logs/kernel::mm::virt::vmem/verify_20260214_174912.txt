@@ -1,0 +1,64 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 17:49:12 CST 2026
+Module: kernel::mm::virt::vmem
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt::vmem
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::virt::vmem
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/mm/virt/vmem.rs:691:5
+    |
+691 | /     pub fn map(
+692 | |         &mut self,
+693 | |         frame_addr: FrameAddress,
+694 | |         vaddr: usize,
+695 | |         access: AccessPermission,
+696 | |     ) -> (result: Result<(), Error>)
+    | |___________________________________^
+
+error: postcondition not satisfied
+   --> kernel/mm/virt/vmem.rs:709:13
+    |
+709 | /             result.is_ok() ==> {
+710 | |                 &&& self@.spec_is_mapped(vaddr as int)
+711 | |                 &&& self@.mapping_count == old(self)@.mapping_count + 1
+712 | |             },
+    | |_____________^ failed this postcondition
+...
+777 |           Ok(())
+    |           ------ at the end of the function body
+
+error: invariant not satisfied before loop
+   --> kernel/mm/virt/vmem.rs:740:17
+    |
+740 |                 !self.spec_is_mapped(vaddr as int),
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/mm/virt/vmem.rs:814:13
+    |
+814 | /             result.is_ok() ==> {
+815 | |                 &&& spec_is_user_addr(vaddr as int)
+816 | |                 &&& vaddr as int % PAGE_SIZE as int == 0
+817 | |                 &&& self@.mapping_count == old(self)@.mapping_count - 1
+...   |
+823 | |                 &&& result.unwrap() as int == old(self)@.spec_get_frame_addr(vaddr as int)
+824 | |             },
+    | |_____________^ failed this postcondition
+...
+896 |           Ok(frame_addr)
+    |           -------------- at the end of the function body
+
+verification results:: 28 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 3 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 28
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt::vmem (verified:28, errors:2)
