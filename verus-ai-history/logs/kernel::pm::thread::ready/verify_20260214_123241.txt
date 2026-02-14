@@ -1,0 +1,147 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 12:32:41 CST 2026
+Module: kernel::pm::thread::ready
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::ready
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::ready
+
+error: postcondition not satisfied
+  --> kernel/pm/thread/ready.proof.rs:78:13
+   |
+70 |     pub proof fn lemma_new_is_drop_safe(r: &ReadyThread)
+   |     ---------------------------------------------------- at the end of the function body
+...
+78 |             r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted(),
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.proof.rs:132:13
+    |
+128 |       pub proof fn lemma_run_preserves_wf(&self)
+    |       ------------------------------------------ at the end of the function body
+...
+132 | /             ({
+133 | |                 let post_state: ThreadState = ThreadState {
+134 | |                     interrupt_reason: None,
+135 | |                     ..self.state
+136 | |                 };
+137 | |                 post_state.wf()
+138 | |             }),
+    | |______________^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.proof.rs:248:13
+    |
+241 |       pub proof fn lemma_new_then_run(r: &ReadyThread)
+    |       ------------------------------------------------ at the end of the function body
+...
+248 | /             ({
+249 | |                 let post_state: ThreadState = ThreadState {
+250 | |                     interrupt_reason: None,
+251 | |                     ..r.state
+...   |
+260 | |                 && post_state.spec_drop_safe()
+261 | |             }),
+    | |______________^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.rs:272:13
+    |
+272 |               result.spec_drop_safe(),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+276 | /         ReadyThread {
+277 | |             state: ThreadState::new(id, kernel_stack, user_stack, user_tda),
+278 | |             admission_time: clock_now(),
+279 | |         }
+    | |_________- at the end of the function body
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/thread/ready.rs:359:5
+    |
+359 |     pub fn set_interrupt_reason(&mut self, reason: int)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.rs:367:13
+    |
+359 |     pub fn set_interrupt_reason(&mut self, reason: int)
+    |     --------------------------------------------------- at the end of the function body
+...
+367 |             forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.rs:368:13
+    |
+359 |     pub fn set_interrupt_reason(&mut self, reason: int)
+    |     --------------------------------------------------- at the end of the function body
+...
+368 |             self.spec_drop_safe() == old(self).spec_drop_safe(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.rs:391:13
+    |
+384 |       pub fn store_mutex_guard(&mut self, address: u64)
+    |       ------------------------------------------------- at the end of the function body
+...
+391 | /             forall|a: int| a != address as int ==>
+392 | |                 self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+    | |_____________________________________________________________________^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.rs:417:13
+    |
+411 |       pub fn take_mutex_guard(&mut self, address: u64)
+    |       ------------------------------------------------ at the end of the function body
+...
+417 | /             forall|a: int| a != address as int ==>
+418 | |                 self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+    | |_____________________________________________________________________^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/thread/ready.rs:447:5
+    |
+447 |     pub fn run(self) -> (result: RunResult)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.rs:457:13
+    |
+457 |               forall|a: int| #![auto] result.running.spec_has_mutex(a) == self.spec_has_mutex(a),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+463 | /         RunResult {
+464 | |             running: RunningThread::from_state(state),
+465 | |             interrupt_reason: interrupt_reason,
+466 | |             user_tda: user_tda,
+467 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/ready.rs:458:13
+    |
+458 |               result.running.spec_drop_safe() == self.spec_drop_safe(),
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+463 | /         RunResult {
+464 | |             running: RunningThread::from_state(state),
+465 | |             interrupt_reason: interrupt_reason,
+466 | |             user_tda: user_tda,
+467 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 26 verified, 8 errors (partial verification with `--verify-*`)
+error: aborting due to 10 previous errors
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 26
+Errors: 8
+Status: FAILED
+No changes to commit in verus/
