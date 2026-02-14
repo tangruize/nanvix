@@ -143,63 +143,63 @@ impl RunningProcess {
     }
 
     /// Returns the process identifier.
-    open spec fn spec_pid(&self) -> u64 {
+    spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
     /// Returns the running thread's identifier.
-    open spec fn spec_running_thread_id(&self) -> u64 {
+    spec fn spec_running_thread_id(&self) -> u64 {
         self.running_thread_id
     }
 
     /// Returns the number of ready threads.
-    open spec fn spec_ready_count(&self) -> nat {
+    spec fn spec_ready_count(&self) -> nat {
         self.ready_thread_ids@.len()
     }
 
     /// Returns the number of interrupted threads.
-    open spec fn spec_interrupted_count(&self) -> nat {
+    spec fn spec_interrupted_count(&self) -> nat {
         self.interrupted_thread_ids@.len()
     }
 
     /// Returns the number of sleeping threads.
-    open spec fn spec_sleeping_count(&self) -> nat {
+    spec fn spec_sleeping_count(&self) -> nat {
         self.sleeping_thread_ids@.len()
     }
 
     /// Returns the number of zombie threads.
-    open spec fn spec_zombie_count(&self) -> nat {
+    spec fn spec_zombie_count(&self) -> nat {
         self.zombie_thread_ids@.len()
     }
 
     /// Returns the total number of threads (running + all lists).
-    open spec fn spec_total_thread_count(&self) -> nat {
+    spec fn spec_total_thread_count(&self) -> nat {
         1 + self.spec_ready_count() + self.spec_interrupted_count()
             + self.spec_sleeping_count() + self.spec_zombie_count()
     }
 
     /// Returns whether `tid` is in the ready list.
-    open spec fn spec_has_ready_thread(&self, tid: u64) -> bool {
+    spec fn spec_has_ready_thread(&self, tid: u64) -> bool {
         Self::spec_seq_contains(self.ready_thread_ids@, tid)
     }
 
     /// Returns whether `tid` is in the interrupted list.
-    open spec fn spec_has_interrupted_thread(&self, tid: u64) -> bool {
+    spec fn spec_has_interrupted_thread(&self, tid: u64) -> bool {
         Self::spec_seq_contains(self.interrupted_thread_ids@, tid)
     }
 
     /// Returns whether `tid` is in the sleeping list.
-    open spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
+    spec fn spec_has_sleeping_thread(&self, tid: u64) -> bool {
         Self::spec_seq_contains(self.sleeping_thread_ids@, tid)
     }
 
     /// Returns whether `tid` is in the zombie list.
-    open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
+    spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
         Self::spec_seq_contains(self.zombie_thread_ids@, tid)
     }
 
     /// Returns whether `tid` is anywhere in this process (running or any list).
-    open spec fn spec_has_thread(&self, tid: u64) -> bool {
+    spec fn spec_has_thread(&self, tid: u64) -> bool {
         self.running_thread_id == tid
         || self.spec_has_ready_thread(tid)
         || self.spec_has_interrupted_thread(tid)
@@ -215,7 +215,7 @@ impl RunningProcess {
     /// - `Some(3)`: sleeping.
     /// - `Some(4)`: zombie.
     /// - `None`: not found.
-    open spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
+    spec fn spec_find_thread(&self, tid: u64) -> Option<int> {
         if self.running_thread_id == tid {
             Some(0int)
         } else if self.spec_has_ready_thread(tid) {
@@ -235,7 +235,7 @@ impl RunningProcess {
     ///
     /// Priority: running → zombie → live → not found.
     /// This matches the original code's search order.
-    open spec fn spec_try_join_thread(&self, tid: u64) -> int {
+    spec fn spec_try_join_thread(&self, tid: u64) -> int {
         if self.running_thread_id == tid {
             JOIN_TAG_RUNNING as int
         } else if self.spec_has_zombie_thread(tid) {
@@ -253,7 +253,7 @@ impl RunningProcess {
     ///
     /// Uses `choose` to pick a valid index. The exec code removes the first
     /// occurrence; the ensures clause uses an existential to match.
-    open spec fn spec_try_join_zombie_post(&self, tid: u64) -> Seq<u64> {
+    spec fn spec_try_join_zombie_post(&self, tid: u64) -> Seq<u64> {
         let s: Seq<u64> = self.zombie_thread_ids@;
         let idx: int = choose|i: int|
             0 <= i < s.len()
@@ -262,17 +262,17 @@ impl RunningProcess {
     }
 
     /// Returns whether `s` contains `tid`.
-    open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
+    spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
     /// Returns `s` with the element at `idx` removed.
-    open spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64> {
+    spec fn spec_remove_at(s: Seq<u64>, idx: int) -> Seq<u64> {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
     /// Returns whether two sequences have no element in common.
-    open spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
+    spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
@@ -280,7 +280,7 @@ impl RunningProcess {
 
     /// Strict well-formedness: inv plus disjointness of all thread lists
     /// and uniqueness of running thread ID across all lists.
-    open spec fn wf_strict(&self) -> bool {
+    spec fn wf_strict(&self) -> bool {
         &&& self.inv()
         &&& !self.spec_has_ready_thread(self.running_thread_id)
         &&& !self.spec_has_interrupted_thread(self.running_thread_id)
@@ -295,7 +295,7 @@ impl RunningProcess {
     }
 
     /// Frame condition for mutations through state_mut / running_mut.
-    open spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
+    spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
         &&& new_self.spec_pid() == old_self.spec_pid()
         &&& new_self.spec_running_thread_id() == old_self.spec_running_thread_id()
         &&& new_self.ready_thread_ids@ == old_self.ready_thread_ids@
@@ -315,7 +315,7 @@ impl RunningProcess {
 
 impl RunnableProcess {
     /// Returns the process identifier.
-    open spec fn spec_pid(&self) -> u64 {
+    spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
@@ -331,7 +331,7 @@ impl RunnableProcess {
 
 impl SleepingProcess {
     /// Returns the process identifier.
-    open spec fn spec_pid(&self) -> u64 {
+    spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
@@ -347,7 +347,7 @@ impl SleepingProcess {
 
 impl InterruptedProcess {
     /// Returns the process identifier.
-    open spec fn spec_pid(&self) -> u64 {
+    spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
@@ -363,12 +363,12 @@ impl InterruptedProcess {
 
 impl ZombieProcess {
     /// Returns the process identifier.
-    open spec fn spec_pid(&self) -> u64 {
+    spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
     /// Returns the exit status.
-    open spec fn spec_status(&self) -> u64 {
+    spec fn spec_status(&self) -> u64 {
         self.status
     }
 
