@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 11:05:24 CST 2026
+Module: libs::sys::sys::pm::capability
+Command: verus --crate-type lib lib.rs --verify-module libs::sys::sys::pm::capability
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0449]: visibility qualifiers are not permitted here
+  --> libs/sys/sys/pm/capability.spec.rs:92:5
+   |
+92 |     pub closed spec fn view(&self) -> CapabilityView {
+   |     ^^^ help: remove the qualifier
+   |
+   = note: trait items always share the visibility of their trait
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0449`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for libs::sys::sys::pm::capability (verified:0, errors:0)
