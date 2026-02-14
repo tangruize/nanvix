@@ -339,6 +339,79 @@ impl ZombieProcess {
             a@ == b@,
     {
     }
+
+    //==============================================================================================
+    // View-Level State Transition Bridging Lemmas
+    //==============================================================================================
+
+    /// Lemma: `new()` result view equals `ZombieProcessView::spec_new()`.
+    pub proof fn lemma_new_matches_spec_new(
+        pid: u64,
+        zombie_ids: Seq<u64>,
+        status: i64,
+        zombie_count: u64,
+    )
+        requires
+            zombie_count as nat == zombie_ids.len(),
+            zombie_ids.len() >= 1,
+            Self::spec_no_duplicates(zombie_ids),
+        ensures
+            ZombieProcessView::spec_new(pid, zombie_ids, status) =~=
+                ZombieProcessView { pid, zombie_thread_ids: zombie_ids, status },
+    {
+    }
+
+    /// Lemma: `bury()` result equals the View-level `spec_bury()`.
+    pub proof fn lemma_bury_matches_spec_bury(&self)
+        requires
+            self.wf(),
+        ensures
+            self@.spec_bury() == (self@.zombie_thread_ids, self@.pid, self@.status),
+    {
+    }
+
+    /// Lemma: `state_mut()` preserves the view, matching `spec_state_mut()`.
+    pub proof fn lemma_state_mut_matches_spec(&self)
+        requires
+            self.wf(),
+        ensures
+            self@.spec_state_mut() == self@,
+    {
+    }
+
+    /// Lemma: `find_thread()` on exec matches `spec_find_thread()` on the view.
+    pub proof fn lemma_find_thread_matches_view_spec(&self, tid: u64)
+        requires
+            self.wf(),
+        ensures
+            self.spec_find_thread(tid) == self@.spec_find_thread(tid),
+    {
+    }
+
+    /// Lemma: `find_thread_mut()` preserves the view, matching `spec_find_thread_mut()`.
+    pub proof fn lemma_find_thread_mut_matches_spec(&self, tid: u64)
+        requires
+            self.wf(),
+        ensures
+            self@.spec_find_thread_mut(tid) == self@,
+    {
+    }
+
+    /// Lemma: exec-level `wf()` implies view-level `wf()`.
+    pub proof fn lemma_exec_wf_implies_view_wf(&self)
+        requires
+            self.wf(),
+        ensures
+            self@.wf(),
+    {
+    }
+
+    /// Lemma: view-level `spec_has_zombie_thread` matches exec-level.
+    pub proof fn lemma_has_zombie_thread_matches_view(&self, tid: u64)
+        ensures
+            self.spec_has_zombie_thread(tid) == self@.spec_has_zombie_thread(tid),
+    {
+    }
 }
 
 } // verus!

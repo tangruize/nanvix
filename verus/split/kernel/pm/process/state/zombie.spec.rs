@@ -4,6 +4,22 @@
 // ZombieProcess Specification (Design-Level Verification).
 // This file contains spec functions and View types for the ZombieProcess type.
 //
+// ## Abstract State Transition Functions
+//
+// `ZombieProcessView` provides View-level spec functions that mirror every
+// exec-level constructor and mutator, enabling downstream modules to write
+// postconditions in terms of abstract state transitions:
+//
+//   - `ZombieProcessView::spec_new(pid, zombie_thread_ids, status)`:
+//     abstract constructor — `ensures result@ == ZombieProcessView::spec_new(..)`.
+//   - `spec_bury(self)`: abstract decomposition — returns `(Seq<u64>, u64, i64)`.
+//   - `spec_state_mut(self)`: frame-preserving mutation — returns `self` unchanged.
+//   - `spec_find_thread(self, tid)`: abstract search — returns `Option<u64>`.
+//   - `spec_find_thread_mut(self, tid)`: frame-preserving mutable search —
+//     returns `self` unchanged.
+//   - `spec_has_zombie_thread(self, tid)`: membership test on the view.
+//   - `wf(self)`: well-formedness predicate on the view.
+//
 // ## Verification Scope
 //
 // This is a design-level specification with concrete exec-level types. The spec
@@ -335,6 +351,74 @@ impl ZombieProcess {
         &&& ghost_ids =~= real_ids
         &&& ghost_pid == real_pid
         &&& ghost_status == real_status
+    }
+}
+
+//==================================================================================================
+// Spec Functions: ZombieProcessView (Abstract State Transitions)
+//==================================================================================================
+
+impl ZombieProcessView {
+    /// Abstract constructor: models the View produced by `ZombieProcess::new()`.
+    ///
+    /// Downstream modules can write:
+    ///   `ensures result@ == ZombieProcessView::spec_new(pid, zombie_ids@, status)`
+    pub open spec fn spec_new(pid: u64, zombie_thread_ids: Seq<u64>, status: i64) -> ZombieProcessView {
+        ZombieProcessView {
+            pid,
+            zombie_thread_ids,
+            status,
+        }
+    }
+
+    /// Abstract decomposition: models the result of `bury()` at the View level.
+    ///
+    /// Downstream modules can write:
+    ///   `ensures (result.0@, result.1, result.2) == old(self)@.spec_bury()`
+    pub open spec fn spec_bury(self) -> (Seq<u64>, u64, i64) {
+        (self.zombie_thread_ids, self.pid, self.status)
+    }
+
+    /// Abstract frame for `state_mut()`: the view is unchanged.
+    ///
+    /// Downstream modules can write:
+    ///   `ensures self@ == old(self)@.spec_state_mut()`
+    pub open spec fn spec_state_mut(self) -> ZombieProcessView {
+        self
+    }
+
+    /// Abstract search: models `find_thread()` at the View level.
+    ///
+    /// Returns `Some(0)` if the thread ID is in the zombie list, `None` otherwise.
+    pub open spec fn spec_find_thread(self, tid: u64) -> Option<u64> {
+        if self.spec_has_zombie_thread(tid) {
+            Some(0u64)
+        } else {
+            None
+        }
+    }
+
+    /// Abstract frame for `find_thread_mut()`: the view is unchanged.
+    ///
+    /// Downstream modules can write:
+    ///   `ensures self@ == old(self)@.spec_find_thread_mut(tid)`
+    pub open spec fn spec_find_thread_mut(self, tid: u64) -> ZombieProcessView {
+        self
+    }
+
+    /// View-level membership test for zombie thread IDs.
+    pub open spec fn spec_has_zombie_thread(self, tid: u64) -> bool {
+        exists|i: int| 0 <= i < self.zombie_thread_ids.len() && self.zombie_thread_ids[i] == tid
+    }
+
+    /// View-level well-formedness predicate.
+    ///
+    /// A ZombieProcessView is well-formed when:
+    /// - There is at least one zombie thread.
+    /// - No duplicate thread IDs.
+    pub open spec fn wf(self) -> bool {
+        &&& self.zombie_thread_ids.len() >= 1
+        &&& ZombieProcess::spec_no_duplicates(self.zombie_thread_ids)
     }
 }
 
