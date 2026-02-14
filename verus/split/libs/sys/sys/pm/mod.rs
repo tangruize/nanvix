@@ -4,3 +4,4 @@
 //! # Process Management Module
 
 pub mod pid;
+pub mod tid;
