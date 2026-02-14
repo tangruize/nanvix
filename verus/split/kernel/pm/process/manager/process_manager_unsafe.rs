@@ -424,7 +424,7 @@ impl ProcessManagerUnsafeState {
             chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
         ensures
             self.wf(),
-            self.inner == new_inner,
+            self.inner@ =~= new_inner@,
             self.scheduler_freq == old(self).scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
