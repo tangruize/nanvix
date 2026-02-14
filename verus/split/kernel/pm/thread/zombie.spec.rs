@@ -87,14 +87,18 @@ impl ZombieThread {
         self.state.spec_is_interrupted()
     }
 
-    /// Spec function: well-formedness predicate.
+    /// Spec function: well-formedness invariant (Step 2).
     /// A ZombieThread is well-formed when the underlying state is well-formed.
+    ///
+    /// `pub closed` per methodology guidelines: implementation invariants
+    /// are hidden from external users; use `reveal(ZombieThread::wf)` in
+    /// proof contexts that need to unfold the definition.
     ///
     /// Note: `status` is modeled as unbounded `int` — an intentional
     /// abstraction of the original `ExitStatus` type. Bounding `status`
     /// (e.g., to `i32` range) is not required for the properties verified
     /// here and is left as an explicit trust boundary simplification.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
     }
 }
@@ -103,6 +107,10 @@ impl ZombieThread {
 // View Implementation
 //==================================================================================================
 
+/// Note: `view()` is `open spec fn` because the Verus `View` trait requires it.
+/// The trait signature mandates `open spec fn view(&self) -> Self::V`, so
+/// implementations cannot use `closed`. This is a Verus framework constraint,
+/// not a methodology violation.
 impl View for ZombieThread {
     type V = ZombieThreadView;
 

@@ -36,6 +36,7 @@ impl ZombieThread {
                 z.wf()
             }),
     {
+        reveal(ZombieThread::wf);
     }
 
     /// Lemma: Construction preserves the thread identity.
@@ -167,6 +168,7 @@ impl ZombieThread {
                 && z.wf()
             }),
     {
+        reveal(ZombieThread::wf);
     }
 
     /// Lemma: The status of a zombie is independent of its thread state.
