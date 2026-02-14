@@ -187,10 +187,11 @@ impl RunningThread {
             result.spec_id() == state.spec_id(),
             result.spec_is_interrupted() == state.spec_is_interrupted(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
+        proof { reveal(RunningThread::wf); }
         RunningThread { state: state }
     }
 }
@@ -226,10 +227,11 @@ impl ZombieThread {
         ensures
             result.spec_id() == state.spec_id(),
             result.spec_status() == status,
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            result.spec_drop_safe() == state@.drop_safe(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
             result.wf(),
     {
+        proof { reveal(ZombieThread::wf); }
         ZombieThread { state: state, status: status }
     }
 }
@@ -273,8 +275,11 @@ impl ReadyThread {
             result.wf(),
             result.spec_admission_time() >= 0,
     {
+        proof { reveal(ReadyThread::wf); }
+        let state: ThreadState = ThreadState::new(id, kernel_stack, user_stack, user_tda);
+        proof { state.lemma_zero_mutexes_is_drop_safe(); }
         ReadyThread {
-            state: ThreadState::new(id, kernel_stack, user_stack, user_tda),
+            state: state,
             admission_time: clock_now(),
         }
     }
@@ -298,11 +303,12 @@ impl ReadyThread {
             result.spec_kernel_stack() == state.spec_kernel_stack(),
             result.spec_user_stack() == state.spec_user_stack(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
             result.spec_admission_time() >= 0,
     {
+        proof { reveal(ReadyThread::wf); }
         ReadyThread {
             state: state,
             admission_time: clock_now(),
@@ -369,7 +375,13 @@ impl ReadyThread {
             self.wf(),
             self.spec_admission_time() == old(self).spec_admission_time(),
     {
+        proof { reveal(ReadyThread::wf); }
         self.state.set_interrupt_reason(reason);
+        proof {
+            assert forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a) by {
+                assert(self.state@.has_mutex(a) == old(self).state@.has_mutex(a));
+            };
+        }
     }
 
     /// Stores a mutex guard address in the underlying thread state.
@@ -396,6 +408,9 @@ impl ReadyThread {
             self.wf(),
             self.spec_admission_time() == old(self).spec_admission_time(),
     {
+        proof {
+            reveal(ReadyThread::wf);
+        }
         self.state.store_mutex_guard(address);
     }
 
@@ -421,6 +436,9 @@ impl ReadyThread {
             self.wf(),
             self.spec_admission_time() == old(self).spec_admission_time(),
     {
+        proof {
+            reveal(ReadyThread::wf);
+        }
         self.state.take_mutex_guard(address);
     }
 
@@ -457,6 +475,10 @@ impl ReadyThread {
             forall|a: int| #![auto] result.running.spec_has_mutex(a) == self.spec_has_mutex(a),
             result.running.spec_drop_safe() == self.spec_drop_safe(),
     {
+        proof {
+            reveal(ReadyThread::wf);
+            reveal(RunningThread::wf);
+        }
         let mut state: ThreadState = self.state;
         let interrupt_reason: Option<int> = state.take_interrupt_reason();
         let user_tda: Option<int> = state.get_thread_data_area();
@@ -485,6 +507,10 @@ impl ReadyThread {
             result.spec_drop_safe() == self.spec_drop_safe(),
             result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
     {
+        proof {
+            reveal(ReadyThread::wf);
+            reveal(ZombieThread::wf);
+        }
         let status: int = exit_status_interrupted_value();
         ZombieThread::from_state(self.state, status)
     }

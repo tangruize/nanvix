@@ -34,6 +34,7 @@ impl ReadyThread {
                 r.wf()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     /// Lemma: Construction preserves the thread identity.
@@ -46,12 +47,12 @@ impl ReadyThread {
     {
     }
 
-    /// Lemma: Construction preserves drop safety.
+    /// Lemma: Construction preserves drop safety (view-level).
     pub proof fn lemma_from_state_preserves_drop_safe(state: ThreadState, time: int)
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: state, admission_time: time };
-                r.spec_drop_safe() == state.spec_drop_safe()
+                r.spec_drop_safe() == state@.drop_safe()
             }),
     {
     }
@@ -77,10 +78,10 @@ impl ReadyThread {
         ensures
             r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted(),
     {
+        reveal(ReadyThread::wf);
+        ThreadState::lemma_new_is_wf(&r.state);
     }
 
-    //==============================================================================================
-    // Identity Correctness
     //==============================================================================================
 
     /// Lemma: spec_id faithfully reflects the underlying state's identity.
@@ -107,6 +108,7 @@ impl ReadyThread {
                 post_state.spec_id() == self.spec_id()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     /// Lemma: After run(), the RunningThread's state has no interrupt reason.
@@ -122,6 +124,7 @@ impl ReadyThread {
                 !post_state.spec_is_interrupted()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     /// Lemma: run() preserves well-formedness through the state transition.
@@ -137,6 +140,8 @@ impl ReadyThread {
                 post_state.wf()
             }),
     {
+        reveal(ReadyThread::wf);
+        self.state.lemma_take_interrupt_reason_preserves_wf();
     }
 
     /// Lemma: run() preserves mutex accounting.
@@ -153,6 +158,7 @@ impl ReadyThread {
                 && (forall|a: int| post_state.spec_has_mutex(a) == self.spec_has_mutex(a))
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     /// Lemma: run() preserves drop safety.
@@ -165,9 +171,10 @@ impl ReadyThread {
                     interrupt_reason: None,
                     ..self.state
                 };
-                post_state.spec_drop_safe() == self.spec_drop_safe()
+                post_state@.drop_safe() == self.spec_drop_safe()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     //==============================================================================================
@@ -213,6 +220,8 @@ impl ReadyThread {
                 z.wf()
             }),
     {
+        reveal(ReadyThread::wf);
+        reveal(ZombieThread::wf);
     }
 
     /// Lemma: terminate() preserves drop safety.
@@ -228,6 +237,7 @@ impl ReadyThread {
                 z.spec_drop_safe() == self.spec_drop_safe()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     //==============================================================================================
@@ -260,6 +270,8 @@ impl ReadyThread {
                 && post_state.spec_drop_safe()
             }),
     {
+        ThreadState::lemma_new_is_wf(&r.state);
+        r.state.lemma_take_interrupt_reason_preserves_wf();
     }
 
     //==============================================================================================
@@ -302,6 +314,7 @@ impl RunningThread {
                 r.wf()
             }),
     {
+        reveal(RunningThread::wf);
     }
 }
 
@@ -340,6 +353,7 @@ impl ZombieThread {
                 z.wf()
             }),
     {
+        reveal(ZombieThread::wf);
     }
 }
 
