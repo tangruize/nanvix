@@ -207,9 +207,9 @@ impl KernelFrame {
 ///
 /// # Description
 ///
-/// This view encapsulates the abstract state of the kernel frame pool without
-/// exposing the internal `FrameAllocator` implementation. Fields use abstract
-/// types (`int`, `Set<int>`) per the specification methodology.
+/// This view encapsulates the abstract state of the kernel frame pool.
+/// The `allocator_view` field is private to hide the internal `FrameAllocator`
+/// implementation; all public access goes through the KpoolView methods.
 ///
 /// # Region and Provenance
 ///
@@ -221,11 +221,10 @@ impl KernelFrame {
 /// The pool_id ensures frames are only freed to their originating pool.
 #[verifier::ext_equal]
 pub struct KpoolView {
-    /// Set of allocated frame indices.
-    pub allocated_frames: Set<int>,
-    /// Total number of frames managed by the pool.
-    pub capacity: int,
-    /// Concrete count of allocated frames.
+    /// The underlying frame allocator view (private implementation detail).
+    allocator_view: FrameAllocatorView,
+    /// Concrete count of allocated frames (from bitmap).
+    /// Exposed via `num_allocated()` for public method specs.
     pub num_allocated_count: int,
     /// Base physical address of the pool region.
     /// Frame i has address: base_addr + i * FRAME_SIZE.

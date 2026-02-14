@@ -100,12 +100,12 @@ impl KpoolView {
 
     /// Returns the capacity (total number of frames in the pool).
     pub open spec fn capacity(&self) -> int {
-        self.capacity
+        self.allocator_view.capacity
     }
 
     /// Returns true if a frame at the given index is allocated.
     pub open spec fn is_allocated(&self, frame_idx: int) -> bool {
-        self.allocated_frames.contains(frame_idx)
+        self.allocator_view.is_allocated(frame_idx)
     }
 
     /// Returns the number of allocated frames (concrete count).
@@ -115,12 +115,12 @@ impl KpoolView {
 
     /// Returns the number of free frames.
     pub open spec fn num_free(&self) -> int {
-        self.capacity - self.num_allocated_count
+        self.capacity() - self.num_allocated_count
     }
 
     /// Returns true if the pool has at least one free frame (existential).
     pub open spec fn has_free_frame(&self) -> bool {
-        exists|i: int| 0 <= i < self.capacity && !self.allocated_frames.contains(i)
+        self.allocator_view.has_free_frame()
     }
 
     /// Returns true if the pool can allocate (num_free > 0).
@@ -135,7 +135,7 @@ impl KpoolView {
 
     /// Returns true if the pool is full (all frames allocated).
     pub open spec fn is_full(&self) -> bool {
-        self.num_allocated_count == self.capacity
+        self.num_allocated_count == self.capacity()
     }
 
     //==============================================================================================
@@ -159,7 +159,7 @@ impl KpoolView {
 
     /// Returns the limit address (one past the last valid address).
     pub open spec fn limit(&self) -> int {
-        self.base_addr + self.capacity * FRAME_SIZE as int
+        self.base_addr + self.capacity() * FRAME_SIZE as int
     }
 
     //==============================================================================================
@@ -168,24 +168,17 @@ impl KpoolView {
 
     /// Property: All allocated frame indices are within valid range [0, capacity).
     pub open spec fn allocated_frames_in_range(&self) -> bool {
-        forall|i: int|
-            #![trigger self.is_allocated(i)]
-            self.is_allocated(i) ==> (0 <= i < self.capacity)
+        self.allocator_view.allocated_frames_in_range()
     }
 
     /// Property: Memory regions of different frames are disjoint.
     pub open spec fn frames_are_disjoint(&self, i: int, j: int) -> bool {
-        let addr_i: int = self.frame_addr(i);
-        let addr_j: int = self.frame_addr(j);
-        addr_i + FRAME_SIZE as int <= addr_j || addr_j + FRAME_SIZE as int <= addr_i
+        self.allocator_view.frames_are_disjoint(i, j)
     }
 
     /// Property: All allocated frames have disjoint memory regions (no aliasing).
     pub open spec fn no_memory_aliasing(&self) -> bool {
-        forall|i: int, j: int|
-            #![trigger self.is_allocated(i), self.is_allocated(j)]
-            (self.is_allocated(i) && self.is_allocated(j) && i != j) ==>
-            self.frames_are_disjoint(i, j)
+        self.allocator_view.no_memory_aliasing()
     }
 
     //==============================================================================================
@@ -194,7 +187,7 @@ impl KpoolView {
 
     /// Property: A freshly initialized pool has no allocated frames.
     pub open spec fn is_freshly_initialized(&self) -> bool {
-        &&& self.allocated_frames =~= Set::<int>::empty()
+        &&& self.allocator_view.is_freshly_initialized()
         &&& self.num_allocated_count == 0
     }
 }
@@ -211,8 +204,7 @@ impl View for Kpool {
     // The View trait is public, so view() inherits its visibility.
     closed spec fn view(&self) -> KpoolView {
         KpoolView {
-            allocated_frames: self.frame_allocator@.allocated_frames,
-            capacity: self.frame_allocator@.capacity,
+            allocator_view: self.frame_allocator@,
             num_allocated_count: self.frame_allocator.spec_num_allocated(),
             // Base address is abstract (default 0).
             base_addr: 0,
