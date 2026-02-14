@@ -58,11 +58,11 @@
 //! | Original API              | Verified Model         | Notes                         |
 //! |---------------------------|------------------------|-------------------------------|
 //! | `Mutex::new()`            | `new(id)`              | Concrete id for instance identity. |
-//! | `Mutex::try_lock(&self)`  | `try_lock(&mut self)`  | `&mut self` for state mutation. |
-//! | `Mutex::lock(&self, t)`   | `lock(&mut self)`      | Timeout not modeled.          |
+//! | `Mutex::try_lock(&self) -> Result<MutexGuard, ()>` | `try_lock(&mut self) -> (bool, Tracked<Option<MutexToken>>)` | `&mut self` for state mutation; `Result` replaced by `(bool, Tracked)` for Verus tracked token support. |
+//! | `Mutex::lock(&self, Option<SystemTime>) -> Result<MutexGuard, SleepError>` | `lock(&mut self) -> Tracked<MutexToken>` | Timeout and `SleepError` error path not modeled; infallible under sequential preconditions. |
 //! | `MutexGuard::drop()`      | `unlock(&mut self)`    | Explicit token consumption.   |
-//! | `Mutex::reference_count()`| `reference_count(&self)` | Returns 1; Arc not modeled. |
-//! | `MutexInner::unlock_unchecked()` | `unlock_unchecked(&mut self)` | Called by `unlock()`. |
+//! | `Mutex::reference_count()`| `reference_count(&self)` | Returns constant 1; Arc ref-counting not modeled (see below). |
+//! | `MutexInner::unlock_unchecked() -> Result<(), Error>` | `unlock_unchecked(&mut self) -> ()` | Error path from `notify_first()` not modeled (trust boundary, see below). |
 //! | `fmt::Debug for MutexGuard` | (not modeled)       | Verus lacks `fmt::Debug` trait support. |
 //! | (none in original)          | `is_locked(&self)`   | Verification-only helper.     |
 //!
@@ -76,7 +76,14 @@
 //!
 //! The original `lock()` takes an `Option<SystemTime>` timeout and returns
 //! `Result<MutexGuard, SleepError>`. The verified model omits timeout handling
-//! and the `SleepError` variant, focusing purely on the lock state machine.
+//! and the `SleepError` error path entirely, making `lock()` infallible. Lock
+//! failures due to timeout or process-level errors are not representable in the
+//! sequential model. This focuses verification purely on the lock state machine.
+//!
+//! The original `try_lock()` returns `Result<MutexGuard, ()>`. The verified model
+//! returns `(bool, Tracked<Option<MutexToken>>)` because Verus lacks `Result`
+//! ergonomics and requires tracked ghost tokens for proof obligations. The bool
+//! maps to `Ok`/`Err` and the `MutexToken` replaces `MutexGuard`.
 //!
 //! The original `MutexGuard` holds an `Arc<MutexInner>` and calls
 //! `unlock_unchecked()` in its `Drop` implementation. The verified model replaces
@@ -94,9 +101,18 @@
 //!   so `lock()` delegates to `try_lock()` without needing `external_body`.
 //! - `MutexGuard` and `Drop`: Modeled via tracked `MutexToken` ghost state.
 //!   See spinlock verification for detailed explanation of this pattern.
+//! - `unlock_unchecked()` error path: The original returns `Result<(), Error>`
+//!   because `Condvar::notify_first()` can fail; the `Drop` impl logs this with
+//!   `warn!()`. The verified version returns `()`, eliminating this error path.
+//!   This is a trust boundary: correctness assumes condvar notification does not
+//!   fail in a way that violates the mutex protocol. The condvar module is
+//!   separately verified.
 //! - `Condvar::wait()` and `Condvar::notify_first()`: External dependencies from
 //!   the separately verified condvar module. Not modeled in the mutex verification.
 //! - `Arc` reference counting: Not modeled. Correct lifetime management is assumed.
+//!   The original `Mutex` derives `Clone` (cloning the `Arc`), so `reference_count()`
+//!   can return >1 in multi-owner scenarios. The verified `reference_count()` is a
+//!   constant stub returning 1, modeling only the single-owner case.
 //!
 //! ## Trust Assumptions
 //!
