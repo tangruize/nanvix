@@ -1,0 +1,44 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:50:33 CST 2026
+Module: kernel::pm::process::state::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::running
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> kernel/pm/process/state/running.proof.rs:42:5
+   |
+42 |     pub proof fn lemma_view_equality(a: &RunningProcess, b: &RunningProcess)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+  --> kernel/pm/process/state/running.proof.rs:48:13
+   |
+42 |     pub proof fn lemma_view_equality(a: &RunningProcess, b: &RunningProcess)
+   |     ------------------------------------------------------------------------ at the end of the function body
+...
+48 |             a.ready_thread_ids@ == b.ready_thread_ids@,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+  --> kernel/pm/process/state/running.proof.rs:49:13
+   |
+42 |     pub proof fn lemma_view_equality(a: &RunningProcess, b: &RunningProcess)
+   |     ------------------------------------------------------------------------ at the end of the function body
+...
+49 |             a.interrupted_thread_ids@ == b.interrupted_thread_ids@,
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 43 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 43
+Errors: 1
+Status: FAILED
+No changes to commit in verus/
