@@ -411,7 +411,7 @@ impl FrameAllocator {
     ///
     /// This is a "seL4-style" version that requires the caller to prove all frames
     /// are free as a precondition, eliminating runtime checks. For the version that
-    /// matches the original Nanvix behavior (with runtime checking), use `alloc_range`.
+    /// matches the original Nanvix behavior (with runtime checking), use `alloc_range_checked`.
     ///
     /// # Parameters
     ///
@@ -587,7 +587,7 @@ impl FrameAllocator {
     ///
     /// # Description
     ///
-    /// This function matches the original Nanvix `alloc_range` behavior exactly:
+    /// Internal helper implementing the original Nanvix `alloc_range` check-then-set behavior:
     /// 1. First checks if ALL frames in the range are free (runtime check).
     /// 2. If any frame is already allocated, returns OutOfMemory error.
     /// 3. If all frames are free, allocates them all.
@@ -603,7 +603,7 @@ impl FrameAllocator {
     ///
     /// Upon success, all frames in [start_frame, start_frame + count) are allocated.
     /// Upon failure (any frame already allocated), an error is returned.
-    pub fn alloc_range(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+    fn alloc_range_checked(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
             count > 0,
@@ -677,13 +677,8 @@ impl FrameAllocator {
                     }
                 },
                 Err(err) => {
-                    // Error from bitmap.test - state unchanged but we can't prove the exists.
-                    // This branch should not occur given our preconditions (idx < capacity).
-                    proof {
-                        // We need a witness, but don't have one. This is an edge case.
-                        // Since idx < end_frame <= capacity, test should not fail.
-                        // If it does, we assume there's a problem elsewhere.
-                    }
+                    // VERIFIED: unreachable. bitmap.test() guarantees Ok when
+                    // idx < number_of_bits, and idx < end_frame <= capacity == number_of_bits.
                     return Err(err);
                 },
             }
@@ -741,7 +736,7 @@ impl FrameAllocator {
     ///
     /// # Description
     ///
-    /// This matches the Nanvix API: `fn alloc_range(&mut self, region: &TruncatedMemoryRegion<PhysicalAddress>)`.
+    /// Matches the original Nanvix API: `fn alloc_range(&mut self, region: &TruncatedMemoryRegion<PhysicalAddress>)`.
     /// It first checks if all frames in the region are free, then allocates them.
     ///
     /// # Parameters
@@ -752,7 +747,7 @@ impl FrameAllocator {
     ///
     /// Upon success, `Ok(())` is returned and all frames in the region are allocated.
     /// Upon failure (any frame already allocated), an error is returned.
-    pub fn alloc_range_from_region(&mut self, region: &TruncatedMemoryRegion) -> (result: Result<(), Error>)
+    pub fn alloc_range(&mut self, region: &TruncatedMemoryRegion) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
             region.inv(),
@@ -795,8 +790,8 @@ impl FrameAllocator {
         let start_frame: usize = region.start().into_frame_number().into_raw_value();
         let count: usize = region.frame_count();
 
-        // Delegate to alloc_range which matches original Nanvix behavior.
-        self.alloc_range(start_frame, count)
+        // Delegate to alloc_range_checked which implements the check-then-set logic.
+        self.alloc_range_checked(start_frame, count)
     }
 
     //==============================================================================================

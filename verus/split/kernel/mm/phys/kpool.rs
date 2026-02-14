@@ -455,7 +455,7 @@ impl Kpool {
                 assert(!self@.is_allocated(i));
             }
         }
-        self.frame_allocator.alloc_range(start_frame, count)
+        self.frame_allocator.alloc_range_checked(start_frame, count)
     }
 
     //==============================================================================================
