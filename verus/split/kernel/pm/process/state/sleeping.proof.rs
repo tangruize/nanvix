@@ -63,23 +63,41 @@ impl SleepingProcess {
     {
         reveal(SleepingProcess::wf);
         // The view-level equality implies exec-level equality for these fields.
-        // spec_u64_seq_as_int is injective, so equal int seqs → equal u64 seqs.
-        assert(spec_u64_seq_as_int(new_self.sleeping_thread_ids@) =~=
-            spec_u64_seq_as_int(old_self.sleeping_thread_ids@));
+        // Since spec_u64_seq_as_int maps each u64 to its int representation
+        // injectively, equal view seqs imply equal concrete seqs.
+        assert(new_self@.sleeping_thread_ids =~= old_self@.sleeping_thread_ids);
+        assert(new_self@.zombie_thread_ids =~= old_self@.zombie_thread_ids);
+
+        // Sleeping: view equality → concrete equality.
+        assert(new_self.sleeping_thread_ids@.len() == old_self.sleeping_thread_ids@.len()) by {
+            assert(spec_u64_seq_as_int(new_self.sleeping_thread_ids@).len()
+                == spec_u64_seq_as_int(old_self.sleeping_thread_ids@).len());
+        };
         assert forall|i: int| 0 <= i < new_self.sleeping_thread_ids@.len()
             implies new_self.sleeping_thread_ids@[i] == old_self.sleeping_thread_ids@[i]
         by {
-            assert(spec_u64_seq_as_int(new_self.sleeping_thread_ids@)[i]
-                == spec_u64_seq_as_int(old_self.sleeping_thread_ids@)[i]);
+            // spec_u64_seq_as_int(s)[i] == s[i] as int.
+            let a: u64 = new_self.sleeping_thread_ids@[i];
+            let b: u64 = old_self.sleeping_thread_ids@[i];
+            assert(a as int == spec_u64_seq_as_int(new_self.sleeping_thread_ids@)[i]);
+            assert(b as int == spec_u64_seq_as_int(old_self.sleeping_thread_ids@)[i]);
+            assert(a as int == b as int);
         };
         assert(new_self.sleeping_thread_ids@ =~= old_self.sleeping_thread_ids@);
-        assert(spec_u64_seq_as_int(new_self.zombie_thread_ids@) =~=
-            spec_u64_seq_as_int(old_self.zombie_thread_ids@));
+
+        // Zombie: view equality → concrete equality.
+        assert(new_self.zombie_thread_ids@.len() == old_self.zombie_thread_ids@.len()) by {
+            assert(spec_u64_seq_as_int(new_self.zombie_thread_ids@).len()
+                == spec_u64_seq_as_int(old_self.zombie_thread_ids@).len());
+        };
         assert forall|i: int| 0 <= i < new_self.zombie_thread_ids@.len()
             implies new_self.zombie_thread_ids@[i] == old_self.zombie_thread_ids@[i]
         by {
-            assert(spec_u64_seq_as_int(new_self.zombie_thread_ids@)[i]
-                == spec_u64_seq_as_int(old_self.zombie_thread_ids@)[i]);
+            let a: u64 = new_self.zombie_thread_ids@[i];
+            let b: u64 = old_self.zombie_thread_ids@[i];
+            assert(a as int == spec_u64_seq_as_int(new_self.zombie_thread_ids@)[i]);
+            assert(b as int == spec_u64_seq_as_int(old_self.zombie_thread_ids@)[i]);
+            assert(a as int == b as int);
         };
         assert(new_self.zombie_thread_ids@ =~= old_self.zombie_thread_ids@);
     }
@@ -269,6 +287,7 @@ impl SleepingProcess {
             if p.spec_has_zombie_thread(tid) {
                 let j: int = choose|j: int| 0 <= j < p.zombie_thread_ids@.len()
                     && p.zombie_thread_ids@[j] == tid;
+                assert(p.zombie_thread_ids@[j] as int == tid as int);
                 assert(spec_u64_seq_as_int(p.zombie_thread_ids@)[j] == tid as int);
             }
         };
@@ -280,6 +299,9 @@ impl SleepingProcess {
                     implies spec_u64_seq_as_int(p.zombie_thread_ids@)[j] != tid as int
                 by {
                     assert(p.zombie_thread_ids@[j] != tid);
+                    let a: u64 = p.zombie_thread_ids@[j];
+                    assert(a as int == spec_u64_seq_as_int(p.zombie_thread_ids@)[j]);
+                    assert(a != tid);
                 };
             }
         };
