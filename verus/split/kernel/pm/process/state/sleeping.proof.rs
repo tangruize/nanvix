@@ -239,4 +239,133 @@ impl InterruptedProcess {
     }
 }
 
+//==================================================================================================
+// View-Level Bridging Lemmas
+//==================================================================================================
+// These lemmas prove that exec-level postconditions imply View-level
+// transition equalities, enabling downstream modules to use the abstract
+// spec functions from `impl SleepingProcessView`.
+
+impl SleepingProcessView {
+    /// Bridging lemma: View-level wf() is equivalent to exec-level wf().
+    pub proof fn lemma_view_wf_equiv(p: &SleepingProcess)
+        ensures
+            p.wf() <==> p@.wf(),
+    {
+    }
+
+    /// Bridging lemma: new() result view matches spec_new().
+    pub proof fn lemma_new_refines_spec(
+        pid: u64,
+        sleeping_ids: Seq<u64>,
+        zombie_ids: Seq<u64>,
+    )
+        ensures
+            SleepingProcessView::spec_new(pid, sleeping_ids, zombie_ids)
+                =~= SleepingProcessView { pid, sleeping_thread_ids: sleeping_ids, zombie_thread_ids: zombie_ids },
+    {
+    }
+
+    /// Bridging lemma: terminate() result view matches spec_terminate().
+    pub proof fn lemma_terminate_refines_spec(
+        sv: SleepingProcessView,
+        result: InterruptedProcessView,
+    )
+        requires
+            sv.wf(),
+            result.pid == sv.pid,
+            result.interrupted_thread_ids =~= sv.sleeping_thread_ids,
+            result.sleeping_thread_ids =~= Seq::<u64>::empty(),
+            result.zombie_thread_ids =~= sv.zombie_thread_ids,
+        ensures
+            result =~= sv.spec_terminate(),
+    {
+    }
+
+    /// Bridging lemma: wakeup() success result view matches spec_wakeup().
+    ///
+    /// Under `wf()` no-duplicates, the `choose` index in `spec_wakeup` is
+    /// uniquely determined and equals the provided `idx`.
+    pub proof fn lemma_wakeup_refines_spec(
+        sv: SleepingProcessView,
+        result: RunnableProcessView,
+        tid: u64,
+        idx: int,
+    )
+        requires
+            sv.wf(),
+            0 <= idx < sv.sleeping_thread_ids.len(),
+            sv.sleeping_thread_ids[idx] == tid,
+            result.pid == sv.pid,
+            result.ready_thread_ids =~= Seq::<u64>::empty().push(tid),
+            result.interrupted_thread_ids =~= Seq::<u64>::empty(),
+            result.sleeping_thread_ids =~= SleepingProcessView::spec_remove_at_seq(
+                sv.sleeping_thread_ids, idx),
+            result.zombie_thread_ids =~= sv.zombie_thread_ids,
+        ensures
+            result =~= sv.spec_wakeup(tid),
+    {
+        // Under no_duplicates, the choose index must equal idx.
+        let chosen: int = choose|i: int| 0 <= i < sv.sleeping_thread_ids.len()
+            && sv.sleeping_thread_ids[i] == tid;
+        if chosen != idx {
+            if chosen < idx {
+                assert(0 <= chosen < idx < sv.sleeping_thread_ids.len() as int);
+            } else {
+                assert(0 <= idx < chosen < sv.sleeping_thread_ids.len() as int);
+            }
+        }
+    }
+
+    /// Bridging lemma: wakeup_alarm() expired result view matches spec_wakeup_alarm_expired().
+    pub proof fn lemma_wakeup_alarm_expired_refines_spec(
+        sv: SleepingProcessView,
+        result: InterruptedProcessView,
+        interrupted_ids: Seq<u64>,
+        remaining_ids: Seq<u64>,
+    )
+        requires
+            sv.wf(),
+            result.pid == sv.pid,
+            result.interrupted_thread_ids =~= interrupted_ids,
+            result.sleeping_thread_ids =~= remaining_ids,
+            result.zombie_thread_ids =~= sv.zombie_thread_ids,
+        ensures
+            result =~= sv.spec_wakeup_alarm_expired(interrupted_ids, remaining_ids),
+    {
+    }
+
+    /// Bridging lemma: wakeup_alarm() no-expiry result view matches spec_wakeup_alarm_none().
+    pub proof fn lemma_wakeup_alarm_none_refines_spec(
+        sv: SleepingProcessView,
+        result: SleepingProcessView,
+    )
+        requires
+            result.pid == sv.pid,
+            result.sleeping_thread_ids =~= sv.sleeping_thread_ids,
+            result.zombie_thread_ids =~= sv.zombie_thread_ids,
+        ensures
+            result =~= sv.spec_wakeup_alarm_none(),
+    {
+    }
+
+    /// Bridging lemma: add_thread() result view matches spec_add_thread().
+    pub proof fn lemma_add_thread_refines_spec(
+        sv: SleepingProcessView,
+        result: RunnableProcessView,
+        ready_tid: u64,
+    )
+        requires
+            sv.wf(),
+            result.pid == sv.pid,
+            result.ready_thread_ids =~= Seq::<u64>::empty().push(ready_tid),
+            result.interrupted_thread_ids =~= Seq::<u64>::empty(),
+            result.sleeping_thread_ids =~= sv.sleeping_thread_ids,
+            result.zombie_thread_ids =~= sv.zombie_thread_ids,
+        ensures
+            result =~= sv.spec_add_thread(ready_tid),
+    {
+    }
+}
+
 } // verus!

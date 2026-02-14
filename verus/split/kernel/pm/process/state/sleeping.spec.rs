@@ -4,6 +4,24 @@
 // SleepingProcess Specification.
 // This file contains spec functions and View types for the SleepingProcess type.
 //
+// ## Abstract State Transition Functions (View Level)
+//
+// Added `impl SleepingProcessView` with abstract transition functions so that
+// downstream modules can write postconditions like:
+//     ensures result@ =~= old(self)@.spec_terminate()
+// instead of listing every field change individually.
+//
+// Transition functions:
+// - `spec_new(pid, sleeping, zombie)` — constructor.
+// - `spec_terminate(self)` — all sleeping → interrupted.
+// - `spec_wakeup(self, tid)` — remove sleeping thread, produce RunnableProcessView.
+// - `spec_wakeup_alarm_expired(self, interrupted, remaining)` — partition sleeping.
+// - `spec_wakeup_alarm_none(self)` — identity (no alarm expired).
+// - `spec_add_thread(self, ready_tid)` — add ready thread, produce RunnableProcessView.
+//
+// Bridging lemmas in sleeping.proof.rs prove that exec postconditions imply
+// the View-level transition equalities.
+//
 // ## Verification Model
 //
 // SleepingProcess has at least one sleeping thread and optional zombie threads.
@@ -289,6 +307,106 @@ impl View for InterruptedProcess {
             interrupted_thread_ids: self.interrupted_thread_ids@,
             sleeping_thread_ids: self.sleeping_thread_ids@,
             zombie_thread_ids: self.zombie_thread_ids@,
+        }
+    }
+}
+
+//==================================================================================================
+// Abstract State Transition Functions (View Level)
+//==================================================================================================
+// These functions model exec-level operations at the View level, enabling
+// downstream modules to write postconditions like:
+//     ensures result@ =~= old(self)@.spec_terminate()
+// instead of listing every field change individually.
+
+impl SleepingProcessView {
+    /// View-level well-formedness predicate, equivalent to SleepingProcess::wf().
+    pub open spec fn wf(&self) -> bool {
+        &&& self.sleeping_thread_ids.len() >= 1
+        &&& SleepingProcess::spec_no_duplicates(self.sleeping_thread_ids)
+        &&& SleepingProcess::spec_no_duplicates(self.zombie_thread_ids)
+        &&& SleepingProcess::spec_seqs_disjoint(self.sleeping_thread_ids, self.zombie_thread_ids)
+    }
+
+    /// View-level helper: removes element at index from a sequence.
+    pub open spec fn spec_remove_at_seq(s: Seq<u64>, idx: int) -> Seq<u64> {
+        s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
+    }
+
+    /// Abstract constructor: models `SleepingProcess::new()`.
+    pub open spec fn spec_new(
+        pid: u64,
+        sleeping_thread_ids: Seq<u64>,
+        zombie_thread_ids: Seq<u64>,
+    ) -> SleepingProcessView {
+        SleepingProcessView { pid, sleeping_thread_ids, zombie_thread_ids }
+    }
+
+    /// Abstract transition: models `SleepingProcess::terminate()`.
+    ///
+    /// All sleeping threads become interrupted; no sleeping threads remain.
+    /// Zombie threads are preserved.
+    pub open spec fn spec_terminate(self) -> InterruptedProcessView {
+        InterruptedProcessView {
+            pid: self.pid,
+            interrupted_thread_ids: self.sleeping_thread_ids,
+            sleeping_thread_ids: Seq::<u64>::empty(),
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract transition: models `SleepingProcess::wakeup()` (success case).
+    ///
+    /// Removes the thread with ID `tid` from the sleeping list and makes it
+    /// the sole ready thread in the resulting RunnableProcess. Under `wf()`
+    /// no-duplicates, the index is uniquely determined by `choose`.
+    pub open spec fn spec_wakeup(self, tid: u64) -> RunnableProcessView {
+        let idx = choose|i: int| 0 <= i < self.sleeping_thread_ids.len()
+            && self.sleeping_thread_ids[i] == tid;
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: Seq::<u64>::empty().push(tid),
+            interrupted_thread_ids: Seq::<u64>::empty(),
+            sleeping_thread_ids: Self::spec_remove_at_seq(self.sleeping_thread_ids, idx),
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract transition: models `SleepingProcess::wakeup_alarm()` (expired case).
+    ///
+    /// Partitions sleeping threads into expired (→interrupted) and remaining
+    /// (→sleeping). Zombie threads are preserved.
+    pub open spec fn spec_wakeup_alarm_expired(
+        self,
+        interrupted_ids: Seq<u64>,
+        remaining_ids: Seq<u64>,
+    ) -> InterruptedProcessView {
+        InterruptedProcessView {
+            pid: self.pid,
+            interrupted_thread_ids: interrupted_ids,
+            sleeping_thread_ids: remaining_ids,
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract transition: models `SleepingProcess::wakeup_alarm()` (no-expiry case).
+    ///
+    /// No alarm expired; process remains sleeping with all state unchanged.
+    pub open spec fn spec_wakeup_alarm_none(self) -> SleepingProcessView {
+        self
+    }
+
+    /// Abstract transition: models `SleepingProcess::add_thread()`.
+    ///
+    /// Adds a ready thread and transitions to RunnableProcess. Sleeping and
+    /// zombie threads are preserved.
+    pub open spec fn spec_add_thread(self, ready_tid: u64) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: Seq::<u64>::empty().push(ready_tid),
+            interrupted_thread_ids: Seq::<u64>::empty(),
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids,
         }
     }
 }
