@@ -1,0 +1,64 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 12:47:53 CST 2026
+Module: kernel::pm::thread::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::running
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/running.proof.rs:324:13
+    |
+317 |     pub proof fn lemma_new_is_drop_safe(r: &RunningThread)
+    |     ------------------------------------------------------ at the end of the function body
+...
+324 |             r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/running.rs:418:13
+    |
+411 |       pub fn put_mutex_guard(&mut self, address: u64)
+    |       ----------------------------------------------- at the end of the function body
+...
+418 | /             forall|a: int| a != address as int ==>
+419 | |                 self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+    | |_____________________________________________________________________^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/thread/running.rs:445:5
+    |
+445 |     pub fn take_mutex_guard(&mut self, address: u64)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/running.rs:451:13
+    |
+445 |       pub fn take_mutex_guard(&mut self, address: u64)
+    |       ------------------------------------------------ at the end of the function body
+...
+451 | /             forall|a: int| a != address as int ==>
+452 | |                 self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+    | |_____________________________________________________________________^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/running.rs:454:13
+    |
+445 |     pub fn take_mutex_guard(&mut self, address: u64)
+    |     ------------------------------------------------ at the end of the function body
+...
+454 |             self.spec_locked_mutex_count() == 0 ==> self.spec_drop_safe(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 44 verified, 3 errors (partial verification with `--verify-*`)
+error: aborting due to 4 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 44
+Errors: 3
+Status: FAILED
+No changes to commit in verus/
