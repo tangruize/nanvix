@@ -34,6 +34,7 @@ from config import (
     PROVER_MODEL,
     REVIEWER_MODELS,
     REVIEWS_DIR,
+    TREE_SITTER_PYTHON,
     VERUS_DIR,
     WORKFLOW_MODE,
     get_existing_modules,
@@ -1198,7 +1199,7 @@ def run_spec_methodology(module_name: str, source_path: Optional[str] = None) ->
     Path(report_path).parent.mkdir(parents=True, exist_ok=True)
 
     check_cmd = [
-        sys.executable, str(PROJECT_ROOT / "scripts" / "check_spec_methodology.py"),
+        str(TREE_SITTER_PYTHON), str(PROJECT_ROOT / "scripts" / "check_spec_methodology.py"),
         verus_split_path, "--module", module.file_stem, "--output", report_path,
     ]
     print(f"[ANALYSIS] Running spec methodology check...")
@@ -1259,7 +1260,7 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
     fix_report_path = str(HISTORY_DIR / "ast-consistency" / f"{module_name}_{timestamp}_fix.md")
 
     check_cmd = [
-        sys.executable, str(PROJECT_ROOT / "scripts" / "check_exec_consistency.py"),
+        str(TREE_SITTER_PYTHON), str(PROJECT_ROOT / "scripts" / "check_exec_consistency.py"),
         source_abs, verus_exec_path, "--output", consistency_report_path,
     ]
     print(f"[ANALYSIS] Running tree-sitter AST consistency check...")
