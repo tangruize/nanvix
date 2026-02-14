@@ -239,11 +239,19 @@ impl VirtMemoryManager {
     ///
     /// # Note
     ///
-    /// The original returns `Result<Vec<UserFrame>, Error>`. The verified version
-    /// returns `Ghost<Seq<int>>` because the verified `Upool::alloc_many` uses ghost
-    /// sequences for frame index tracking. `Vec<UserFrame>` cannot be constructed in
-    /// verified Verus code without modeling `Vec` internals. The allocation semantics
-    /// are equivalent: both allocate `nframes` frames from the user pool.
+    /// The original returns `Result<Vec<UserFrame>, Error>` (fallible). The verified
+    /// version returns `Ghost<Seq<int>>` (infallible) because the verified
+    /// `Upool::alloc_many` uses ghost sequences for frame index tracking.
+    /// `Vec<UserFrame>` cannot be constructed in verified Verus code without modeling
+    /// `Vec` internals.
+    ///
+    /// **Semantic gap**: The error path is unmodeled. The original can fail at runtime
+    /// (e.g., due to fragmentation), while the verified version requires sufficient
+    /// capacity upfront via `has_upool_capacity_for(nframes)` and is infallible when
+    /// the precondition holds. This is acceptable because the verified `Upool::alloc_many`
+    /// guarantees success when the capacity precondition is met, matching the common-case
+    /// semantics. However, callers that rely on catching allocation errors from the
+    /// original API cannot be directly modeled.
     pub fn alloc_many_user_frames(&mut self, nframes: usize) -> (result: Ghost<Seq<int>>)
         requires
             old(self).inv(),
@@ -275,7 +283,7 @@ impl VirtMemoryManager {
     /// # Returns
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
-    pub fn alloc_kernel_frame(&mut self, clear: bool) -> (result: Result<KernelFrame, Error>)
+    pub fn alloc_kernel_frame(&mut self, _clear: bool) -> (result: Result<KernelFrame, Error>)
         requires
             old(self).inv(),
             old(self)@.has_kpool_capacity(),
@@ -283,9 +291,6 @@ impl VirtMemoryManager {
             self.inv(),
             result.is_ok() ==> self@.kpool_free_count == old(self)@.kpool_free_count - 1,
     {
-        // Note: `clear` is not used. See doc comment for rationale.
-        #[allow(unused_variables)]
-        let _clear: bool = clear;
         self.kpool.alloc()
     }
 
@@ -310,15 +315,22 @@ impl VirtMemoryManager {
     ///
     /// # Note
     ///
-    /// The original returns `Result<Vec<KernelFrame>, Error>`. The verified version
-    /// returns `Result<usize, Error>` (starting frame index) because the verified
-    /// `Kpool::alloc_many` allocates contiguous ranges and returns the starting
-    /// index. `Vec<KernelFrame>` cannot be constructed in verified Verus code without
-    /// modeling `Vec` internals. The allocation semantics are equivalent: both allocate
-    /// `count` contiguous frames from the kernel pool.
+    /// The original returns `Result<Vec<KernelFrame>, Error>` (typed frame handles).
+    /// The verified version returns `Result<usize, Error>` (starting frame index)
+    /// because the verified `Kpool::alloc_many` allocates contiguous ranges and
+    /// returns the starting index. `Vec<KernelFrame>` cannot be constructed in
+    /// verified Verus code without modeling `Vec` internals.
+    ///
+    /// **Semantic gap**: The return value loses frame identity. Callers of the
+    /// original API can iterate over individual `KernelFrame` objects and use their
+    /// addresses; callers of the verified API get only a numeric starting index.
+    /// Downstream verification of code that consumes individual frames from a batch
+    /// allocation cannot be expressed with the current return type. This is acceptable
+    /// for the current verification scope since batch-allocated kernel frames are
+    /// used as contiguous regions (e.g., page tables), not individually.
     pub fn alloc_many_kernel_frames(
         &mut self,
-        clear: bool,
+        _clear: bool,
         count: usize,
     ) -> (result: Result<usize, Error>)
         requires
@@ -329,9 +341,6 @@ impl VirtMemoryManager {
             self.inv(),
             result.is_ok() ==> self@.kpool_free_count == old(self)@.kpool_free_count - count as int,
     {
-        // Note: `clear` is not used. See `alloc_kernel_frame` doc comment for rationale.
-        #[allow(unused_variables)]
-        let _clear: bool = clear;
         self.kpool.alloc_many(count)
     }
 
