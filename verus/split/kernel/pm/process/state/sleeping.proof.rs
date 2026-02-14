@@ -262,7 +262,7 @@ impl SleepingProcessView {
     )
         ensures
             SleepingProcessView::spec_new(pid, sleeping_ids, zombie_ids)
-                =~= SleepingProcessView { pid, sleeping_thread_ids: sleeping_ids, zombie_thread_ids: zombie_ids },
+                =~= (SleepingProcessView { pid, sleeping_thread_ids: sleeping_ids, zombie_thread_ids: zombie_ids }),
     {
     }
 
