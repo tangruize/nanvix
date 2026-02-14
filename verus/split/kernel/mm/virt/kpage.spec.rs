@@ -5,42 +5,34 @@
 
 verus! {
 
-impl PageAddress {
-    //==============================================================================================
+//==================================================================================================
+// PageAddress Specifications
+//==================================================================================================
 
-    /// Invariant for the page address.
-    ///
-    /// Ensures that the raw address is page-aligned.
-    pub closed spec fn inv(&self) -> bool {
-        self.raw_addr as int % PAGE_SIZE as int == 0
+impl PageAddressView {
+    /// Returns the raw address value.
+    pub open spec fn raw_value(&self) -> int {
+        self.raw_value
     }
 
-    /// Spec function to get the raw address value.
-    pub open spec fn spec_raw_value(&self) -> int {
-        self.raw_addr as int
+    /// Property: The address is page-aligned.
+    pub open spec fn is_aligned(&self) -> bool {
+        self.raw_value % PAGE_SIZE as int == 0
     }
 
-
-    /// Spec function to check if address is page-aligned.
-    pub open spec fn spec_is_aligned(&self) -> bool {
-        self.raw_addr as int % PAGE_SIZE as int == 0
-    }
-
-
-    /// Spec function to get the page table entry index.
+    /// Returns the page table entry index.
     /// This extracts bits [12:21] of the address, giving a value 0-1023.
     /// The formula models: (addr & (PGTAB_MASK ^ PAGE_MASK)) >> PAGE_SHIFT
     /// Which is equivalent to: (addr / PAGE_SIZE) % 1024
-    pub open spec fn spec_pte_index(&self) -> int {
-        (self.raw_addr as int / PAGE_SIZE as int) % 1024
+    pub open spec fn pte_index(&self) -> int {
+        (self.raw_value / PAGE_SIZE as int) % 1024
     }
 
-
-    /// Spec function to compare two page addresses.
-    pub open spec fn spec_cmp(&self, other: &Self) -> core::cmp::Ordering {
-        if self.raw_addr < other.raw_addr {
+    /// Compares two page address views.
+    pub open spec fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        if self.raw_value < other.raw_value {
             core::cmp::Ordering::Less
-        } else if self.raw_addr > other.raw_addr {
+        } else if self.raw_value > other.raw_value {
             core::cmp::Ordering::Greater
         } else {
             core::cmp::Ordering::Equal
@@ -48,19 +40,48 @@ impl PageAddress {
     }
 }
 
+impl View for PageAddress {
+    type V = PageAddressView;
 
+    /// Converts a PageAddress to its abstract view.
+    ///
+    /// This is `closed` so users cannot see the internal representation.
+    closed spec fn view(&self) -> PageAddressView {
+        PageAddressView { raw_value: self.raw_addr as int }
+    }
+}
+
+impl PageAddress {
+    //==============================================================================================
+
+    /// Invariant for the page address.
+    ///
+    /// Ensures that the raw address is page-aligned.
+    pub closed spec fn inv(&self) -> bool {
+        self@.is_aligned()
+    }
+}
+
+
+/// The `PageAddressEqSpec` trait methods are `open spec fn` without explicit `pub` visibility.
+/// This is a required workaround for vstd's PartialEq trait mechanism, which expects
+/// `obeys_eq_spec()` and `eq_spec()` to be provided via an external trait extension.
+/// The trait itself is `pub`, making these methods effectively public.
 impl PageAddressEqSpec for PageAddress {
     /// PageAddress obeys the equality specification.
     open spec fn obeys_eq_spec() -> bool {
         true
     }
 
-    /// Two page addresses are equal if their raw values are equal.
+    /// Two page addresses are equal if their abstract raw values are equal.
     open spec fn eq_spec(&self, other: &Self) -> bool {
-        self.raw_addr == other.raw_addr
+        self@.raw_value() == other@.raw_value()
     }
 }
 
+//==================================================================================================
+// KernelPageView Specifications
+//==================================================================================================
 
 impl KernelPageView {
     //==============================================================================================
@@ -154,13 +175,6 @@ impl KernelPage {
         &&& self@.pool_id == self.kframe.spec_pool_id()
         // Address validity.
         &&& self@.addr_is_valid()
-    }
-
-    //==============================================================================================
-
-    /// Spec function to get the pool ID of the underlying frame.
-    pub closed spec fn spec_pool_id(&self) -> int {
-        self@.pool_id()
     }
 }
 

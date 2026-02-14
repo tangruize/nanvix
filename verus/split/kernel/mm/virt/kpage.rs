@@ -115,7 +115,7 @@ pub const PTES_PER_PGTAB: usize = 1024;
 #[derive(Debug, Clone, Copy)]
 pub struct PageAddress {
     /// Raw virtual address (must be page-aligned).
-    pub raw_addr: usize,
+    raw_addr: usize,
 }
 
 impl PageAddress {
@@ -135,8 +135,8 @@ impl PageAddress {
             raw_addr as int % PAGE_SIZE as int == 0,
         ensures
             result.inv(),
-            result.spec_raw_value() == raw_addr as int,
-            result.spec_is_aligned(),
+            result@.raw_value() == raw_addr as int,
+            result@.is_aligned(),
     {
         PageAddress { raw_addr }
     }
@@ -151,7 +151,7 @@ impl PageAddress {
     pub fn into_raw_value(self) -> (result: usize)
         requires
             self.inv(),
-        ensures result as int == self.spec_raw_value()
+        ensures result as int == self@.raw_value()
     {
         self.raw_addr
     }
@@ -172,7 +172,7 @@ impl PageAddress {
         requires
             self.inv(),
         ensures
-            result as int == self.spec_pte_index(),
+            result as int == self@.pte_index(),
             result < PTES_PER_PGTAB,
     {
         // Use arithmetic equivalent of bit extraction: (addr / PAGE_SIZE) % 1024.
@@ -184,7 +184,12 @@ impl PageAddress {
 //==================================================================================================
 
 /// Trait extension for PageAddress equality specification.
-/// This connects the implementation to vstd's PartialEq specs.
+///
+/// This connects the implementation to vstd's PartialEq specs. The trait methods
+/// are `open spec fn` without explicit `pub` as a required workaround for vstd's
+/// PartialEq trait mechanism, which expects `obeys_eq_spec()` and `eq_spec()` to
+/// be provided via an external trait extension that cannot be satisfied directly
+/// in user code. The trait itself is `pub`, making these methods effectively public.
 pub trait PageAddressEqSpec {
     /// Specifies whether this type obeys the equality specification.
     spec fn obeys_eq_spec() -> bool;
@@ -209,9 +214,8 @@ pub fn page_address_eq(a: &PageAddress, b: &PageAddress) -> (result: bool)
         a.inv(),
         b.inv(),
     ensures
-        result == (a.raw_addr == b.raw_addr),
+        result == (a@.raw_value() == b@.raw_value()),
         result == a.eq_spec(b),
-        result == (a.spec_raw_value() == b.spec_raw_value()),
 {
     a.raw_addr == b.raw_addr
 }
@@ -237,6 +241,16 @@ impl PartialEq for PageAddress {
     fn eq(&self, other: &Self) -> bool {
         self.raw_addr == other.raw_addr
     }
+}
+
+
+/// Abstract view of a page address for specification purposes.
+///
+/// The view captures the essential state as an abstract `int` value,
+/// hiding the concrete `usize` representation.
+pub struct PageAddressView {
+    /// Raw virtual address value (abstract).
+    pub raw_value: int,
 }
 
 
@@ -338,8 +352,8 @@ impl KernelPage {
             self.inv(),
         ensures
             result.inv(),
-            result.spec_raw_value() == self@.page_address(),
-            result.spec_is_aligned(),
+            result@.raw_value() == self@.page_address(),
+            result@.is_aligned(),
     {
         proof {
             // Use lemma to connect closed specs to FrameAddress properties.

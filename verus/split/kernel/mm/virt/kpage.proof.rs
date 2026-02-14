@@ -10,7 +10,7 @@ verus! {
 /// This provides verified justification for the external_body on eq().
 pub proof fn lemma_page_address_eq_correct(a: &PageAddress, b: &PageAddress)
     ensures
-        (a.raw_addr == b.raw_addr) == a.eq_spec(b),
+        (a@.raw_value() == b@.raw_value()) == a.eq_spec(b),
 {
     // Trivially true by definition of eq_spec.
 }
