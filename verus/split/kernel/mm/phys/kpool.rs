@@ -208,8 +208,15 @@ impl KernelFrame {
 /// # Description
 ///
 /// This view encapsulates the abstract state of the kernel frame pool.
-/// The `allocator_view` field is private to hide the internal `FrameAllocator`
-/// implementation; all public access goes through the KpoolView methods.
+/// Methods delegate to `allocator_view` for allocation state, while
+/// `num_allocated_count` provides concrete counting for public method specs.
+///
+/// # Note on `allocator_view`
+///
+/// The `allocator_view` field remains public because Verus requires struct fields
+/// referenced by `pub open spec fn` methods to be visible at the method's scope.
+/// Making it private would prevent `pub open spec fn` bodies from compiling.
+/// This is a known limitation of Verus's visibility model.
 ///
 /// # Region and Provenance
 ///
@@ -221,8 +228,9 @@ impl KernelFrame {
 /// The pool_id ensures frames are only freed to their originating pool.
 #[verifier::ext_equal]
 pub struct KpoolView {
-    /// The underlying frame allocator view (private implementation detail).
-    allocator_view: FrameAllocatorView,
+    /// The underlying frame allocator view.
+    /// Public due to Verus visibility constraints on `pub open spec fn`.
+    pub allocator_view: FrameAllocatorView,
     /// Concrete count of allocated frames (from bitmap).
     /// Exposed via `num_allocated()` for public method specs.
     pub num_allocated_count: int,
