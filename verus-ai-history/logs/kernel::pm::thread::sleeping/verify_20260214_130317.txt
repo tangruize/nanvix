@@ -1,0 +1,44 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 13:03:17 CST 2026
+Module: kernel::pm::thread::sleeping
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::sleeping
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::sleeping
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/thread/sleeping.rs:366:5
+    |
+366 |     pub fn set_thread_data_area(&mut self, user_tda: Option<int>)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/sleeping.rs:374:13
+    |
+366 |     pub fn set_thread_data_area(&mut self, user_tda: Option<int>)
+    |     ------------------------------------------------------------- at the end of the function body
+...
+374 |             forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/thread/sleeping.rs:375:13
+    |
+366 |     pub fn set_thread_data_area(&mut self, user_tda: Option<int>)
+    |     ------------------------------------------------------------- at the end of the function body
+...
+375 |             self.spec_drop_safe() == old(self).spec_drop_safe(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 32 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 6s
+Exit code: 1
+
+=== Summary ===
+Verified: 32
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::sleeping (verified:32, errors:1)
