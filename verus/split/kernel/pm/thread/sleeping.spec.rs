@@ -133,7 +133,7 @@ impl SleepingThread {
     /// Spec function: well-formedness predicate.
     /// A SleepingThread is well-formed when the underlying state is well-formed
     /// and the alarm (if present) is non-negative.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
         && (self.alarm.is_some() ==> self.alarm.unwrap() >= 0)
     }
@@ -182,7 +182,7 @@ impl ReadyThread {
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
         && self.admission_time >= 0
     }
@@ -219,7 +219,7 @@ impl InterruptedThread {
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf() && SleepingThread::spec_valid_reason(self.reason)
     }
 }
@@ -231,7 +231,8 @@ impl InterruptedThread {
 impl View for SleepingThread {
     type V = SleepingThreadView;
 
-    open spec fn view(&self) -> SleepingThreadView {
+    // Note: closed so users cannot inspect implementation internals (Step 1 guideline).
+    closed spec fn view(&self) -> SleepingThreadView {
         SleepingThreadView {
             state: self.state@,
             alarm: self.alarm,
@@ -242,7 +243,8 @@ impl View for SleepingThread {
 impl View for ReadyThread {
     type V = ReadyThreadView;
 
-    open spec fn view(&self) -> ReadyThreadView {
+    // Note: closed so users cannot inspect implementation internals (Step 1 guideline).
+    closed spec fn view(&self) -> ReadyThreadView {
         ReadyThreadView {
             state: self.state@,
             admission_time: self.admission_time,
@@ -253,7 +255,8 @@ impl View for ReadyThread {
 impl View for InterruptedThread {
     type V = InterruptedThreadView;
 
-    open spec fn view(&self) -> InterruptedThreadView {
+    // Note: closed so users cannot inspect implementation internals (Step 1 guideline).
+    closed spec fn view(&self) -> InterruptedThreadView {
         InterruptedThreadView {
             state: self.state@,
             reason: self.reason,
