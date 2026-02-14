@@ -726,22 +726,50 @@ impl RunnableProcess {
             self.ready_admission_times@,
             self.ready_admission_times@.len() as int,
         );
+        // Prove bounds on sel_exec.
+        Self::lemma_min_index_rec_bounds(
+            &self.ready_admission_times@,
+            self.ready_admission_times@.len() as int,
+        );
         let sel_exec: int = self.spec_earliest_ready_index();
         let sel_view: int = self@.spec_earliest_ready_index();
+        assert(0 <= sel_exec < self.ready_thread_ids@.len());
         // The view's admission times are spec_i64_seq_as_int of exec's.
         assert(self@.ready_admission_times == spec_i64_seq_as_int(self.ready_admission_times@));
         assert(sel_exec == sel_view);
         // Bridge running_thread_id: (exec i64 as int) == view Seq<int> element.
-        assert(self@.ready_thread_ids[sel_view]
-            == spec_i64_seq_as_int(self.ready_thread_ids@)[sel_exec]);
+        assert(spec_i64_seq_as_int(self.ready_thread_ids@)[sel_exec]
+            == self.ready_thread_ids@[sel_exec] as int);
         assert(result@.running_thread_id == self@.ready_thread_ids[sel_view]);
         // Bridge ready_thread_ids: spec_remove_at distributes over spec_i64_seq_as_int.
         // Break down: subrange distributes, then add distributes.
         let s: Seq<i64> = self.ready_thread_ids@;
         let s_int: Seq<int> = self@.ready_thread_ids;
         let sel: int = sel_exec;
+        // Element-level hint for subrange distribution.
+        assert forall|i: int| 0 <= i < sel
+            implies spec_i64_seq_as_int(s.subrange(0, sel))[i]
+                == s_int.subrange(0, sel)[i]
+        by {
+            assert(spec_i64_seq_as_int(s.subrange(0, sel))[i]
+                == s.subrange(0, sel)[i] as int);
+            assert(s.subrange(0, sel)[i] == s[i]);
+            assert(s_int.subrange(0, sel)[i] == s_int[i]);
+            assert(s_int[i] == s[i] as int);
+        }
         assert(spec_i64_seq_as_int(s.subrange(0, sel))
             =~= s_int.subrange(0, sel));
+        let tail_len: int = s.len() as int - (sel + 1);
+        assert forall|i: int| 0 <= i < tail_len
+            implies spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))[i]
+                == s_int.subrange(sel + 1, s_int.len() as int)[i]
+        by {
+            assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))[i]
+                == s.subrange(sel + 1, s.len() as int)[i] as int);
+            assert(s.subrange(sel + 1, s.len() as int)[i] == s[sel + 1 + i]);
+            assert(s_int.subrange(sel + 1, s_int.len() as int)[i] == s_int[sel + 1 + i]);
+            assert(s_int[sel + 1 + i] == s[sel + 1 + i] as int);
+        }
         assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))
             =~= s_int.subrange(sel + 1, s_int.len() as int));
         let left: Seq<i64> = s.subrange(0, sel);
