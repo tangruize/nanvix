@@ -1,0 +1,125 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T08:30:22.944976
+Model: claude-opus-4.6-fast
+Session: e8e57b43-058a-456b-b08a-cf94ecd21116
+Duration: 60.0s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for interrupted_process.
+
+Original source: src/kernel/src/pm/process/state/interrupted.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - interrupted.rs (exec)
+  - interrupted.spec.rs (spec)
+  - interrupted.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/process/state/interrupted.rs) against the
+original source (src/kernel/src/pm/process/state/interrupted.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh interrupted_process
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/interrupted_process_20260214_082922.md:
+
+```markdown
+# Exec Integrity: interrupted_process
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● Read src/kernel/src/pm/process/state/interrupted.rs
+  └ 184 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.rs
+  └ 558 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.spec.rs
+  └ 540 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs
+  └ 677 lines read
+
+Now let me run the verification script to check current status, and also check the verify script contents.
+
+● Check verify script
+  $ cd /home/ubuntu/nanvix && cat verus-ai/scripts/verify.sh | head -30
+  └ 31 lines...
+
+● Run verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh interrupted_process 2>&1 | tail -30
+  └ 23 lines...
+
+Now let me check for any `assume`, `admit`, or `external_body` in the verified files.
+
+● Grep "assume|admit|external_body"
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process/state/interrupted.spec.rs)
+  └ 3 lines found
+
+● Grep "assume|admit|external_body"
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process/state/interrupted.rs)
+  └ 7 lines found
+
+● Grep "assume|admit|external_body"
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process/state/interrupted.proof.rs)
+  └ No matches found
+
+● Create integrity directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+No `assume`, `admit`, or `external_body` found (only in comments). Now let me create the report.
+
+● Create verus-ai-history/integrity/interrupted_process_20260214_082922.md (+60)
+
+
+Total usage est:        9 Premium requests
+API time spent:         42s
+Total session time:     58s
+Total code changes:     +60 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    308.0k in, 4.5k out, 260.7k cached (Est. 9 Premium requests)
+
+=== End ===
