@@ -1,0 +1,166 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:30:36 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/runnable.proof.rs:659:53
+    |
+659 |             RunnableProcessView::spec_min_index_rec(s, n)
+    |             --------------------------------------- ^ expected `Seq<int>`, found `Seq<i64>`
+    |             |
+    |             arguments to this function are incorrect
+    |
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<i64>`
+note: associated function defined here
+   --> kernel/pm/process/state/runnable.spec.rs:553:22
+    |
+553 |     pub open spec fn spec_min_index_rec(s: Seq<int>, n: int) -> int
+    |                      ^^^^^^^^^^^^^^^^^^ -----------
+
+error[E0308]: arguments to this function are incorrect
+   --> kernel/pm/process/state/runnable.proof.rs:680:19
+    |
+680 |             p@ == RunnableProcessView::spec_new(pid_val, tid, time),
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^          ---  ---- expected `int`, found `i64`
+    |                                                          |
+    |                                                          expected `int`, found `i64`
+    |
+note: associated function defined here
+   --> kernel/pm/process/state/runnable.spec.rs:587:22
+    |
+587 |     pub open spec fn spec_new(pid: int, ready_tid: int, ready_time: int) -> RunnableProcessView {
+    |                      ^^^^^^^^           --------------  ---------------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/runnable.proof.rs:717:17
+    |
+716 |           assert(Self::spec_remove_at(self.ready_thread_ids@, sel_exec)
+    |  ________________-
+717 | |             =~= RunnableProcessView::spec_remove_at(self@.ready_thread_ids, sel_view));
+    | |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-
+    | |_________________|___________________________________________________________________|
+    |                   |                                                                   arguments to this function are incorrect
+    |                   expected `Seq<i64>`, found `Seq<int>`
+    |
+    = note: expected struct `vstd::seq::Seq<i64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: function defined here
+   --> /home/runner/work/verus/verus/source/builtin/src/lib.rs:270:8
+
+error[E0308]: arguments to this method are incorrect
+   --> kernel/pm/process/state/runnable.proof.rs:761:30
+    |
+761 |             result@ == self@.spec_add_thread(tid, time),
+    |                              ^^^^^^^^^^^^^^^ ---  ---- expected `int`, found `i64`
+    |                                              |
+    |                                              expected `int`, found `i64`
+    |
+note: method defined here
+   --> kernel/pm/process/state/runnable.spec.rs:695:22
+    |
+695 |     pub open spec fn spec_add_thread(&self, ready_tid: int, ready_time: int) -> RunnableProcessView {
+    |                      ^^^^^^^^^^^^^^^        --------------  ---------------
+
+error[E0308]: arguments to this method are incorrect
+   --> kernel/pm/process/state/runnable.proof.rs:790:30
+    |
+790 |             result@ == self@.spec_wakeup(tid, time, found_idx),
+    |                              ^^^^^^^^^^^ ---  ---- expected `int`, found `i64`
+    |                                          |
+    |                                          expected `int`, found `i64`
+    |
+note: method defined here
+   --> kernel/pm/process/state/runnable.spec.rs:678:22
+    |
+678 |     pub open spec fn spec_wakeup(&self, tid: int, time: int, idx: int) -> RunnableProcessView
+    |                      ^^^^^^^^^^^        --------  ---------
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/runnable.proof.rs:793:17
+    |
+792 |           assert(RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx)
+    |  ________________-
+793 | |             =~= RunnableProcessView::spec_remove_at(self@.sleeping_thread_ids, found_idx));
+    | |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-
+    | |_________________|_______________________________________________________________________|
+    |                   |                                                                       arguments to this function are incorrect
+    |                   expected `Seq<i64>`, found `Seq<int>`
+    |
+    = note: expected struct `vstd::seq::Seq<i64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+note: function defined here
+   --> /home/runner/work/verus/verus/source/builtin/src/lib.rs:270:8
+
+error[E0308]: arguments to this function are incorrect
+   --> kernel/pm/process/state/runnable.proof.rs:815:19
+    |
+815 |             p@ == RunnableProcessView::spec_from_state(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: expected `Seq<int>`, found `Seq<i64>`
+   --> kernel/pm/process/state/runnable.proof.rs:816:26
+    |
+816 |                 pid_val, ready_ids, ready_times,
+    |                          ^^^^^^^^^
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<i64>`
+note: expected `Seq<int>`, found `Seq<i64>`
+   --> kernel/pm/process/state/runnable.proof.rs:816:37
+    |
+816 |                 pid_val, ready_ids, ready_times,
+    |                                     ^^^^^^^^^^^
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<i64>`
+note: expected `Seq<int>`, found `Seq<i64>`
+   --> kernel/pm/process/state/runnable.proof.rs:817:17
+    |
+817 |                 interrupted_ids, sleeping_ids, zombie_ids),
+    |                 ^^^^^^^^^^^^^^^
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<i64>`
+note: expected `Seq<int>`, found `Seq<i64>`
+   --> kernel/pm/process/state/runnable.proof.rs:817:34
+    |
+817 |                 interrupted_ids, sleeping_ids, zombie_ids),
+    |                                  ^^^^^^^^^^^^
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<i64>`
+note: expected `Seq<int>`, found `Seq<i64>`
+   --> kernel/pm/process/state/runnable.proof.rs:817:48
+    |
+817 |                 interrupted_ids, sleeping_ids, zombie_ids),
+    |                                                ^^^^^^^^^^
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<i64>`
+note: associated function defined here
+   --> kernel/pm/process/state/runnable.spec.rs:602:22
+    |
+602 |     pub open spec fn spec_from_state(
+    |                      ^^^^^^^^^^^^^^^
+603 |         pid: int,
+604 |         ready_ids: Seq<int>,
+    |         -------------------
+605 |         ready_times: Seq<int>,
+    |         ---------------------
+606 |         interrupted_ids: Seq<int>,
+    |         -------------------------
+607 |         sleeping_ids: Seq<int>,
+    |         ----------------------
+608 |         zombie_ids: Seq<int>,
+    |         --------------------
+
+error: aborting due to 7 previous errors
+
+For more information about this error, try `rustc --explain E0308`.
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::runnable (verified:0, errors:0)
