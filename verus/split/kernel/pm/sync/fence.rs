@@ -12,7 +12,7 @@
 //! - `signal()` increments count by exactly 1 and preserves well-formedness.
 //! - `signal()` is only valid when the fence is waiting (count < total).
 //! - `wait()` postcondition guarantees the fence is satisfied (count >= total).
-//! - `spec_is_satisfied` and `spec_is_waiting` are complementary predicates.
+//! - `is_satisfied` and `is_waiting` (on `FenceView`) are complementary predicates.
 //! - Well-formedness (`inv()`) enforces: count <= total.
 //! - Satisfaction is monotone: once satisfied, a fence stays satisfied.
 //! - After exactly `total` signals from a new fence, it is satisfied.
@@ -57,7 +57,7 @@
 //! **`signal()` precondition strengthening:** The original `signal(&self)`
 //! unconditionally calls `fetch_add(1, Ordering::Release)` with no guard
 //! against over-signaling (calling `signal` more than `total` times). The
-//! verified model intentionally adds `spec_is_waiting()` (`count < total`)
+//! verified model intentionally adds `is_waiting()` (`count < total`)
 //! as a precondition, enforcing a strict protocol where each fence receives
 //! exactly `total` signals. This is a deliberate strengthening that prevents
 //! over-signaling and `usize` overflow. Note: the runtime tolerates
