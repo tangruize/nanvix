@@ -322,6 +322,123 @@ impl InterruptedProcess {
     {
     }
 
+    //==============================================================================================
+    // View-Level Bridging Lemmas
+    //==============================================================================================
+
+    /// Lemma: `view()` of a well-formed `InterruptedProcess` is well-formed
+    /// at the view level.
+    pub proof fn lemma_view_wf(p: &InterruptedProcess)
+        requires
+            p.wf(),
+        ensures
+            p@.wf(),
+    {
+    }
+
+    /// Lemma: `new()` result view matches `InterruptedProcessView::spec_new()`.
+    pub proof fn lemma_new_refines_spec(
+        pid: u64,
+        interrupted_ids: Seq<u64>,
+        zombie_ids: Seq<u64>,
+        result: &InterruptedProcess,
+    )
+        requires
+            result.spec_pid() == pid,
+            result.sleeping_thread_ids@.len() == 0,
+            result.interrupted_thread_ids@ =~= interrupted_ids,
+            result.zombie_thread_ids@ =~= zombie_ids,
+        ensures
+            result@ =~= InterruptedProcessView::spec_new(pid, interrupted_ids, zombie_ids),
+    {
+    }
+
+    /// Lemma: `from_sleeping()` result view matches
+    /// `InterruptedProcessView::spec_from_sleeping()`.
+    pub proof fn lemma_from_sleeping_refines_spec(
+        pid: u64,
+        sleeping_ids: Seq<u64>,
+        interrupted_ids: Seq<u64>,
+        zombie_ids: Seq<u64>,
+        result: &InterruptedProcess,
+    )
+        requires
+            result.spec_pid() == pid,
+            result.sleeping_thread_ids@ =~= sleeping_ids,
+            result.interrupted_thread_ids@ =~= interrupted_ids,
+            result.zombie_thread_ids@ =~= zombie_ids,
+        ensures
+            result@ =~= InterruptedProcessView::spec_from_sleeping(
+                pid, sleeping_ids, interrupted_ids, zombie_ids),
+    {
+    }
+
+    /// Lemma: `resume()` result view matches
+    /// `InterruptedProcessView::spec_resume()`.
+    ///
+    /// Downstream callers can use this to reason about `resume()` at the
+    /// view level:
+    ///   `ensures result@ =~= old(self)@.spec_resume(admission_time)`
+    pub proof fn lemma_resume_refines_spec(
+        pre: &InterruptedProcess,
+        admission_time: u64,
+        result: &RunnableProcess,
+    )
+        requires
+            pre.wf(),
+            result.pid == pre.pid,
+            result.ready_thread_ids@.len() == 1,
+            result.ready_thread_ids@[0] == pre.interrupted_thread_ids@[0],
+            result.ready_admission_times@.len() == 1,
+            result.ready_admission_times@[0] == admission_time,
+            result.interrupted_thread_ids@ =~=
+                pre.interrupted_thread_ids@.subrange(
+                    1, pre.interrupted_thread_ids@.len() as int),
+            result.sleeping_thread_ids@ =~= pre.sleeping_thread_ids@,
+            result.zombie_thread_ids@ =~= pre.zombie_thread_ids@,
+        ensures
+            result@ =~= pre@.spec_resume(admission_time),
+    {
+        // Establish singleton sequence extensional equality.
+        assert(result.ready_thread_ids@ =~=
+            seq![pre.interrupted_thread_ids@[0]]);
+        assert(result.ready_admission_times@ =~= seq![admission_time]);
+    }
+
+    /// Lemma: `state_mut()` preserves the view, matching
+    /// `InterruptedProcessView::spec_state_mut()`.
+    pub proof fn lemma_state_mut_refines_spec(
+        old_p: &InterruptedProcess,
+        new_p: &InterruptedProcess,
+    )
+        requires
+            old_p.wf(),
+            new_p.spec_pid() == old_p.spec_pid(),
+            new_p.interrupted_thread_ids@ =~= old_p.interrupted_thread_ids@,
+            new_p.sleeping_thread_ids@ =~= old_p.sleeping_thread_ids@,
+            new_p.zombie_thread_ids@ =~= old_p.zombie_thread_ids@,
+        ensures
+            new_p@ =~= old_p@.spec_state_mut(),
+    {
+    }
+
+    /// Lemma: `find_thread_mut()` preserves the view, matching
+    /// `InterruptedProcessView::spec_find_thread_mut()`.
+    pub proof fn lemma_find_thread_mut_refines_spec(
+        old_p: &InterruptedProcess,
+        new_p: &InterruptedProcess,
+    )
+        requires
+            old_p.wf(),
+            new_p.spec_pid() == old_p.spec_pid(),
+            new_p.interrupted_thread_ids@ =~= old_p.interrupted_thread_ids@,
+            new_p.sleeping_thread_ids@ =~= old_p.sleeping_thread_ids@,
+            new_p.zombie_thread_ids@ =~= old_p.zombie_thread_ids@,
+        ensures
+            new_p@ =~= old_p@.spec_find_thread_mut(),
+    {
+    }
+
     /// Lemma: If the ProcessState PID obligation holds at construction, it is
     /// preserved by `resume()` — the resulting RunnableProcess carries the
     /// same PID.

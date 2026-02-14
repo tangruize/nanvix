@@ -4,6 +4,24 @@
 // InterruptedProcess Specification.
 // This file contains spec functions and View types for the InterruptedProcess type.
 //
+// ## View-Level Abstract State Transitions (added)
+//
+// `InterruptedProcessView` now exposes abstract state transition spec functions
+// so downstream modules can write postconditions like:
+//     ensures result@ =~= old(self)@.spec_resume(admission_time)
+// instead of listing every field change individually.
+//
+// Added spec functions on `InterruptedProcessView`:
+// - `wf()`: view-level well-formedness predicate.
+// - `spec_new()`: models `InterruptedProcess::new()`.
+// - `spec_from_sleeping()`: models `InterruptedProcess::from_sleeping()`.
+// - `spec_resume()`: models `InterruptedProcess::resume()`.
+// - `spec_state_mut()`: identity transition for `state_mut()`.
+// - `spec_find_thread_mut()`: identity transition for `find_thread_mut()`.
+//
+// Bridging lemmas in `interrupted.proof.rs` connect exec postconditions to
+// these view-level transitions (e.g., `lemma_resume_refines_spec`).
+//
 // ## Verification Model
 //
 // InterruptedProcess has at least one interrupted thread, optional sleeping
@@ -377,6 +395,91 @@ impl RunnableProcess {
         forall|i: int, j: int|
             0 <= i < a.len() && 0 <= j < b.len()
             ==> a[i] != b[j]
+    }
+}
+
+//==================================================================================================
+// View-Level Abstract State Transition Functions
+//==================================================================================================
+
+impl InterruptedProcessView {
+    /// View-level well-formedness predicate.
+    ///
+    /// Mirrors `InterruptedProcess::wf()` but operates directly on
+    /// abstract `Seq<u64>` fields.
+    pub open spec fn wf(self) -> bool {
+        &&& self.interrupted_thread_ids.len() >= 1
+        &&& InterruptedProcess::spec_no_duplicates(self.interrupted_thread_ids)
+        &&& InterruptedProcess::spec_no_duplicates(self.sleeping_thread_ids)
+        &&& InterruptedProcess::spec_no_duplicates(self.zombie_thread_ids)
+        &&& InterruptedProcess::spec_seqs_disjoint(
+            self.interrupted_thread_ids, self.sleeping_thread_ids)
+        &&& InterruptedProcess::spec_seqs_disjoint(
+            self.interrupted_thread_ids, self.zombie_thread_ids)
+        &&& InterruptedProcess::spec_seqs_disjoint(
+            self.sleeping_thread_ids, self.zombie_thread_ids)
+    }
+
+    /// Abstract state transition: models `InterruptedProcess::new()`.
+    ///
+    /// Returns the expected view after constructing with no sleeping threads.
+    pub open spec fn spec_new(
+        pid: u64, interrupted_ids: Seq<u64>, zombie_ids: Seq<u64>,
+    ) -> InterruptedProcessView {
+        InterruptedProcessView {
+            pid: pid,
+            sleeping_thread_ids: Seq::empty(),
+            interrupted_thread_ids: interrupted_ids,
+            zombie_thread_ids: zombie_ids,
+        }
+    }
+
+    /// Abstract state transition: models `InterruptedProcess::from_sleeping()`.
+    ///
+    /// Returns the expected view after constructing with sleeping threads.
+    pub open spec fn spec_from_sleeping(
+        pid: u64,
+        sleeping_ids: Seq<u64>,
+        interrupted_ids: Seq<u64>,
+        zombie_ids: Seq<u64>,
+    ) -> InterruptedProcessView {
+        InterruptedProcessView {
+            pid: pid,
+            sleeping_thread_ids: sleeping_ids,
+            interrupted_thread_ids: interrupted_ids,
+            zombie_thread_ids: zombie_ids,
+        }
+    }
+
+    /// Abstract state transition: models `InterruptedProcess::resume()`.
+    ///
+    /// Pops the front interrupted thread and produces a `RunnableProcessView`
+    /// with that thread as the single ready thread at `admission_time`.
+    /// Remaining interrupted, sleeping, and zombie threads are preserved.
+    pub open spec fn spec_resume(self, admission_time: u64) -> RunnableProcessView {
+        RunnableProcessView {
+            pid: self.pid,
+            ready_thread_ids: seq![self.interrupted_thread_ids[0]],
+            ready_admission_times: seq![admission_time],
+            interrupted_thread_ids: self.interrupted_thread_ids.subrange(
+                1, self.interrupted_thread_ids.len() as int),
+            sleeping_thread_ids: self.sleeping_thread_ids,
+            zombie_thread_ids: self.zombie_thread_ids,
+        }
+    }
+
+    /// Abstract state transition: models `InterruptedProcess::state_mut()`.
+    ///
+    /// Identity transition — mutable accessor preserves all fields.
+    pub open spec fn spec_state_mut(self) -> InterruptedProcessView {
+        self
+    }
+
+    /// Abstract state transition: models `InterruptedProcess::find_thread_mut()`.
+    ///
+    /// Identity transition — mutable search preserves all fields.
+    pub open spec fn spec_find_thread_mut(self) -> InterruptedProcessView {
+        self
     }
 }
 
