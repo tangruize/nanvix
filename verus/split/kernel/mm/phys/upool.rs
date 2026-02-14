@@ -92,14 +92,16 @@ pub enum FramePermission {
 /// - `spec_is_from_pool(pool)`: The frame was allocated from the given pool.
 /// - `spec_permission()`: The permission level of the frame.
 ///
-/// # Field Visibility
+/// # Exec Equivalence (AST Mismatch: UserFrame struct)
 ///
-/// The `addr` field is public because Verus requires struct fields referenced
-/// by `pub open spec fn` methods to be visible at the method's scope.
-/// Making it private would prevent `pub open spec fn` bodies from compiling.
-/// This is a known limitation of Verus's visibility model.
-/// Callers should use `UserFrame::new()` to construct frames, which enforces
-/// alignment preconditions.
+/// The original `UserFrame` has a private `addr` field. Here `addr` is `pub`
+/// because Verus requires struct fields referenced by `pub open spec fn`
+/// methods to be visible at the method's scope. Making it private would
+/// prevent `pub open spec fn` bodies from compiling. This is a known
+/// limitation of Verus's visibility model. Callers should use
+/// `UserFrame::new()` to construct frames, which enforces alignment
+/// preconditions. The exec semantics are identical: the struct is a
+/// single-field wrapper around `FrameAddress`.
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 pub struct UserFrame {
     /// Frame address (page-aligned).
@@ -117,6 +119,12 @@ impl UserFrame {
     /// # Returns
     ///
     /// A user frame wrapping the given address.
+    ///
+    /// # Exec Equivalence (AST Mismatch: UserFrame::new)
+    ///
+    /// Exec body is identical to original: `Self { addr }`. The named return
+    /// `(result: UserFrame)` is Verus syntax for binding the return value in
+    /// ensures clauses and does not affect executable semantics.
     pub fn new(addr: FrameAddress) -> (result: UserFrame)
         requires
             addr.spec_is_aligned(),
@@ -135,6 +143,11 @@ impl UserFrame {
     /// # Returns
     ///
     /// The frame address of the user frame.
+    ///
+    /// # Exec Equivalence (AST Mismatch: address)
+    ///
+    /// Exec body is identical to original: `self.addr`. The named return
+    /// `(result: FrameAddress)` is Verus syntax only.
     pub fn address(&self) -> (result: FrameAddress)
         ensures result == self.spec_address()
     {
@@ -185,6 +198,17 @@ pub struct UpoolView {
 ///
 /// The pool manages physical memory frames for user-space processes.
 /// It provides allocation and deallocation operations with memory safety guarantees.
+///
+/// # Exec Equivalence (AST Mismatch: Upool struct)
+///
+/// The original `Upool` wraps `Rc<RefCell<UpoolInner>>`, where `UpoolInner`
+/// holds a `FrameAllocator`. Verus cannot verify through `Rc<RefCell<>>`
+/// (interior mutability), so this version directly stores `FrameAllocator`.
+/// The `UpoolInner` indirection is eliminated because it only delegates to
+/// `FrameAllocator`. All exec operations (alloc, free) forward to
+/// `FrameAllocator` identically—the original calls
+/// `self.inner.borrow_mut().frame_allocator.method()` and this version
+/// calls `self.frame_allocator.method()`. Semantically equivalent.
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 pub struct Upool {
     /// Underlying frame allocator.
@@ -203,6 +227,13 @@ impl Upool {
     /// # Returns
     ///
     /// A user frame pool.
+    ///
+    /// # Exec Equivalence (AST Mismatch: Upool::new)
+    ///
+    /// Original: `Self { inner: Rc::new(RefCell::new(UpoolInner::new(frame_allocator))) }`.
+    /// Verus: `Upool { frame_allocator }`. Both wrap a `FrameAllocator`; the
+    /// Rc/RefCell/UpoolInner indirection is removed due to Verus limitations
+    /// (see struct-level doc). The constructed pool state is identical.
     pub fn new(frame_allocator: FrameAllocator) -> (result: Upool)
         requires
             frame_allocator.inv(),
@@ -220,6 +251,12 @@ impl Upool {
 
 
     /// Returns the capacity (number of frames managed).
+    ///
+    /// # Exec Note (EXTRA_IN_VERUS: capacity)
+    ///
+    /// This function does not exist in the original source. It is a
+    /// verification helper that exposes `FrameAllocator::capacity()` at the
+    /// Upool level, used in loop invariants and ensures clauses.
     pub fn capacity(&self) -> (result: usize)
         requires self.inv(),
         ensures
@@ -238,6 +275,15 @@ impl Upool {
     ///
     /// On success, a UserFrame containing the allocated frame address is returned.
     /// On failure, an error is returned.
+    ///
+    /// # Exec Equivalence (AST Mismatch: alloc)
+    ///
+    /// Original: `let addr = self.inner.borrow_mut().alloc()?; Ok(UserFrame::new(addr))`.
+    /// Verus: `match self.frame_allocator.alloc() { Ok(addr) => Ok(UserFrame::new(addr)), ... }`.
+    /// The `?` operator is replaced by an explicit `match` (Verus limitation on
+    /// the `?` desugaring), and the Rc/RefCell indirection is removed.
+    /// Both call `FrameAllocator::alloc()` and wrap the result in `UserFrame`.
+    /// Semantically identical.
     ///
     /// # Memory Safety
     ///
@@ -313,6 +359,16 @@ impl Upool {
     //==============================================================================================
 
     /// Allocates multiple frames from the user frame pool.
+    ///
+    /// # Exec Equivalence (AST Mismatch: alloc_many)
+    ///
+    /// Original returns `Result<Vec<UserFrame>, Error>` and collects allocated
+    /// frames into a `Vec`. Verus lacks full `Vec` support and cannot verify
+    /// `trace!()` macros, so this version returns `Ghost<Seq<int>>` (erased
+    /// at compile time) and allocates frames in a loop for their side effect
+    /// on pool state. The pool state transitions (which frames become
+    /// allocated) are identical. For executable code needing multiple frames,
+    /// callers should use `alloc()` in a loop (see example below).
     ///
     /// # Note on Usage
     ///
@@ -519,6 +575,13 @@ impl Upool {
     ///
     /// On success, `Ok(())` is returned.
     ///
+    /// # Exec Equivalence (AST Mismatch: free)
+    ///
+    /// Original: `self.inner.borrow_mut().free(uframe.address())`.
+    /// Verus: `self.frame_allocator.free(uframe.address())`.
+    /// Both call `FrameAllocator::free()`; the Rc/RefCell indirection is
+    /// removed due to Verus limitations. Semantically identical.
+    ///
     /// # Liveness
     ///
     /// When preconditions are satisfied, free always succeeds.
@@ -558,6 +621,13 @@ impl Upool {
 
 
     /// Frees a frame by raw address.
+    ///
+    /// # Exec Note (EXTRA_IN_VERUS: free_by_addr)
+    ///
+    /// This function does not exist in the original source. It is a
+    /// verification helper for callers (e.g., vmem.unmap) that have a raw
+    /// `usize` address rather than a `UserFrame`. It constructs a
+    /// `FrameAddress` and delegates to `FrameAllocator::free()`.
     ///
     /// # Description
     ///
