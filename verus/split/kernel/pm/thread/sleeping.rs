@@ -326,6 +326,8 @@ impl SleepingThread {
     ///
     /// The thread identifier, unchanged from construction.
     pub fn id(&self) -> (result: ThreadIdentifier)
+        requires
+            self.wf(),
         ensures
             result.spec_value() == self.spec_id(),
     {
@@ -339,10 +341,13 @@ impl SleepingThread {
     /// A reference to the underlying ThreadState with the same identity
     /// and full state transparency.
     pub fn thread_state(&self) -> (result: &ThreadState)
+        requires
+            self.wf(),
         ensures
             result.spec_id() == self.spec_id(),
-            result@ == self.state@,
+            result@ == self@.state,
     {
+        proof { reveal(SleepingThread::view); }
         &self.state
     }
 
@@ -352,6 +357,8 @@ impl SleepingThread {
     ///
     /// The optional alarm time for waking up the thread.
     pub fn alarm(&self) -> (result: Option<int>)
+        requires
+            self.wf(),
         ensures
             result == self.spec_alarm(),
     {
@@ -398,6 +405,8 @@ impl SleepingThread {
     ///
     /// The optional base address for user-space thread data area.
     pub fn get_thread_data_area(&self) -> (result: Option<int>)
+        requires
+            self.wf(),
         ensures
             result == self.spec_user_tda(),
     {
