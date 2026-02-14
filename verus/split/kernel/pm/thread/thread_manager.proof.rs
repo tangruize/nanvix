@@ -37,6 +37,7 @@ impl ThreadManager {
                 m.wf()
             }),
     {
+        reveal(ThreadManager::wf);
     }
 
     /// Lemma: new() produces a kernel thread with ID 0.
@@ -59,6 +60,7 @@ impl ThreadManager {
                 m.spec_next_id() == 1
             }),
     {
+        reveal(ThreadManager::spec_next_id);
     }
 
     //==============================================================================================
@@ -69,7 +71,7 @@ impl ThreadManager {
     pub proof fn lemma_create_thread_preserves_wf(&self)
         requires
             self.wf(),
-            self.next_id.value < i32::MAX,
+            self@.next_id < i32::MAX as int,
         ensures
             ({
                 let post: ThreadManager = ThreadManager {
@@ -78,6 +80,7 @@ impl ThreadManager {
                 post.wf()
             }),
     {
+        reveal(ThreadManager::wf);
     }
 
     //==============================================================================================
@@ -88,7 +91,7 @@ impl ThreadManager {
     pub proof fn lemma_create_thread_increments_by_one(&self)
         requires
             self.wf(),
-            self.next_id.value < i32::MAX,
+            self@.next_id < i32::MAX as int,
         ensures
             ({
                 let post: ThreadManager = ThreadManager {
@@ -97,6 +100,8 @@ impl ThreadManager {
                 post.spec_next_id() == self.spec_next_id() + 1
             }),
     {
+        reveal(ThreadManager::wf);
+        reveal(ThreadManager::spec_next_id);
     }
 
     /// Lemma: IDs assigned by create_thread are always >= 1.
@@ -106,6 +111,8 @@ impl ThreadManager {
         ensures
             self.spec_next_id() >= 1,
     {
+        reveal(ThreadManager::wf);
+        reveal(ThreadManager::spec_next_id);
     }
 
     /// Lemma: Kernel thread ID (0) is always distinct from any subsequently
@@ -116,13 +123,15 @@ impl ThreadManager {
         ensures
             self.spec_next_id() != 0,
     {
+        reveal(ThreadManager::wf);
+        reveal(ThreadManager::spec_next_id);
     }
 
     /// Lemma: create_thread strictly increases next_id, so IDs are monotonic.
     pub proof fn lemma_create_thread_monotonic(&self)
         requires
             self.wf(),
-            self.next_id.value < i32::MAX,
+            self@.next_id < i32::MAX as int,
         ensures
             ({
                 let post: ThreadManager = ThreadManager {
@@ -131,6 +140,8 @@ impl ThreadManager {
                 post.spec_next_id() > self.spec_next_id()
             }),
     {
+        reveal(ThreadManager::wf);
+        reveal(ThreadManager::spec_next_id);
     }
 
     /// Lemma: Two successive create_thread calls assign different IDs.
@@ -139,11 +150,13 @@ impl ThreadManager {
     pub proof fn lemma_successive_creates_distinct(&self)
         requires
             self.wf(),
-            self.next_id.value < i32::MAX,
+            self@.next_id < i32::MAX as int,
         ensures
             // The current next_id differs from the next next_id.
             self.spec_next_id() != self.spec_next_id() + 1,
     {
+        reveal(ThreadManager::wf);
+        reveal(ThreadManager::spec_next_id);
     }
 
     //==============================================================================================
@@ -186,10 +199,11 @@ impl ThreadManager {
     /// Lemma: Two ThreadManagers with identical next_id values have equal views.
     pub proof fn lemma_view_equality(a: &ThreadManager, b: &ThreadManager)
         requires
-            a.next_id.spec_value() == b.next_id.spec_value(),
+            a.spec_next_id() == b.spec_next_id(),
         ensures
             a@ == b@,
     {
+        reveal(ThreadManager::spec_next_id);
     }
 }
 

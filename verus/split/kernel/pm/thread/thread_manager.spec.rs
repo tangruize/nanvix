@@ -45,7 +45,7 @@ pub struct ReadyThreadView {
 
 impl ThreadManager {
     /// Spec function: returns the next thread identifier value to be assigned.
-    pub open spec fn spec_next_id(&self) -> int {
+    pub closed spec fn spec_next_id(&self) -> int {
         self.next_id.spec_value()
     }
 
@@ -59,7 +59,7 @@ impl ThreadManager {
     /// Overflow is an operational constraint checked separately in
     /// `create_thread`'s precondition. A manager with `next_id == i32::MAX`
     /// is structurally valid but cannot create more threads.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.next_id.spec_value() >= 1
     }
 }
@@ -70,42 +70,42 @@ impl ThreadManager {
 
 impl ReadyThread {
     /// Spec function: returns the thread identifier value.
-    pub open spec fn spec_id(&self) -> int {
+    pub closed spec fn spec_id(&self) -> int {
         self.state.spec_id()
     }
 
     /// Spec function: returns the abstract kernel stack token.
-    pub open spec fn spec_kernel_stack(&self) -> Option<int> {
+    pub closed spec fn spec_kernel_stack(&self) -> Option<int> {
         self.state.spec_kernel_stack()
     }
 
     /// Spec function: returns the abstract user stack token.
-    pub open spec fn spec_user_stack(&self) -> Option<int> {
+    pub closed spec fn spec_user_stack(&self) -> Option<int> {
         self.state.spec_user_stack()
     }
 
     /// Spec function: returns the user thread data area.
-    pub open spec fn spec_user_tda(&self) -> Option<int> {
+    pub closed spec fn spec_user_tda(&self) -> Option<int> {
         self.state.spec_user_tda()
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
     }
 
     /// Spec function: checks if the state is drop-safe.
-    pub open spec fn spec_drop_safe(&self) -> bool {
+    pub closed spec fn spec_drop_safe(&self) -> bool {
         self.state.spec_drop_safe()
     }
 
     /// Spec function: checks if the state has an interrupt reason.
-    pub open spec fn spec_is_interrupted(&self) -> bool {
+    pub closed spec fn spec_is_interrupted(&self) -> bool {
         self.state.spec_is_interrupted()
     }
 
     /// Spec function: returns the state's locked mutex count.
-    pub open spec fn spec_locked_mutex_count(&self) -> nat {
+    pub closed spec fn spec_locked_mutex_count(&self) -> nat {
         self.state.spec_locked_mutex_count()
     }
 }
@@ -117,6 +117,9 @@ impl ReadyThread {
 impl View for ThreadManager {
     type V = ThreadManagerView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ThreadManagerView {
         ThreadManagerView {
             next_id: self.next_id.spec_value(),
@@ -127,6 +130,9 @@ impl View for ThreadManager {
 impl View for ReadyThread {
     type V = ReadyThreadView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ReadyThreadView {
         ReadyThreadView {
             state: self.state@,
