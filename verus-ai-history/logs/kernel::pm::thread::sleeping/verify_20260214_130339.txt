@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 13:03:39 CST 2026
+Module: kernel::pm::thread::sleeping
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::sleeping
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::sleeping
+
+error: assertion failed
+   --> kernel/pm/thread/sleeping.rs:387:20
+    |
+387 |             assert(self.spec_drop_safe() == old(self).spec_drop_safe()) by {
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 32 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 32
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::thread::sleeping (verified:32, errors:1)
