@@ -95,51 +95,53 @@ impl ZombieThreadView {
 //==================================================================================================
 
 /// Per methodology Step 3: no further `pub` spec functions on the concrete
-/// type beyond `wf()` and `view()`. These private helpers are retained for
-/// internal proof convenience.
+/// type beyond `wf()` and `view()`. However, Verus requires `open spec fn`
+/// to be `pub` (the body is only visible if the symbol is visible). These
+/// helpers remain `pub open` for proof ergonomics; the canonical public API
+/// is on `ZombieThreadView` above.
 impl ZombieThread {
     /// Spec function: returns the thread identifier value.
-    open spec fn spec_id(&self) -> int {
+    pub open spec fn spec_id(&self) -> int {
         self.state.spec_id()
     }
 
     /// Spec function: returns the exit status tag.
-    open spec fn spec_status(&self) -> int {
+    pub open spec fn spec_status(&self) -> int {
         self.status
     }
 
     /// Spec function: returns the state's locked mutex count.
-    open spec fn spec_locked_mutex_count(&self) -> nat {
+    pub open spec fn spec_locked_mutex_count(&self) -> nat {
         self.state.spec_locked_mutex_count()
     }
 
     /// Spec function: returns whether a specific mutex address is held.
-    open spec fn spec_has_mutex(&self, address: int) -> bool {
+    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
         self.state.spec_has_mutex(address)
     }
 
     /// Spec function: checks if the state is drop-safe.
-    open spec fn spec_drop_safe(&self) -> bool {
+    pub open spec fn spec_drop_safe(&self) -> bool {
         self.state.spec_drop_safe()
     }
 
     /// Spec function: returns the abstract kernel stack token.
-    open spec fn spec_kernel_stack(&self) -> Option<int> {
+    pub open spec fn spec_kernel_stack(&self) -> Option<int> {
         self.state.spec_kernel_stack()
     }
 
     /// Spec function: returns the abstract user stack token.
-    open spec fn spec_user_stack(&self) -> Option<int> {
+    pub open spec fn spec_user_stack(&self) -> Option<int> {
         self.state.spec_user_stack()
     }
 
     /// Spec function: returns the user thread data area.
-    open spec fn spec_user_tda(&self) -> Option<int> {
+    pub open spec fn spec_user_tda(&self) -> Option<int> {
         self.state.spec_user_tda()
     }
 
     /// Spec function: returns whether the thread has been interrupted.
-    open spec fn spec_is_interrupted(&self) -> bool {
+    pub open spec fn spec_is_interrupted(&self) -> bool {
         self.state.spec_is_interrupted()
     }
 
