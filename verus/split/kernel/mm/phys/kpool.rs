@@ -106,21 +106,35 @@ verus! {
 /// KernelFrame is a wrapper around a FrameAddress that represents an allocated
 /// frame from the kernel frame pool. The address is guaranteed to be page-aligned.
 ///
-/// In the original implementation, KernelFrame holds an `Rc<RefCell<KpoolInner>>`
-/// reference and implements automatic deallocation via Drop. For verification
-/// purposes, we model the frame as a simple wrapper around the address, with
-/// explicit free() calls required.
+/// # Structural Equivalence to Original
 ///
-/// # Provenance Tracking
+/// The original `KernelFrame` has fields:
+///   - `kpool: Rc<RefCell<KpoolInner>>` (shared pool reference for RAII Drop)
+///   - `base: FrameAddress` (frame address)
 ///
-/// Each KernelFrame includes a `pool_id` that identifies which pool it came from.
-/// This enables verification (and optional runtime checking) that frames are only
-/// freed to their originating pool, preventing cross-pool aliasing bugs.
+/// This verified version replaces them with:
+///   - `addr: FrameAddress` (renamed from `base`, semantically identical)
+///   - `pool_id: usize` (replaces `Rc<RefCell<KpoolInner>>` for provenance tracking)
+///
+/// The `Rc<RefCell<KpoolInner>>` is replaced because Verus cannot model interior
+/// mutability or reference-counted shared ownership. Instead, provenance is tracked
+/// via `pool_id`, and deallocation is explicit (no Drop trait).
+///
+/// # Verus Limitations (Missing Trait Impls)
+///
+/// The following trait implementations from the original cannot be verified:
+///   - `Deref for KernelFrame` (requires `unsafe { from_raw_parts(...) }`)
+///   - `DerefMut for KernelFrame` (requires `unsafe { from_raw_parts_mut(...) }`)
+///   - `Drop for KernelFrame` (requires `Rc<RefCell>` for RAII deallocation)
+///   - `clear(&mut self)` (requires `DerefMut` for byte-level zeroing)
+///
+/// These are orthogonal to allocation safety: they deal with memory content
+/// access and RAII lifecycle, not allocation/deallocation invariants.
 pub struct KernelFrame {
-    /// Frame address (page-aligned).
+    /// Frame address (page-aligned). Named `base` in the original.
     addr: FrameAddress,
     /// Pool identifier for provenance tracking.
-    /// Frames must be freed to the pool they were allocated from.
+    /// Replaces `Rc<RefCell<KpoolInner>>` from the original for pool association.
     pool_id: usize,
 }
 
@@ -190,7 +204,15 @@ impl KernelFrame {
     }
 
 
-    /// Returns the base address (same as address for compatibility with original API).
+    /// Returns the base address (same as `address()`, matching original `KernelFrame::base()`).
+    ///
+    /// # Equivalence to Original
+    ///
+    /// Original: `pub fn base(&self) -> FrameAddress { self.base }`
+    /// Verified: `pub fn base(&self) -> FrameAddress { self.addr }`
+    ///
+    /// The field was renamed from `base` to `addr` in the verified struct, but
+    /// the function semantics are identical: both return the frame's physical address.
     ///
     /// # Returns
     ///
@@ -253,17 +275,17 @@ pub struct KpoolView {
 /// The pool manages physical memory frames for kernel-space use.
 /// It provides allocation and deallocation operations with memory safety guarantees.
 ///
-/// Unlike the user pool which may be shared across processes, the kernel pool
-/// is used for kernel-internal allocations such as page tables, kernel stacks,
-/// and internal data structures.
+/// # Structural Equivalence to Original
 ///
-/// # Region and Provenance
+/// The original `Kpool` struct has:
+///   - `inner: Rc<RefCell<KpoolInner>>` (where `KpoolInner` contains `region` and `bitmap`)
 ///
-/// The pool tracks:
-/// - `pool_id`: A unique identifier for provenance tracking
+/// This verified version replaces it with:
+///   - `frame_allocator: FrameAllocator` (absorbs `KpoolInner`'s `Bitmap` functionality)
+///   - `pool_id: usize` (for provenance tracking, replacing `Rc<RefCell>` identity)
 ///
-/// Each allocated KernelFrame carries the pool_id, enabling verification that
-/// frames are only freed to their originating pool.
+/// The `KpoolInner` struct is absent because its `TruncatedMemoryRegion` + `Bitmap`
+/// are abstracted into `FrameAllocator`, and `Rc<RefCell>` cannot be modeled in Verus.
 pub struct Kpool {
     /// Underlying frame allocator.
     frame_allocator: FrameAllocator,
@@ -276,11 +298,19 @@ impl Kpool {
 
     /// Instantiates a kernel frame pool from a frame allocator.
     ///
-    /// # Description
+    /// # Equivalence to Original
     ///
-    /// Creates a new kernel frame pool wrapping the given frame allocator.
-    /// The original implementation accepts a TruncatedMemoryRegion and creates
-    /// a bitmap internally.
+    /// Original: `pub fn new(region: TruncatedMemoryRegion<PhysicalAddress>) -> Result<Self, Error>`
+    /// Verified: `pub fn new(frame_allocator: FrameAllocator, pool_id: usize) -> Kpool`
+    ///
+    /// The original constructs a `Bitmap` from the region size and wraps it in
+    /// `Rc<RefCell<KpoolInner>>`. This verified version accepts a pre-constructed
+    /// `FrameAllocator` (which encapsulates the bitmap) because Verus cannot model
+    /// `Rc<RefCell>` or `TruncatedMemoryRegion`. The `pool_id` parameter replaces
+    /// the identity provided by `Rc` pointer equality.
+    ///
+    /// The allocation logic (bitmap-based frame tracking) is identical; only the
+    /// construction interface differs due to Verus limitations.
     ///
     /// # Parameters
     ///
@@ -290,11 +320,6 @@ impl Kpool {
     /// # Returns
     ///
     /// A kernel frame pool with the given pool_id.
-    ///
-    /// # Provenance
-    ///
-    /// The pool_id is stored in the pool and propagated to all allocated frames.
-    /// This enables verification that frames are freed to the correct pool.
     pub fn new(frame_allocator: FrameAllocator, pool_id: usize) -> (result: Kpool)
         requires
             frame_allocator.inv(),
@@ -335,39 +360,23 @@ impl Kpool {
 
     /// Allocates a frame from the kernel frame pool.
     ///
-    /// # Description
+    /// # Equivalence to Original
     ///
-    /// Allocates a single kernel frame from the pool. The original implementation
-    /// has a `clear` parameter to optionally zero-initialize the frame. For
-    /// verification purposes, we focus on the allocation logic; clearing is
-    /// a separate concern that doesn't affect allocation invariants.
+    /// Original: `pub fn alloc(&mut self, clear: bool) -> Result<KernelFrame, Error>`
+    /// Verified: `pub fn alloc(&mut self) -> Result<KernelFrame, Error>`
     ///
-    /// # Note on `clear` Parameter
+    /// The `clear: bool` parameter is omitted because clearing requires byte-level
+    /// memory access via `DerefMut` (which uses `unsafe { from_raw_parts_mut(...) }`).
+    /// Verus cannot verify unsafe code. Clearing is orthogonal to allocation safety:
+    /// zeroing memory does not affect double-allocation, aliasing, or liveness.
     ///
-    /// The original API is `alloc(clear: bool)`. The `clear` parameter is omitted
-    /// here because memory initialization is orthogonal to allocation safety:
-    /// zeroing memory doesn't affect double-allocation, aliasing, or liveness.
-    /// If memory initialization proofs are needed, a separate `clear()` function
-    /// can be added to the verified API.
+    /// The allocation logic is identical: both versions allocate a single frame from
+    /// the underlying bitmap and wrap it in a `KernelFrame`.
     ///
     /// # Returns
     ///
     /// On success, a KernelFrame containing the allocated frame address is returned.
     /// On failure (pool exhausted), an error is returned.
-    ///
-    /// # Memory Safety
-    ///
-    /// - The returned frame was not previously allocated.
-    /// - The frame index is within valid range.
-    /// - The frame address is page-aligned.
-    /// - No memory aliasing is introduced.
-    ///
-    /// # Note on Error Codes
-    ///
-    /// The specific error code returned on failure depends on the underlying
-    /// FrameAllocator implementation. Typically, this will be `OutOfMemory`
-    /// when the pool is exhausted, but the specification does not mandate
-    /// a specific error code to allow flexibility in the implementation.
     pub fn alloc(&mut self) -> (result: Result<KernelFrame, Error>)
         requires old(self).inv(),
         ensures
@@ -427,20 +436,19 @@ impl Kpool {
 
     /// Books a contiguous range of frames in the kernel frame pool.
     ///
-    /// # Description
+    /// # Equivalence to Original
     ///
-    /// This function marks a contiguous range of `count` frames starting from
-    /// `start_frame` as allocated. Unlike the original `alloc_range()` which
-    /// searches for a free range, this function requires the caller to specify
-    /// which range to allocate.
+    /// Original `KpoolInner::alloc_range(count)`: Searches for a free contiguous range
+    /// via `bitmap.alloc_range(count)` and returns `Vec<FrameAddress>`.
     ///
-    /// This is useful for:
-    /// - Reserving specific physical memory regions (e.g., for MMIO)
-    /// - Pre-allocating known ranges during initialization
+    /// This verified version splits the original into two operations:
+    ///   - `alloc_contiguous(count)`: Searches for and allocates a free range (original search semantics).
+    ///   - `alloc_range(start_frame, count)`: Books a specific range (caller specifies start).
     ///
-    /// The original kernel implementation searches for a free range internally;
-    /// for verification purposes, we separate the "find" and "book" operations.
-    /// The caller is responsible for ensuring the range is free.
+    /// This separation enables clearer verification: the search logic is isolated in
+    /// `alloc_contiguous`, while `alloc_range` has simpler preconditions (all frames
+    /// in range must be free). The combined behavior of `alloc_contiguous` is
+    /// functionally equivalent to the original `alloc_range`.
     ///
     /// # Parameters
     ///
@@ -449,14 +457,7 @@ impl Kpool {
     ///
     /// # Returns
     ///
-    /// Upon success, `Ok(())` is returned. The function always succeeds when
-    /// preconditions are met.
-    ///
-    /// # Memory Safety
-    ///
-    /// - All frames in the range must be initially free (precondition).
-    /// - All frame indices must be within valid range.
-    /// - After allocation, all frames in the range are marked allocated.
+    /// Upon success, `Ok(())` is returned.
     pub fn alloc_range(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
@@ -501,14 +502,9 @@ impl Kpool {
     ///
     /// # Description
     ///
-    /// This function searches for a contiguous range of `count` free frames and
-    /// allocates them atomically. This matches the original kernel `alloc_many()`
-    /// behavior where a contiguous range is found and allocated.
-    ///
-    /// # Difference from alloc_range()
-    ///
-    /// - `alloc_contiguous(count)`: Searches for any free contiguous range (original semantics)
-    /// - `alloc_range(start, count)`: Books a specific range (caller specifies start)
+    /// This is a verification helper that implements the search-and-allocate logic
+    /// from the original `KpoolInner::alloc_range()` / `Kpool::alloc_many()`.
+    /// The `alloc_many()` wrapper provides the original API name.
     ///
     /// # Parameters
     ///
@@ -517,17 +513,6 @@ impl Kpool {
     /// # Returns
     ///
     /// On success, returns the starting frame index of the allocated range.
-    /// On failure (no contiguous range available), returns an error.
-    ///
-    /// # Memory Safety
-    ///
-    /// - All frames in the returned range were previously free.
-    /// - All frames in the range are now allocated.
-    /// - All frames outside the range are unchanged.
-    ///
-    /// # Liveness
-    ///
-    /// For count=1, if there's a free frame, allocation succeeds.
     pub fn alloc_contiguous(&mut self, count: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
@@ -600,39 +585,95 @@ impl Kpool {
 
     //==============================================================================================
 
+    /// Allocates a contiguous range of frames from the kernel frame pool.
+    ///
+    /// # Equivalence to Original
+    ///
+    /// Original: `pub fn alloc_many(&mut self, clear: bool, count: usize) -> Result<Vec<KernelFrame>, Error>`
+    ///
+    /// This function matches the original `Kpool::alloc_many()` allocation semantics:
+    /// it searches for and allocates a contiguous range of `count` frames, delegating
+    /// to `alloc_contiguous()` internally.
+    ///
+    /// ## Differences from original (Verus limitations):
+    ///
+    /// 1. **`clear` parameter omitted**: Clearing requires unsafe `DerefMut` byte access
+    ///    which Verus cannot verify. Clearing is orthogonal to allocation safety.
+    /// 2. **Return type is `Result<usize, Error>`** instead of `Result<Vec<KernelFrame>, Error>`:
+    ///    Constructing `Vec<KernelFrame>` requires `Rc<RefCell<KpoolInner>>` cloning for
+    ///    each frame, which Verus cannot model. The returned `usize` is the starting
+    ///    frame index; each frame in `[start, start + count)` is allocated and contiguous.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of contiguous frames to allocate.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the starting frame index of the allocated contiguous range.
+    /// On failure (no contiguous range available), returns an error.
+    pub fn alloc_many(&mut self, count: usize) -> (result: Result<usize, Error>)
+        requires
+            old(self).inv(),
+            count > 0,
+            count as int <= old(self)@.capacity(),
+        ensures
+            self.inv(),
+            // Capacity and pool ID are preserved.
+            self@.capacity() == old(self)@.capacity(),
+            self@.id() == old(self)@.id(),
+            self@.base() == old(self)@.base(),
+            // On success: a valid contiguous range is allocated.
+            result is Ok ==> {
+                let start = result->Ok_0 as int;
+                &&& 0 <= start < self@.capacity()
+                &&& start + count as int <= self@.capacity()
+                // All frames in range were previously free.
+                &&& forall|i: int| start <= i < start + count as int ==>
+                    !old(self)@.is_allocated(i)
+                // All frames in range are now allocated.
+                &&& forall|i: int| start <= i < start + count as int ==>
+                    self@.is_allocated(i)
+                // All frames outside range unchanged.
+                &&& forall|i: int| #![trigger self@.is_allocated(i)]
+                    (0 <= i < start || start + count as int <= i < self@.capacity()) ==>
+                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+            },
+            // Count tracking on success.
+            result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() + count as int,
+            // On failure: allocation state unchanged.
+            result is Err ==> {
+                &&& self@.capacity() == old(self)@.capacity()
+                &&& self@.id() == old(self)@.id()
+                &&& self@.base() == old(self)@.base()
+                &&& forall|i: int| 0 <= i < self@.capacity() ==>
+                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+            },
+            // Liveness for count=1.
+            (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
+    {
+        // Delegates to alloc_contiguous which implements the original search semantics.
+        self.alloc_contiguous(count)
+    }
+
+    //==============================================================================================
+
     /// Allocates multiple frames from the kernel frame pool.
     ///
-    /// # Description
+    /// # Note
     ///
     /// This function allocates `count` individual frames that are **not necessarily
-    /// contiguous**. Each allocation is done independently.
-    ///
-    /// # Semantic Difference from Original
-    ///
-    /// **Important:** The original kernel `alloc_many()` calls `bitmap.alloc_range(count)`
-    /// which allocates a **contiguous** range. This verified version allocates frames
-    /// one-by-one and does NOT guarantee contiguity.
-    ///
-    /// If you need contiguous frames, use `alloc_range()` instead.
+    /// contiguous**. This is a verification-specific API variant. For original
+    /// `alloc_many()` semantics (contiguous allocation), use `alloc_many()` or
+    /// `alloc_contiguous()` instead.
     ///
     /// # Parameters
     ///
     /// - `count`: Number of frames to allocate (must be > 0).
     ///
-    /// # Precondition
-    ///
-    /// The caller must ensure enough free frames exist.
-    ///
     /// # Returns
     ///
     /// Upon success, a ghost sequence of allocated frame indices is returned.
-    /// The frames are guaranteed to be distinct but not necessarily contiguous.
-    ///
-    /// # Memory Safety
-    ///
-    /// - All returned frames were not previously allocated.
-    /// - All frame indices are within valid range.
-    /// - All frames are mutually distinct (no aliasing).
     pub fn alloc_noncontiguous(&mut self, count: usize) -> (result: Result<Ghost<Seq<int>>, Error>)
         requires
             old(self).inv(),
@@ -785,11 +826,19 @@ impl Kpool {
 
     /// Frees a frame that was previously allocated from the kernel frame pool.
     ///
-    /// # Description
+    /// # Equivalence to Original
     ///
-    /// Frees a single kernel frame back to the pool. In the original implementation,
-    /// this is handled automatically via the Drop trait on KernelFrame. For
-    /// verification purposes, we model explicit deallocation.
+    /// Original `KpoolInner::free(addr: FrameAddress)`: Computes frame index from
+    /// address and calls `bitmap.clear(index)`. Called implicitly via `Drop` trait.
+    ///
+    /// This verified version takes `KernelFrame` instead of `FrameAddress` to
+    /// enable provenance checking (the frame's `pool_id` must match the pool's `id`).
+    /// The original achieves this via `Rc<RefCell<KpoolInner>>` identity, which
+    /// Verus cannot model. The core logic (mark frame as free in bitmap) is identical.
+    ///
+    /// The original uses RAII (`Drop` trait) for automatic deallocation; this version
+    /// requires explicit `free()` calls because Verus cannot verify `Drop` with
+    /// `Rc<RefCell>`.
     ///
     /// # Parameters
     ///
@@ -797,14 +846,7 @@ impl Kpool {
     ///
     /// # Returns
     ///
-    /// On success, `Ok(())` is returned. Free always succeeds when preconditions are met.
-    ///
-    /// # Memory Safety
-    ///
-    /// - The frame must belong to this pool (provenance check).
-    /// - The frame must be currently allocated (no double free).
-    /// - The frame index must be within valid range.
-    /// - After freeing, the frame is available for allocation.
+    /// On success, `Ok(())` is returned.
     pub fn free(&mut self, kframe: KernelFrame) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
@@ -839,21 +881,14 @@ impl Kpool {
     ///
     /// # Description
     ///
-    /// Frees a contiguous range of `count` frames starting from `start_frame`.
-    /// This is useful for deallocating ranges that were allocated via alloc_range.
+    /// Verification helper for batch deallocation. The original uses individual
+    /// `Drop` calls on each `KernelFrame` in a `Vec`. This provides equivalent
+    /// batch-free semantics without RAII.
     ///
     /// # Parameters
     ///
     /// - `start_frame`: Start frame index (inclusive).
     /// - `count`: Number of frames to free.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, all frames in [start_frame, start_frame + count) are freed.
-    ///
-    /// # Precondition
-    ///
-    /// All frames in the range must be currently allocated.
     pub fn free_range(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
@@ -898,33 +933,15 @@ impl Kpool {
     ///
     /// # Description
     ///
-    /// This function is similar to `free_range()` but additionally takes a ghost
-    /// sequence of frame indices for verification purposes. It validates that the
-    /// ghost sequence matches the contiguous range [start_frame, start_frame + count).
-    ///
-    /// This is useful when you have ghost frame indices from `alloc_noncontiguous()`
-    /// that happen to be contiguous and you want to verify the correspondence.
-    ///
-    /// # Usage Guidelines
-    ///
-    /// - For frames from `alloc_range()`: Use `free_range()` directly (simpler API)
-    /// - For frames from `alloc_noncontiguous()` that are contiguous: Use this function
-    /// - For frames from `alloc()` or non-contiguous allocations: Call `free()` individually
-    ///
-    /// # Note
-    ///
-    /// `alloc_noncontiguous()` does NOT guarantee contiguous allocation. If you need
-    /// contiguous frames, use `alloc_range()` instead.
+    /// Verification helper that extends `free_range` with ghost-level index
+    /// validation. Useful for bridging `alloc_noncontiguous` ghost results
+    /// back to contiguous free operations.
     ///
     /// # Parameters
     ///
     /// - `start_frame`: Starting frame index.
-    /// - `frame_indices`: Ghost sequence of frame indices (must be contiguous from start_frame).
+    /// - `frame_indices`: Ghost sequence of frame indices.
     /// - `count`: Number of frames to free.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, all frames in the range are freed.
     pub fn free_contiguous(&mut self, start_frame: usize, frame_indices: Ghost<Seq<int>>, count: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
