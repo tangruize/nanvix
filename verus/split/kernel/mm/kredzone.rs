@@ -218,7 +218,7 @@ pub const NUM_ENTRIES: usize = KREDZONE_SIZE / ENTRY_SIZE;
 #[verifier::ext_equal]
 pub struct KernelRedZoneView {
     /// The logical contents of the red zone.
-    contents: Seq<int>,
+    pub contents: Seq<int>,
 }
 
 //==================================================================================================
