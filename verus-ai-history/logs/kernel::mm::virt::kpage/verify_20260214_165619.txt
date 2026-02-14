@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:56:19 CST 2026
+Module: kernel::mm::virt::kpage
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt::kpage
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::virt::kpage
+
+error: postcondition not satisfied
+   --> kernel/mm/virt/kpage.rs:386:13
+    |
+386 |             result as int == self@.pool_id(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+387 |     {
+388 |         self.kframe.pool_id()
+    |         --------------------- at the end of the function body
+
+verification results:: 15 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 15
+Errors: 1
+Status: FAILED
+No changes to commit in verus/
