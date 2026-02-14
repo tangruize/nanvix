@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 18:29:21 CST 2026
+Module: kernel::hal::mem::types::address::frame
+Command: verus --crate-type lib lib.rs --verify-module kernel::hal::mem::types::address::frame
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::hal::mem::types::address::frame
+
+error: postcondition not satisfied
+   --> kernel/hal/mem/types/address/frame.rs:241:13
+    |
+241 |             result.inv(),
+    |             ^^^^^^^^^^^^ failed this postcondition
+...
+249 |         self.start
+    |         ---------- at the end of the function body
+
+verification results:: 17 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 17
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::hal::mem::types::address::frame (verified:17, errors:1)
