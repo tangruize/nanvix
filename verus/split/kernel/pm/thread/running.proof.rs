@@ -36,6 +36,7 @@ impl RunningThread {
                 r.wf()
             }),
     {
+        reveal(RunningThread::wf);
     }
 
     /// Lemma: Construction preserves the thread identity.
@@ -53,7 +54,7 @@ impl RunningThread {
         ensures
             ({
                 let r: RunningThread = RunningThread { state: state };
-                r.spec_drop_safe() == state.spec_drop_safe()
+                r.spec_drop_safe() == state@.drop_safe()
             }),
     {
     }
@@ -64,7 +65,7 @@ impl RunningThread {
             ({
                 let r: RunningThread = RunningThread { state: state };
                 r.spec_locked_mutex_count() == state.spec_locked_mutex_count()
-                && (forall|a: int| r.spec_has_mutex(a) == state.spec_has_mutex(a))
+                && (forall|a: int| r.spec_has_mutex(a) == state@.has_mutex(a))
             }),
     {
     }
@@ -128,6 +129,8 @@ impl RunningThread {
                 s.wf()
             }),
     {
+        reveal(RunningThread::wf);
+        reveal(SleepingThread::wf);
     }
 
     /// Lemma: sleep() preserves mutex accounting.
@@ -193,6 +196,8 @@ impl RunningThread {
                 r.wf()
             }),
     {
+        reveal(RunningThread::wf);
+        reveal(ReadyThread::wf);
     }
 
     /// Lemma: schedule() preserves mutex accounting.
@@ -270,6 +275,8 @@ impl RunningThread {
                 z.wf()
             }),
     {
+        reveal(RunningThread::wf);
+        reveal(ZombieThread::wf);
     }
 
     /// Lemma: exit() preserves mutex accounting (count and per-address membership).
@@ -323,6 +330,8 @@ impl RunningThread {
         ensures
             r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted(),
     {
+        reveal(RunningThread::wf);
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: Construction followed by schedule() produces a ReadyThread with
@@ -336,9 +345,10 @@ impl RunningThread {
                 let ready: ReadyThread = ReadyThread { state: running.state };
                 ready.spec_id() == state.spec_id()
                 && ready.wf()
-                && ready.spec_drop_safe() == state.spec_drop_safe()
+                && ready.spec_drop_safe() == state@.drop_safe()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     /// Lemma: Construction followed by exit() produces a ZombieThread with
@@ -353,10 +363,11 @@ impl RunningThread {
                 zombie.spec_id() == state.spec_id()
                 && zombie.spec_status() == status
                 && zombie.wf()
-                && zombie.spec_drop_safe() == state.spec_drop_safe()
-                && (forall|a: int| zombie.spec_has_mutex(a) == state.spec_has_mutex(a))
+                && zombie.spec_drop_safe() == state@.drop_safe()
+                && (forall|a: int| zombie.spec_has_mutex(a) == state@.has_mutex(a))
             }),
     {
+        reveal(ZombieThread::wf);
     }
 
     //==============================================================================================
@@ -419,6 +430,7 @@ impl SleepingThread {
                 s.wf()
             }),
     {
+        reveal(SleepingThread::wf);
     }
 }
 
@@ -447,6 +459,7 @@ impl ReadyThread {
                 r.wf()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 }
 
@@ -485,6 +498,7 @@ impl ZombieThread {
                 z.wf()
             }),
     {
+        reveal(ZombieThread::wf);
     }
 
     /// Lemma: from_state preserves per-address mutex membership.
@@ -492,7 +506,7 @@ impl ZombieThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: state, status: status };
-                forall|a: int| z.spec_has_mutex(a) == state.spec_has_mutex(a)
+                forall|a: int| z.spec_has_mutex(a) == state@.has_mutex(a)
             }),
     {
     }

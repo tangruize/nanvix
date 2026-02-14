@@ -83,12 +83,12 @@ impl RunningThread {
 
     /// Spec function: returns whether a specific mutex address is held.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state.spec_has_mutex(address)
+        self.state@.has_mutex(address)
     }
 
     /// Spec function: checks if the state is drop-safe.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state.spec_drop_safe()
+        self.state@.drop_safe()
     }
 
     /// Spec function: checks if the state has an interrupt reason.
@@ -118,7 +118,10 @@ impl RunningThread {
 
     /// Spec function: well-formedness predicate.
     /// A RunningThread is well-formed when the underlying state is well-formed.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
     }
 }
@@ -145,16 +148,19 @@ impl SleepingThread {
 
     /// Spec function: returns whether a specific mutex address is held.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state.spec_has_mutex(address)
+        self.state@.has_mutex(address)
     }
 
     /// Spec function: checks if the state is drop-safe.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state.spec_drop_safe()
+        self.state@.drop_safe()
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
     }
 }
@@ -176,16 +182,19 @@ impl ReadyThread {
 
     /// Spec function: returns whether a specific mutex address is held.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state.spec_has_mutex(address)
+        self.state@.has_mutex(address)
     }
 
     /// Spec function: checks if the state is drop-safe.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state.spec_drop_safe()
+        self.state@.drop_safe()
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
     }
 }
@@ -212,16 +221,19 @@ impl ZombieThread {
 
     /// Spec function: returns whether a specific mutex address is held.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state.spec_has_mutex(address)
+        self.state@.has_mutex(address)
     }
 
     /// Spec function: checks if the state is drop-safe.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state.spec_drop_safe()
+        self.state@.drop_safe()
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
     }
 }
@@ -230,6 +242,10 @@ impl ZombieThread {
 // View Implementations
 //==================================================================================================
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// The methodology recommends `pub closed spec fn view()`, but trait impls
+/// cannot override the trait's openness. Abstraction is preserved because
+/// `RunningThreadView` only exposes abstract types.
 impl View for RunningThread {
     type V = RunningThreadView;
 
@@ -240,6 +256,8 @@ impl View for RunningThread {
     }
 }
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// See RunningThread's View impl for rationale.
 impl View for SleepingThread {
     type V = SleepingThreadView;
 
@@ -251,6 +269,8 @@ impl View for SleepingThread {
     }
 }
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// See RunningThread's View impl for rationale.
 impl View for ReadyThread {
     type V = ReadyThreadView;
 
@@ -261,6 +281,8 @@ impl View for ReadyThread {
     }
 }
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// See RunningThread's View impl for rationale.
 impl View for ZombieThread {
     type V = ZombieThreadView;
 

@@ -149,10 +149,11 @@ impl SleepingThread {
             result.spec_id() == state.spec_id(),
             result.spec_alarm() == alarm,
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
+        proof { reveal(SleepingThread::wf); }
         SleepingThread { state: state, alarm: alarm }
     }
 }
@@ -189,10 +190,11 @@ impl ReadyThread {
             result.state@ == state@,
             result.spec_id() == state.spec_id(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
+        proof { reveal(ReadyThread::wf); }
         ReadyThread { state: state }
     }
 }
@@ -232,10 +234,11 @@ impl ZombieThread {
             result.spec_id() == state.spec_id(),
             result.spec_status() == status,
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
+        proof { reveal(ZombieThread::wf); }
         ZombieThread { state: state, status: status }
     }
 }
@@ -262,10 +265,11 @@ impl RunningThread {
             result.spec_id() == state.spec_id(),
             result.spec_is_interrupted() == state.spec_is_interrupted(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state.spec_has_mutex(a),
-            result.spec_drop_safe() == state.spec_drop_safe(),
+            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
+        proof { reveal(RunningThread::wf); }
         RunningThread { state: state }
     }
 
@@ -295,6 +299,7 @@ impl RunningThread {
             result.spec_drop_safe() == self.spec_drop_safe(),
             result.wf(),
     {
+        proof { reveal(RunningThread::wf); }
         SleepingThread::from_state(self.state, alarm)
     }
 
@@ -319,6 +324,7 @@ impl RunningThread {
             result.spec_drop_safe() == self.spec_drop_safe(),
             result.wf(),
     {
+        proof { reveal(RunningThread::wf); }
         ReadyThread::from_state(self.state)
     }
 
@@ -380,6 +386,7 @@ impl RunningThread {
             result.spec_drop_safe() == self.spec_drop_safe(),
             result.wf(),
     {
+        proof { reveal(RunningThread::wf); }
         ZombieThread::from_state(self.state, status)
     }
 
@@ -422,6 +429,7 @@ impl RunningThread {
             self.spec_id() == old(self).spec_id(),
             self.wf(),
     {
+        proof { reveal(RunningThread::wf); }
         self.state.store_mutex_guard(address);
     }
 
@@ -455,6 +463,7 @@ impl RunningThread {
             self.spec_id() == old(self).spec_id(),
             self.wf(),
     {
+        proof { reveal(RunningThread::wf); }
         self.state.take_mutex_guard(address);
     }
 }
