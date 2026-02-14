@@ -50,6 +50,7 @@ impl RunningProcess {
             a.sleeping_thread_ids@ == b.sleeping_thread_ids@,
             a.zombie_thread_ids@ == b.zombie_thread_ids@,
     {
+        reveal(RunningProcess::view);
     }
 
     /// Removing an element from a sequence decreases its length by one.
