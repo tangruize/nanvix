@@ -64,67 +64,67 @@ pub const JOIN_TAG_NOT_FOUND: u8 = 3;
 #[verifier::ext_equal]
 pub struct RunningProcessView {
     /// Process identifier.
-    pub pid: u64,
+    pub pid: int,
     /// Running thread ID.
-    pub running_thread_id: u64,
+    pub running_thread_id: int,
     /// Ready thread IDs.
-    pub ready_thread_ids: Seq<u64>,
+    pub ready_thread_ids: Seq<int>,
     /// Interrupted thread IDs.
-    pub interrupted_thread_ids: Seq<u64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Sleeping thread IDs.
-    pub sleeping_thread_ids: Seq<u64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Seq<u64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 /// Abstract view of `RunnableProcess`.
 #[verifier::ext_equal]
 pub struct RunnableProcessView {
     /// Process identifier.
-    pub pid: u64,
+    pub pid: int,
     /// Ready thread IDs.
-    pub ready_thread_ids: Seq<u64>,
+    pub ready_thread_ids: Seq<int>,
     /// Interrupted thread IDs.
-    pub interrupted_thread_ids: Seq<u64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Sleeping thread IDs.
-    pub sleeping_thread_ids: Seq<u64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Seq<u64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 /// Abstract view of `SleepingProcess`.
 #[verifier::ext_equal]
 pub struct SleepingProcessView {
     /// Process identifier.
-    pub pid: u64,
+    pub pid: int,
     /// Sleeping thread IDs.
-    pub sleeping_thread_ids: Seq<u64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Seq<u64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 /// Abstract view of `InterruptedProcess`.
 #[verifier::ext_equal]
 pub struct InterruptedProcessView {
     /// Process identifier.
-    pub pid: u64,
+    pub pid: int,
     /// Interrupted thread IDs.
-    pub interrupted_thread_ids: Seq<u64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Sleeping thread IDs.
-    pub sleeping_thread_ids: Seq<u64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Seq<u64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 /// Abstract view of `ZombieProcess`.
 #[verifier::ext_equal]
 pub struct ZombieProcessView {
     /// Process identifier.
-    pub pid: u64,
+    pub pid: int,
     /// Zombie thread IDs.
-    pub zombie_thread_ids: Seq<u64>,
+    pub zombie_thread_ids: Seq<int>,
     /// Exit status.
-    pub status: u64,
+    pub status: int,
 }
 
 //==================================================================================================
@@ -132,6 +132,16 @@ pub struct ZombieProcessView {
 //==================================================================================================
 
 impl RunningProcess {
+    /// Implementation invariant (methodology Step 2).
+    ///
+    /// Exec-level counters match ghost sequence lengths.
+    pub closed spec fn inv(&self) -> bool {
+        &&& self.ready_count as nat == self.ready_thread_ids@.len()
+        &&& self.interrupted_count as nat == self.interrupted_thread_ids@.len()
+        &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
+        &&& self.zombie_count as nat == self.zombie_thread_ids@.len()
+    }
+
     /// Returns the process identifier.
     pub open spec fn spec_pid(&self) -> u64 {
         self.pid
@@ -268,18 +278,10 @@ impl RunningProcess {
             ==> a[i] != b[j]
     }
 
-    /// Well-formedness: exec counts match ghost sequence lengths.
-    pub open spec fn wf(&self) -> bool {
-        &&& self.ready_count as nat == self.ready_thread_ids@.len()
-        &&& self.interrupted_count as nat == self.interrupted_thread_ids@.len()
-        &&& self.sleeping_count as nat == self.sleeping_thread_ids@.len()
-        &&& self.zombie_count as nat == self.zombie_thread_ids@.len()
-    }
-
-    /// Strict well-formedness: wf plus disjointness of all thread lists
+    /// Strict well-formedness: inv plus disjointness of all thread lists
     /// and uniqueness of running thread ID across all lists.
     pub open spec fn wf_strict(&self) -> bool {
-        &&& self.wf()
+        &&& self.inv()
         &&& !self.spec_has_ready_thread(self.running_thread_id)
         &&& !self.spec_has_interrupted_thread(self.running_thread_id)
         &&& !self.spec_has_sleeping_thread(self.running_thread_id)
@@ -317,8 +319,8 @@ impl RunnableProcess {
         self.pid
     }
 
-    /// Well-formedness: ready list is non-empty.
-    pub open spec fn wf(&self) -> bool {
+    /// Implementation invariant (methodology Step 2): ready list is non-empty.
+    pub closed spec fn inv(&self) -> bool {
         self.ready_thread_ids@.len() >= 1
     }
 }
@@ -333,8 +335,8 @@ impl SleepingProcess {
         self.pid
     }
 
-    /// Well-formedness: sleeping list is non-empty.
-    pub open spec fn wf(&self) -> bool {
+    /// Implementation invariant (methodology Step 2): sleeping list is non-empty.
+    pub closed spec fn inv(&self) -> bool {
         self.sleeping_thread_ids@.len() >= 1
     }
 }
@@ -349,8 +351,8 @@ impl InterruptedProcess {
         self.pid
     }
 
-    /// Well-formedness: interrupted list is non-empty.
-    pub open spec fn wf(&self) -> bool {
+    /// Implementation invariant (methodology Step 2): interrupted list is non-empty.
+    pub closed spec fn inv(&self) -> bool {
         self.interrupted_thread_ids@.len() >= 1
     }
 }
@@ -370,8 +372,8 @@ impl ZombieProcess {
         self.status
     }
 
-    /// Well-formedness: zombie list is non-empty.
-    pub open spec fn wf(&self) -> bool {
+    /// Implementation invariant (methodology Step 2): zombie list is non-empty.
+    pub closed spec fn inv(&self) -> bool {
         self.zombie_thread_ids@.len() >= 1
     }
 }
@@ -382,20 +384,18 @@ impl ZombieProcess {
 
 impl RunningProcessView {
     /// Removes element at `idx` from sequence `s`.
-    ///
-    /// Delegates to `RunningProcess::spec_remove_at` to avoid duplication.
-    pub open spec fn seq_remove_at(s: Seq<u64>, idx: int) -> Seq<u64> {
-        RunningProcess::spec_remove_at(s, idx)
+    pub open spec fn seq_remove_at(s: Seq<int>, idx: int) -> Seq<int> {
+        s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
     /// Abstract state produced by `RunningProcess::new()`.
     pub open spec fn spec_new(
-        pid: u64,
-        running_tid: u64,
-        ready: Seq<u64>,
-        interrupted: Seq<u64>,
-        sleeping: Seq<u64>,
-        zombie: Seq<u64>,
+        pid: int,
+        running_tid: int,
+        ready: Seq<int>,
+        interrupted: Seq<int>,
+        sleeping: Seq<int>,
+        zombie: Seq<int>,
     ) -> RunningProcessView {
         RunningProcessView {
             pid,
@@ -440,7 +440,7 @@ impl RunningProcessView {
     pub open spec fn spec_sleep_to_runnable_interrupted(&self) -> RunnableProcessView {
         RunnableProcessView {
             pid: self.pid,
-            ready_thread_ids: Seq::<u64>::empty().push(self.interrupted_thread_ids[0]),
+            ready_thread_ids: Seq::<int>::empty().push(self.interrupted_thread_ids[0]),
             interrupted_thread_ids: self.interrupted_thread_ids.subrange(
                 1, self.interrupted_thread_ids.len() as int),
             sleeping_thread_ids: self.sleeping_thread_ids.push(self.running_thread_id),
@@ -468,10 +468,10 @@ impl RunningProcessView {
             self.interrupted_thread_ids.add(self.sleeping_thread_ids);
         RunnableProcessView {
             pid: self.pid,
-            ready_thread_ids: Seq::<u64>::empty().push(combined_interrupted[0]),
+            ready_thread_ids: Seq::<int>::empty().push(combined_interrupted[0]),
             interrupted_thread_ids: combined_interrupted.subrange(
                 1, combined_interrupted.len() as int),
-            sleeping_thread_ids: Seq::<u64>::empty(),
+            sleeping_thread_ids: Seq::<int>::empty(),
             zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id).add(
                 self.ready_thread_ids),
         }
@@ -480,7 +480,7 @@ impl RunningProcessView {
     /// Abstract state after `RunningProcess::exit(status)` when no interrupted or sleeping threads.
     ///
     /// Running + ready threads become zombies; process terminates.
-    pub open spec fn spec_exit_to_zombie(&self, status: u64) -> ZombieProcessView {
+    pub open spec fn spec_exit_to_zombie(&self, status: int) -> ZombieProcessView {
         ZombieProcessView {
             pid: self.pid,
             zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id).add(
@@ -509,7 +509,7 @@ impl RunningProcessView {
     pub open spec fn spec_exit_thread_to_runnable_interrupted(&self) -> RunnableProcessView {
         RunnableProcessView {
             pid: self.pid,
-            ready_thread_ids: Seq::<u64>::empty().push(self.interrupted_thread_ids[0]),
+            ready_thread_ids: Seq::<int>::empty().push(self.interrupted_thread_ids[0]),
             interrupted_thread_ids: self.interrupted_thread_ids.subrange(
                 1, self.interrupted_thread_ids.len() as int),
             sleeping_thread_ids: self.sleeping_thread_ids,
@@ -533,7 +533,7 @@ impl RunningProcessView {
     /// threads remain.
     ///
     /// Running thread becomes zombie; process terminates.
-    pub open spec fn spec_exit_thread_to_zombie(&self, status: u64) -> ZombieProcessView {
+    pub open spec fn spec_exit_thread_to_zombie(&self, status: int) -> ZombieProcessView {
         ZombieProcessView {
             pid: self.pid,
             zombie_thread_ids: self.zombie_thread_ids.push(self.running_thread_id),
@@ -544,8 +544,8 @@ impl RunningProcessView {
     /// Abstract state after successful `RunningProcess::wakeup(tid)`.
     ///
     /// Thread `tid` moves from sleeping to ready.
-    pub open spec fn spec_wakeup_ok(&self, tid: u64) -> RunningProcessView {
-        let s: Seq<u64> = self.sleeping_thread_ids;
+    pub open spec fn spec_wakeup_ok(&self, tid: int) -> RunningProcessView {
+        let s: Seq<int> = self.sleeping_thread_ids;
         let idx: int = choose|i: int| 0 <= i < s.len() && #[trigger] s[i] == tid;
         RunningProcessView {
             ready_thread_ids: self.ready_thread_ids.push(tid),
@@ -564,8 +564,8 @@ impl RunningProcessView {
     /// Abstract state after `RunningProcess::try_join_thread(tid)` when `tid` is zombie.
     ///
     /// Zombie thread `tid` is removed from the zombie list.
-    pub open spec fn spec_join_zombie_result(&self, tid: u64) -> RunningProcessView {
-        let s: Seq<u64> = self.zombie_thread_ids;
+    pub open spec fn spec_join_zombie_result(&self, tid: int) -> RunningProcessView {
+        let s: Seq<int> = self.zombie_thread_ids;
         let idx: int = choose|i: int| 0 <= i < s.len() && #[trigger] s[i] == tid;
         RunningProcessView {
             zombie_thread_ids: Self::seq_remove_at(s, idx),
@@ -583,65 +583,69 @@ impl RunningProcessView {
 
 //==================================================================================================
 // View Implementations
+//
+// Closed per methodology Step 1: hides implementation internals from users.
+// The View trait (vstd::prelude::View) requires `spec fn view()` — it does
+// not mandate `open`, so `closed` is valid and preferred.
 //==================================================================================================
 
 impl View for RunningProcess {
     type V = RunningProcessView;
-    open spec fn view(&self) -> RunningProcessView {
+    closed spec fn view(&self) -> RunningProcessView {
         RunningProcessView {
-            pid: self.pid,
-            running_thread_id: self.running_thread_id,
-            ready_thread_ids: self.ready_thread_ids@,
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            pid: self.pid as int,
+            running_thread_id: self.running_thread_id as int,
+            ready_thread_ids: Seq::new(self.ready_thread_ids@.len(), |i: int| self.ready_thread_ids@[i] as int),
+            interrupted_thread_ids: Seq::new(self.interrupted_thread_ids@.len(), |i: int| self.interrupted_thread_ids@[i] as int),
+            sleeping_thread_ids: Seq::new(self.sleeping_thread_ids@.len(), |i: int| self.sleeping_thread_ids@[i] as int),
+            zombie_thread_ids: Seq::new(self.zombie_thread_ids@.len(), |i: int| self.zombie_thread_ids@[i] as int),
         }
     }
 }
 
 impl View for RunnableProcess {
     type V = RunnableProcessView;
-    open spec fn view(&self) -> RunnableProcessView {
+    closed spec fn view(&self) -> RunnableProcessView {
         RunnableProcessView {
-            pid: self.pid,
-            ready_thread_ids: self.ready_thread_ids@,
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            pid: self.pid as int,
+            ready_thread_ids: Seq::new(self.ready_thread_ids@.len(), |i: int| self.ready_thread_ids@[i] as int),
+            interrupted_thread_ids: Seq::new(self.interrupted_thread_ids@.len(), |i: int| self.interrupted_thread_ids@[i] as int),
+            sleeping_thread_ids: Seq::new(self.sleeping_thread_ids@.len(), |i: int| self.sleeping_thread_ids@[i] as int),
+            zombie_thread_ids: Seq::new(self.zombie_thread_ids@.len(), |i: int| self.zombie_thread_ids@[i] as int),
         }
     }
 }
 
 impl View for SleepingProcess {
     type V = SleepingProcessView;
-    open spec fn view(&self) -> SleepingProcessView {
+    closed spec fn view(&self) -> SleepingProcessView {
         SleepingProcessView {
-            pid: self.pid,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            pid: self.pid as int,
+            sleeping_thread_ids: Seq::new(self.sleeping_thread_ids@.len(), |i: int| self.sleeping_thread_ids@[i] as int),
+            zombie_thread_ids: Seq::new(self.zombie_thread_ids@.len(), |i: int| self.zombie_thread_ids@[i] as int),
         }
     }
 }
 
 impl View for InterruptedProcess {
     type V = InterruptedProcessView;
-    open spec fn view(&self) -> InterruptedProcessView {
+    closed spec fn view(&self) -> InterruptedProcessView {
         InterruptedProcessView {
-            pid: self.pid,
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            pid: self.pid as int,
+            interrupted_thread_ids: Seq::new(self.interrupted_thread_ids@.len(), |i: int| self.interrupted_thread_ids@[i] as int),
+            sleeping_thread_ids: Seq::new(self.sleeping_thread_ids@.len(), |i: int| self.sleeping_thread_ids@[i] as int),
+            zombie_thread_ids: Seq::new(self.zombie_thread_ids@.len(), |i: int| self.zombie_thread_ids@[i] as int),
         }
     }
 }
 
 impl View for ZombieProcess {
     type V = ZombieProcessView;
-    open spec fn view(&self) -> ZombieProcessView {
+    closed spec fn view(&self) -> ZombieProcessView {
         ZombieProcessView {
-            pid: self.pid,
-            zombie_thread_ids: self.zombie_thread_ids@,
-            status: self.status,
+            pid: self.pid as int,
+            zombie_thread_ids: Seq::new(self.zombie_thread_ids@.len(), |i: int| self.zombie_thread_ids@[i] as int),
+            status: self.status as int,
         }
     }
 }

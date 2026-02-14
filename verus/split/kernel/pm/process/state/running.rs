@@ -347,10 +347,10 @@ pub enum ExitThreadResult {
 #[verifier::external_body]
 fn interrupted_resume(ip: InterruptedProcess) -> (result: RunnableProcess)
     requires
-        ip.wf(),
+        ip.inv(),
     ensures
         result.spec_pid() == ip.spec_pid(),
-        result.wf(),
+        result.inv(),
         // Sleeping threads are passed through resume() into the result.
         result.sleeping_thread_ids@ == ip.sleeping_thread_ids@,
         // Zombie threads are passed through resume() into the result.
@@ -418,12 +418,10 @@ impl RunningProcess {
             result.spec_interrupted_count() == interrupted_ids@.len(),
             result.spec_sleeping_count() == sleeping_ids@.len(),
             result.spec_zombie_count() == zombie_ids@.len(),
-            result.wf(),
+            result.inv(),
     {
+        proof { reveal(RunningProcess::inv); }
         RunningProcess {
-            pid,
-            running_thread_id: running_tid,
-            ready_thread_ids: ready_ids,
             interrupted_thread_ids: interrupted_ids,
             sleeping_thread_ids: sleeping_ids,
             zombie_thread_ids: zombie_ids,
@@ -488,7 +486,7 @@ impl RunningProcess {
             self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
-            self.wf() == old(self).wf(),
+            self.inv() == old(self).inv(),
     {
         unimplemented!()
     }
@@ -515,7 +513,7 @@ impl RunningProcess {
             self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
-            self.wf() == old(self).wf(),
+            self.inv() == old(self).inv(),
     {
         unimplemented!()
     }
@@ -551,7 +549,7 @@ impl RunningProcess {
     /// The result tag.
     pub fn try_join_thread(&mut self, tid: u64, tag: u8) -> (result: u8)
         requires
-            old(self).wf(),
+            old(self).inv(),
             tag as int == old(self).spec_try_join_thread(tid),
         ensures
             result == tag,
@@ -579,8 +577,9 @@ impl RunningProcess {
                 self.zombie_thread_ids@ == old(self).zombie_thread_ids@
                 && self.zombie_count == old(self).zombie_count
             ),
-            self.wf(),
+            self.inv(),
     {
+        proof { reveal(RunningProcess::inv); }
         if tag == JOIN_TAG_ZOMBIE {
             // Zombie found — remove it from the zombie list.
             proof {
@@ -709,7 +708,7 @@ impl RunningProcess {
     /// The ghost list variant.
     pub fn find_thread_mut(&mut self, tid: u64) -> (result: Ghost<Option<int>>)
         requires
-            old(self).wf(),
+            old(self).inv(),
         ensures
             result@ == old(self).spec_find_thread(tid),
             // Frame: find_thread_mut does not change any modeled fields.
@@ -719,7 +718,7 @@ impl RunningProcess {
             self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
             self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
-            self.wf() == old(self).wf(),
+            self.inv() == old(self).inv(),
     {
         Ghost(old(self).spec_find_thread(tid))
     }
@@ -735,7 +734,7 @@ impl RunningProcess {
     /// A ScheduleResult containing the resulting RunnableProcess.
     pub fn schedule(self) -> (result: ScheduleResult)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             // PID preserved.
             result.process.spec_pid() == self.spec_pid(),
@@ -749,8 +748,12 @@ impl RunningProcess {
             result.process.sleeping_thread_ids@ == self.sleeping_thread_ids@,
             result.process.zombie_thread_ids@ == self.zombie_thread_ids@,
             // Result is well-formed (non-empty ready list).
-            result.process.wf(),
+            result.process.inv(),
     {
+        proof {
+            reveal(RunningProcess::inv);
+            reveal(RunnableProcess::inv);
+        }
         let RunningProcess {
             pid, running_thread_id, mut ready_thread_ids, interrupted_thread_ids,
             sleeping_thread_ids, zombie_thread_ids, ready_count, interrupted_count,
@@ -792,12 +795,12 @@ impl RunningProcess {
     /// SleepResult indicating the resulting process state.
     pub fn sleep(self) -> (result: SleepResult)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             match result {
                 SleepResult::Runnable(rp) => {
                     rp.spec_pid() == self.spec_pid()
-                    && rp.wf()
+                    && rp.inv()
                     // Branch: there were ready or interrupted threads.
                     && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
                     // Sleeping threads in result include the running thread.
@@ -824,7 +827,7 @@ impl RunningProcess {
                 },
                 SleepResult::Sleeping(sp) => {
                     sp.spec_pid() == self.spec_pid()
-                    && sp.wf()
+                    && sp.inv()
                     // Branch: no ready and no interrupted threads.
                     && self.spec_ready_count() == 0
                     && self.spec_interrupted_count() == 0
@@ -838,6 +841,12 @@ impl RunningProcess {
                 },
             },
     {
+        proof {
+            reveal(RunningProcess::inv);
+            reveal(RunnableProcess::inv);
+            reveal(SleepingProcess::inv);
+            reveal(InterruptedProcess::inv);
+        }
         let RunningProcess {
             pid, running_thread_id, ready_thread_ids, interrupted_thread_ids,
             mut sleeping_thread_ids, zombie_thread_ids, ready_count, interrupted_count,
@@ -905,12 +914,12 @@ impl RunningProcess {
     /// ExitResult indicating the resulting process state.
     pub fn exit(self, status: u64) -> (result: ExitResult)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             match result {
                 ExitResult::Runnable(rp) => {
                     rp.spec_pid() == self.spec_pid()
-                    && rp.wf()
+                    && rp.inv()
                     // Branch: there were interrupted or sleeping threads.
                     && (self.spec_interrupted_count() > 0
                         || self.spec_sleeping_count() > 0)
@@ -934,7 +943,7 @@ impl RunningProcess {
                 },
                 ExitResult::Zombie(zp) => {
                     zp.spec_pid() == self.spec_pid()
-                    && zp.wf()
+                    && zp.inv()
                     && zp.spec_status() == status
                     // Branch: no interrupted or sleeping threads.
                     && self.spec_interrupted_count() == 0
@@ -948,6 +957,12 @@ impl RunningProcess {
                 },
             },
     {
+        proof {
+            reveal(RunningProcess::inv);
+            reveal(RunnableProcess::inv);
+            reveal(ZombieProcess::inv);
+            reveal(InterruptedProcess::inv);
+        }
         let RunningProcess {
             pid, running_thread_id, ready_thread_ids, mut interrupted_thread_ids,
             sleeping_thread_ids, mut zombie_thread_ids, ready_count, interrupted_count,
@@ -1018,12 +1033,12 @@ impl RunningProcess {
     /// ExitThreadResult indicating the resulting process state.
     pub fn exit_thread(self, status: u64) -> (result: ExitThreadResult)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             match result {
                 ExitThreadResult::Runnable(rp) => {
                     rp.spec_pid() == self.spec_pid()
-                    && rp.wf()
+                    && rp.inv()
                     && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
                     // Zombie list includes the exited running thread.
                     && rp.zombie_thread_ids@ ==
@@ -1047,7 +1062,7 @@ impl RunningProcess {
                 },
                 ExitThreadResult::Sleeping(sp) => {
                     sp.spec_pid() == self.spec_pid()
-                    && sp.wf()
+                    && sp.inv()
                     && self.spec_ready_count() == 0
                     && self.spec_interrupted_count() == 0
                     && self.spec_sleeping_count() > 0
@@ -1059,7 +1074,7 @@ impl RunningProcess {
                 },
                 ExitThreadResult::Zombie(zp) => {
                     zp.spec_pid() == self.spec_pid()
-                    && zp.wf()
+                    && zp.inv()
                     && zp.spec_status() == status
                     && self.spec_ready_count() == 0
                     && self.spec_interrupted_count() == 0
@@ -1071,6 +1086,13 @@ impl RunningProcess {
                 },
             },
     {
+        proof {
+            reveal(RunningProcess::inv);
+            reveal(RunnableProcess::inv);
+            reveal(SleepingProcess::inv);
+            reveal(ZombieProcess::inv);
+            reveal(InterruptedProcess::inv);
+        }
         let RunningProcess {
             pid, running_thread_id, ready_thread_ids, interrupted_thread_ids,
             sleeping_thread_ids, mut zombie_thread_ids, ready_count, interrupted_count,
@@ -1150,7 +1172,7 @@ impl RunningProcess {
     /// Ok with updated state if found, Err with unchanged state if not found.
     pub fn wakeup(self, tid: u64, found: bool) -> (result: Result<RunningProcess, RunningProcess>)
         requires
-            self.wf(),
+            self.inv(),
             found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid),
             self.ready_count < u64::MAX,
         ensures
@@ -1173,7 +1195,7 @@ impl RunningProcess {
                     // Other lists preserved exactly.
                     && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
                     && r.zombie_thread_ids@ == self.zombie_thread_ids@
-                    && r.wf()
+                    && r.inv()
                 },
                 Err(r) => {
                     !found
@@ -1188,10 +1210,11 @@ impl RunningProcess {
                     && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
                     && r.sleeping_thread_ids@ == self.sleeping_thread_ids@
                     && r.zombie_thread_ids@ == self.zombie_thread_ids@
-                    && r.wf()
+                    && r.inv()
                 },
             },
     {
+        proof { reveal(RunningProcess::inv); }
         if !found {
             return Err(self);
         }

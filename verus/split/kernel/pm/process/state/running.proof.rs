@@ -12,9 +12,9 @@ verus! {
 //==================================================================================================
 
 impl RunningProcess {
-    /// A well-formed RunningProcess has matching counts and lengths.
+    /// A well-formed RunningProcess satisfies inv().
     ///
-    /// This is essentially the definition of wf(), but stated as a lemma for callers
+    /// This is essentially the definition of inv(), but stated as a lemma for callers
     /// that hold a reference to a well-formed process.
     pub proof fn lemma_new_is_wf(&self)
         requires
@@ -23,17 +23,19 @@ impl RunningProcess {
             self.sleeping_count as nat == self.sleeping_thread_ids@.len(),
             self.zombie_count as nat == self.zombie_thread_ids@.len(),
         ensures
-            self.wf(),
+            self.inv(),
     {
+        reveal(RunningProcess::inv);
     }
 
-    /// wf_strict implies wf.
+    /// wf_strict implies inv.
     pub proof fn lemma_wf_strict_implies_wf(&self)
         requires
             self.wf_strict(),
         ensures
-            self.wf(),
+            self.inv(),
     {
+        reveal(RunningProcess::inv);
     }
 
     /// Two RunningProcesses with identical views are observationally equal.
@@ -88,13 +90,14 @@ impl RunningProcess {
 //==================================================================================================
 
 impl RunnableProcess {
-    /// A RunnableProcess with non-empty ready list is well-formed.
+    /// A RunnableProcess with non-empty ready list satisfies inv().
     pub proof fn lemma_new_wf(&self)
         requires
             self.ready_thread_ids@.len() >= 1,
         ensures
-            self.wf(),
+            self.inv(),
     {
+        reveal(RunnableProcess::inv);
     }
 }
 
@@ -103,13 +106,14 @@ impl RunnableProcess {
 //==================================================================================================
 
 impl SleepingProcess {
-    /// A SleepingProcess with non-empty sleeping list is well-formed.
+    /// A SleepingProcess with non-empty sleeping list satisfies inv().
     pub proof fn lemma_new_wf(&self)
         requires
             self.sleeping_thread_ids@.len() >= 1,
         ensures
-            self.wf(),
+            self.inv(),
     {
+        reveal(SleepingProcess::inv);
     }
 }
 
@@ -118,13 +122,14 @@ impl SleepingProcess {
 //==================================================================================================
 
 impl InterruptedProcess {
-    /// An InterruptedProcess with non-empty interrupted list is well-formed.
+    /// An InterruptedProcess with non-empty interrupted list satisfies inv().
     pub proof fn lemma_new_wf(&self)
         requires
             self.interrupted_thread_ids@.len() >= 1,
         ensures
-            self.wf(),
+            self.inv(),
     {
+        reveal(InterruptedProcess::inv);
     }
 }
 
@@ -133,13 +138,14 @@ impl InterruptedProcess {
 //==================================================================================================
 
 impl ZombieProcess {
-    /// A ZombieProcess with non-empty zombie list is well-formed.
+    /// A ZombieProcess with non-empty zombie list satisfies inv().
     pub proof fn lemma_new_wf(&self)
         requires
             self.zombie_thread_ids@.len() >= 1,
         ensures
-            self.wf(),
+            self.inv(),
     {
+        reveal(ZombieProcess::inv);
     }
 }
 
@@ -203,7 +209,7 @@ impl RunningProcessView {
             post =~= pre.spec_sleep_to_runnable_interrupted(),
     {
         assert(post.ready_thread_ids =~=
-            Seq::<u64>::empty().push(pre.interrupted_thread_ids[0]));
+            Seq::<int>::empty().push(pre.interrupted_thread_ids[0]));
     }
 
     /// Connecting lemma for `RunningProcess::sleep()` — sleeping branch.
@@ -240,16 +246,16 @@ impl RunningProcessView {
         ensures
             post =~= pre.spec_exit_to_runnable(),
     {
-        let combined: Seq<u64> = pre.interrupted_thread_ids.add(pre.sleeping_thread_ids);
-        assert(post.sleeping_thread_ids =~= Seq::<u64>::empty());
-        assert(post.ready_thread_ids =~= Seq::<u64>::empty().push(combined[0]));
+        let combined: Seq<int> = pre.interrupted_thread_ids.add(pre.sleeping_thread_ids);
+        assert(post.sleeping_thread_ids =~= Seq::<int>::empty());
+        assert(post.ready_thread_ids =~= Seq::<int>::empty().push(combined[0]));
     }
 
     /// Connecting lemma for `RunningProcess::exit()` — zombie branch.
     pub proof fn lemma_exit_zombie_view_matches(
         pre: RunningProcessView,
         post: ZombieProcessView,
-        status: u64,
+        status: int,
     )
         requires
             post.pid == pre.pid,
@@ -295,7 +301,7 @@ impl RunningProcessView {
             post =~= pre.spec_exit_thread_to_runnable_interrupted(),
     {
         assert(post.ready_thread_ids =~=
-            Seq::<u64>::empty().push(pre.interrupted_thread_ids[0]));
+            Seq::<int>::empty().push(pre.interrupted_thread_ids[0]));
     }
 
     /// Connecting lemma for `RunningProcess::exit_thread()` — sleeping branch.
@@ -316,7 +322,7 @@ impl RunningProcessView {
     pub proof fn lemma_exit_thread_zombie_view_matches(
         pre: RunningProcessView,
         post: ZombieProcessView,
-        status: u64,
+        status: int,
     )
         requires
             post.pid == pre.pid,
@@ -335,7 +341,7 @@ impl RunningProcessView {
     pub proof fn lemma_wakeup_ok_view_matches(
         pre: RunningProcessView,
         post: RunningProcessView,
-        tid: u64,
+        tid: int,
     )
         requires
             post.pid == pre.pid,
@@ -344,7 +350,7 @@ impl RunningProcessView {
             exists|idx: int| 0 <= idx < pre.sleeping_thread_ids.len()
                 && pre.sleeping_thread_ids[idx] == tid
                 && post.sleeping_thread_ids =~=
-                    RunningProcess::spec_remove_at(pre.sleeping_thread_ids, idx),
+                    RunningProcessView::seq_remove_at(pre.sleeping_thread_ids, idx),
             post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
             post.zombie_thread_ids =~= pre.zombie_thread_ids,
             // Uniqueness: tid appears at most once in sleeping list.
@@ -357,11 +363,11 @@ impl RunningProcessView {
         ensures
             post =~= pre.spec_wakeup_ok(tid),
     {
-        let s: Seq<u64> = pre.sleeping_thread_ids;
+        let s: Seq<int> = pre.sleeping_thread_ids;
         let exec_idx: int = choose|idx: int|
             0 <= idx < s.len()
             && s[idx] == tid
-            && post.sleeping_thread_ids =~= RunningProcess::spec_remove_at(s, idx);
+            && post.sleeping_thread_ids =~= RunningProcessView::seq_remove_at(s, idx);
         let spec_idx: int = choose|i: int|
             0 <= i < s.len() && #[trigger] s[i] == tid;
         // Both satisfy s[_] == tid; uniqueness forces them equal.
@@ -395,7 +401,7 @@ impl RunningProcessView {
     pub proof fn lemma_join_zombie_view_matches(
         pre: RunningProcessView,
         post: RunningProcessView,
-        tid: u64,
+        tid: int,
     )
         requires
             post.pid == pre.pid,
@@ -406,7 +412,7 @@ impl RunningProcessView {
             exists|idx: int| 0 <= idx < pre.zombie_thread_ids.len()
                 && pre.zombie_thread_ids[idx] == tid
                 && post.zombie_thread_ids =~=
-                    RunningProcess::spec_remove_at(pre.zombie_thread_ids, idx),
+                    RunningProcessView::seq_remove_at(pre.zombie_thread_ids, idx),
             // Uniqueness: tid appears at most once in zombie list.
             forall|i: int, j: int|
                 0 <= i < pre.zombie_thread_ids.len()
@@ -417,11 +423,11 @@ impl RunningProcessView {
         ensures
             post =~= pre.spec_join_zombie_result(tid),
     {
-        let s: Seq<u64> = pre.zombie_thread_ids;
+        let s: Seq<int> = pre.zombie_thread_ids;
         let exec_idx: int = choose|idx: int|
             0 <= idx < s.len()
             && s[idx] == tid
-            && post.zombie_thread_ids =~= RunningProcess::spec_remove_at(s, idx);
+            && post.zombie_thread_ids =~= RunningProcessView::seq_remove_at(s, idx);
         let spec_idx: int = choose|i: int|
             0 <= i < s.len() && #[trigger] s[i] == tid;
         // Both satisfy s[_] == tid; uniqueness forces them equal.
