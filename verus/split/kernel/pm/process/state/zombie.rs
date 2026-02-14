@@ -152,11 +152,10 @@ impl ZombieProcess {
             zombie_ids@.len() >= 1,
             Self::spec_no_duplicates(zombie_ids@),
         ensures
-            result.spec_pid() == pid,
-            result.zombie_thread_ids@ == zombie_ids@,
-            result.spec_status() == status,
-            result.spec_zombie_count() == zombie_ids@.len(),
-            result.wf(),
+            result@.pid == pid as int,
+            result@.zombie_thread_ids =~= Seq::new(zombie_ids@.len(), |i: int| zombie_ids@[i] as int),
+            result@.status == status as int,
+            result.inv(),
     {
         ZombieProcess {
             pid,
@@ -180,8 +179,10 @@ impl ZombieProcess {
     /// The process identifier.
     #[verifier::external_body]
     pub fn state(&self) -> (result: u64)
+        requires
+            self.inv(),
         ensures
-            result == self.spec_pid(),
+            result as int == self@.pid,
     {
         unimplemented!()
     }
@@ -205,12 +206,12 @@ impl ZombieProcess {
     /// The process identifier.
     #[verifier::external_body]
     pub fn state_mut(&mut self) -> (result: u64)
+        requires
+            old(self).inv(),
         ensures
-            result == self.spec_pid(),
-            self.spec_pid() == old(self).spec_pid(),
-            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
-            self.spec_status() == old(self).spec_status(),
-            self.zombie_count == old(self).zombie_count,
+            result as int == self@.pid,
+            self@ == old(self)@,
+            self.inv(),
     {
         unimplemented!()
     }
@@ -229,13 +230,12 @@ impl ZombieProcess {
     /// A tuple of (zombie_thread_ids, pid, status).
     pub fn bury(self) -> (result: (Vec<u64>, u64, i64))
         requires
-            self.wf(),
+            self.inv(),
         ensures
-            result.0@ == self@.zombie_thread_ids,
-            result.1 == self@.pid,
-            result.2 == self@.status,
+            Seq::new(result.0@.len(), |i: int| result.0@[i] as int) =~= self@.zombie_thread_ids,
+            result.1 as int == self@.pid,
+            result.2 as int == self@.status,
             result.0@.len() >= 1,
-            result.0@.len() == self.spec_zombie_count(),
     {
         (self.zombie_thread_ids, self.pid, self.status)
     }
@@ -262,6 +262,8 @@ impl ZombieProcess {
     /// The list variant wrapped in Ghost (models reference return).
     #[verifier::external_body]
     pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<u64>>)
+        requires
+            self.inv(),
         ensures
             result@ == self.spec_find_thread(tid),
     {
@@ -297,14 +299,11 @@ impl ZombieProcess {
     #[verifier::external_body]
     pub fn find_thread_mut(&mut self, tid: u64) -> (result: Ghost<Option<u64>>)
         requires
-            old(self).wf(),
+            old(self).inv(),
         ensures
             result@ == old(self).spec_find_thread(tid),
-            self.spec_pid() == old(self).spec_pid(),
-            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
-            self.spec_status() == old(self).spec_status(),
-            self.zombie_count == old(self).zombie_count,
-            self.wf(),
+            self@ == old(self)@,
+            self.inv(),
     {
         unimplemented!()
     }

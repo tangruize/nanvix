@@ -11,17 +11,17 @@
 //   thread IDs, and exit status are preserved. View type is used in postconditions.
 // - `find_thread()` spec model verifies exhaustive search semantics.
 //   `lemma_ghost_search_correctness` proves the ghost-level search logic over
-//   `Seq<int>` is sound. `lemma_find_thread_completeness` restates spec-level
+//   `Seq<u64>` is sound. `lemma_find_thread_completeness` restates spec-level
 //   properties for downstream consumption.
-// - Well-formedness (including thread ID uniqueness) is preserved by all operations.
+// - Invariant (including thread ID uniqueness) is preserved by all operations.
 // - View equality: identical fields produce equal views.
 // - Integration obligation lemmas:
 //   - `lemma_find_thread_obligation_implies_consistency`: find_thread result
-//     consistency under wf().
+//     consistency under inv().
 //   - `lemma_predicate_obligation_implies_search_equivalence`: given explicit
 //     `real_ids` sequence matching ghost IDs element-wise (search predicate
 //     obligation), ghost search correctness implies real search correctness.
-//     Takes `real_ids: Seq<int>` parameter to avoid the tautology of comparing
+//     Takes `real_ids: Seq<u64>` parameter to avoid the tautology of comparing
 //     ghost IDs against themselves.
 //   - `lemma_find_thread_mut_obligation_preserves_wf`: caller obligation for
 //     mutable thread access preserves identity.
@@ -42,7 +42,7 @@ impl ZombieProcess {
     // Construction Lemmas
     //==============================================================================================
 
-    /// Lemma: Construction satisfies both well-formedness and PID obligation.
+    /// Lemma: Construction satisfies both invariant and PID obligation.
     ///
     /// Proves that the `new()` preconditions guarantee:
     /// 1. The resulting View is well-formed (`ZombieProcessView::wf()`).
@@ -63,11 +63,23 @@ impl ZombieProcess {
             zombie_count as nat == zombie_ids.len(),
             zombie_ids.len() >= 1,
             Self::spec_no_duplicates(zombie_ids),
-            ZombieProcessView::spec_new(pid, zombie_ids, status).wf(),
-            ZombieProcessView::spec_new(pid, zombie_ids, status).pid == pid,
-            ZombieProcessView::spec_new(pid, zombie_ids, status).status == status,
-            ZombieProcessView::spec_new(pid, zombie_ids, status).zombie_thread_ids == zombie_ids,
+            ({
+                let view_ids: Seq<int> = Seq::new(zombie_ids.len(), |i: int| zombie_ids[i] as int);
+                let view: ZombieProcessView = ZombieProcessView::spec_new(pid as int, view_ids, status as int);
+                &&& view.wf()
+                &&& view.pid == pid as int
+                &&& view.status == status as int
+                &&& view.zombie_thread_ids == view_ids
+            }),
     {
+        let view_ids: Seq<int> = Seq::new(zombie_ids.len(), |i: int| zombie_ids[i] as int);
+        // Prove no_duplicates on the int sequence.
+        assert forall|i: int, j: int| 0 <= i < j < view_ids.len()
+            implies view_ids[i] != view_ids[j]
+        by {
+            // u64→int cast is injective, so no_duplicates is preserved.
+            assert(zombie_ids[i] != zombie_ids[j]);
+        }
     }
 
     /// Lemma: PID integration obligation at construction.
@@ -88,17 +100,18 @@ impl ZombieProcess {
     {
     }
 
-    /// Lemma: mutation_frame_preserved preserves well-formedness.
-    pub proof fn lemma_mutation_frame_preserves_wf(
+    /// Lemma: mutation_frame_preserved preserves invariant.
+    pub proof fn lemma_mutation_frame_preserves_inv(
         old_self: &ZombieProcess,
         new_self: &ZombieProcess,
     )
         requires
-            old_self.wf(),
+            old_self.inv(),
             ZombieProcess::mutation_frame_preserved(old_self, new_self),
         ensures
-            new_self.wf(),
+            new_self.inv(),
     {
+        reveal(ZombieProcess::inv);
     }
 
     //==============================================================================================
@@ -109,16 +122,14 @@ impl ZombieProcess {
     /// Covers PID, status, and zombie thread IDs — all match the View fields.
     pub proof fn lemma_bury_matches_view(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
-            self.zombie_thread_ids@ == self@.zombie_thread_ids,
-            self.spec_pid() == self@.pid,
-            self.spec_pid() == self.pid,
-            self.spec_status() == self@.status,
-            self.spec_status() == self.status,
+            self.spec_pid() as int == self@.pid,
+            self.spec_status() as int == self@.status,
+            Seq::new(self.zombie_thread_ids@.len(), |i: int| self.zombie_thread_ids@[i] as int) =~= self@.zombie_thread_ids,
             self.zombie_thread_ids@.len() >= 1,
-            self.zombie_thread_ids@.len() == self.spec_zombie_count(),
     {
+        reveal(ZombieProcess::inv);
     }
 
     //==============================================================================================
@@ -152,7 +163,7 @@ impl ZombieProcess {
 
     /// Lemma: Ghost-level search correctness.
     ///
-    /// Verifies the search logic over the ghost `Seq<int>` by proving that
+    /// Verifies the search logic over the ghost `Seq<u64>` by proving that
     /// `spec_has_zombie_thread` (used by `spec_find_thread`) correctly captures
     /// membership: if a thread ID is at any valid index in the zombie list,
     /// then `spec_has_zombie_thread` returns true, and `spec_find_thread`
@@ -165,7 +176,7 @@ impl ZombieProcess {
     /// equality matches integer equality in the ghost model.
     pub proof fn lemma_ghost_search_correctness(&self, tid: u64)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             // Forward: if tid is at any index, spec finds it.
             (forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
@@ -180,6 +191,7 @@ impl ZombieProcess {
                 ==> self.zombie_thread_ids@[k] != tid)
                 ==> self.spec_find_thread(tid) == None::<u64>),
     {
+        reveal(ZombieProcess::inv);
         // Forward direction: any matching index triggers spec_seq_contains.
         assert forall|k: int| 0 <= k < self.zombie_thread_ids@.len()
             && self.zombie_thread_ids@[k] == tid
@@ -205,7 +217,7 @@ impl ZombieProcess {
     /// (not a refinement proof linking to executable code).
     pub proof fn lemma_find_thread_completeness(&self, tid: u64)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             self.spec_has_zombie_thread(tid) ==>
                 self.spec_find_thread(tid) == Some(0u64),
@@ -224,12 +236,13 @@ impl ZombieProcess {
         &self, tid: u64, real_result: Option<u64>,
     )
         requires
-            self.wf(),
+            self.inv(),
             self.spec_find_thread_integration_obligation(tid, real_result),
         ensures
             real_result.is_some() <==> self.spec_has_zombie_thread(tid),
             real_result == Some(0u64) ==> self.spec_has_zombie_thread(tid),
     {
+        reveal(ZombieProcess::inv);
     }
 
     /// Lemma: If ghost IDs match real IDs at every index (search predicate
@@ -237,7 +250,7 @@ impl ZombieProcess {
     /// correctness. Takes an explicit `real_ids` sequence representing the
     /// concrete `NonEmptyVecDeque<ZombieThread>` iteration order.
     ///
-    /// Under wf() (no-duplicates), if `real_ids` has the same length and
+    /// Under inv() (no-duplicates), if `real_ids` has the same length and
     /// element-wise equality with the ghost sequence, then:
     /// - A tid appearing in the real list implies the spec finds it.
     /// - The spec finding a tid implies it appears in the real list.
@@ -245,7 +258,7 @@ impl ZombieProcess {
         &self, tid: u64, real_ids: Seq<u64>,
     )
         requires
-            self.wf(),
+            self.inv(),
             // Real IDs have the same length as zombie thread IDs.
             real_ids.len() == self.zombie_thread_ids@.len(),
             // Per-element predicate obligation: every ID matches its real ID.
@@ -264,6 +277,7 @@ impl ZombieProcess {
                 exists|k: int| 0 <= k < real_ids.len()
                     && real_ids[k] == tid),
     {
+        reveal(ZombieProcess::inv);
         self.lemma_ghost_search_correctness(tid);
 
         // Forward: real_ids[k] == tid implies zombie_thread_ids[k] == tid.
@@ -288,12 +302,12 @@ impl ZombieProcess {
 
     /// Lemma: `find_thread_mut()` caller obligation preservation.
     /// If the caller preserves thread identity (obligation satisfied),
-    /// then the zombie list remains unchanged and wf() is preserved.
+    /// then the zombie list remains unchanged and inv() is preserved.
     pub proof fn lemma_find_thread_mut_obligation_preserves_wf(
         &self, idx: int, old_tid: u64, new_tid: u64,
     )
         requires
-            self.wf(),
+            self.inv(),
             0 <= idx < self.zombie_thread_ids@.len(),
             self.zombie_thread_ids@[idx] == old_tid,
             Self::spec_find_thread_mut_caller_obligation(old_tid, new_tid),
@@ -301,6 +315,7 @@ impl ZombieProcess {
             // Identity preserved means the list is unchanged.
             new_tid == old_tid,
     {
+        reveal(ZombieProcess::inv);
     }
 
     /// Lemma: PID stability obligation is well-formed.
@@ -313,11 +328,12 @@ impl ZombieProcess {
     /// mutation preserves PID — the latter is proven cross-module.
     pub proof fn lemma_pid_stability_obligation_well_formed(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             Self::spec_state_mut_pid_stability_obligation(
                 self.spec_pid(), self.spec_pid()),
     {
+        reveal(ZombieProcess::inv);
     }
 
     /// Lemma: `bury()` ownership obligation is satisfied by the ghost model.
@@ -325,7 +341,7 @@ impl ZombieProcess {
     /// of the ownership obligation.
     pub proof fn lemma_bury_satisfies_identity_obligation(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             Self::spec_bury_ownership_integration_obligation(
                 self.zombie_thread_ids@, self.zombie_thread_ids@,
@@ -333,6 +349,7 @@ impl ZombieProcess {
                 self.spec_status(), self.spec_status(),
             ),
     {
+        reveal(ZombieProcess::inv);
     }
 
     //==============================================================================================
@@ -366,67 +383,126 @@ impl ZombieProcess {
             zombie_ids.len() >= 1,
             Self::spec_no_duplicates(zombie_ids),
         ensures
-            ZombieProcessView::spec_new(pid, zombie_ids, status) =~=
-                (ZombieProcessView { pid, zombie_thread_ids: zombie_ids, status }),
+            ({
+                let view_ids: Seq<int> = Seq::new(zombie_ids.len(), |i: int| zombie_ids[i] as int);
+                ZombieProcessView::spec_new(pid as int, view_ids, status as int) =~=
+                    (ZombieProcessView { pid: pid as int, zombie_thread_ids: view_ids, status: status as int })
+            }),
     {
     }
 
     /// Lemma: `bury()` result equals the View-level `spec_bury()`.
     pub proof fn lemma_bury_matches_spec_bury(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             self@.spec_bury() == (self@.zombie_thread_ids, self@.pid, self@.status),
     {
+        reveal(ZombieProcess::inv);
     }
 
     /// Lemma: `state_mut()` preserves the view, matching `spec_state_mut()`.
     pub proof fn lemma_state_mut_matches_spec(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             self@.spec_state_mut() == self@,
     {
+        reveal(ZombieProcess::inv);
     }
 
-    /// Lemma: `find_thread()` on exec matches `spec_find_thread()` on the view.
+    /// Lemma: `find_thread()` on exec is consistent with `spec_find_thread()` on the view.
+    /// The exec returns `Option<u64>` and the view returns `Option<int>`, so we
+    /// compare their is_some() result and the membership predicate.
     pub proof fn lemma_find_thread_matches_view_spec(&self, tid: u64)
         requires
-            self.wf(),
+            self.inv(),
         ensures
-            self.spec_find_thread(tid) == self@.spec_find_thread(tid),
+            self.spec_find_thread(tid).is_some() == self@.spec_find_thread(tid as int).is_some(),
+            self.spec_has_zombie_thread(tid) == self@.spec_has_zombie_thread(tid as int),
     {
+        reveal(ZombieProcess::inv);
+        // Prove membership equivalence: exec contains tid <==> view contains tid as int.
+        // view().zombie_thread_ids == Seq::new(len, |i| zombie_thread_ids@[i] as int).
+        // So view contains (tid as int) iff exec contains tid (u64→int is injective).
+        let exec_seq: Seq<u64> = self.zombie_thread_ids@;
+        let view_seq: Seq<int> = self@.zombie_thread_ids;
+        assert(view_seq.len() == exec_seq.len());
+
+        if Self::spec_seq_contains(exec_seq, tid) {
+            let wit: int = choose|i: int| 0 <= i < exec_seq.len() && exec_seq[i] == tid;
+            assert(view_seq[wit] == exec_seq[wit] as int);
+            assert(view_seq[wit] == tid as int);
+            assert(ZombieProcessView::spec_seq_contains(view_seq, tid as int));
+        }
+        if ZombieProcessView::spec_seq_contains(view_seq, tid as int) {
+            let wit: int = choose|i: int| 0 <= i < view_seq.len() && view_seq[i] == tid as int;
+            assert(exec_seq[wit] as int == tid as int);
+            assert(exec_seq[wit] == tid);
+            assert(Self::spec_seq_contains(exec_seq, tid));
+        }
     }
 
     /// Lemma: `find_thread_mut()` preserves the view, matching `spec_find_thread_mut()`.
     pub proof fn lemma_find_thread_mut_matches_spec(&self, tid: u64)
         requires
-            self.wf(),
+            self.inv(),
         ensures
-            self@.spec_find_thread_mut(tid) == self@,
+            self@.spec_find_thread_mut(tid as int) == self@,
     {
+        reveal(ZombieProcess::inv);
     }
 
-    /// Lemma: exec-level `wf()` implies view-level `wf()`.
-    pub proof fn lemma_exec_wf_implies_view_wf(&self)
+    /// Lemma: exec-level `inv()` implies view-level `wf()`.
+    pub proof fn lemma_exec_inv_implies_view_wf(&self)
         requires
-            self.wf(),
+            self.inv(),
         ensures
             self@.wf(),
     {
+        reveal(ZombieProcess::inv);
+        let exec_seq: Seq<u64> = self.zombie_thread_ids@;
+        let view_seq: Seq<int> = self@.zombie_thread_ids;
+
+        // Length is preserved by the Seq::new conversion.
+        assert(view_seq.len() == exec_seq.len());
+        assert(view_seq.len() >= 1);
+
+        // No-duplicates on exec implies no-duplicates on view (u64→int is injective).
+        assert forall|i: int, j: int| 0 <= i < j < view_seq.len()
+            implies view_seq[i] != view_seq[j]
+        by {
+            assert(exec_seq[i] != exec_seq[j]);
+            // u64→int is injective: a != b ==> (a as int) != (b as int).
+        }
     }
 
     /// Lemma: view-level `spec_has_zombie_thread` matches exec-level.
     pub proof fn lemma_has_zombie_thread_matches_view(&self, tid: u64)
         ensures
-            self.spec_has_zombie_thread(tid) == self@.spec_has_zombie_thread(tid),
+            self.spec_has_zombie_thread(tid) == self@.spec_has_zombie_thread(tid as int),
     {
+        let exec_seq: Seq<u64> = self.zombie_thread_ids@;
+        let view_seq: Seq<int> = self@.zombie_thread_ids;
+
+        if Self::spec_seq_contains(exec_seq, tid) {
+            let wit: int = choose|i: int| 0 <= i < exec_seq.len() && exec_seq[i] == tid;
+            assert(view_seq[wit] == exec_seq[wit] as int);
+            assert(view_seq[wit] == tid as int);
+            assert(ZombieProcessView::spec_seq_contains(view_seq, tid as int));
+        }
+        if ZombieProcessView::spec_seq_contains(view_seq, tid as int) {
+            let wit: int = choose|i: int| 0 <= i < view_seq.len() && view_seq[i] == tid as int;
+            assert(exec_seq[wit] as int == tid as int);
+            assert(exec_seq[wit] == tid);
+            assert(Self::spec_seq_contains(exec_seq, tid));
+        }
     }
 
     /// Lemma: `state()` on exec matches `spec_state()` on the view.
     pub proof fn lemma_state_matches_view_spec(&self)
         ensures
-            self.spec_pid() == self@.spec_state(),
+            self.spec_pid() as int == self@.spec_state(),
     {
     }
 }
