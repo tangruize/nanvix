@@ -145,12 +145,12 @@ impl SleepingThread {
         requires
             state.wf(),
         ensures
-            result.state@ == state@,
-            result.spec_id() == state.spec_id(),
-            result.spec_alarm() == alarm,
-            result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
-            result.spec_drop_safe() == state@.drop_safe(),
+            result@.state == state@,
+            result@.spec_id() == state@.id,
+            result@.spec_alarm() == alarm,
+            result@.spec_locked_mutex_count() == state@.locked_mutex_count,
+            forall|a: int| result@.spec_has_mutex(a) == state@.has_mutex(a),
+            result@.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
         proof { reveal(SleepingThread::wf); }
@@ -187,11 +187,11 @@ impl ReadyThread {
         requires
             state.wf(),
         ensures
-            result.state@ == state@,
-            result.spec_id() == state.spec_id(),
-            result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
-            result.spec_drop_safe() == state@.drop_safe(),
+            result@.state == state@,
+            result@.spec_id() == state@.id,
+            result@.spec_locked_mutex_count() == state@.locked_mutex_count,
+            forall|a: int| result@.spec_has_mutex(a) == state@.has_mutex(a),
+            result@.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
         proof { reveal(ReadyThread::wf); }
@@ -230,12 +230,12 @@ impl ZombieThread {
         requires
             state.wf(),
         ensures
-            result.state@ == state@,
-            result.spec_id() == state.spec_id(),
-            result.spec_status() == status,
-            result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
-            result.spec_drop_safe() == state@.drop_safe(),
+            result@.state == state@,
+            result@.spec_id() == state@.id,
+            result@.spec_status() == status,
+            result@.spec_locked_mutex_count() == state@.locked_mutex_count,
+            forall|a: int| result@.spec_has_mutex(a) == state@.has_mutex(a),
+            result@.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
         proof { reveal(ZombieThread::wf); }
@@ -261,12 +261,12 @@ impl RunningThread {
         requires
             state.wf(),
         ensures
-            result.state@ == state@,
-            result.spec_id() == state.spec_id(),
-            result.spec_is_interrupted() == state.spec_is_interrupted(),
-            result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
-            result.spec_drop_safe() == state@.drop_safe(),
+            result@.state == state@,
+            result@.spec_id() == state@.id,
+            result@.spec_is_interrupted() == state@.is_interrupted(),
+            result@.spec_locked_mutex_count() == state@.locked_mutex_count,
+            forall|a: int| result@.spec_has_mutex(a) == state@.has_mutex(a),
+            result@.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
         proof { reveal(RunningThread::wf); }
@@ -291,12 +291,12 @@ impl RunningThread {
         requires
             self.wf(),
         ensures
-            result.state@ == self.state@,
-            result.spec_id() == self.spec_id(),
-            result.spec_alarm() == alarm,
-            result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == self.spec_has_mutex(a),
-            result.spec_drop_safe() == self.spec_drop_safe(),
+            result@.state == self@.state,
+            result@.spec_id() == self@.spec_id(),
+            result@.spec_alarm() == alarm,
+            result@.spec_locked_mutex_count() == self@.spec_locked_mutex_count(),
+            forall|a: int| result@.spec_has_mutex(a) == self@.spec_has_mutex(a),
+            result@.spec_drop_safe() == self@.spec_drop_safe(),
             result.wf(),
     {
         proof { reveal(RunningThread::wf); }
@@ -317,11 +317,11 @@ impl RunningThread {
         requires
             self.wf(),
         ensures
-            result.state@ == self.state@,
-            result.spec_id() == self.spec_id(),
-            result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == self.spec_has_mutex(a),
-            result.spec_drop_safe() == self.spec_drop_safe(),
+            result@.state == self@.state,
+            result@.spec_id() == self@.spec_id(),
+            result@.spec_locked_mutex_count() == self@.spec_locked_mutex_count(),
+            forall|a: int| result@.spec_has_mutex(a) == self@.spec_has_mutex(a),
+            result@.spec_drop_safe() == self@.spec_drop_safe(),
             result.wf(),
     {
         proof { reveal(RunningThread::wf); }
@@ -334,8 +334,10 @@ impl RunningThread {
     ///
     /// The thread identifier, unchanged from construction.
     pub fn id(&self) -> (result: ThreadIdentifier)
+        requires
+            self.wf(),
         ensures
-            result.spec_value() == self.spec_id(),
+            result.spec_value() == self@.spec_id(),
     {
         self.state.id()
     }
@@ -347,9 +349,11 @@ impl RunningThread {
     /// A reference to the underlying ThreadState with the same identity
     /// and full state transparency.
     pub fn thread_state(&self) -> (result: &ThreadState)
+        requires
+            self.wf(),
         ensures
-            result.spec_id() == self.spec_id(),
-            result@ == self.state@,
+            result.spec_id() == self@.spec_id(),
+            result@ == self@.state,
     {
         &self.state
     }
@@ -378,12 +382,12 @@ impl RunningThread {
         requires
             self.wf(),
         ensures
-            result.state@ == self.state@,
-            result.spec_id() == self.spec_id(),
-            result.spec_status() == status,
-            result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == self.spec_has_mutex(a),
-            result.spec_drop_safe() == self.spec_drop_safe(),
+            result@.state == self@.state,
+            result@.spec_id() == self@.spec_id(),
+            result@.spec_status() == status,
+            result@.spec_locked_mutex_count() == self@.spec_locked_mutex_count(),
+            forall|a: int| result@.spec_has_mutex(a) == self@.spec_has_mutex(a),
+            result@.spec_drop_safe() == self@.spec_drop_safe(),
             result.wf(),
     {
         proof { reveal(RunningThread::wf); }
@@ -419,14 +423,14 @@ impl RunningThread {
         requires
             old(self).wf(),
             old(self).state.locked_mutex_count < usize::MAX,
-            !old(self).spec_has_mutex(address as int),
+            !old(self)@.spec_has_mutex(address as int),
         ensures
-            self.spec_has_mutex(address as int),
+            self@.spec_has_mutex(address as int),
             forall|a: int| a != address as int ==>
-                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
-            !self.spec_drop_safe(),
-            self.spec_id() == old(self).spec_id(),
+                self@.spec_has_mutex(a) == old(self)@.spec_has_mutex(a),
+            self@.spec_locked_mutex_count() == old(self)@.spec_locked_mutex_count() + 1,
+            !self@.spec_drop_safe(),
+            self@.spec_id() == old(self)@.spec_id(),
             self.wf(),
     {
         proof { reveal(RunningThread::wf); }
@@ -453,14 +457,14 @@ impl RunningThread {
     pub fn take_mutex_guard(&mut self, address: u64)
         requires
             old(self).wf(),
-            old(self).spec_has_mutex(address as int),
+            old(self)@.spec_has_mutex(address as int),
         ensures
-            !self.spec_has_mutex(address as int),
+            !self@.spec_has_mutex(address as int),
             forall|a: int| a != address as int ==>
-                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
-            self.spec_locked_mutex_count() == 0 ==> self.spec_drop_safe(),
-            self.spec_id() == old(self).spec_id(),
+                self@.spec_has_mutex(a) == old(self)@.spec_has_mutex(a),
+            self@.spec_locked_mutex_count() == old(self)@.spec_locked_mutex_count() - 1,
+            self@.spec_locked_mutex_count() == 0 ==> self@.spec_drop_safe(),
+            self@.spec_id() == old(self)@.spec_id(),
             self.wf(),
     {
         proof { reveal(RunningThread::wf); }

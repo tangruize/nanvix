@@ -67,55 +67,149 @@ pub struct ZombieThreadView {
 }
 
 //==================================================================================================
-// Spec Functions: RunningThread
+// Spec Functions: RunningThreadView
 //==================================================================================================
 
-impl RunningThread {
+impl RunningThreadView {
     /// Spec function: returns the thread identifier value.
     pub open spec fn spec_id(&self) -> int {
-        self.state.spec_id()
+        self.state.id
     }
 
     /// Spec function: returns the state's locked mutex count.
     pub open spec fn spec_locked_mutex_count(&self) -> nat {
-        self.state.spec_locked_mutex_count()
+        self.state.locked_mutex_count
     }
 
     /// Spec function: returns whether a specific mutex address is held.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state@.has_mutex(address)
+        self.state.has_mutex(address)
     }
 
     /// Spec function: checks if the state is drop-safe.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state@.drop_safe()
+        self.state.drop_safe()
     }
 
     /// Spec function: checks if the state has an interrupt reason.
     pub open spec fn spec_is_interrupted(&self) -> bool {
-        self.state.spec_is_interrupted()
+        self.state.is_interrupted()
     }
 
     /// Spec function: returns the state's interrupt reason.
     pub open spec fn spec_interrupt_reason(&self) -> Option<int> {
-        self.state.spec_interrupt_reason()
+        self.state.interrupt_reason
     }
 
     /// Spec function: returns the state's user thread data area.
     pub open spec fn spec_user_tda(&self) -> Option<int> {
-        self.state.spec_user_tda()
+        self.state.user_tda
     }
 
     /// Spec function: returns the state's kernel stack token.
     pub open spec fn spec_kernel_stack(&self) -> Option<int> {
-        self.state.spec_kernel_stack()
+        self.state.kernel_stack
     }
 
     /// Spec function: returns the state's user stack token.
     pub open spec fn spec_user_stack(&self) -> Option<int> {
-        self.state.spec_user_stack()
+        self.state.user_stack
+    }
+}
+
+//==================================================================================================
+// Spec Functions: SleepingThreadView
+//==================================================================================================
+
+impl SleepingThreadView {
+    /// Spec function: returns the thread identifier value.
+    pub open spec fn spec_id(&self) -> int {
+        self.state.id
     }
 
+    /// Spec function: returns the alarm time.
+    pub open spec fn spec_alarm(&self) -> Option<int> {
+        self.alarm
+    }
+
+    /// Spec function: returns the state's locked mutex count.
+    pub open spec fn spec_locked_mutex_count(&self) -> nat {
+        self.state.locked_mutex_count
+    }
+
+    /// Spec function: returns whether a specific mutex address is held.
+    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
+        self.state.has_mutex(address)
+    }
+
+    /// Spec function: checks if the state is drop-safe.
+    pub open spec fn spec_drop_safe(&self) -> bool {
+        self.state.drop_safe()
+    }
+}
+
+//==================================================================================================
+// Spec Functions: ReadyThreadView
+//==================================================================================================
+
+impl ReadyThreadView {
+    /// Spec function: returns the thread identifier value.
+    pub open spec fn spec_id(&self) -> int {
+        self.state.id
+    }
+
+    /// Spec function: returns the state's locked mutex count.
+    pub open spec fn spec_locked_mutex_count(&self) -> nat {
+        self.state.locked_mutex_count
+    }
+
+    /// Spec function: returns whether a specific mutex address is held.
+    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
+        self.state.has_mutex(address)
+    }
+
+    /// Spec function: checks if the state is drop-safe.
+    pub open spec fn spec_drop_safe(&self) -> bool {
+        self.state.drop_safe()
+    }
+}
+
+//==================================================================================================
+// Spec Functions: ZombieThreadView
+//==================================================================================================
+
+impl ZombieThreadView {
+    /// Spec function: returns the thread identifier value.
+    pub open spec fn spec_id(&self) -> int {
+        self.state.id
+    }
+
+    /// Spec function: returns the exit status tag.
+    pub open spec fn spec_status(&self) -> int {
+        self.status
+    }
+
+    /// Spec function: returns the state's locked mutex count.
+    pub open spec fn spec_locked_mutex_count(&self) -> nat {
+        self.state.locked_mutex_count
+    }
+
+    /// Spec function: returns whether a specific mutex address is held.
+    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
+        self.state.has_mutex(address)
+    }
+
+    /// Spec function: checks if the state is drop-safe.
+    pub open spec fn spec_drop_safe(&self) -> bool {
+        self.state.drop_safe()
+    }
+}
+
+//==================================================================================================
+// Spec Functions: RunningThread
+//==================================================================================================
+
+impl RunningThread {
     /// Spec function: well-formedness predicate.
     /// A RunningThread is well-formed when the underlying state is well-formed.
     ///
@@ -131,31 +225,6 @@ impl RunningThread {
 //==================================================================================================
 
 impl SleepingThread {
-    /// Spec function: returns the thread identifier value.
-    pub open spec fn spec_id(&self) -> int {
-        self.state.spec_id()
-    }
-
-    /// Spec function: returns the alarm time.
-    pub open spec fn spec_alarm(&self) -> Option<int> {
-        self.alarm
-    }
-
-    /// Spec function: returns the state's locked mutex count.
-    pub open spec fn spec_locked_mutex_count(&self) -> nat {
-        self.state.spec_locked_mutex_count()
-    }
-
-    /// Spec function: returns whether a specific mutex address is held.
-    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state@.has_mutex(address)
-    }
-
-    /// Spec function: checks if the state is drop-safe.
-    pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state@.drop_safe()
-    }
-
     /// Spec function: well-formedness predicate.
     ///
     /// Closed per methodology Step 2: users must maintain the invariant
@@ -170,26 +239,6 @@ impl SleepingThread {
 //==================================================================================================
 
 impl ReadyThread {
-    /// Spec function: returns the thread identifier value.
-    pub open spec fn spec_id(&self) -> int {
-        self.state.spec_id()
-    }
-
-    /// Spec function: returns the state's locked mutex count.
-    pub open spec fn spec_locked_mutex_count(&self) -> nat {
-        self.state.spec_locked_mutex_count()
-    }
-
-    /// Spec function: returns whether a specific mutex address is held.
-    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state@.has_mutex(address)
-    }
-
-    /// Spec function: checks if the state is drop-safe.
-    pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state@.drop_safe()
-    }
-
     /// Spec function: well-formedness predicate.
     ///
     /// Closed per methodology Step 2: users must maintain the invariant
@@ -204,31 +253,6 @@ impl ReadyThread {
 //==================================================================================================
 
 impl ZombieThread {
-    /// Spec function: returns the thread identifier value.
-    pub open spec fn spec_id(&self) -> int {
-        self.state.spec_id()
-    }
-
-    /// Spec function: returns the exit status tag.
-    pub open spec fn spec_status(&self) -> int {
-        self.status
-    }
-
-    /// Spec function: returns the state's locked mutex count.
-    pub open spec fn spec_locked_mutex_count(&self) -> nat {
-        self.state.spec_locked_mutex_count()
-    }
-
-    /// Spec function: returns whether a specific mutex address is held.
-    pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state@.has_mutex(address)
-    }
-
-    /// Spec function: checks if the state is drop-safe.
-    pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state@.drop_safe()
-    }
-
     /// Spec function: well-formedness predicate.
     ///
     /// Closed per methodology Step 2: users must maintain the invariant

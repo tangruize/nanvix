@@ -44,7 +44,7 @@ impl RunningThread {
         ensures
             ({
                 let r: RunningThread = RunningThread { state: state };
-                r.spec_id() == state.spec_id()
+                r@.spec_id() == state@.id
             }),
     {
     }
@@ -54,7 +54,7 @@ impl RunningThread {
         ensures
             ({
                 let r: RunningThread = RunningThread { state: state };
-                r.spec_drop_safe() == state@.drop_safe()
+                r@.spec_drop_safe() == state@.drop_safe()
             }),
     {
     }
@@ -64,8 +64,8 @@ impl RunningThread {
         ensures
             ({
                 let r: RunningThread = RunningThread { state: state };
-                r.spec_locked_mutex_count() == state.spec_locked_mutex_count()
-                && (forall|a: int| r.spec_has_mutex(a) == state@.has_mutex(a))
+                r@.spec_locked_mutex_count() == state@.locked_mutex_count
+                && (forall|a: int| r@.spec_has_mutex(a) == state@.has_mutex(a))
             }),
     {
     }
@@ -75,7 +75,7 @@ impl RunningThread {
         ensures
             ({
                 let r: RunningThread = RunningThread { state: state };
-                r.state@ == state@
+                r@.state == state@
             }),
     {
     }
@@ -87,7 +87,7 @@ impl RunningThread {
     /// Lemma: spec_id faithfully reflects the underlying state's identity.
     pub proof fn lemma_id_correct(&self)
         ensures
-            self.spec_id() == self.state.spec_id(),
+            self@.spec_id() == self.state.spec_id(),
     {
     }
 
@@ -102,7 +102,7 @@ impl RunningThread {
         ensures
             ({
                 let s: SleepingThread = SleepingThread { state: self.state, alarm: alarm };
-                s.spec_id() == self.spec_id()
+                s@.spec_id() == self@.spec_id()
             }),
     {
     }
@@ -114,7 +114,7 @@ impl RunningThread {
         ensures
             ({
                 let s: SleepingThread = SleepingThread { state: self.state, alarm: alarm };
-                s.spec_alarm() == alarm
+                s@.spec_alarm() == alarm
             }),
     {
     }
@@ -140,8 +140,8 @@ impl RunningThread {
         ensures
             ({
                 let s: SleepingThread = SleepingThread { state: self.state, alarm: alarm };
-                s.spec_locked_mutex_count() == self.spec_locked_mutex_count()
-                && (forall|a: int| s.spec_has_mutex(a) == self.spec_has_mutex(a))
+                s@.spec_locked_mutex_count() == self@.spec_locked_mutex_count()
+                && (forall|a: int| s@.spec_has_mutex(a) == self@.spec_has_mutex(a))
             }),
     {
     }
@@ -153,7 +153,7 @@ impl RunningThread {
         ensures
             ({
                 let s: SleepingThread = SleepingThread { state: self.state, alarm: alarm };
-                s.spec_drop_safe() == self.spec_drop_safe()
+                s@.spec_drop_safe() == self@.spec_drop_safe()
             }),
     {
     }
@@ -165,7 +165,7 @@ impl RunningThread {
         ensures
             ({
                 let s: SleepingThread = SleepingThread { state: self.state, alarm: alarm };
-                s.state@ == self.state@
+                s@.state == self@.state
             }),
     {
     }
@@ -181,7 +181,7 @@ impl RunningThread {
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: self.state };
-                r.spec_id() == self.spec_id()
+                r@.spec_id() == self@.spec_id()
             }),
     {
     }
@@ -207,8 +207,8 @@ impl RunningThread {
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: self.state };
-                r.spec_locked_mutex_count() == self.spec_locked_mutex_count()
-                && (forall|a: int| r.spec_has_mutex(a) == self.spec_has_mutex(a))
+                r@.spec_locked_mutex_count() == self@.spec_locked_mutex_count()
+                && (forall|a: int| r@.spec_has_mutex(a) == self@.spec_has_mutex(a))
             }),
     {
     }
@@ -220,7 +220,7 @@ impl RunningThread {
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: self.state };
-                r.spec_drop_safe() == self.spec_drop_safe()
+                r@.spec_drop_safe() == self@.spec_drop_safe()
             }),
     {
     }
@@ -232,7 +232,7 @@ impl RunningThread {
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: self.state };
-                r.state@ == self.state@
+                r@.state == self@.state
             }),
     {
     }
@@ -248,7 +248,7 @@ impl RunningThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: self.state, status: status };
-                z.spec_id() == self.spec_id()
+                z@.spec_id() == self@.spec_id()
             }),
     {
     }
@@ -260,7 +260,7 @@ impl RunningThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: self.state, status: status };
-                z.spec_status() == status
+                z@.spec_status() == status
             }),
     {
     }
@@ -286,8 +286,8 @@ impl RunningThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: self.state, status: status };
-                z.spec_locked_mutex_count() == self.spec_locked_mutex_count()
-                && (forall|a: int| z.spec_has_mutex(a) == self.spec_has_mutex(a))
+                z@.spec_locked_mutex_count() == self@.spec_locked_mutex_count()
+                && (forall|a: int| z@.spec_has_mutex(a) == self@.spec_has_mutex(a))
             }),
     {
     }
@@ -299,7 +299,7 @@ impl RunningThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: self.state, status: status };
-                z.spec_drop_safe() == self.spec_drop_safe()
+                z@.spec_drop_safe() == self@.spec_drop_safe()
             }),
     {
     }
@@ -311,7 +311,7 @@ impl RunningThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: self.state, status: status };
-                z.state@ == self.state@
+                z@.state == self@.state
             }),
     {
     }
@@ -328,7 +328,7 @@ impl RunningThread {
             r.state.locked_mutex_set@.no_duplicates(),
             r.state.interrupt_reason.is_none(),
         ensures
-            r.spec_drop_safe() && r.wf() && !r.spec_is_interrupted(),
+            r@.spec_drop_safe() && r.wf() && !r@.spec_is_interrupted(),
     {
         reveal(RunningThread::wf);
         ThreadState::lemma_new_is_wf(&r.state);
@@ -343,9 +343,9 @@ impl RunningThread {
             ({
                 let running: RunningThread = RunningThread { state: state };
                 let ready: ReadyThread = ReadyThread { state: running.state };
-                ready.spec_id() == state.spec_id()
+                ready@.spec_id() == state@.id
                 && ready.wf()
-                && ready.spec_drop_safe() == state@.drop_safe()
+                && ready@.spec_drop_safe() == state@.drop_safe()
             }),
     {
         reveal(ReadyThread::wf);
@@ -360,11 +360,11 @@ impl RunningThread {
             ({
                 let running: RunningThread = RunningThread { state: state };
                 let zombie: ZombieThread = ZombieThread { state: running.state, status: status };
-                zombie.spec_id() == state.spec_id()
-                && zombie.spec_status() == status
+                zombie@.spec_id() == state@.id
+                && zombie@.spec_status() == status
                 && zombie.wf()
-                && zombie.spec_drop_safe() == state@.drop_safe()
-                && (forall|a: int| zombie.spec_has_mutex(a) == state@.has_mutex(a))
+                && zombie@.spec_drop_safe() == state@.drop_safe()
+                && (forall|a: int| zombie@.spec_has_mutex(a) == state@.has_mutex(a))
             }),
     {
         reveal(ZombieThread::wf);
@@ -377,7 +377,7 @@ impl RunningThread {
     /// Lemma: Two RunningThreads with identical fields have equal views.
     pub proof fn lemma_view_equality(a: &RunningThread, b: &RunningThread)
         requires
-            a.state@ == b.state@,
+            a@.state == b@.state,
         ensures
             a@ == b@,
     {
@@ -393,7 +393,7 @@ impl RunningThread {
         requires
             t.wf(),
             t.state.locked_mutex_count < usize::MAX,
-            !t.spec_has_mutex(address as int),
+            !t@.spec_has_mutex(address as int),
         ensures
             ({
                 // After push then remove-last, the seq returns to original.
@@ -415,7 +415,7 @@ impl SleepingThread {
         ensures
             ({
                 let s: SleepingThread = SleepingThread { state: state, alarm: alarm };
-                s.spec_id() == state.spec_id()
+                s@.spec_id() == state@.id
             }),
     {
     }
@@ -444,7 +444,7 @@ impl ReadyThread {
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: state };
-                r.spec_id() == state.spec_id()
+                r@.spec_id() == state@.id
             }),
     {
     }
@@ -473,7 +473,7 @@ impl ZombieThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: state, status: status };
-                z.spec_id() == state.spec_id()
+                z@.spec_id() == state@.id
             }),
     {
     }
@@ -483,7 +483,7 @@ impl ZombieThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: state, status: status };
-                z.spec_status() == status
+                z@.spec_status() == status
             }),
     {
     }
@@ -506,7 +506,7 @@ impl ZombieThread {
         ensures
             ({
                 let z: ZombieThread = ZombieThread { state: state, status: status };
-                forall|a: int| z.spec_has_mutex(a) == state@.has_mutex(a)
+                forall|a: int| z@.spec_has_mutex(a) == state@.has_mutex(a)
             }),
     {
     }
