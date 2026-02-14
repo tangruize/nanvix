@@ -364,8 +364,17 @@ impl Vmem {
     /// The original returns `Result<Vmem, Error>` because `physical_address()`
     /// can fail during page directory setup. This verified version returns `Self`
     /// (infallible) because the error path requires modeling PageDirectory
-    /// internals which is out of scope. For refinement proofs, this would need
-    /// an external_body wrapper with the original signature.
+    /// internals which is out of scope. This means the verus model cannot
+    /// express failure modes of cloning. For refinement proofs, this would need
+    /// an `external_body` wrapper with the original signature:
+    /// ```ignore
+    /// #[verifier::external_body]
+    /// pub fn clone(from: &Vmem) -> (result: Result<Vmem, Error>)
+    ///     requires from.inv(),
+    ///     ensures result.is_ok() ==> result.unwrap().inv()
+    ///              && result.unwrap()@.mapping_count == 0,
+    /// { unimplemented!() }
+    /// ```
     ///
     /// This is why `result.mapping_count == 0` - the cloned Vmem has no user
     /// mappings initially. The actual user page data is copied lazily when
@@ -882,6 +891,10 @@ impl Vmem {
         }
 
         // Remove the mapping by swapping with the last entry.
+        // Note: The original uses linked-list removal which preserves insertion order.
+        // Swap-with-last changes ordering but is correct because the spec uses existential
+        // quantifiers over the array — ordering is irrelevant for all invariants and
+        // postconditions (uniqueness, mapping existence, count).
         let last_idx: usize = self.mapping_count - 1;
         if found_idx != last_idx {
             self.mappings[found_idx] = self.mappings[last_idx];
@@ -1119,9 +1132,15 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, "destination not in kernel space"));
         }
 
-        // In a real implementation, we would perform the physical memory copy.
-        // This includes looking up user frames and copying page-by-page.
-        // The precondition ensures all source pages are mapped.
+        // Abstraction: The original performs a two-pass loop (dry-run then actual copy),
+        // calling `find_user_frame()` per page to validate frame existence and obtain
+        // physical addresses. This is replaced by the `spec_user_region_is_mapped`
+        // precondition which captures the per-page mapping requirement at the spec level.
+        // Limitation: The original's dry-run also implicitly validates that each source
+        // frame's physical address is within bounds (via `__phys_memcpy`), but this model
+        // does not postcondition on physical bounds of source frames. Physical bounds are
+        // established at `map()` time by the allocator invariant (frames come from upool
+        // which only allocates within MEMORY_SIZE).
         Ok(())
     }
 
@@ -1260,6 +1279,17 @@ impl Vmem {
     /// # Returns
     ///
     /// Upon success, Ok(()). Upon failure, an error.
+    ///
+    /// # Validation Difference
+    ///
+    /// The original takes `PageAligned<VirtualAddress>` which enforces alignment
+    /// and delegates to `find_user_frame(dst)` which only searches user page tables
+    /// (implicitly enforcing user-space). This verified version uses `usize` and
+    /// adds explicit `is_user_addr` and alignment checks to compensate for the
+    /// lost type-system enforcement. The checks are stricter but sound — they
+    /// reject the same inputs as the original. For refinement proofs, these
+    /// explicit checks correspond to the type constraints on the original's
+    /// `PageAligned<VirtualAddress>` parameter.
     pub fn memset(&mut self, vaddr: usize, value: u32) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
