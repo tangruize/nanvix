@@ -1,0 +1,257 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:03:37 CST 2026
+Module: kernel::pm::process::state::process_state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::process_state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::process_state
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/process_state.rs:129:13
+    |
+129 |               result.wf(),
+    |               ^^^^^^^^^^^ failed this postcondition
+...
+134 | /         ProcessState {
+135 | |             pid: pid,
+136 | |             capabilities: Capabilities { bits: 0u8 },
+137 | |             mutex_count: 0usize,
+...   |
+143 | |             pmio_ports: Vec::new(),
+144 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/process_state.rs:160:13
+    |
+156 |     pub fn set_capability(&mut self, capability: Capability)
+    |     -------------------------------------------------------- at the end of the function body
+...
+160 |             self.capabilities.spec_has(capability),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/process_state.rs:177:13
+    |
+173 |     pub fn clear_capability(&mut self, capability: Capability)
+    |     ---------------------------------------------------------- at the end of the function body
+...
+177 |             !self.capabilities.spec_has(capability),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/process/state/process_state.rs:190:5
+    |
+190 |     pub fn has_capability(&self, capability: Capability) -> (result: bool)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/process_state.rs:192:13
+    |
+192 |             result == self.capabilities.spec_has(capability),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+193 |     {
+194 |         self.capabilities.has(capability)
+    |         --------------------------------- at the end of the function body
+
+error: precondition not satisfied
+   --> kernel/pm/process/state/process_state.rs:194:9
+    |
+194 |         self.capabilities.has(capability)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: kernel/pm/process/capability.rs:270:13
+    |
+270 |             self.wf(),
+    |             --------- failed precondition
+
+note: automatically chose triggers for this expression:
+  --> kernel/pm/process/state/process_state.proof.rs:30:13
+   |
+30 | /             forall|s: ProcessState|
+31 | |                 s.pid.spec_value() == pid.spec_value()
+32 | |                 && s.capabilities.spec_bits() == 0u8
+33 | |                 && s.capabilities.wf()
+...  |
+40 | |                 && s.pmio_ports@.len() == 0
+41 | |                 ==> s.wf(),
+   | |__________________________^
+
+note:   trigger 1 of 1:
+  --> kernel/pm/process/state/process_state.proof.rs:41:21
+   |
+41 |                 ==> s.wf(),
+   |                     ^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> kernel/pm/process/state/process_state.proof.rs:49:13
+   |
+49 | /             forall|s: ProcessState|
+50 | |                 s.mutex_count == 0
+51 | |                 && s.cond_count == 0
+52 | |                 && s.pmio_ports@.len() == 0
+...  |
+56 | |                     && s.spec_pmio_count() == 0
+57 | |                 ),
+   | |_________________^
+
+note:   trigger 1 of 3:
+  --> kernel/pm/process/state/process_state.proof.rs:54:21
+   |
+54 |                     s.spec_mutex_count() == 0
+   |                     ^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 2 of 3:
+  --> kernel/pm/process/state/process_state.proof.rs:55:24
+   |
+55 |                     && s.spec_cond_count() == 0
+   |                        ^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 3 of 3:
+  --> kernel/pm/process/state/process_state.proof.rs:56:24
+   |
+56 |                     && s.spec_pmio_count() == 0
+   |                        ^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> kernel/pm/process/state/process_state.proof.rs:64:13
+   |
+64 | /             forall|s: ProcessState|
+65 | |                 s.capabilities.spec_bits() == 0u8
+66 | |                 ==> s.spec_capabilities_bits() == 0u8,
+   | |_____________________________________________________^
+
+note:   trigger 1 of 1:
+  --> kernel/pm/process/state/process_state.proof.rs:66:21
+   |
+66 |                 ==> s.spec_capabilities_bits() == 0u8,
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> kernel/pm/process/state/process_state.proof.rs:77:13
+   |
+77 | /             forall|post: ProcessState|
+78 | |                 post.pid.spec_value() == self.pid.spec_value()
+79 | |                 ==> post.spec_pid() == self.spec_pid(),
+   | |______________________________________________________^
+
+note:   trigger 1 of 1:
+  --> kernel/pm/process/state/process_state.proof.rs:79:21
+   |
+79 |                 ==> post.spec_pid() == self.spec_pid(),
+   |                     ^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> kernel/pm/process/state/process_state.proof.rs:86:13
+   |
+86 | /             forall|post: ProcessState|
+87 | |                 post.pid.spec_value() == self.pid.spec_value()
+88 | |                 ==> post.spec_pid() == self.spec_pid(),
+   | |______________________________________________________^
+
+note:   trigger 1 of 1:
+  --> kernel/pm/process/state/process_state.proof.rs:88:21
+   |
+88 |                 ==> post.spec_pid() == self.spec_pid(),
+   |                     ^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> kernel/pm/process/state/process_state.proof.rs:95:13
+   |
+95 | /             forall|post: ProcessState|
+96 | |                 post.pid.spec_value() == self.pid.spec_value()
+97 | |                 ==> post.spec_pid() == self.spec_pid(),
+   | |______________________________________________________^
+
+note:   trigger 1 of 1:
+  --> kernel/pm/process/state/process_state.proof.rs:97:21
+   |
+97 |                 ==> post.spec_pid() == self.spec_pid(),
+   |                     ^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/process/state/process_state.proof.rs:104:13
+    |
+104 | /             forall|post: ProcessState|
+105 | |                 post.pid.spec_value() == self.pid.spec_value()
+106 | |                 ==> post.spec_pid() == self.spec_pid(),
+    | |______________________________________________________^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/process/state/process_state.proof.rs:106:21
+    |
+106 |                 ==> post.spec_pid() == self.spec_pid(),
+    |                     ^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/process/state/process_state.proof.rs:352:13
+    |
+352 | /             forall|post: ProcessState|
+353 | |                 post.capabilities == new_caps
+354 | |                 && post.mutex_count == self.mutex_count
+355 | |                 && post.mutex_addrs@ =~= self.mutex_addrs@
+...   |
+360 | |                 && post.pmio_ports@ =~= self.pmio_ports@
+361 | |                 ==> post.wf(),
+    | |_____________________________^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/process/state/process_state.proof.rs:361:21
+    |
+361 |                 ==> post.wf(),
+    |                     ^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/process/state/process_state.proof.rs:370:13
+    |
+370 | /             forall|post: ProcessState|
+371 | |                 post.pid.spec_value() == self.pid.spec_value()
+372 | |                 && post.capabilities == self.capabilities
+373 | |                 && post.mutex_count == self.mutex_count
+...   |
+379 | |                 && post.pmio_ports@ =~= self.pmio_ports@.push(port_number)
+380 | |                 ==> post.wf(),
+    | |_____________________________^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/process/state/process_state.proof.rs:380:21
+    |
+380 |                 ==> post.wf(),
+    |                     ^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> kernel/pm/process/state/process_state.proof.rs:370:13
+    |
+370 | /             forall|post: ProcessState|
+371 | |                 post.pid.spec_value() == self.pid.spec_value()
+372 | |                 && post.capabilities == self.capabilities
+373 | |                 && post.mutex_count == self.mutex_count
+...   |
+379 | |                 && post.pmio_ports@ =~= self.pmio_ports@.push(port_number)
+380 | |                 ==> post.wf(),
+    | |_____________________________^
+
+verification results:: 43 verified, 4 errors (partial verification with `--verify-*`)
+error: aborting due to 5 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 43
+Errors: 4
+Status: FAILED
+No changes to commit in verus/
