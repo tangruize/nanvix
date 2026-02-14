@@ -1,0 +1,74 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 15:03:39 CST 2026
+Module: kernel::pm::process::state::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::running
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/running.rs:558:13
+    |
+558 | /             (tag == JOIN_TAG_ZOMBIE) ==> (
+559 | |                 (exists|idx: int|
+560 | |                     0 <= idx < old(self)@.zombie_thread_ids.len()
+561 | |                     && old(self)@.zombie_thread_ids[idx] == tid as int
+...   |
+564 | |                 && self@.zombie_thread_ids.len() == old(self)@.zombie_thread_ids.len() - 1
+565 | |             ),
+    | |_____________^ failed this postcondition
+...
+572 | /         if tag == JOIN_TAG_ZOMBIE {
+573 | |             // Zombie found — remove it from the zombie list.
+574 | |             proof {
+575 | |                 assert(old(self).spec_has_zombie_thread(tid));
+...   |
+652 | |             tag
+653 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/running.rs:678:13
+    |
+678 |             result@ == self@.find_thread(tid as int),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+679 |     {
+680 |         Ghost(self.spec_find_thread(tid))
+    |               -------------------------- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/pm/process/state/running.rs:702:13
+    |
+702 |             result@ == old(self)@.find_thread(tid as int),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+707 |         Ghost(old(self).spec_find_thread(tid))
+    |               ------------------------------- at the end of the function body
+
+error: postcondition not satisfied
+    --> kernel/pm/process/state/running.rs:1164:17
+     |
+1164 |                   Ok(r) => {
+     |                   ^^^^^ failed this postcondition
+...
+1267 | /         Ok(RunningProcess {
+1268 | |             pid,
+1269 | |             running_thread_id,
+1270 | |             ready_thread_ids,
+...    |
+1277 | |             zombie_count,
+1278 | |         })
+     | |__________- at the end of the function body
+
+verification results:: 40 verified, 4 errors (partial verification with `--verify-*`)
+error: aborting due to 4 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 40
+Errors: 4
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::running (verified:40, errors:4)
