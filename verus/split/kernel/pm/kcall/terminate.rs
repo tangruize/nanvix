@@ -538,4 +538,42 @@ pub fn terminate_model(
     }
 }
 
+/// Exec wrapper matching the original `terminate(pm, args)` signature.
+///
+/// # Description
+///
+/// This function mirrors the original `pub fn terminate(pm, args) -> KcallResult`
+/// control flow using model types. It delegates to `terminate_model` for the
+/// verified logic and returns only the `KcallResultModel`.
+///
+/// Parameter abstraction: `pm: &mut ProcessManager` is replaced by
+/// `Ghost<ProcessManagerStateView>` and `args: &KcallArgs` is replaced by
+/// `arg0: u32` (the raw PID extracted from `args.arg0`).
+///
+/// # Parameters
+///
+/// - `arg0`: The raw u32 argument encoding the target process identifier.
+/// - `Ghost(pm_pre)`: Ghost PM state before the call.
+///
+/// # Returns
+///
+/// A `KcallResultModel` representing the kcall outcome.
+pub fn terminate(
+    arg0: u32,
+    Ghost(pm_pre): Ghost<ProcessManagerStateView>,
+) -> (result: KcallResultModel)
+    requires
+        spec_pm_wf(pm_pre),
+    ensures
+        // Success requires both PID parse and PM terminate to succeed.
+        spec_is_success(result.spec_view()) || spec_is_error(result.spec_view()),
+        // Kernel PID always fails (PID 0 parses successfully per axiom and PM rejects it).
+        arg0 as nat == KERNEL_PID() ==> spec_is_error(result.spec_view()),
+{
+    // Delegate to the fully verified model, discarding ghost witnesses.
+    let ret: (KcallResultModel, Ghost<PidParseOutcomeView>, Ghost<TerminateOutcomeView>, Ghost<ProcessManagerStateView>) =
+        terminate_model(arg0, Ghost(pm_pre));
+    ret.0
+}
+
 } // verus!
