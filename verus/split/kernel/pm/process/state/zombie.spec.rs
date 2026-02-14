@@ -110,28 +110,28 @@ pub struct ZombieProcessView {
 
 impl ZombieProcess {
     /// Spec function: returns the process identifier value.
-    spec fn spec_pid(&self) -> u64 {
+    pub open spec fn spec_pid(&self) -> u64 {
         self.pid
     }
 
     /// Spec function: returns the exit status.
-    spec fn spec_status(&self) -> i64 {
+    pub open spec fn spec_status(&self) -> i64 {
         self.status
     }
 
     /// Spec function: returns the number of zombie threads.
-    spec fn spec_zombie_count(&self) -> nat {
+    pub open spec fn spec_zombie_count(&self) -> nat {
         self.zombie_thread_ids@.len()
     }
 
     /// Spec helper: checks if a sequence contains a given value.
-    spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
+    pub open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
     /// Spec function: checks if a thread ID is in the zombie list.
     /// Defined in terms of `spec_seq_contains` for consistency.
-    spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
+    pub open spec fn spec_has_zombie_thread(&self, tid: u64) -> bool {
         Self::spec_seq_contains(self.zombie_thread_ids@, tid)
     }
 
@@ -141,7 +141,7 @@ impl ZombieProcess {
     /// - `None` if not found.
     ///
     /// ZombieProcess only has one thread list, so the search is straightforward.
-    spec fn spec_find_thread(&self, tid: u64) -> Option<u64> {
+    pub open spec fn spec_find_thread(&self, tid: u64) -> Option<u64> {
         if self.spec_has_zombie_thread(tid) {
             Some(0u64)
         } else {
@@ -150,7 +150,7 @@ impl ZombieProcess {
     }
 
     /// Spec helper: checks whether a sequence has no duplicate elements.
-    spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
+    pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
             ==> s[i] != s[j]
     }
@@ -197,7 +197,7 @@ impl ZombieProcess {
     /// In the original code, `state_mut()` allows changing ProcessState
     /// fields (e.g., capabilities) but must not change the process identity
     /// (PID), the zombie thread list, or the exit status.
-    spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
+    pub open spec fn mutation_frame_preserved(old_self: &Self, new_self: &Self) -> bool {
         &&& new_self.spec_pid() == old_self.spec_pid()
         &&& new_self.zombie_thread_ids@ == old_self.zombie_thread_ids@
         &&& new_self.spec_status() == old_self.spec_status()
@@ -226,7 +226,7 @@ impl ZombieProcess {
     ///    first-match and existential are equivalent.
     /// 4. Use `lemma_predicate_obligation_implies_search_equivalence` (with
     ///    explicit `real_ids`) to bridge the gap.
-    spec fn spec_find_thread_integration_obligation(
+    pub open spec fn spec_find_thread_integration_obligation(
         &self, tid: u64, real_result: Option<u64>,
     ) -> bool {
         real_result == self.spec_find_thread(tid)
@@ -248,7 +248,7 @@ impl ZombieProcess {
     /// `ghost_id` is the ghost model's integer ID for a thread at some index.
     /// `real_id` is the value returned by `ZombieThread::id()` for the same
     /// thread. The obligation requires these are equal.
-    spec fn spec_find_thread_search_predicate_obligation(
+    pub open spec fn spec_find_thread_search_predicate_obligation(
         ghost_id: u64, real_id: u64,
     ) -> bool {
         ghost_id == real_id
@@ -267,7 +267,7 @@ impl ZombieProcess {
     /// cannot model mutable borrow lifetimes. It must be discharged at each
     /// call site. `old_tid` is the thread's ID before mutation; `new_tid` is
     /// after. The obligation requires identity preservation.
-    spec fn spec_find_thread_mut_caller_obligation(
+    pub open spec fn spec_find_thread_mut_caller_obligation(
         old_tid: u64, new_tid: u64,
     ) -> bool {
         old_tid == new_tid
@@ -289,7 +289,7 @@ impl ZombieProcess {
     /// This obligation is thus **discharged** by the verified `process_state`
     /// module (a listed dependency). Retained here as documentation of the
     /// cross-module contract.
-    spec fn spec_state_mut_pid_stability_obligation(
+    pub open spec fn spec_state_mut_pid_stability_obligation(
         pid_before: u64, pid_after: u64,
     ) -> bool {
         pid_before == pid_after
@@ -305,7 +305,7 @@ impl ZombieProcess {
     /// postconditions). The only construction site is `ZombieProcess::new()`
     /// which receives `Box<ProcessState>` — the integration proof must show
     /// that the ghost `pid` parameter equals the real `process.pid()`.
-    spec fn spec_process_state_pid_integration_obligation(
+    pub open spec fn spec_process_state_pid_integration_obligation(
         ghost_pid: u64, real_pid: u64,
     ) -> bool {
         ghost_pid == real_pid
@@ -347,7 +347,7 @@ impl ZombieProcess {
     ///
     /// `ghost_ids` and `real_ids` are the ghost and real thread ID sequences.
     /// The obligation requires they match.
-    spec fn spec_bury_ownership_integration_obligation(
+    pub open spec fn spec_bury_ownership_integration_obligation(
         ghost_ids: Seq<u64>, real_ids: Seq<u64>,
         ghost_pid: u64, real_pid: u64,
         ghost_status: i64, real_status: i64,
