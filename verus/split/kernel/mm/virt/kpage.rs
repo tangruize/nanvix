@@ -313,6 +313,7 @@ impl KernelPage {
     /// - The returned page satisfies its invariant
     /// - The page address equals the frame address (identity mapping)
     /// - The frame's provenance (pool_id) is preserved
+    // Exec equivalence: `KernelPage { kframe }` ≡ original `Self { kframe }`.
     pub fn new(kframe: KernelFrame) -> (result: KernelPage)
         requires
             kframe.spec_is_aligned(),
@@ -359,7 +360,10 @@ impl KernelPage {
             // Use lemma to connect closed specs to FrameAddress properties.
             self.kframe.lemma_alignment_connection();
         }
-        // For identity mapping, use the frame address directly as the page address.
+        // Original code: PageAddress::new(self.kframe.base().into_page_address().into_virtual_address())
+        // Verus limitation: into_page_address()/into_virtual_address() are not available on the
+        // simplified verus FrameAddress. Under identity mapping, both chains produce the same raw
+        // address value (see module-level docs for equivalence proof).
         let frame_addr: FrameAddress = self.kframe.base();
         PageAddress::new(frame_addr.into_raw_value())
     }
@@ -374,6 +378,7 @@ impl KernelPage {
     /// # Returns
     ///
     /// The frame address of the kernel page.
+    // Exec logic matches original: self.kframe.base(). Proof block is ghost-only.
     pub fn frame_address(&self) -> (result: FrameAddress)
         requires
             self.inv(),
