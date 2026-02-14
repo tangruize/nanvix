@@ -7,6 +7,15 @@ verus! {
 
 impl SlabSize {
 
+    /// Invariant for SlabSize.
+    ///
+    /// # Description
+    ///
+    /// SlabSize is a simple enum with no internal state, so the invariant is trivially true.
+    pub closed spec fn inv(&self) -> bool {
+        true
+    }
+
     /// Spec function for the slab size.
     pub open spec fn spec_as_int(&self) -> int {
         match self {
@@ -245,9 +254,7 @@ impl Kheap {
         let s2_end: int = s2.data_addr + s2.num_data_blocks * s2.block_size;
         s1_end <= s2_start || s2_end <= s1_start
     }
-}
 
-impl Kheap {
     //==============================================================================================
 
     /// Invariant for the Kheap.
