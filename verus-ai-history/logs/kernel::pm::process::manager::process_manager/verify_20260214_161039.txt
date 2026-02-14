@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:10:39 CST 2026
+Module: kernel::pm::process::manager::process_manager
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::manager::process_manager
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::manager::process_manager
+
+error: postcondition not satisfied
+    --> kernel/pm/process/manager/process_manager.rs:1192:13
+     |
+1178 |     pub fn full_schedule(&mut self, chosen_next: i32)
+     |     ------------------------------------------------- at the end of the function body
+...
+1192 |             self@.interrupted_pids =~= Set::<int>::empty(),
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 111 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 8s
+Exit code: 1
+
+=== Summary ===
+Verified: 111
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::manager::process_manager (verified:111, errors:1)
