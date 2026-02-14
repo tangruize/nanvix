@@ -47,6 +47,7 @@ impl FrameNumber {
         ensures
             result is Some ==> {
                 let frame = result->Some_0;
+                &&& frame.inv()
                 &&& frame.spec_raw_value() == value as int
                 &&& value <= MAX_FRAME_NUMBER
             },
@@ -88,6 +89,7 @@ impl FrameAddress {
             result is Ok,
             result is Ok ==> {
                 let addr = result->Ok_0;
+                &&& addr.inv()
                 &&& addr.spec_frame_number() == frame_number.spec_raw_value()
                 &&& addr.spec_is_aligned()
                 &&& addr.spec_raw_value() == frame_number.spec_raw_value() * FRAME_SIZE as int
@@ -108,7 +110,9 @@ impl FrameAddress {
     /// Converts a FrameAddress into a frame number.
     pub fn into_frame_number(self) -> (result: FrameNumber)
         requires self.spec_is_aligned(),
-        ensures result.spec_raw_value() == self.spec_frame_number()
+        ensures
+            result.inv(),
+            result.spec_raw_value() == self.spec_frame_number(),
     {
         FrameNumber { value: self.raw_addr / FRAME_SIZE }
     }
@@ -138,6 +142,7 @@ impl PageAlignedPhysAddr {
         ensures
             result is Ok ==> {
                 let pa = result->Ok_0;
+                &&& pa.inv()
                 &&& pa.spec_raw_value() == addr as int
                 &&& addr % FRAME_SIZE == 0
             },
@@ -152,7 +157,10 @@ impl PageAlignedPhysAddr {
 
     /// Gets the frame number.
     pub fn into_frame_number(self) -> (result: FrameNumber)
-        ensures result.spec_raw_value() == self.spec_frame_number()
+        requires self.inv(),
+        ensures
+            result.inv(),
+            result.spec_raw_value() == self.spec_frame_number(),
     {
         FrameNumber { value: self.raw_addr / FRAME_SIZE }
     }
