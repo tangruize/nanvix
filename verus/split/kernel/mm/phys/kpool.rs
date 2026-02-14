@@ -384,6 +384,8 @@ impl Kpool {
                 let frame_idx: int = kframe@.frame_number;
                 // The frame satisfies its invariant.
                 &&& kframe.inv()
+                // The frame address is page-aligned (exposed for external modules).
+                &&& kframe.spec_is_aligned()
                 // The frame index is valid.
                 &&& 0 <= frame_idx < self@.capacity()
                 // The frame is now allocated.
