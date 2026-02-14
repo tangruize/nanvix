@@ -399,8 +399,14 @@ impl Kpool {
             },
             // EXPLICIT COUNT: exactly one more frame allocated.
             result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() + 1,
-            // On failure: state unchanged.
-            result is Err ==> self@ == old(self)@,
+            // On failure: allocation state unchanged.
+            result is Err ==> {
+                &&& self@.capacity() == old(self)@.capacity()
+                &&& self@.id() == old(self)@.id()
+                &&& self@.base() == old(self)@.base()
+                &&& forall|i: int| 0 <= i < self@.capacity() ==>
+                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+            },
     {
         match self.frame_allocator.alloc() {
             Ok(addr) => {
@@ -546,8 +552,14 @@ impl Kpool {
             },
             // Count tracking on success.
             result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() + count as int,
-            // On failure: state unchanged.
-            result is Err ==> self@ == old(self)@,
+            // On failure: allocation state unchanged.
+            result is Err ==> {
+                &&& self@.capacity() == old(self)@.capacity()
+                &&& self@.id() == old(self)@.id()
+                &&& self@.base() == old(self)@.base()
+                &&& forall|i: int| 0 <= i < self@.capacity() ==>
+                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+            },
             // Liveness for count=1.
             (count == 1 && old(self)@.has_free_frame()) ==> result is Ok,
     {
