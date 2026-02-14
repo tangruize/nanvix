@@ -190,6 +190,15 @@ verus! {
 /// The `value` field is `pub` as required by Verus for `pub open spec fn` access.
 /// Per Nanvix coding standards, struct fields should be private with getter/setter
 /// access; this is an exception due to Verus tooling constraints.
+///
+/// # Struct Divergence (AST-consistency)
+///
+/// The original struct has fields `value: AtomicUsize` and `sleeping: Condvar`.
+/// Verus cannot model `AtomicUsize` or `Condvar` directly, so:
+/// - `AtomicUsize` is replaced by plain `usize` (sequential model).
+/// - `Condvar` is omitted; its sleep/wake protocol is modeled at the spec
+///   level via `spec_down_blocking()` and `spec_wake()`.
+/// See "Verification Model" in module docs for the refinement argument.
 pub struct Semaphore {
     /// Current count of available resources.
     pub value: usize,
@@ -209,6 +218,13 @@ impl Semaphore {
     /// # Returns
     ///
     /// A new `Semaphore` with the specified initial value and no waiters.
+    ///
+    /// # Exec Equivalence (AST-consistency)
+    ///
+    /// Original: `Self { value: AtomicUsize::new(value), sleeping: Condvar::new() }`.
+    /// Verus: `Semaphore { value: value }`. Semantically equivalent — both
+    /// initialize the resource count to `value`. The `AtomicUsize::new` and
+    /// `Condvar::new` calls are replaced per the struct divergence (see above).
     pub fn new(value: usize) -> (result: Self)
         ensures
             result@ == Semaphore::spec_new_view(value as nat),
@@ -219,6 +235,54 @@ impl Semaphore {
     {
         proof { reveal(Semaphore::wf); }
         Semaphore { value: value }
+    }
+
+    /// Acquires the semaphore, decrementing the count by 1.
+    ///
+    /// # Description
+    ///
+    /// Models the original `down(&self) -> Result<(), SleepError>`. The original
+    /// loops with `AtomicUsize::fetch_update` + `Condvar::wait` until the value
+    /// is successfully decremented. In the sequential Verus model, the loop and
+    /// condvar cannot be represented directly; this function models the
+    /// instant-success path (value > 0) with a precondition. The blocking path
+    /// (value == 0) is modeled by `down_or_block()` which returns `WouldBlock`,
+    /// and the sleep/wake protocol is modeled at the spec level via
+    /// `spec_down_blocking()` and `spec_wake()`.
+    ///
+    /// # Safety (Original)
+    ///
+    /// The original `down()` is `unsafe` and requires: interrupts disabled,
+    /// caller is not the kernel process, and no resources are held. These
+    /// conditions are encoded via the ghost `CallerContext` parameter (see T4).
+    ///
+    /// # Parameters
+    ///
+    /// - `ctx`: Ghost caller context proving safety conditions are satisfied.
+    ///
+    /// # Returns
+    ///
+    /// The semaphore with value decremented by 1.
+    ///
+    /// # Exec Equivalence (AST-consistency)
+    ///
+    /// Original uses `&self` + `AtomicUsize::fetch_update` in a loop, returning
+    /// `Result<(), SleepError>`. Verus uses `&mut self` (sequential mutation model)
+    /// with a precondition `spec_is_available()` that guarantees success, making
+    /// the loop and error path unnecessary. The return type `()` corresponds to
+    /// the `Ok(())` path. See "API Divergence" in module docs.
+    pub fn down(&mut self, ctx: Ghost<CallerContext>)
+        requires
+            old(self).wf(),
+            old(self).spec_is_available(),
+            ctx@.safe_for_down(),
+        ensures
+            self@.value == old(self)@.value - 1,
+            self@.waiters == old(self)@.waiters,
+            self.wf(),
+    {
+        proof { reveal(Semaphore::wf); }
+        self.value = self.value - 1;
     }
 
     /// Acquires the semaphore, decrementing the count by 1 (instant-success path).
@@ -243,6 +307,12 @@ impl Semaphore {
     /// # Returns
     ///
     /// The semaphore with value decremented by 1.
+    ///
+    /// # Extra Function Justification (AST-consistency)
+    ///
+    /// Not in original API. Extracted as a verification helper that isolates the
+    /// instant-success path of `down()` with an explicit availability precondition.
+    /// Used by proofs that need the stronger guarantee that acquisition always succeeds.
     pub fn down_available(&mut self, ctx: Ghost<CallerContext>)
         requires
             old(self).wf(),
@@ -285,6 +355,14 @@ impl Semaphore {
     ///
     /// `DownOutcome::Acquired` if the semaphore was available and acquired,
     /// `DownOutcome::WouldBlock` if the semaphore was exhausted.
+    ///
+    /// # Extra Function Justification (AST-consistency)
+    ///
+    /// Not in original API. Decomposition of the original `down()` that models
+    /// both the instant-success and would-block paths without a loop or condvar.
+    /// Returns `DownOutcome` so callers can reason about both paths. The original
+    /// `down()` loop is unrolled: one iteration's decision is captured here, and
+    /// the blocking/waking protocol is modeled at the spec level.
     pub fn down_or_block(&mut self, ctx: Ghost<CallerContext>) -> (result: DownOutcome)
         requires
             old(self).wf(),
@@ -320,6 +398,18 @@ impl Semaphore {
     /// # Returns
     ///
     /// `true` if the semaphore was acquired, `false` otherwise.
+    ///
+    /// # Exec Equivalence (AST-consistency)
+    ///
+    /// Original: `fn try_down(&self) -> Result<(), Error>` using
+    /// `AtomicUsize::fetch_update`. Returns `Ok(())` on success,
+    /// `Err(ErrorCode::TryAgain)` when exhausted.
+    /// Verus: `fn try_down(&mut self) -> bool`. Returns `true` ≡ `Ok(())`,
+    /// `false` ≡ `Err(TryAgain)`. The decision logic is identical:
+    /// `if value > 0 { value -= 1; success } else { fail }`.
+    /// Signature changes: `&mut self` for sequential mutation model,
+    /// `bool` return because `Result`/`Error` types are not modeled.
+    /// See `spec_try_down_result_maps_ok()` for the formal mapping.
     pub fn try_down(&mut self) -> (result: bool)
         requires
             old(self).wf(),
@@ -366,6 +456,18 @@ impl Semaphore {
     /// `fetch_add(1, SeqCst)` can silently wrap in release builds; the verified
     /// model makes this an explicit precondition. Callers should establish this
     /// bound from the resource pool size or system invariant.
+    ///
+    /// # Exec Equivalence (AST-consistency)
+    ///
+    /// Original: `unsafe fn up(&self) -> Result<(), Error>` with
+    /// `self.value.fetch_add(1, SeqCst); self.sleeping.notify_first().map(|_| ())`
+    /// Verus: `fn up(&mut self, ctx: Ghost<CallerContext>)` with
+    /// `self.value = self.value + 1`.
+    /// Core increment logic is identical. Differences:
+    /// - `&mut self` for sequential model (vs `&self` + atomics).
+    /// - `notify_first()` omitted; modeled at spec level via `spec_wake()`.
+    /// - Returns `()` instead of `Result<(), Error>` (see T5: notify success assumed).
+    /// - Ghost `ctx` parameter encodes original `unsafe` preconditions.
     pub fn up(&mut self, ctx: Ghost<CallerContext>)
         requires
             old(self).wf(),
@@ -391,6 +493,12 @@ impl Semaphore {
     /// # Returns
     ///
     /// The current count of available resources.
+    ///
+    /// # Extra Function Justification (AST-consistency)
+    ///
+    /// Not in original API. Verification helper providing exec-level access to
+    /// the value with a spec-connected postcondition (`result as nat == self@.value`).
+    /// Required for proofs that need to bridge exec and spec state.
     pub fn get_value(&self) -> (result: usize)
         requires
             self.wf(),
@@ -411,6 +519,12 @@ impl Semaphore {
     /// # Returns
     ///
     /// `true` if the semaphore value is greater than zero, `false` otherwise.
+    ///
+    /// # Extra Function Justification (AST-consistency)
+    ///
+    /// Not in original API. Verification helper providing exec-level availability
+    /// check with a spec-connected postcondition (`result == self.spec_is_available()`).
+    /// Enables proofs to establish availability from exec state.
     pub fn is_available(&self) -> (result: bool)
         requires
             self.wf(),
