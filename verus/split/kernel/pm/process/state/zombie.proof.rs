@@ -98,6 +98,7 @@ impl ZombieProcess {
             new_self.inv(),
     {
         reveal(ZombieProcess::inv);
+        reveal(ZombieProcess::mutation_frame_preserved);
     }
 
     //==============================================================================================
