@@ -864,6 +864,87 @@ impl RunnableProcess {
         Ok(result_proc)
     }
 
+    /// Returns the process identifier.
+    ///
+    /// Models the original `RunnableProcess::state().pid`.
+    /// The original `state()` returns `&ProcessState`, but since ProcessState is
+    /// abstracted to just a PID in this verification model, this function returns
+    /// a copy of the ProcessIdentifier directly.
+    ///
+    /// # Verus Limitation
+    ///
+    /// The original `state()` returns a reference (`&ProcessState`), and
+    /// `state_mut()` returns a mutable reference (`&mut ProcessState`).
+    /// Verus cannot express these borrow-returning accessors. The PID (which is
+    /// the only property tracked in this model) is exposed via this function and
+    /// `pid_i32()`.
+    pub fn state(&self) -> (result: ProcessIdentifier)
+        ensures
+            result.spec_value() == self@.pid,
+    {
+        self.pid
+    }
+
+    /// Returns the earliest admission time among ready threads.
+    ///
+    /// Models the original `RunnableProcess::earliest_admission_time()`.
+    /// The original returns `SystemTime`, which maps to `i64` in our model.
+    /// The original has a fallback `unwrap_or(clock::now())` for the empty
+    /// iterator case, but that is dead code since `NonEmptyVecDeque` guarantees
+    /// at least one element. This implementation omits the unreachable fallback.
+    ///
+    /// # Returns
+    ///
+    /// The minimum admission time among all ready threads.
+    pub fn earliest_admission_time(&self) -> (result: i64)
+        requires
+            self.wf(),
+        ensures
+            result == self.spec_earliest_admission_time(),
+            result >= 0i64,
+    {
+        proof { reveal(RunnableProcess::wf); }
+        let mut min_time: i64 = self.ready_admission_times[0];
+        let mut i: usize = 1;
+        while i < self.ready_admission_times.len()
+            invariant
+                1 <= i <= self.ready_admission_times@.len(),
+                0 <= min_time,
+                self.wf(),
+                exists|k: int| 0 <= k < i as int
+                    && self.ready_admission_times@[k] == min_time,
+                forall|j: int| 0 <= j < i as int
+                    ==> min_time <= self.ready_admission_times@[j],
+            decreases self.ready_admission_times@.len() - i,
+        {
+            if self.ready_admission_times[i] < min_time {
+                min_time = self.ready_admission_times[i];
+            }
+            i = i + 1;
+        }
+        proof {
+            // The loop computes the minimum, which equals the value at
+            // spec_earliest_ready_index().
+            let min_idx: int = self.spec_earliest_ready_index();
+            Self::lemma_min_index_rec_bounds(
+                &self.ready_admission_times@,
+                self.ready_admission_times@.len() as int,
+            );
+            // min_idx is a valid index with a minimal value.
+            assert(0 <= min_idx < self.ready_admission_times@.len());
+            assert(forall|j: int| 0 <= j < self.ready_admission_times@.len()
+                ==> self.ready_admission_times@[min_idx]
+                    <= self.ready_admission_times@[j]);
+            // min_time is also a minimum over all elements.
+            assert(forall|j: int| 0 <= j < self.ready_admission_times@.len()
+                ==> min_time <= self.ready_admission_times@[j]);
+            // Both are minimums, so they must be equal.
+            assert(min_time <= self.ready_admission_times@[min_idx]);
+            assert(self.ready_admission_times@[min_idx] <= min_time);
+        }
+        min_time
+    }
+
     /// Adds a thread to the ready queue.
     ///
     /// Models the original `RunnableProcess::add_thread(ready_thread)`.
