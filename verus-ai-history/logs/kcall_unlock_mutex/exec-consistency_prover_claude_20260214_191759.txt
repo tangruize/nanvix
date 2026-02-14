@@ -1,0 +1,187 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T19:19:12.975170
+Model: claude-opus-4.6-fast
+Session: 039940b5-0ef0-4d73-824d-08c7cec72ab6
+Duration: 73.0s
+Exit code: 0
+
+=== Prompt ===
+Fix exec code inconsistencies for kcall_unlock_mutex detected by AST analysis.
+
+Original source: src/kernel/src/pm/kcall/unlock_mutex.rs
+Verified code directory: verus/split/kernel/pm/kcall/
+  - unlock_mutex.rs (exec)
+  - unlock_mutex.spec.rs (spec)
+  - unlock_mutex.proof.rs (proof)
+
+== TREE-SITTER AST DIFF REPORT ==
+
+The following inconsistencies were detected by comparing AST hashes of exec
+functions between the original source and the verified version (ghost/proof
+annotations are stripped before comparison):
+
+# Exec Consistency Report
+
+**Source:** `/home/ubuntu/nanvix/src/kernel/src/pm/kcall/unlock_mutex.rs`
+**Verus:** `/home/ubuntu/nanvix/verus/split/kernel/pm/kcall/unlock_mutex.rs`
+
+## Summary
+
+- Functions matched: 0/1
+- Functions mismatched: 0
+- Missing in Verus: 1
+- Extra in Verus: 3
+- **Consistent: NO**
+
+## Inconsistent Functions
+
+| Function | Status | Source Lines | Verus Lines |
+|----------|--------|-------------|-------------|
+| `unlock_mutex` | MISSING_IN_VERUS | 46-60 |  |
+| `drop_guard_model` | EXTRA_IN_VERUS |  | 316-325 |
+| `take_mutex_guard_model` | EXTRA_IN_VERUS |  | 264-296 |
+| `unlock_mutex_model` | EXTRA_IN_VERUS |  | 354-420 |
+
+## All Functions
+
+| Function | Status | Hash Match |
+|----------|--------|------------|
+| `unlock_mutex` | MISSING_IN_VERUS | ❌ |
+| `drop_guard_model` | EXTRA_IN_VERUS | ❌ |
+| `take_mutex_guard_model` | EXTRA_IN_VERUS | ❌ |
+| `unlock_mutex_model` | EXTRA_IN_VERUS | ❌ |
+
+
+== YOUR TASK ==
+
+For each inconsistency:
+
+1. **MISMATCH functions**: Compare the source and verus versions side by side.
+   - If the verus version changed executable logic: RESTORE the original logic
+     and update specs/proofs to verify the original code.
+   - If the change is purely structural but semantically equivalent (e.g.,
+     variable renaming, reordering): document WHY it is equivalent.
+   - If the change was necessary for verification (Verus limitation): document
+     the limitation and prove the equivalence informally.
+
+2. **MISSING_IN_VERUS functions**: Add the missing function to the verus exec
+   file with proper verification (requires/ensures).
+
+3. **EXTRA_IN_VERUS exec functions**: Remove unless justified (helper functions
+   extracted for verification are acceptable if documented).
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+- For each change, write a brief justification comment.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh kcall_unlock_mutex
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/ast-consistency/kcall_unlock_mutex_20260214_191759_fix.md:
+
+```markdown
+# Exec Consistency Fix: kcall_unlock_mutex
+
+## Summary
+- Mismatches fixed: N
+- Missing functions added: M
+- Documented equivalences: K
+
+## Changes
+| Function | Action | Justification |
+|----------|--------|---------------|
+
+## Verification: PASS/FAIL
+```
+
+=== Output ===
+
+
+
+
+● Read verus/split/kernel/pm/kcall/unlock_mutex.rs
+  └ 422 lines read
+
+● Read src/kernel/src/pm/kcall/unlock_mutex.rs
+  └ 60 lines read
+
+● Read verus/split/kernel/pm/kcall/unlock_mutex.spec.rs
+  └ 243 lines read
+
+● Read verus/split/kernel/pm/kcall/unlock_mutex.proof.rs
+  └ 243 lines read
+
+Let me check how other Verus modules name their functions and run the verification script to understand the baseline.
+
+● Check verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh
+  └ 199 lines...
+
+● List verus kcall files
+  $ ls /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/
+  └ 6 lines...
+
+● Find references to unlock_mutex_model
+  $ grep -l "fn unlock_mutex_model\|fn unlock_mutex"
+  /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/*.rs
+  /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/*.proof.rs
+  /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/*.spec.rs 2>/dev/null || true
+  └ 2 lines...
+
+Let me check the naming conventions in other Verus kcall modules.
+
+● Check naming conventions in other Verus kcall files
+  $ grep -n "^pub fn\|^pub unsafe fn" /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/lock_mutex.rs
+  /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/sleep.rs
+  /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/terminate.rs 2>/dev/null | head -30
+  └ 19 lines...
+
+● Check original function names
+  $ grep -n "^pub fn\|^pub unsafe fn" /home/ubuntu/nanvix/src/kernel/src/pm/kcall/lock_mutex.rs
+  /home/ubuntu/nanvix/src/kernel/src/pm/kcall/sleep.rs
+  /home/ubuntu/nanvix/src/kernel/src/pm/kcall/terminate.rs 2>/dev/null | head -30
+  └ 4 lines...
+
+● Read verus/split/kernel/pm/kcall/lock_mutex.rs lines 737-790
+  └ 26 lines read
+
+● Read verus/split/kernel/pm/kcall/sleep.rs lines 652-700
+  └ 14 lines read
+
+Now I understand the pattern. Other Verus kcall modules (e.g., `lock_mutex`, `sleep`) have a wrapper function with the **original name** that calls the `_model` function. The `unlock_mutex` module is missing this wrapper.
+
+● Edit verus/split/kernel/pm/kcall/unlock_mutex.rs (+45)
+
+Now let me run verification:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh kcall_unlock_mutex 2>&1 | tail -30
+  └ 25 lines...
+
+Verification passed with 13 verified, 0 errors. Now let me create the report:
+
+● Create report directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/ast-consistency
+  └ 1 line...
+
+● Create verus-ai-history/ast-consistency/kcall_unlock_mutex_20260214_191759_fix.md (+20)
+
+● Commit the report
+  $ cd /home/ubuntu/nanvix && git add
+  verus-ai-history/ast-consistency/kcall_unlock_mutex_20260214_191759_fix.md && git commit -m "Add
+  AST consistency fix report for kcall_unlock_mutex
+
+  Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+  └ 4 lines...
+
+
+Total usage est:        9 Premium requests
+API time spent:         52s
+Total session time:     1m 11.662s
+Total code changes:     +65 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    514.8k in, 6.5k out, 473.9k cached (Est. 9 Premium requests)
+
+=== End ===
