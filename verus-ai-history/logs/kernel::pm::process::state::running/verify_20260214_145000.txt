@@ -1,0 +1,65 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:50:00 CST 2026
+Module: kernel::pm::process::state::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/running.spec.rs:468:13
+    |
+467 |         let combined_interrupted: Seq<u64> =
+    |                                   -------- expected due to this
+468 |             self.interrupted_thread_ids.add(self.sleeping_thread_ids);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Seq<u64>`, found `Seq<int>`
+    |
+    = note: expected struct `vstd::seq::Seq<u64>`
+               found struct `vstd::seq::Seq<vstd::prelude::int>`
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/running.spec.rs:471:56
+    |
+471 |             ready_thread_ids: Seq::<int>::empty().push(combined_interrupted[0]),
+    |                                                   ---- ^^^^^^^^^^^^^^^^^^^^^^^ expected `int`, found `u64`
+    |                                                   |
+    |                                                   arguments to this method are incorrect
+    |
+help: the return type of this call is `u64` due to the type of the argument passed
+   --> kernel/pm/process/state/running.spec.rs:471:31
+    |
+471 |             ready_thread_ids: Seq::<int>::empty().push(combined_interrupted[0]),
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^-----------------------^
+    |                                                        |
+    |                                                        this argument influences the return type of `push`
+note: method defined here
+   --> /home/runner/work/verus/verus/source/vstd/seq.rs:80:26
+
+error[E0308]: mismatched types
+   --> kernel/pm/process/state/running.spec.rs:472:37
+    |
+472 |               interrupted_thread_ids: combined_interrupted.subrange(
+    |  _____________________________________^
+473 | |                 1, combined_interrupted.len() as int),
+    | |_____________________________________________________^ expected `Seq<int>`, found `Seq<u64>`
+    |
+    = note: expected struct `vstd::seq::Seq<vstd::prelude::int>`
+               found struct `vstd::seq::Seq<u64>`
+
+error[E0063]: missing fields `pid`, `ready_thread_ids` and `running_thread_id` in initializer of `kernel::pm::process::state::running::RunningProcess`
+   --> kernel/pm/process/state/running.rs:424:9
+    |
+424 |         RunningProcess {
+    |         ^^^^^^^^^^^^^^ missing `pid`, `ready_thread_ids` and `running_thread_id`
+
+error: aborting due to 4 previous errors
+
+Some errors have detailed explanations: E0063, E0308.
+For more information about an error, try `rustc --explain E0063`.
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::running (verified:0, errors:0)
