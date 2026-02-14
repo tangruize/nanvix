@@ -107,6 +107,17 @@ verus! {
 /// to collect its exit status and release its resources.
 ///
 /// Verification model of `src/kernel/src/pm/process/state/zombie.rs::ZombieProcess`.
+///
+/// ## AST Equivalence: Struct Fields
+///
+/// Original fields → Verus model fields (type abstraction for verification):
+/// - `zombie_threads: NonEmptyVecDeque<ZombieThread>` → `zombie_thread_ids: Vec<u64>` +
+///   `zombie_count: u64` (Verus cannot model `NonEmptyVecDeque<ZombieThread>`; thread
+///   identity is captured by ID, and `zombie_count` tracks length since `Vec` lacks a
+///   non-empty invariant in its type).
+/// - `process: Box<ProcessState>` → `pid: u64` (only process identity is needed;
+///   `ProcessState` has ~9 fields but this module only reasons about PID).
+/// - `status: ExitStatus` → `status: i64` (ExitStatus wraps an integer).
 pub struct ZombieProcess {
     /// Process identifier (from the inner ProcessState).
     pub pid: u64,
@@ -130,6 +141,17 @@ impl ZombieProcess {
     /// implicitly knows its own length. `zombie_count` is a separate exec-level
     /// parameter and callers at integration boundaries must establish
     /// `zombie_count as nat == zombie_ids@.len()`.
+    ///
+    /// ## AST Equivalence: `new`
+    ///
+    /// Original: `fn new(process: Box<ProcessState>, zombie_threads: NonEmptyVecDeque<ZombieThread>, status: ExitStatus) -> Self`
+    /// Verus:    `fn new(pid: u64, zombie_ids: Vec<u64>, status: i64, zombie_count: u64) -> ZombieProcess`
+    ///
+    /// Logic is identical: both perform direct field assignment from parameters.
+    /// Original: `Self { zombie_threads, process, status }`
+    /// Verus:    `ZombieProcess { pid, zombie_thread_ids: zombie_ids, status, zombie_count }`
+    /// Type differences: parameter types abstracted (see struct doc). `zombie_count`
+    /// is added because `Vec<u64>` lacks the non-empty guarantee of `NonEmptyVecDeque`.
     ///
     /// # Parameters
     ///
@@ -175,6 +197,16 @@ impl ZombieProcess {
     /// If future verification needs to reason about other `ProcessState` fields,
     /// this model must be extended.
     ///
+    /// ## AST Equivalence: `state`
+    ///
+    /// Original: `fn state(&self) -> &ProcessState { &self.process }`
+    /// Verus:    `fn state(&self) -> u64 { external_body }`
+    ///
+    /// Verus limitation: cannot model `&ProcessState` reference return.
+    /// Marked `external_body`; postcondition ensures returned value equals
+    /// the modeled PID (`self@.pid`), which is the identity-relevant part
+    /// of `&self.process`. Semantically equivalent for identity reasoning.
+    ///
     /// # Returns
     ///
     /// The process identifier.
@@ -192,6 +224,16 @@ impl ZombieProcess {
     ///
     /// Models the original `ZombieProcess::state_mut()` which returns
     /// `&mut ProcessState`.
+    ///
+    /// ## AST Equivalence: `state_mut`
+    ///
+    /// Original: `fn state_mut(&mut self) -> &mut ProcessState { &mut self.process }`
+    /// Verus:    `fn state_mut(&mut self) -> u64 { external_body }`
+    ///
+    /// Verus limitation: cannot model `&mut ProcessState` mutable reference return.
+    /// Marked `external_body`; postcondition ensures PID is preserved and view
+    /// is unchanged. Semantically equivalent: both provide access to process
+    /// state; PID immutability is verified in the `process_state` module.
     ///
     /// ## PID Immutability (Verified Cross-Module)
     ///
@@ -226,6 +268,15 @@ impl ZombieProcess {
     /// model captures identity preservation (PID, thread IDs, status) with
     /// concrete types.
     ///
+    /// ## AST Equivalence: `bury`
+    ///
+    /// Original: `fn bury(self) -> (...) { (self.zombie_threads, self.process, self.status) }`
+    /// Verus:    `fn bury(self) -> (Vec<u64>, u64, i64) { (self.zombie_thread_ids, self.pid, self.status) }`
+    ///
+    /// Logic is identical: both destructure self and return all fields as a
+    /// tuple in the same order (threads, process/pid, status). Type differences
+    /// are the same abstractions used throughout (see struct doc).
+    ///
     /// # Returns
     ///
     /// A tuple of (zombie_thread_ids, pid, status).
@@ -249,6 +300,17 @@ impl ZombieProcess {
     /// returns, so this is marked `external_body` with the spec contract as
     /// postcondition. `spec_find_thread_integration_obligation` defines the
     /// **unproven** refinement contract.
+    ///
+    /// ## AST Equivalence: `find_thread`
+    ///
+    /// Original: `fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>>`
+    ///           `{ self.zombie_threads.iter().find(|t| t.id() == tid).map(ThreadRef::Zombie) }`
+    /// Verus:    `fn find_thread(&self, tid: u64) -> Ghost<Option<u64>> { external_body }`
+    ///
+    /// Verus limitation: cannot model `Option<ThreadRef<'_>>` (lifetime-carrying
+    /// enum with reference). Marked `external_body`; postcondition ensures
+    /// `Some(0)` iff `tid` is in the zombie thread list, `None` otherwise —
+    /// matching the original's iterator search semantics.
     ///
     /// Returns the abstract list variant:
     /// - `Some(0)`: zombie thread found.
@@ -278,6 +340,16 @@ impl ZombieProcess {
     /// `ZombieProcess::find_thread_mut(tid)`. Same trust scope as
     /// `find_thread()` — see its documentation. The original returns
     /// `Option<ThreadRefMut<'_>>`.
+    ///
+    /// ## AST Equivalence: `find_thread_mut`
+    ///
+    /// Original: `fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut<'_>>`
+    ///           `{ self.zombie_threads.iter_mut().find(|t| t.id() == tid).map(ThreadRefMut::Zombie) }`
+    /// Verus:    `fn find_thread_mut(&mut self, tid: u64) -> Ghost<Option<u64>> { external_body }`
+    ///
+    /// Verus limitation: cannot model `Option<ThreadRefMut<'_>>` (lifetime-carrying
+    /// enum with mutable reference). Marked `external_body`; postcondition ensures
+    /// search result matches spec and frame is preserved (`self@ == old(self)@`).
     ///
     /// ## Caller Obligation (Mutable Access)
     ///
