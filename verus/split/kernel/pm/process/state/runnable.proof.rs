@@ -649,19 +649,36 @@ impl RunnableProcess {
             self@.wf(),
     {
         reveal(RunnableProcess::wf);
+        // Bridge: non-negative i64 implies non-negative int after conversion.
+        assert forall|i: int| 0 <= i < self@.ready_admission_times.len()
+            implies #[trigger] self@.ready_admission_times[i] >= 0
+        by {
+            assert(self@.ready_admission_times[i]
+                == self.ready_admission_times@[i] as int);
+            assert(self.ready_admission_times@[i] >= 0i64);
+        }
     }
 
-    /// Bridging lemma: view-level `spec_min_index_rec` equals exec-level `spec_min_index_rec`.
+    /// Bridging lemma: view-level `spec_min_index_rec` equals exec-level `spec_min_index_rec`
+    /// when the view sequence is derived from the exec sequence via `spec_i64_seq_as_int`.
     pub proof fn lemma_view_min_index_eq(s: Seq<i64>, n: int)
         requires
             1 <= n <= s.len(),
         ensures
-            RunnableProcessView::spec_min_index_rec(s, n)
+            RunnableProcessView::spec_min_index_rec(spec_i64_seq_as_int(s), n)
                 == RunnableProcess::spec_min_index_rec(s, n),
         decreases n,
     {
+        let s_int: Seq<int> = spec_i64_seq_as_int(s);
+        assert(s_int.len() == s.len());
         if n > 1 {
             Self::lemma_view_min_index_eq(s, n - 1);
+            let prev: int = RunnableProcess::spec_min_index_rec(s, n - 1);
+            assert(RunnableProcessView::spec_min_index_rec(s_int, n - 1) == prev);
+            if 0 <= prev < s.len() {
+                assert(s_int[n - 1] == s[n - 1] as int);
+                assert(s_int[prev] == s[prev] as int);
+            }
         }
     }
 
@@ -677,13 +694,13 @@ impl RunnableProcess {
             p.sleeping_thread_ids@.len() == 0,
             p.zombie_thread_ids@.len() == 0,
         ensures
-            p@ == RunnableProcessView::spec_new(pid_val, tid, time),
+            p@ == RunnableProcessView::spec_new(pid_val, tid as int, time as int),
     {
-        assert(p.ready_thread_ids@ =~= seq![tid]);
-        assert(p.ready_admission_times@ =~= seq![time]);
-        assert(p.interrupted_thread_ids@ =~= Seq::<i64>::empty());
-        assert(p.sleeping_thread_ids@ =~= Seq::<i64>::empty());
-        assert(p.zombie_thread_ids@ =~= Seq::<i64>::empty());
+        assert(spec_i64_seq_as_int(p.ready_thread_ids@) =~= seq![tid as int]);
+        assert(spec_i64_seq_as_int(p.ready_admission_times@) =~= seq![time as int]);
+        assert(spec_i64_seq_as_int(p.interrupted_thread_ids@) =~= Seq::<int>::empty());
+        assert(spec_i64_seq_as_int(p.sleeping_thread_ids@) =~= Seq::<int>::empty());
+        assert(spec_i64_seq_as_int(p.zombie_thread_ids@) =~= Seq::<int>::empty());
     }
 
     /// Bridging lemma: the run() result view matches `RunnableProcessView::spec_run()`.
@@ -711,9 +728,16 @@ impl RunnableProcess {
         );
         let sel_exec: int = self.spec_earliest_ready_index();
         let sel_view: int = self@.spec_earliest_ready_index();
+        // The view's admission times are spec_i64_seq_as_int of exec's.
+        assert(self@.ready_admission_times == spec_i64_seq_as_int(self.ready_admission_times@));
         assert(sel_exec == sel_view);
-        assert(self.ready_thread_ids@[sel_exec] == self@.ready_thread_ids[sel_view]);
-        assert(Self::spec_remove_at(self.ready_thread_ids@, sel_exec)
+        // Bridge running_thread_id: (exec i64 as int) == view Seq<int> element.
+        assert(self@.ready_thread_ids[sel_view]
+            == spec_i64_seq_as_int(self.ready_thread_ids@)[sel_exec]);
+        assert(result@.running_thread_id == self@.ready_thread_ids[sel_view]);
+        // Bridge ready_thread_ids: spec_remove_at distributes over spec_i64_seq_as_int.
+        assert(spec_i64_seq_as_int(
+            Self::spec_remove_at(self.ready_thread_ids@, sel_exec))
             =~= RunnableProcessView::spec_remove_at(self@.ready_thread_ids, sel_view));
     }
 
@@ -730,6 +754,15 @@ impl RunnableProcess {
         ensures
             result@ == self@.spec_terminate_to_interrupted(),
     {
+        // Bridge: spec_i64_seq_as_int distributes over add.
+        assert(spec_i64_seq_as_int(
+            self.interrupted_thread_ids@.add(self.sleeping_thread_ids@))
+            =~= spec_i64_seq_as_int(self.interrupted_thread_ids@).add(
+                spec_i64_seq_as_int(self.sleeping_thread_ids@)));
+        assert(spec_i64_seq_as_int(
+            self.ready_thread_ids@.add(self.zombie_thread_ids@))
+            =~= spec_i64_seq_as_int(self.ready_thread_ids@).add(
+                spec_i64_seq_as_int(self.zombie_thread_ids@)));
     }
 
     /// Bridging lemma: the terminate() ZombieProcess result view matches
@@ -744,6 +777,11 @@ impl RunnableProcess {
         ensures
             result@ == self@.spec_terminate_to_zombie(),
     {
+        // Bridge: spec_i64_seq_as_int distributes over add.
+        assert(spec_i64_seq_as_int(
+            self.ready_thread_ids@.add(self.zombie_thread_ids@))
+            =~= spec_i64_seq_as_int(self.ready_thread_ids@).add(
+                spec_i64_seq_as_int(self.zombie_thread_ids@)));
     }
 
     /// Bridging lemma: the add_thread() result view matches
@@ -758,8 +796,13 @@ impl RunnableProcess {
             result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
         ensures
-            result@ == self@.spec_add_thread(tid, time),
+            result@ == self@.spec_add_thread(tid as int, time as int),
     {
+        // Bridge: spec_i64_seq_as_int distributes over push.
+        assert(spec_i64_seq_as_int(self.ready_thread_ids@.push(tid))
+            =~= spec_i64_seq_as_int(self.ready_thread_ids@).push(tid as int));
+        assert(spec_i64_seq_as_int(self.ready_admission_times@.push(time))
+            =~= spec_i64_seq_as_int(self.ready_admission_times@).push(time as int));
     }
 
     /// Bridging lemma: the wakeup() success result view matches
@@ -787,10 +830,18 @@ impl RunnableProcess {
                 RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx),
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
         ensures
-            result@ == self@.spec_wakeup(tid, time, found_idx),
+            result@ == self@.spec_wakeup(tid as int, time as int, found_idx),
     {
-        assert(RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx)
-            =~= RunnableProcessView::spec_remove_at(self@.sleeping_thread_ids, found_idx));
+        // Bridge: spec_i64_seq_as_int distributes over push.
+        assert(spec_i64_seq_as_int(self.ready_thread_ids@.push(tid))
+            =~= spec_i64_seq_as_int(self.ready_thread_ids@).push(tid as int));
+        assert(spec_i64_seq_as_int(self.ready_admission_times@.push(time))
+            =~= spec_i64_seq_as_int(self.ready_admission_times@).push(time as int));
+        // Bridge: spec_remove_at distributes over spec_i64_seq_as_int.
+        assert(spec_i64_seq_as_int(
+            RunnableProcess::spec_remove_at(self.sleeping_thread_ids@, found_idx))
+            =~= RunnableProcessView::spec_remove_at(
+                self@.sleeping_thread_ids, found_idx));
     }
 
     /// Bridging lemma: the from_state() constructor view matches
@@ -813,8 +864,12 @@ impl RunnableProcess {
             p.zombie_thread_ids@ == zombie_ids,
         ensures
             p@ == RunnableProcessView::spec_from_state(
-                pid_val, ready_ids, ready_times,
-                interrupted_ids, sleeping_ids, zombie_ids),
+                pid_val,
+                spec_i64_seq_as_int(ready_ids),
+                spec_i64_seq_as_int(ready_times),
+                spec_i64_seq_as_int(interrupted_ids),
+                spec_i64_seq_as_int(sleeping_ids),
+                spec_i64_seq_as_int(zombie_ids)),
     {
     }
 

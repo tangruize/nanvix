@@ -466,6 +466,18 @@ impl RunnableProcess {
         let new_ready_times: Vec<i64> = vec_remove_at(&self.ready_admission_times, min_idx);
 
         // Discard ready_admission_times (not needed in RunningProcess).
+        proof {
+            // Bridge exec-level Seq<i64> to view-level Seq<int>.
+            Self::lemma_view_min_index_eq(
+                self.ready_admission_times@,
+                self.ready_admission_times@.len() as int,
+            );
+            assert(min_idx as int == self@.spec_earliest_ready_index());
+            assert(spec_i64_seq_as_int(
+                Self::spec_remove_at(self.ready_thread_ids@, min_idx as int))
+                =~= RunnableProcessView::spec_remove_at(
+                    self@.ready_thread_ids, min_idx as int));
+        }
         RunningProcess {
             pid: self.pid,
             running_thread_id: selected_tid,
@@ -551,6 +563,13 @@ impl RunnableProcess {
                 assert(new_interrupted_ids@.len() ==
                     self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
                 assert(new_interrupted_ids@.len() >= 1);
+                // Bridge: spec_i64_seq_as_int distributes over add.
+                assert(spec_i64_seq_as_int(new_interrupted_ids@)
+                    =~= spec_i64_seq_as_int(self.interrupted_thread_ids@).add(
+                        spec_i64_seq_as_int(self.sleeping_thread_ids@)));
+                assert(spec_i64_seq_as_int(new_zombie_ids@)
+                    =~= spec_i64_seq_as_int(self.ready_thread_ids@).add(
+                        spec_i64_seq_as_int(self.zombie_thread_ids@)));
             }
             TerminateResult::Interrupted(InterruptedProcess {
                 pid: self.pid,
@@ -562,6 +581,10 @@ impl RunnableProcess {
                 assert(self.interrupted_thread_ids@.len() == 0);
                 assert(self.sleeping_thread_ids@.len() == 0);
                 assert(new_zombie_ids@.len() >= 1);
+                // Bridge: spec_i64_seq_as_int distributes over add.
+                assert(spec_i64_seq_as_int(new_zombie_ids@)
+                    =~= spec_i64_seq_as_int(self.ready_thread_ids@).add(
+                        spec_i64_seq_as_int(self.zombie_thread_ids@)));
             }
             TerminateResult::Zombie(ZombieProcess {
                 pid: self.pid,
@@ -642,6 +665,20 @@ impl RunnableProcess {
             &self.sleeping_thread_ids, tid);
 
         if !found {
+            proof {
+                // Bridge: not found in Seq<i64> implies not found in Seq<int>.
+                assert(!RunnableProcessView::spec_seq_contains(
+                    self@.sleeping_thread_ids, tid as int))
+                by {
+                    if RunnableProcessView::spec_seq_contains(
+                        self@.sleeping_thread_ids, tid as int) {
+                        let idx: int = choose|i: int| 0 <= i
+                            < self@.sleeping_thread_ids.len()
+                            && self@.sleeping_thread_ids[i] == tid as int;
+                        assert(self.sleeping_thread_ids@[idx] == tid);
+                    }
+                }
+            }
             return Err(self);
         }
 
@@ -709,6 +746,24 @@ impl RunnableProcess {
 
             // Prove new sleeping length.
             assert(new_sleeping_ids@.len() == self.sleeping_thread_ids@.len() - 1);
+
+            // Bridge exec-level Seq<i64> to view-level Seq<int>.
+            // Ready IDs: push distributes over spec_i64_seq_as_int.
+            assert(spec_i64_seq_as_int(new_ready_ids@)
+                =~= spec_i64_seq_as_int(self.ready_thread_ids@).push(tid as int));
+            // Admission times: push distributes over spec_i64_seq_as_int.
+            assert(spec_i64_seq_as_int(new_ready_times@)
+                =~= spec_i64_seq_as_int(self.ready_admission_times@).push(
+                    new_ready_time as int));
+            // Sleeping IDs: spec_remove_at distributes over spec_i64_seq_as_int.
+            assert(spec_i64_seq_as_int(new_sleeping_ids@)
+                =~= RunnableProcessView::spec_remove_at(
+                    self@.sleeping_thread_ids, found_idx_usize as int));
+            // spec_seq_contains bridging: found at found_idx_usize in Seq<i64>,
+            // so found at same index in Seq<int>.
+            assert(self@.sleeping_thread_ids[found_idx_usize as int] == tid as int);
+            assert(RunnableProcessView::spec_seq_contains(
+                self@.sleeping_thread_ids, tid as int));
         }
 
         Ok(RunnableProcess {
@@ -811,6 +866,13 @@ impl RunnableProcess {
                     assert(new_ready_times@[i] == ready_time);
                 }
             }
+
+            // Bridge exec-level Seq<i64> to view-level Seq<int>.
+            assert(spec_i64_seq_as_int(new_ready_ids@)
+                =~= spec_i64_seq_as_int(self.ready_thread_ids@).push(ready_tid as int));
+            assert(spec_i64_seq_as_int(new_ready_times@)
+                =~= spec_i64_seq_as_int(self.ready_admission_times@).push(
+                    ready_time as int));
         }
 
         RunnableProcess {
