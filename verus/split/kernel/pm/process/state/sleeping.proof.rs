@@ -282,29 +282,25 @@ impl SleepingProcess {
         };
 
         // Bridge zombie thread containment: exec ↔ view.
-        assert(p.spec_has_zombie_thread(tid) ==>
-            p@.spec_has_zombie_thread(tid as int)) by {
-            if p.spec_has_zombie_thread(tid) {
-                let j: int = choose|j: int| 0 <= j < p.zombie_thread_ids@.len()
-                    && p.zombie_thread_ids@[j] == tid;
-                assert(p.zombie_thread_ids@[j] as int == tid as int);
-                assert(spec_u64_seq_as_int(p.zombie_thread_ids@)[j] == tid as int);
-            }
-        };
-        assert(!p.spec_has_zombie_thread(tid) ==>
-            !p@.spec_has_zombie_thread(tid as int)) by {
-            if !p.spec_has_zombie_thread(tid) {
-                assert forall|j: int|
-                    0 <= j < spec_u64_seq_as_int(p.zombie_thread_ids@).len()
-                    implies spec_u64_seq_as_int(p.zombie_thread_ids@)[j] != tid as int
-                by {
-                    assert(p.zombie_thread_ids@[j] != tid);
-                    let a: u64 = p.zombie_thread_ids@[j];
-                    assert(a as int == spec_u64_seq_as_int(p.zombie_thread_ids@)[j]);
-                    assert(a != tid);
-                };
-            }
-        };
+        // Use direct if/else instead of assert(A ==> B) by {} to help
+        // the solver witness the existential for view-level containment.
+        if p.spec_has_zombie_thread(tid) {
+            let j: int = choose|j: int| 0 <= j < p.zombie_thread_ids@.len()
+                && p.zombie_thread_ids@[j] == tid;
+            assert(p.zombie_thread_ids@[j] as int == tid as int);
+            assert(p@.zombie_thread_ids[j] == tid as int);
+            assert(p@.spec_has_zombie_thread(tid as int));
+        } else {
+            assert forall|j: int|
+                0 <= j < p@.zombie_thread_ids.len()
+                implies p@.zombie_thread_ids[j] != tid as int
+            by {
+                let a: u64 = p.zombie_thread_ids@[j];
+                assert(a != tid);
+                assert(p@.zombie_thread_ids[j] == a as int);
+            };
+            assert(!p@.spec_has_zombie_thread(tid as int));
+        }
     }
 }
 
