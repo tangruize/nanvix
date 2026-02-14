@@ -22,6 +22,7 @@ impl Capabilities {
             !Capabilities::spec_default().spec_has(Capability::ProcessManagement),
             Capabilities::spec_default().wf(),
     {
+        reveal(Capabilities::wf);
         assert(0u8 & 1u8 == 0u8) by (bit_vector);
         assert(0u8 & 2u8 == 0u8) by (bit_vector);
         assert(0u8 & 4u8 == 0u8) by (bit_vector);
@@ -262,6 +263,7 @@ impl Capabilities {
                 post.wf()
             }),
     {
+        reveal(Capabilities::wf);
         let b: u8 = pre.spec_bits();
         match cap {
             Capability::ExceptionControl => {
@@ -302,6 +304,7 @@ impl Capabilities {
                 post.wf()
             }),
     {
+        reveal(Capabilities::wf);
         let b: u8 = pre.spec_bits();
         match cap {
             Capability::ExceptionControl => {
@@ -418,6 +421,7 @@ impl Capabilities {
         ensures
             a.spec_bits() == b.spec_bits(),
     {
+        reveal(Capabilities::view);
     }
 
     /// Lemma: All capabilities are well-formed (when only valid bits are used).
@@ -427,6 +431,7 @@ impl Capabilities {
         ensures
             self.wf(),
     {
+        reveal(Capabilities::wf);
     }
 
     /// Lemma: The Capability enum is closed — every instance is one of the 5

@@ -36,11 +36,12 @@ verus! {
 /// The primary abstract representation is `granted: Set<Capability>`, which
 /// models capabilities as a mathematical set. The `bits` field is retained
 /// for bridging proofs between the set abstraction and the bit-level
-/// implementation.
+/// implementation, and uses `int` (abstract) rather than `u8` (concrete)
+/// per the specification methodology (Step 1).
 #[verifier::ext_equal]
 pub struct CapabilitiesView {
-    /// The raw bitfield value (implementation-level).
-    pub bits: u8,
+    /// The raw bitfield value (abstract integer).
+    pub bits: int,
     /// The set of granted capabilities (abstract-level).
     pub granted: Set<Capability>,
 }
@@ -120,7 +121,10 @@ impl Capabilities {
     /// always satisfy `wf()`. The `pub bits` field allows constructing non-`wf`
     /// values, but such values are outside the intended usage; the verification
     /// guarantees correctness for the API-reachable state space.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
         self.bits & 0b1110_0000u8 == 0u8
     }
 
@@ -224,6 +228,13 @@ impl Capabilities {
 //==================================================================================================
 
 /// Extension trait for conditional set insertion (used by spec_as_set).
+///
+/// # Note
+///
+/// This trait is implemented for `Set<T>` from vstd. No inv()/wf() is
+/// needed because `Set<T>` is an external vstd type with its own
+/// well-formedness guarantees; this trait merely adds a convenience
+/// spec function.
 pub trait SetInsertIf<T> {
     /// Inserts the element if the condition is true, otherwise returns self unchanged.
     spec fn insert_if(self, cond: bool, elem: T) -> Self;
@@ -242,9 +253,12 @@ impl<T> SetInsertIf<T> for Set<T> {
 impl View for Capabilities {
     type V = CapabilitiesView;
 
-    open spec fn view(&self) -> CapabilitiesView {
+    /// Closed per methodology Step 1: users can invoke view() but
+    /// cannot see the mapping from implementation fields to the
+    /// abstract view, preserving the abstraction barrier.
+    closed spec fn view(&self) -> CapabilitiesView {
         CapabilitiesView {
-            bits: self.bits,
+            bits: self.bits as int,
             granted: self.spec_as_set(),
         }
     }

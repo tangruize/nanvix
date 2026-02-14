@@ -190,6 +190,7 @@ impl Capabilities {
             result.wf(),
     {
         proof {
+            reveal(Capabilities::wf);
             assert(0u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
         }
         Capabilities { bits: 0u8 }
@@ -288,6 +289,7 @@ impl Default for Capabilities {
             result.wf(),
     {
         proof {
+            reveal(Capabilities::wf);
             assert(0u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
         }
         Capabilities { bits: 0u8 }
