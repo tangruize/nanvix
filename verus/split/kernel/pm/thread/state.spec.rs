@@ -52,6 +52,42 @@ pub struct ThreadStateView {
 }
 
 //==================================================================================================
+// View Spec Functions
+//==================================================================================================
+
+impl ThreadStateView {
+    /// Returns whether a kernel stack is present.
+    pub open spec fn has_kernel_stack(&self) -> bool {
+        self.kernel_stack.is_some()
+    }
+
+    /// Returns whether a user stack is present.
+    pub open spec fn has_user_stack(&self) -> bool {
+        self.user_stack.is_some()
+    }
+
+    /// Returns whether a specific mutex address is locked.
+    pub open spec fn has_mutex(&self, address: int) -> bool {
+        self.locked_mutex_set.contains(address)
+    }
+
+    /// Returns whether the thread state is safe to drop (no locked mutexes).
+    pub open spec fn drop_safe(&self) -> bool {
+        self.locked_mutex_count == 0
+    }
+
+    /// Returns whether the thread has been interrupted.
+    pub open spec fn is_interrupted(&self) -> bool {
+        self.interrupt_reason.is_some()
+    }
+
+    /// Returns whether the thread has resources (stacks) to release.
+    pub open spec fn has_resources(&self) -> bool {
+        self.kernel_stack.is_some() || self.user_stack.is_some()
+    }
+}
+
+//==================================================================================================
 // Spec Functions
 //==================================================================================================
 

@@ -159,15 +159,15 @@ impl ThreadState {
         user_tda: Option<int>,
     ) -> (result: ThreadState)
         ensures
-            result.spec_id() == id.spec_value(),
-            result.spec_kernel_stack() == kernel_stack,
-            result.spec_user_stack() == user_stack,
-            result.spec_has_kernel_stack() == kernel_stack.is_some(),
-            result.spec_has_user_stack() == user_stack.is_some(),
-            result.spec_user_tda() == user_tda,
-            !result.spec_is_interrupted(),
-            result.spec_locked_mutex_count() == 0,
-            result.spec_drop_safe(),
+            result@.id == id.spec_value(),
+            result@.kernel_stack == kernel_stack,
+            result@.user_stack == user_stack,
+            result@.has_kernel_stack() == kernel_stack.is_some(),
+            result@.has_user_stack() == user_stack.is_some(),
+            result@.user_tda == user_tda,
+            !result@.is_interrupted(),
+            result@.locked_mutex_count == 0,
+            result@.drop_safe(),
             result.wf(),
     {
         proof { reveal(ThreadState::wf); }
@@ -189,7 +189,7 @@ impl ThreadState {
     /// The thread identifier, unchanged from construction.
     pub fn id(&self) -> (result: ThreadIdentifier)
         ensures
-            result.spec_value() == self.spec_id(),
+            result.spec_value() == self@.id,
     {
         self.id
     }
@@ -205,15 +205,15 @@ impl ThreadState {
         requires
             old(self).wf(),
         ensures
-            result == old(self).spec_kernel_stack(),
-            self.spec_kernel_stack().is_none(),
-            !self.spec_has_kernel_stack(),
-            self.spec_id() == old(self).spec_id(),
-            self.spec_user_stack() == old(self).spec_user_stack(),
-            self.spec_user_tda() == old(self).spec_user_tda(),
-            self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
-            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            result == old(self)@.kernel_stack,
+            self@.kernel_stack.is_none(),
+            !self@.has_kernel_stack(),
+            self@.id == old(self)@.id,
+            self@.user_stack == old(self)@.user_stack,
+            self@.user_tda == old(self)@.user_tda,
+            self@.interrupt_reason == old(self)@.interrupt_reason,
+            self@.locked_mutex_count == old(self)@.locked_mutex_count,
+            forall|a: int| self@.has_mutex(a) == old(self)@.has_mutex(a),
             self.wf(),
     {
         proof { reveal(ThreadState::wf); }
@@ -233,15 +233,15 @@ impl ThreadState {
         requires
             old(self).wf(),
         ensures
-            result == old(self).spec_user_stack(),
-            self.spec_user_stack().is_none(),
-            !self.spec_has_user_stack(),
-            self.spec_id() == old(self).spec_id(),
-            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
-            self.spec_user_tda() == old(self).spec_user_tda(),
-            self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
-            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            result == old(self)@.user_stack,
+            self@.user_stack.is_none(),
+            !self@.has_user_stack(),
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_tda == old(self)@.user_tda,
+            self@.interrupt_reason == old(self)@.interrupt_reason,
+            self@.locked_mutex_count == old(self)@.locked_mutex_count,
+            forall|a: int| self@.has_mutex(a) == old(self)@.has_mutex(a),
             self.wf(),
     {
         proof { reveal(ThreadState::wf); }
@@ -259,14 +259,14 @@ impl ThreadState {
         requires
             old(self).wf(),
         ensures
-            self.spec_is_interrupted(),
-            self.spec_interrupt_reason() == Some(reason),
-            self.spec_id() == old(self).spec_id(),
-            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
-            self.spec_user_stack() == old(self).spec_user_stack(),
-            self.spec_user_tda() == old(self).spec_user_tda(),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
-            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            self@.is_interrupted(),
+            self@.interrupt_reason == Some(reason),
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_stack == old(self)@.user_stack,
+            self@.user_tda == old(self)@.user_tda,
+            self@.locked_mutex_count == old(self)@.locked_mutex_count,
+            forall|a: int| self@.has_mutex(a) == old(self)@.has_mutex(a),
             self.wf(),
     {
         proof { reveal(ThreadState::wf); }
@@ -282,15 +282,15 @@ impl ThreadState {
         requires
             old(self).wf(),
         ensures
-            result == old(self).spec_interrupt_reason(),
-            !self.spec_is_interrupted(),
-            self.spec_interrupt_reason() == None::<int>,
-            self.spec_id() == old(self).spec_id(),
-            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
-            self.spec_user_stack() == old(self).spec_user_stack(),
-            self.spec_user_tda() == old(self).spec_user_tda(),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
-            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            result == old(self)@.interrupt_reason,
+            !self@.is_interrupted(),
+            self@.interrupt_reason == None::<int>,
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_stack == old(self)@.user_stack,
+            self@.user_tda == old(self)@.user_tda,
+            self@.locked_mutex_count == old(self)@.locked_mutex_count,
+            forall|a: int| self@.has_mutex(a) == old(self)@.has_mutex(a),
             self.wf(),
     {
         proof { reveal(ThreadState::wf); }
@@ -320,19 +320,19 @@ impl ThreadState {
     pub fn store_mutex_guard(&mut self, address: u64)
         requires
             old(self).wf(),
-            old(self).locked_mutex_count < usize::MAX,
-            !old(self).spec_has_mutex(address as int),
+            old(self)@.locked_mutex_count < usize::MAX as nat,
+            !old(self)@.has_mutex(address as int),
         ensures
-            self.spec_has_mutex(address as int),
+            self@.has_mutex(address as int),
             forall|a: int| a != address as int ==>
-                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() + 1,
-            !self.spec_drop_safe(),
-            self.spec_id() == old(self).spec_id(),
-            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
-            self.spec_user_stack() == old(self).spec_user_stack(),
-            self.spec_user_tda() == old(self).spec_user_tda(),
-            self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
+                self@.has_mutex(a) == old(self)@.has_mutex(a),
+            self@.locked_mutex_count == old(self)@.locked_mutex_count + 1,
+            !self@.drop_safe(),
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_stack == old(self)@.user_stack,
+            self@.user_tda == old(self)@.user_tda,
+            self@.interrupt_reason == old(self)@.interrupt_reason,
             self.wf(),
     {
         proof {
@@ -378,17 +378,17 @@ impl ThreadState {
     pub fn take_mutex_guard(&mut self, address: u64)
         requires
             old(self).wf(),
-            old(self).spec_has_mutex(address as int),
+            old(self)@.has_mutex(address as int),
         ensures
-            !self.spec_has_mutex(address as int),
+            !self@.has_mutex(address as int),
             forall|a: int| a != address as int ==>
-                self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count() - 1,
-            self.spec_id() == old(self).spec_id(),
-            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
-            self.spec_user_stack() == old(self).spec_user_stack(),
-            self.spec_user_tda() == old(self).spec_user_tda(),
-            self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
+                self@.has_mutex(a) == old(self)@.has_mutex(a),
+            self@.locked_mutex_count == old(self)@.locked_mutex_count - 1,
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_stack == old(self)@.user_stack,
+            self@.user_tda == old(self)@.user_tda,
+            self@.interrupt_reason == old(self)@.interrupt_reason,
             self.wf(),
     {
         proof { reveal(ThreadState::wf); }
@@ -470,8 +470,8 @@ impl ThreadState {
         requires
             self.wf(),
         ensures
-            result == self.spec_drop_safe(),
-            result == (self.spec_locked_mutex_count() == 0),
+            result == self@.drop_safe(),
+            result == (self@.locked_mutex_count == 0),
     {
         proof { reveal(ThreadState::wf); }
         self.locked_mutex_count == 0
@@ -486,13 +486,13 @@ impl ThreadState {
         requires
             old(self).wf(),
         ensures
-            self.spec_user_tda() == user_tda,
-            self.spec_id() == old(self).spec_id(),
-            self.spec_kernel_stack() == old(self).spec_kernel_stack(),
-            self.spec_user_stack() == old(self).spec_user_stack(),
-            self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
-            self.spec_locked_mutex_count() == old(self).spec_locked_mutex_count(),
-            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            self@.user_tda == user_tda,
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_stack == old(self)@.user_stack,
+            self@.interrupt_reason == old(self)@.interrupt_reason,
+            self@.locked_mutex_count == old(self)@.locked_mutex_count,
+            forall|a: int| self@.has_mutex(a) == old(self)@.has_mutex(a),
             self.wf(),
     {
         proof { reveal(ThreadState::wf); }
@@ -506,7 +506,7 @@ impl ThreadState {
     /// The user thread data area address, if set.
     pub fn get_thread_data_area(&self) -> (result: Option<int>)
         ensures
-            result == self.spec_user_tda(),
+            result == self@.user_tda,
     {
         self.user_tda
     }
