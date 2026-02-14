@@ -849,27 +849,15 @@ impl RunnableProcess {
         };
 
         proof {
-            // Debug: check each postcondition component.
-            assert(result_proc@.pid == self@.pid);
-            assert(result_proc@.ready_thread_ids.len()
-                == self@.ready_thread_ids.len() + 1);
-            assert(result_proc@.sleeping_thread_ids.len()
-                == self@.sleeping_thread_ids.len() - 1);
-            assert(result_proc@.interrupted_thread_ids
-                == self@.interrupted_thread_ids);
-            assert(result_proc@.zombie_thread_ids == self@.zombie_thread_ids);
-            assert(result_proc@.ready_thread_ids
-                == self@.ready_thread_ids.push(tid as int));
-            // Check admission times existential.
+            // Admission times existential witness.
             assert(new_ready_time as int >= 0);
             assert(result_proc@.ready_admission_times
                 == self@.ready_admission_times.push(new_ready_time as int));
-            // Check sleeping remove_at existential.
+            // Sleeping remove_at existential witness.
             let fi2: int = found_idx_usize as int;
             assert(result_proc@.sleeping_thread_ids
                 == RunnableProcessView::spec_remove_at(
                     self@.sleeping_thread_ids, fi2));
-            // Check wf.
             assert(result_proc.wf());
         }
 
