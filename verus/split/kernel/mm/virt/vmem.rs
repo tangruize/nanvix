@@ -727,7 +727,7 @@ impl Vmem {
         }
 
         // Check if already mapped by scanning existing entries.
-        // With precondition !old(self).spec_is_mapped(vaddr), this loop won't find a match.
+        // With precondition !old(self)@.spec_is_mapped(vaddr), this loop won't find a match.
         let mut i: usize = 0;
         let ghost old_mapping_count: usize = self.mapping_count;
         while i < self.mapping_count
@@ -737,16 +737,16 @@ impl Vmem {
                 self.inv(),
                 self.mapping_count == old_mapping_count,
                 // No modification to mappings during scan.
-                !self.spec_is_mapped(vaddr as int),
+                !self@.spec_is_mapped(vaddr as int),
                 forall|j: int| #![auto] 0 <= j < i as int ==>
                     !(self.mappings[j as int].valid && self.mappings[j as int].vaddr == vaddr),
             decreases self.mapping_count - i,
         {
             if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
                 proof {
-                    // This branch contradicts the invariant !self.spec_is_mapped(vaddr).
-                    assert(self.mappings[i as int].spec_is_for_vaddr(vaddr as int));
-                    assert(self.spec_is_mapped(vaddr as int));
+                    // This branch contradicts the invariant !self@.spec_is_mapped(vaddr).
+                    assert(self@.mappings[i as int].spec_is_for_vaddr(vaddr as int));
+                    assert(self@.spec_is_mapped(vaddr as int));
                     assert(false);
                 }
                 return Err(Error::new(ErrorCode::ResourceBusy, "page already mapped"));
@@ -769,7 +769,7 @@ impl Vmem {
             let count: int = self.mapping_count as int;
             assert(self.mappings[idx].valid);
             assert(self.mappings[idx].vaddr as int == vaddr as int);
-            assert(self.mappings[idx].spec_is_for_vaddr(vaddr as int));
+            assert(self@.mappings[idx].spec_is_for_vaddr(vaddr as int));
             assert(idx >= 0);
             assert(idx < count);
         }
@@ -875,10 +875,10 @@ impl Vmem {
 
         proof {
             // entry_self has the same mappings as old(self) at function entry.
-            // The found mapping has frame_addr == entry_self.spec_get_frame_addr(vaddr).
-            assert(entry_self.mappings[found_idx as int].spec_is_for_vaddr(vaddr as int));
-            assert(entry_self.spec_is_mapped(vaddr as int));
-            assert(frame_addr as int == entry_self.mappings[found_idx as int].frame_addr as int);
+            // Connect to view-based specs for postcondition.
+            assert(entry_self@.mappings[found_idx as int].spec_is_for_vaddr(vaddr as int));
+            assert(entry_self@.spec_is_mapped(vaddr as int));
+            assert(frame_addr as int == entry_self@.mappings[found_idx as int].frame_addr);
         }
 
         // Remove the mapping by swapping with the last entry.
