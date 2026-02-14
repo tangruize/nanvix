@@ -35,12 +35,13 @@ verus! {
 ///
 /// The primary abstract representation is `granted: Set<Capability>`, which
 /// models capabilities as a mathematical set. The `bits` field is retained
-/// for bridging proofs between the set abstraction and the bit-level
-/// implementation, and uses `int` (abstract) rather than `u8` (concrete)
-/// per the specification methodology (Step 1).
+/// as an abstract `int` for bridging proofs between the set abstraction and
+/// the bit-level implementation (Step 1). While `granted` alone fully
+/// captures the abstract state, `bits` enables `lemma_view_equality` to
+/// prove bitfield equality from view equality without requiring `wf()`.
 #[verifier::ext_equal]
 pub struct CapabilitiesView {
-    /// The raw bitfield value (abstract integer).
+    /// The raw bitfield value (abstract integer, bridging proofs only).
     pub bits: int,
     /// The set of granted capabilities (abstract-level).
     pub granted: Set<Capability>,
@@ -49,6 +50,14 @@ pub struct CapabilitiesView {
 //==================================================================================================
 // Spec Functions — Bit-Level (Implementation)
 //==================================================================================================
+
+// NOTE: The bit-level spec functions (`spec_bits`, `spec_has`, `spec_set`, `spec_clear`,
+// `spec_mask`, `spec_pow2_mask`) are intentionally kept `pub open` because they are
+// referenced in the ensures clauses of proof lemmas (e.g., `lemma_set_then_has`,
+// `lemma_set_preserves_other`) that form the internal proof infrastructure.
+// Per Step 3, public *method* specs use only `self@.granted` (the view) and `wf()`
+// (the invariant). Downstream modules should rely on the view-level interface
+// (`self@.granted`, `self@.granted.contains(cap)`) rather than these bit-level specs.
 
 impl Capabilities {
     /// Spec function: returns the raw bitfield value.
@@ -256,6 +265,13 @@ impl View for Capabilities {
     /// Closed per methodology Step 1: users can invoke view() but
     /// cannot see the mapping from implementation fields to the
     /// abstract view, preserving the abstraction barrier.
+    ///
+    /// # Note
+    ///
+    /// The `pub` keyword is omitted because Verus trait implementations
+    /// inherit visibility from the trait definition. The `View` trait's
+    /// `view()` method is already `pub`, so this impl is effectively
+    /// `pub closed spec fn`.
     closed spec fn view(&self) -> CapabilitiesView {
         CapabilitiesView {
             bits: self.bits as int,

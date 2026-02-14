@@ -68,7 +68,8 @@
 //! invariant. While the `pub bits` field permits constructing non-`wf` values,
 //! the invariant is enforced by proof obligations:
 //! - All constructors (`new`, `default`) guarantee `wf()` in their postconditions.
-//! - `set`/`clear` guarantee `old(self).wf() ==> self.wf()` (conditional preservation).
+//! - `set`/`clear` require `old(self).wf()` and guarantee `self.wf()` unconditionally.
+//! - `has` requires `self.wf()`.
 //! - `lemma_api_preserves_wf` proves the inductive step for any operation sequence.
 //! - Downstream modules that require `wf()` can assert it as a precondition,
 //!   knowing that any value produced through the API satisfies it.
@@ -141,7 +142,11 @@ pub struct Capabilities {
 
 impl Capabilities {
     /// Spec function: returns the default (empty) Capabilities value.
-    pub open spec fn spec_default() -> Capabilities {
+    ///
+    /// Closed per methodology Step 3: avoids exposing the internal
+    /// representation (`bits: 0u8`). Properties are exposed through
+    /// lemmas (`lemma_default_is_empty`, `lemma_default_empty_set`).
+    pub closed spec fn spec_default() -> Capabilities {
         Capabilities { bits: 0u8 }
     }
 
@@ -182,83 +187,76 @@ impl Capabilities {
     ///
     /// # Returns
     ///
-    /// A Capabilities with no bits set.
+    /// A Capabilities with no capabilities granted.
     pub fn new() -> (result: Capabilities)
         ensures
-            result.spec_bits() == 0u8,
-            result == Capabilities::spec_default(),
             result.wf(),
+            result@.granted =~= Set::<Capability>::empty(),
     {
         proof {
             reveal(Capabilities::wf);
+            reveal(Capabilities::spec_default);
             assert(0u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            Capabilities::lemma_default_empty_set();
         }
         Capabilities { bits: 0u8 }
     }
 
-    /// Sets a capability bit.
+    /// Grants a capability.
     ///
     /// # Parameters
     ///
     /// - `capability`: The capability to grant.
-    ///
-    /// # Ensures
-    ///
-    /// - The target bit is set in the result.
-    /// - All other bits are unchanged (bitfield equals `old | mask`).
-    /// - If the input was well-formed, the output is well-formed.
-    /// - Set-level: the granted set contains the new capability.
     pub fn set(&mut self, capability: Capability)
+        requires
+            old(self).wf(),
         ensures
-            self.spec_bits() == old(self).spec_set(capability),
-            self.spec_has(capability),
-            self.spec_set_contains(capability),
-            old(self).wf() ==> self.wf(),
+            self.wf(),
+            self@.granted =~= old(self)@.granted.insert(capability),
     {
         let mask: u8 = Self::to_mask(capability);
         let ghost pre = *self;
         self.bits = self.bits | mask;
 
         proof {
-            Capabilities::lemma_set_then_has(pre, capability);
-            if pre.wf() {
-                Capabilities::lemma_set_preserves_wf(pre, capability);
+            Capabilities::lemma_set_preserves_wf(pre, capability);
+            Capabilities::lemma_set_insert_matches_bit_set(pre, capability);
+            assert forall |c: Capability| self.spec_as_set().contains(c) <==>
+                (pre.spec_as_set().contains(c) || c == capability) by {
+                self.lemma_has_iff_set_contains(c);
+                pre.lemma_has_iff_set_contains(c);
             }
         }
     }
 
-    /// Clears a capability bit.
+    /// Revokes a capability.
     ///
     /// # Parameters
     ///
     /// - `capability`: The capability to revoke.
-    ///
-    /// # Ensures
-    ///
-    /// - The target bit is cleared in the result.
-    /// - All other bits are unchanged (bitfield equals `old & !mask`).
-    /// - If the input was well-formed, the output is well-formed.
-    /// - Set-level: the granted set no longer contains the capability.
     pub fn clear(&mut self, capability: Capability)
+        requires
+            old(self).wf(),
         ensures
-            self.spec_bits() == old(self).spec_clear(capability),
-            !self.spec_has(capability),
-            !self.spec_set_contains(capability),
-            old(self).wf() ==> self.wf(),
+            self.wf(),
+            self@.granted =~= old(self)@.granted.remove(capability),
     {
         let mask: u8 = Self::to_mask(capability);
         let ghost pre = *self;
         self.bits = self.bits & !mask;
 
         proof {
-            Capabilities::lemma_clear_then_not_has(pre, capability);
-            if pre.wf() {
-                Capabilities::lemma_clear_preserves_wf(pre, capability);
+            Capabilities::lemma_clear_preserves_wf(pre, capability);
+            Capabilities::lemma_clear_remove_matches_bit_clear(pre, capability);
+            assert forall |c: Capability| self.spec_as_set().contains(c) <==>
+                (pre.spec_as_set().contains(c) && c != capability) by {
+                self.lemma_has_iff_set_contains(c);
+                pre.lemma_has_iff_set_contains(c);
             }
         }
     }
 
-    /// Tests whether a capability bit is set.
+    /// Tests whether a capability is granted.
     ///
     /// # Parameters
     ///
@@ -268,9 +266,14 @@ impl Capabilities {
     ///
     /// `true` if the capability is granted, `false` otherwise.
     pub fn has(&self, capability: Capability) -> (result: bool)
+        requires
+            self.wf(),
         ensures
-            result == self.spec_has(capability),
+            result == self@.granted.contains(capability),
     {
+        proof {
+            self.lemma_has_iff_set_contains(capability);
+        }
         let mask: u8 = Self::to_mask(capability);
         (self.bits & mask) != 0u8
     }
@@ -284,13 +287,14 @@ impl Default for Capabilities {
     /// Returns the default Capabilities (no capabilities granted).
     fn default() -> (result: Capabilities)
         ensures
-            result.spec_bits() == 0u8,
-            result == Capabilities::spec_default(),
             result.wf(),
+            result@.granted =~= Set::<Capability>::empty(),
     {
         proof {
             reveal(Capabilities::wf);
+            reveal(Capabilities::spec_default);
             assert(0u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            Capabilities::lemma_default_empty_set();
         }
         Capabilities { bits: 0u8 }
     }
