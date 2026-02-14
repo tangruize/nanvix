@@ -1,0 +1,37 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 17:09:47 CST 2026
+Module: kernel::mm::phys::upool
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::phys::upool
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::phys::upool
+
+note: verifying module kernel::mm::phys::upool::test
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/upool.rs:288:13
+    |
+288 |               result is Err ==> self@ == old(self)@,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+289 |       {
+290 | /         match self.frame_allocator.alloc() {
+291 | |             Ok(addr) => {
+292 | |                 let uframe: UserFrame = UserFrame::new(addr);
+293 | |                 proof {
+...   |
+304 | |             Err(error) => Err(error),
+305 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 19 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 19
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::phys::upool (verified:19, errors:1)
