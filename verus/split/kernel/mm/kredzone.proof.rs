@@ -125,7 +125,7 @@ pub proof fn lemma_update_preserves_well_formed(view: KernelRedZoneView, i: int,
 /// - **T5**: Only one `KernelRedZoneGhost` instance is active at any time.
 ///
 /// If T4 is violated, the ghost state will be inconsistent with the actual memory.
-/// If T5 is violated (multiple ghost instances exist), the `assume` in `load_with_ghost`
+/// If T5 is violated (multiple ghost instances exist), the axiom in `load_with_ghost`
 /// becomes unsound.
 ///
 /// # Alternative

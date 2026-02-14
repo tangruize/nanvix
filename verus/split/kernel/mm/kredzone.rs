@@ -86,7 +86,7 @@
 //!
 //! **Soundness Warning**: If multiple ghost instances are created (e.g., calling
 //! `create_initial_ghost()` twice), they can diverge from each other and from reality.
-//! The `assume` in `load_with_ghost` is only sound if the ghost state is the unique
+//! The axiom in `load_with_ghost` is only sound if the ghost state is the unique
 //! model of the kredzone and has been kept synchronized via `store_with_ghost`.
 //!
 //! **Recommended Usage Pattern**:
@@ -462,8 +462,8 @@ pub fn store_with_ghost(
 /// # Trust Assumption
 ///
 /// The postcondition `result.unwrap() == spec_load_result(ghost.view, index)` relies
-/// on T2 (volatile reads return last written value). This is explicitly assumed
-/// via `assume` in the function body, bridging the gap between the abstract model
+/// on T2 (volatile reads return last written value). This is captured by the
+/// `axiom_volatile_read_consistency` proof function, bridging the gap between the abstract model
 /// and the implementation.
 pub fn load_with_ghost(
     index: usize,
