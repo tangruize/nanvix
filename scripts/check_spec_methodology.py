@@ -85,15 +85,22 @@ def extract_functions(root) -> List[Tuple[str, Any, List[str]]]:
     return results
 
 
-def extract_impl_blocks(root) -> List[Tuple[str, Any]]:
-    """Extract impl blocks with their type names."""
+def extract_impl_blocks(root) -> List[Tuple[str, Any, bool]]:
+    """Extract impl blocks with their type names and trait flag.
+
+    Returns a list of (type_name, node, is_trait_impl) tuples.
+    Trait impls (e.g., ``impl View for VirtMemoryManager``) are
+    flagged so callers can skip them when checking for inv()/wf().
+    """
     query = _language.query("(impl_item) @impl")
     captures = query.captures(root)
     results = []
     for node, _ in captures:
         type_node = node.child_by_field_name("type")
         if type_node:
-            results.append((node_text(type_node), node))
+            trait_node = node.child_by_field_name("trait")
+            is_trait_impl = trait_node is not None
+            results.append((node_text(type_node), node, is_trait_impl))
     return results
 
 
@@ -311,10 +318,11 @@ def analyze_module(verus_dir: str, file_stem: str) -> Dict:
 
         # Check inv/wf in spec file impl blocks.
         impl_blocks = extract_impl_blocks(root)
-        for impl_name, impl_node in impl_blocks:
+        for impl_name, impl_node, is_trait_impl in impl_blocks:
             impl_fns = extract_functions(impl_node)
-            # Only check inv for non-View types.
-            if not impl_name.endswith("View"):
+            # Only check inv for non-View inherent impls (skip trait impls
+            # like `impl View for T` which legitimately lack inv()).
+            if not impl_name.endswith("View") and not is_trait_impl:
                 report["issues"].extend(check_inv_fn(impl_fns, impl_name))
     else:
         report["issues"].append({
@@ -334,7 +342,7 @@ def analyze_module(verus_dir: str, file_stem: str) -> Dict:
 
         # Check public method specs.
         impl_blocks = extract_impl_blocks(root)
-        for impl_name, impl_node in impl_blocks:
+        for impl_name, impl_node, _is_trait_impl in impl_blocks:
             impl_fns = extract_functions(impl_node)
             report["issues"].extend(
                 check_public_method_specs(impl_fns, content, impl_name)
