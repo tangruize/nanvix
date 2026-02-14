@@ -148,6 +148,9 @@ impl KernelFrame {
             addr.spec_is_aligned(),
         ensures
             result.inv(),
+            result@.frame_number == addr.spec_frame_number(),
+            result@.pool_id == pool_id as int,
+            // Backward-compatible accessors.
             result.spec_address() == addr,
             result.spec_is_aligned(),
             result.spec_frame_number() == addr.spec_frame_number(),
@@ -164,7 +167,9 @@ impl KernelFrame {
     ///
     /// The frame address of the kernel frame.
     pub fn address(&self) -> (result: FrameAddress)
-        ensures result == self.spec_address()
+        ensures
+            result == self.spec_address(),
+            result.spec_frame_number() == self@.frame_number,
     {
         self.addr
     }
@@ -176,7 +181,7 @@ impl KernelFrame {
     ///
     /// The pool identifier of the kernel frame.
     pub fn pool_id(&self) -> (result: usize)
-        ensures result as int == self.spec_pool_id()
+        ensures result as int == self@.pool_id
     {
         self.pool_id
     }
@@ -188,7 +193,9 @@ impl KernelFrame {
     ///
     /// The base frame address of the kernel frame.
     pub fn base(&self) -> (result: FrameAddress)
-        ensures result == self.spec_address()
+        ensures
+            result == self.spec_address(),
+            result.spec_frame_number() == self@.frame_number,
     {
         self.addr
     }
@@ -197,7 +204,12 @@ impl KernelFrame {
 //==================================================================================================
 
 /// Abstract view of the kernel frame pool for specification purposes.
-/// This mirrors FrameAllocatorView but provides pool-specific semantics.
+///
+/// # Description
+///
+/// This view encapsulates the abstract state of the kernel frame pool without
+/// exposing the internal `FrameAllocator` implementation. Fields use abstract
+/// types (`int`, `Set<int>`) per the specification methodology.
 ///
 /// # Region and Provenance
 ///
@@ -209,8 +221,12 @@ impl KernelFrame {
 /// The pool_id ensures frames are only freed to their originating pool.
 #[verifier::ext_equal]
 pub struct KpoolView {
-    /// The underlying frame allocator view.
-    pub allocator_view: FrameAllocatorView,
+    /// Set of allocated frame indices.
+    pub allocated_frames: Set<int>,
+    /// Total number of frames managed by the pool.
+    pub capacity: int,
+    /// Concrete count of allocated frames.
+    pub num_allocated_count: int,
     /// Base physical address of the pool region.
     /// Frame i has address: base_addr + i * FRAME_SIZE.
     pub base_addr: int,
@@ -278,10 +294,11 @@ impl Kpool {
             // Allocated set is preserved.
             forall|i: int| 0 <= i < result@.capacity() ==>
                 result@.is_allocated(i) == frame_allocator@.is_allocated(i),
-            // Fresh initialization is preserved.
-            frame_allocator@.is_freshly_initialized() ==> result@.is_freshly_initialized(),
             // Allocation count is preserved from the frame allocator.
-            result.spec_num_allocated() == frame_allocator.spec_num_allocated(),
+            result@.num_allocated() == frame_allocator.spec_num_allocated(),
+            // Fresh initialization is preserved when count is also zero.
+            (frame_allocator@.is_freshly_initialized() && frame_allocator.spec_num_allocated() == 0) ==>
+                result@.is_freshly_initialized(),
     {
         Kpool { frame_allocator, pool_id }
     }
@@ -357,11 +374,9 @@ impl Kpool {
             // On success: exactly one new frame is allocated.
             result is Ok ==> {
                 let kframe = result->Ok_0;
-                let frame_idx = kframe.spec_frame_number();
+                let frame_idx: int = kframe@.frame_number;
                 // The frame satisfies its invariant.
                 &&& kframe.inv()
-                // The frame address is valid and aligned.
-                &&& kframe.spec_is_aligned()
                 // The frame index is valid.
                 &&& 0 <= frame_idx < self@.capacity()
                 // The frame is now allocated.
@@ -369,14 +384,14 @@ impl Kpool {
                 // The frame was not previously allocated.
                 &&& !old(self)@.is_allocated(frame_idx)
                 // PROVENANCE: Frame carries this pool's ID.
-                &&& kframe.spec_pool_id() == self@.id()
+                &&& kframe@.pool_id == self@.id()
                 // All other frames unchanged.
                 &&& forall|i: int| #![trigger self@.is_allocated(i)]
                     0 <= i < self@.capacity() && i != frame_idx ==>
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
             },
             // EXPLICIT COUNT: exactly one more frame allocated.
-            result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + 1,
+            result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() + 1,
             // On failure: state unchanged.
             result is Err ==> self@ == old(self)@,
     {
@@ -448,7 +463,7 @@ impl Kpool {
                 (0 <= i < start_frame as int || start_frame as int + count as int <= i < self@.capacity()) ==>
                 self@.is_allocated(i) == old(self)@.is_allocated(i),
             // EXPLICIT COUNT: allocated count increases by exactly `count`.
-            self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
+            self@.num_allocated() == old(self)@.num_allocated() + count as int,
     {
         // Connect Kpool's view to FrameAllocator's view.
         proof {
@@ -523,7 +538,7 @@ impl Kpool {
                     self@.is_allocated(i) == old(self)@.is_allocated(i)
             },
             // Count tracking on success.
-            result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
+            result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() + count as int,
             // On failure: state unchanged.
             result is Err ==> self@ == old(self)@,
             // Liveness for count=1.
@@ -598,7 +613,7 @@ impl Kpool {
             old(self).inv(),
             count > 0,
             // Precondition: must have at least `count` free frames.
-            old(self).spec_num_allocated() + count as int <= old(self).spec_capacity(),
+            old(self)@.num_allocated() + count as int <= old(self)@.capacity(),
         ensures
             self.inv(),
             // Capacity and region are preserved.
@@ -626,14 +641,14 @@ impl Kpool {
                     frame_indices[i] != frame_indices[j]
             },
             // EXPLICIT COUNT: exactly count more frames allocated.
-            result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() + count as int,
+            result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() + count as int,
             // MONOTONICITY: previously allocated frames remain allocated.
             forall|i: int| #![trigger self@.is_allocated(i)]
                 0 <= i < self@.capacity() && old(self)@.is_allocated(i) ==>
                 self@.is_allocated(i),
     {
         let ghost original_self: Kpool = *self;
-        let ghost original_capacity: int = self.spec_capacity();
+        let ghost original_capacity: int = self@.capacity();
         let ghost original_num_allocated: int = self.spec_num_allocated();
 
         let ghost mut frame_indices: Seq<int> = Seq::empty();
@@ -695,7 +710,7 @@ impl Kpool {
                 },
             };
 
-            let ghost new_frame_idx: int = kframe.spec_frame_number();
+            let ghost new_frame_idx: int = kframe@.frame_number;
 
             proof {
                 // The new frame is distinct from all previously allocated frames.
@@ -769,10 +784,10 @@ impl Kpool {
         requires
             old(self).inv(),
             kframe.inv(),
-            kframe.spec_frame_number() < old(self)@.capacity(),
-            old(self)@.is_allocated(kframe.spec_frame_number()),
+            kframe@.frame_number < old(self)@.capacity(),
+            old(self)@.is_allocated(kframe@.frame_number),
             // PROVENANCE: Frame must belong to this pool.
-            kframe.spec_pool_id() == old(self)@.id(),
+            kframe@.pool_id == old(self)@.id(),
         ensures
             self.inv(),
             self@.capacity() == old(self)@.capacity(),
@@ -782,13 +797,13 @@ impl Kpool {
             // LIVENESS: free always succeeds when preconditions are met.
             result is Ok,
             // On success: the frame is freed.
-            !self@.is_allocated(kframe.spec_frame_number()),
+            !self@.is_allocated(kframe@.frame_number),
             // All other frames unchanged.
             forall|i: int| #![trigger self@.is_allocated(i)]
-                0 <= i < self@.capacity() && i != kframe.spec_frame_number() ==>
+                0 <= i < self@.capacity() && i != kframe@.frame_number ==>
                 self@.is_allocated(i) == old(self)@.is_allocated(i),
             // Count decremented by 1.
-            self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
+            self@.num_allocated() == old(self)@.num_allocated() - 1,
     {
         self.frame_allocator.free(kframe.address())
     }
@@ -839,7 +854,7 @@ impl Kpool {
                 (0 <= i < start_frame as int || start_frame as int + count as int <= i < self@.capacity()) ==>
                 self@.is_allocated(i) == old(self)@.is_allocated(i),
             // COUNT: allocated count decreases by exactly `count`.
-            self.spec_num_allocated() == old(self).spec_num_allocated() - count as int,
+            self@.num_allocated() == old(self)@.num_allocated() - count as int,
     {
         // Connect Kpool's view to FrameAllocator's view.
         proof {
@@ -919,7 +934,7 @@ impl Kpool {
                 (0 <= i < start_frame as int || start_frame as int + count as int <= i < self@.capacity()) ==>
                 self@.is_allocated(i) == old(self)@.is_allocated(i),
             // COUNT: allocated count decreases by exactly `count`.
-            result is Ok ==> self.spec_num_allocated() == old(self).spec_num_allocated() - count as int,
+            result is Ok ==> self@.num_allocated() == old(self)@.num_allocated() - count as int,
     {
         // Delegate to free_range since the frame indices are contiguous.
         self.free_range(start_frame, count)

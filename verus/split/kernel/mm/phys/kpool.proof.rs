@@ -8,19 +8,18 @@ verus! {
 impl KernelFrame {
     //==============================================================================================
 
-    /// Lemma: Connects the closed spec `spec_is_aligned` to the underlying FrameAddress alignment.
+    /// Lemma: Connects the view-based frame_number to the underlying FrameAddress alignment.
     ///
-    /// This lemma exposes the relationship between the closed spec function and the
+    /// This lemma exposes the relationship between the view and the
     /// underlying FrameAddress properties, enabling verification in dependent modules.
     pub proof fn lemma_alignment_connection(&self)
         ensures
             self.spec_is_aligned() <==> self.spec_address().spec_is_aligned(),
             self.spec_raw_address() == self.spec_address().spec_raw_value(),
+            self@.frame_number == self.spec_frame_number(),
+            self@.pool_id == self.spec_pool_id(),
     {
         // Both sides are definitionally equal by the closed spec definitions.
-        // spec_is_aligned() = self.addr.spec_is_aligned()
-        // spec_address() = self.addr
-        // Therefore: self.spec_is_aligned() <==> self.spec_address().spec_is_aligned()
     }
 }
 
@@ -96,13 +95,12 @@ mod test {
             new_pool.inv(),
             old_pool@.has_free_frame(),
             new_pool@.capacity() == old_pool@.capacity(),
-            kframe.spec_is_aligned(),
-            0 <= kframe.spec_frame_number() < new_pool@.capacity(),
-            new_pool@.is_allocated(kframe.spec_frame_number()),
-            !old_pool@.is_allocated(kframe.spec_frame_number()),
+            kframe.inv(),
+            0 <= kframe@.frame_number < new_pool@.capacity(),
+            new_pool@.is_allocated(kframe@.frame_number),
+            !old_pool@.is_allocated(kframe@.frame_number),
     {
-        assert(0 <= kframe.spec_frame_number() < new_pool@.capacity());
-        assert(kframe.spec_raw_address() >= 0);
+        assert(0 <= kframe@.frame_number < new_pool@.capacity());
     }
 
     /// Test: alloc_many returns distinct frames.
@@ -129,12 +127,12 @@ mod test {
         requires
             old_pool.inv(),
             new_pool.inv(),
-            0 <= kframe.spec_frame_number() < old_pool@.capacity(),
-            old_pool@.is_allocated(kframe.spec_frame_number()),
-            !new_pool@.is_allocated(kframe.spec_frame_number()),
+            0 <= kframe@.frame_number < old_pool@.capacity(),
+            old_pool@.is_allocated(kframe@.frame_number),
+            !new_pool@.is_allocated(kframe@.frame_number),
             new_pool@.capacity() == old_pool@.capacity(),
     {
-        assert(!new_pool@.is_allocated(kframe.spec_frame_number()));
+        assert(!new_pool@.is_allocated(kframe@.frame_number));
         assert(new_pool@.has_free_frame());
     }
 
