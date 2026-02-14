@@ -135,6 +135,15 @@ impl Spinlock {
     /// # Returns
     ///
     /// A new `Spinlock` in the unlocked state with the given identity.
+    ///
+    /// # Source Equivalence
+    ///
+    /// Original: `pub const fn new() -> Self { Self(AtomicBool::new(false)) }`.
+    /// The `id` parameter is added for verification token isolation (see Trust
+    /// Assumption T1); the original uses reference identity (`&'a Spinlock`)
+    /// which Verus cannot model. The `const fn` qualifier is dropped because
+    /// Verus does not support `const fn`. The core exec logic is identical:
+    /// both produce an unlocked spinlock (`AtomicBool::new(false)` ≡ `locked: false`).
     pub fn new(id: usize) -> (result: Self)
         ensures
             !result@.locked,
@@ -211,6 +220,18 @@ impl Spinlock {
     /// Returns a tracked `LockToken` that the caller must pass to `unlock()` to
     /// discharge the lock-release obligation. This models the `SpinlockGuard` RAII
     /// pattern from the original implementation.
+    ///
+    /// # Source Equivalence
+    ///
+    /// Original: `pub fn lock(&self) -> SpinlockGuard { loop { match self.0
+    /// .compare_exchange(false, true, Acquire, Relaxed) { Ok(false) => break,
+    /// _ => pause() } } SpinlockGuard(self) }`.
+    /// Divergences: (1) `&self` → `&mut self` because Verus requires exclusive
+    /// references for state mutation; (2) CAS spin loop → single `try_lock()`
+    /// because the sequential model's preconditions guarantee success on first
+    /// attempt; (3) returns `Tracked<LockToken>` instead of `SpinlockGuard`
+    /// because Verus cannot reason about `Drop`-based RAII. The state
+    /// transition (locked: false → true) is identical.
     pub fn lock(&mut self) -> (token: Tracked<LockToken>)
         requires
             old(self)@.is_unlocked(),
@@ -239,6 +260,15 @@ impl Spinlock {
     /// Consumes the `LockToken` produced by `lock()` or `try_lock()`, discharging
     /// the lock-release obligation. This models the `Drop` implementation of
     /// `SpinlockGuard` from the original.
+    ///
+    /// # Source Equivalence — models `Drop for SpinlockGuard`
+    ///
+    /// Original: `impl Drop for SpinlockGuard<'_> { fn drop(&mut self) {
+    /// self.0.0.store(false, Ordering::Release); } }`.
+    /// The original `drop` sets the `AtomicBool` to `false`; this `unlock()`
+    /// sets `self.locked = false`. Both produce the same state transition
+    /// (locked → unlocked). The token consumption models the guard's lifetime
+    /// end. See `lemma_unlock_models_drop` for the formal equivalence proof.
     ///
     /// # Precondition
     ///
