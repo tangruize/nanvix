@@ -611,6 +611,9 @@ impl ProcessManagerInner {
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.spec_process_exists(result as int),
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         let pid: i32 = self.next_pid;
 
@@ -670,6 +673,9 @@ impl ProcessManagerInner {
             self@.ready_pids =~= old(self)@.ready_pids.insert(
                 old(self)@.running_pid
             ).remove(chosen_next as int),
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
@@ -709,6 +715,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         let old_running: i32 = self.running_pid;
 
@@ -736,6 +744,9 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         let old_running: i32 = self.running_pid;
 
@@ -772,6 +783,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
     {
         let old_running: i32 = self.running_pid;
 
@@ -806,6 +819,9 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         let old_running: i32 = self.running_pid;
 
@@ -838,6 +854,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         let old_running: i32 = self.running_pid;
 
@@ -866,6 +884,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
     {
         let old_running: i32 = self.running_pid;
 
@@ -893,6 +913,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.ghost_suspended.pid_remove(pid as u64);
         self.ghost_ready.pid_insert(pid as u64);
@@ -916,6 +938,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         proof {
             Self::lemma_union_disjoint_len(self.ghost_ready@, self.ghost_interrupted@);
@@ -944,6 +968,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
     {
         self.ghost_ready.pid_remove(pid as u64);
         self.ghost_zombies.pid_insert(pid as u64);
@@ -996,6 +1022,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.ghost_suspended.pid_remove(pid as u64);
         self.ghost_interrupted.pid_insert(pid as u64);
@@ -1020,6 +1048,9 @@ impl ProcessManagerInner {
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             !self@.spec_process_exists(pid as int),
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
     {
         self.ghost_zombies.pid_remove(pid as u64);
         self.zombie_count = self.zombie_count - 1;
@@ -1047,6 +1078,10 @@ impl ProcessManagerInner {
             self@.running_pid == old(self)@.running_pid,
             self@.next_pid == old(self)@.next_pid,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.number_buffered_messages = self.number_buffered_messages + 1;
     }
@@ -1081,6 +1116,10 @@ impl ProcessManagerInner {
             self@.running_pid == old(self)@.running_pid,
             self@.next_pid == old(self)@.next_pid,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.number_buffered_messages = self.number_buffered_messages - 1;
     }
@@ -1145,6 +1184,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.ghost_suspended.pid_remove(pid as u64);
         self.ghost_interrupted.pid_insert(pid as u64);
@@ -1193,6 +1234,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         // Step 1+3: Resume all interrupted into ready.
         self.resume_all_interrupted();
@@ -1365,6 +1408,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.wakeup_to_ready(pid);
     }
@@ -1614,6 +1659,8 @@ impl ProcessManagerInner {
                 self@.ready_pids =~= old(self)@.ready_pids.insert(
                     old(self)@.running_pid).remove(chosen_next as int)
             ),
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         if to_suspended {
             self.sleep_running(chosen_next);
@@ -1659,6 +1706,8 @@ impl ProcessManagerInner {
                 self@.ready_pids =~= old(self)@.ready_pids.insert(
                     old(self)@.running_pid).remove(chosen_next as int)
             ),
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
     {
         if to_zombie {
             self.exit_running(chosen_next);
@@ -1714,6 +1763,7 @@ impl ProcessManagerInner {
                     old(self)@.running_pid)
                 && self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int)
             ),
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
     {
         if branch == 0u8 {
             self.exit_thread_running(chosen_next);
@@ -1782,6 +1832,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.wakeup_to_ready(pid);
     }
@@ -1817,6 +1869,8 @@ impl ProcessManagerInner {
                 self@.ready_pids =~= old(self)@.ready_pids
                 && self@.suspended_pids =~= old(self)@.suspended_pids
             ),
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         if from_suspended {
             self.create_thread_from_suspended(pid);
@@ -1850,6 +1904,10 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.create_thread_dispatch(pid, from_suspended);
     }
@@ -1880,6 +1938,10 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.create_thread_dispatch(pid, from_suspended);
     }
@@ -1902,6 +1964,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.wakeup_to_ready(pid);
     }
@@ -1923,6 +1987,8 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.wakeup_to_ready(pid);
     }
@@ -2045,6 +2111,8 @@ impl ProcessManagerInner {
                 self@.ready_pids =~= old(self)@.ready_pids
                 && self@.zombie_pids =~= old(self)@.zombie_pids
             ),
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
     {
         if to_zombie {
             self.terminate_ready(pid);
@@ -2249,6 +2317,10 @@ impl ProcessManagerInner {
             self@.running_pid == old(self)@.running_pid,
             self@.next_pid == old(self)@.next_pid,
             self@.interrupt_capable == old(self)@.interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids,
+            self@.suspended_pids =~= old(self)@.suspended_pids,
+            self@.interrupted_pids =~= old(self)@.interrupted_pids,
+            self@.zombie_pids =~= old(self)@.zombie_pids,
     {
         self.post_message(receiver_pid);
     }
