@@ -93,15 +93,16 @@ impl Spinlock {
     {
     }
 
-    /// Lemma: The well-formedness invariant ensures no token is outstanding
+    /// Lemma: The invariant ensures no token is outstanding
     /// when the lock is unlocked.
     pub proof fn lemma_wf_unlocked_no_token(s: &Spinlock)
         requires
-            s.wf(),
+            s.inv(),
             s.spec_is_unlocked(),
         ensures
             !s@.token_issued,
     {
+        reveal(Spinlock::inv);
     }
 
     /// Lemma: The `LockToken` snapshot matches the locked state.
@@ -126,12 +127,13 @@ impl Spinlock {
     /// well-formed (token is outstanding), `try_lock()` will fail (return false).
     pub proof fn lemma_try_lock_contended_fails(s: &Spinlock)
         requires
-            s.wf(),
+            s.inv(),
             s.spec_is_locked(),
         ensures
             s.locked,
             s@.token_issued,
     {
+        reveal(Spinlock::inv);
     }
 
     /// Lemma: `lock()` requires `spec_is_unlocked()` to prevent sequential deadlock.
@@ -145,12 +147,13 @@ impl Spinlock {
     /// necessary for deadlock prevention.
     pub proof fn lemma_lock_precondition_prevents_deadlock(s: &Spinlock)
         requires
-            s.wf(),
+            s.inv(),
             s.spec_is_locked(),
         ensures
             s@.token_issued,
             !s.spec_is_unlocked(),
     {
+        reveal(Spinlock::inv);
     }
 }
 
@@ -178,21 +181,23 @@ impl Spinlock {
             &&& !initial@.token_issued
             &&& after_lock@.token_issued
             &&& !after_unlock@.token_issued
-            &&& initial.wf()
-            &&& after_lock.wf()
-            &&& after_unlock.wf()
+            &&& initial.inv()
+            &&& after_lock.inv()
+            &&& after_unlock.inv()
         }),
     {
+        reveal(Spinlock::inv);
     }
 
     /// Lemma: An unlocked spinlock has the same view as a new spinlock with its id.
     pub proof fn lemma_unlocked_eq_new_view(s: &Spinlock)
         requires
             s.spec_is_unlocked(),
-            s.wf(),
+            s.inv(),
         ensures
             s@ == Spinlock::spec_new_view(s@.id),
     {
+        reveal(Spinlock::inv);
     }
 
     /// Lemma: After `new()` followed by `try_lock()`, the result is always `true`.
@@ -209,8 +214,9 @@ impl Spinlock {
             s.spec_is_unlocked(),
             !s.locked,
             !s@.token_issued,
-            s.wf(),
+            s.inv(),
     {
+        reveal(Spinlock::inv);
     }
 
     /// Lemma: A `LockToken` produced by a locked spinlock is valid for unlock.

@@ -67,7 +67,7 @@ impl Spinlock {
         !self.locked
     }
 
-    /// Spec function: well-formedness predicate.
+    /// Invariant predicate for internal consistency.
     ///
     /// # Description
     ///
@@ -78,8 +78,8 @@ impl Spinlock {
     /// - `unlock()` transitions to `(locked=false, token_issued=false)`.
     ///
     /// This prevents both "unlocked with token outstanding" (double-unlock) and
-    /// "locked without token" (unreachable from API, but now excluded by wf).
-    pub open spec fn wf(&self) -> bool {
+    /// "locked without token" (unreachable from API, but now excluded by inv).
+    pub closed spec fn inv(&self) -> bool {
         self.locked == self.token_issued()
     }
 
@@ -98,6 +98,10 @@ impl Spinlock {
 // View Implementation
 //==================================================================================================
 
+/// NOTE: `view()` must be `open spec fn` because the Verus `View` trait requires it.
+/// The trait signature mandates `open`, so this cannot be `closed`. Users observe
+/// only the abstract `SpinlockView` (which uses `nat` instead of `usize`), not the
+/// concrete `Spinlock` fields directly.
 impl View for Spinlock {
     type V = SpinlockView;
 

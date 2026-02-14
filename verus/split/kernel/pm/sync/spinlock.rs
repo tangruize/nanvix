@@ -15,7 +15,7 @@
 //! - `spec_is_locked` and `spec_is_unlocked` are complementary predicates.
 //! - Lock instance identity (`id`) is preserved across all state transitions.
 //! - Tokens are bound to the producing lock instance via view identity.
-//! - Well-formedness (`wf()`) enforces: unlocked implies no token outstanding.
+//! - Invariant (`inv()`) enforces: unlocked implies no token outstanding.
 //! - Token issuance is tracked: only one token per lock at a time.
 //!
 //! ## Verification Model
@@ -30,7 +30,7 @@
 //! **This verified code is a specification model, not a runtime replacement.** The
 //! kernel uses the original `src/kernel/src/pm/sync/spinlock.rs` (with `AtomicBool`
 //! and spin-wait loop) at runtime. The verified model proves the state machine
-//! protocol is correct: every reachable state satisfies `wf()`, tokens are
+//! protocol is correct: every reachable state satisfies `inv()`, tokens are
 //! instance-bound, and lock/unlock transitions are sound. The `lock()` body
 //! delegates to `try_lock()` (a single CAS model) because, under the sequential
 //! preconditions, success is guaranteed — this proves the postconditions from
@@ -59,7 +59,7 @@
 //!
 //! ## Trust Boundaries
 //!
-//! - `lock()`: Fully verified. The sequential model's preconditions (`wf()`,
+//! - `lock()`: Fully verified. The sequential model's preconditions (`inv()`,
 //!   `spec_is_unlocked()`, `!token_issued()`) guarantee that the lock is acquirable,
 //!   so `lock()` delegates to `try_lock()` without needing `external_body`. The
 //!   original implementation's spin-wait loop (atomic CAS + pause) is a HAL-level
@@ -141,8 +141,9 @@ impl Spinlock {
             result.spec_is_unlocked(),
             result@ == Spinlock::spec_new_view(id as nat),
             result@.id == id as nat,
-            result.wf(),
+            result.inv(),
     {
+        proof { reveal(Spinlock::inv); }
         Spinlock { locked: false, id: id, token_issued: false }
     }
 
@@ -169,7 +170,7 @@ impl Spinlock {
     /// `false` otherwise (with `None`).
     pub fn try_lock(&mut self) -> (result: (bool, Tracked<Option<LockToken>>))
         requires
-            old(self).wf(),
+            old(self).inv(),
         ensures
             result.0 == !old(self).locked,
             // Unconditional: lock is always held after try_lock (success: acquired;
@@ -182,8 +183,9 @@ impl Spinlock {
             result.0 ==> result.1@.unwrap().view == self@,
             !result.0 ==> result.1@.is_none(),
             !result.0 ==> self@.token_issued == old(self)@.token_issued,
-            self.wf(),
+            self.inv(),
     {
+        proof { reveal(Spinlock::inv); }
         if !self.locked {
             self.locked = true;
             self.token_issued = true;
@@ -203,7 +205,7 @@ impl Spinlock {
     ///
     /// The `requires` clause enforces sequential-model safety: calling `lock()` on an
     /// already-locked spinlock would be an infinite loop (deadlock) in the sequential model.
-    /// Under `lock()`'s preconditions (`spec_is_unlocked()` + `wf()`), `try_lock()` is
+    /// Under `lock()`'s preconditions (`spec_is_unlocked()` + `inv()`), `try_lock()` is
     /// guaranteed to succeed, so delegation is sound without `external_body`.
     ///
     /// Returns a tracked `LockToken` that the caller must pass to `unlock()` to
@@ -212,7 +214,7 @@ impl Spinlock {
     pub fn lock(&mut self) -> (token: Tracked<LockToken>)
         requires
             old(self).spec_is_unlocked(),
-            old(self).wf(),
+            old(self).inv(),
             !old(self).token_issued(),
         ensures
             self.locked,
@@ -220,7 +222,7 @@ impl Spinlock {
             self@.id == old(self)@.id,
             self@.token_issued,
             token@.view == self@,
-            self.wf(),
+            self.inv(),
     {
         let (_success, Tracked(opt_token)) = self.try_lock();
         let tracked token: LockToken = opt_token.tracked_unwrap();
@@ -244,7 +246,7 @@ impl Spinlock {
     pub fn unlock(&mut self, Tracked(token): Tracked<LockToken>)
         requires
             old(self).locked,
-            old(self).wf(),
+            old(self).inv(),
             old(self).token_issued(),
             token.view == old(self)@,
         ensures
@@ -254,8 +256,9 @@ impl Spinlock {
             self@.id == old(self)@.id,
             !self@.token_issued,
             self@ == Spinlock::spec_new_view(old(self)@.id),
-            self.wf(),
+            self.inv(),
     {
+        proof { reveal(Spinlock::inv); }
         self.locked = false;
         self.token_issued = false;
     }
