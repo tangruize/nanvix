@@ -1,0 +1,181 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T11:51:13.504252
+Model: claude-opus-4.6-fast
+Session: 2721b325-8d02-4022-a845-498521ece560
+Duration: 102.6s
+Exit code: 0
+
+=== Prompt ===
+Fix spec methodology violations for mutex per the project guidelines.
+
+Original source: src/kernel/src/pm/sync/mutex.rs
+Verified code directory: verus/split/kernel/pm/sync/
+  - mutex.rs (exec)
+  - mutex.spec.rs (spec)
+  - mutex.proof.rs (proof)
+
+== METHODOLOGY GUIDELINES (from specifying-and-proving-types.md) ==
+
+Step 1 - ABSTRACTION:
+  - View types must use abstract types: int not i32, Seq<int> not Vec<u64>.
+  - view() must be `pub closed spec fn` (not open), so users can't see internals.
+  - Hide implementation-only fields from View types.
+
+Step 2 - INVARIANT:
+  - Each type needs `pub closed spec fn inv(&self) -> bool` (or wf()).
+  - Captures all internal consistency invariants.
+
+Step 3 - PUBLIC SPECS:
+  - Public method specs use only self@.field (view), not self.field (implementation).
+  - Public methods require self.inv() and ensure self.inv() for &self/&mut self.
+  - No Self spec functions other than inv() and view() in public specs.
+
+Step 5 - NO CHEATING:
+  - No assume(), admit(), or unjustified external_body.
+
+== VIOLATIONS FOUND ==
+
+The following violations were detected by automated analysis:
+
+# Spec Methodology Report: mutex
+
+**Directory:** /home/ubuntu/nanvix/verus/split/kernel/pm/sync
+**Total issues:** 3
+
+## HIGH (2)
+
+1. **Step 1** [view()] at `fn view()`
+   - view() should be `pub closed spec fn`, not `open`
+   - Guideline: view() is public but closed so users can't see internals.
+
+2. **Step 2** [Mutex] at `impl Mutex`
+   - No inv()/wf() function found
+   - Guideline: Step 2: Write inv() as pub closed spec fn for implementation invariants.
+
+## MEDIUM (1)
+
+1. **Step 2** [Mutex] at `fn wf()`
+   - wf() is `open spec fn` but guideline says `pub closed spec fn`
+   - Guideline: inv() should be pub closed so users can't see implementation internals.
+
+
+== YOUR TASK ==
+
+1. Read each violation and fix it in the appropriate file (.rs, .spec.rs, .proof.rs).
+2. For view() openness: if it MUST stay open (e.g., View trait impl), document why.
+3. For missing inv(): add one, or document why it's not needed for this type.
+4. For self.field in public specs: rewrite using self@.field or self.view().field.
+5. Do NOT break existing verification.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh mutex
+Iterate until verification passes (0 errors).
+
+=== Output ===
+
+
+
+
+● Read verus/split/kernel/pm/sync/mutex.spec.rs
+  └ 110 lines read
+
+● Read verus/split/kernel/pm/sync/mutex.proof.rs
+  └ 318 lines read
+
+● Read verus/split/kernel/pm/sync/mutex.rs
+  └ 335 lines read
+
+Let me check how other types in the project handle these patterns.
+
+● Read specifying-and-proving-types.md lines 1-80
+  └ 80 lines read
+
+● Grep "closed spec fn view" (/home/ubuntu/nanvix/verus/split)
+  └ 14 lines found
+
+● Grep "pub closed spec fn (inv|wf)" (/home/ubuntu/nanvix/verus/split)
+  └ 20 lines found
+
+● List sync directory
+  $ ls /home/ubuntu/nanvix/verus/split/kernel/pm/sync/
+  └ 4 lines...
+
+Let me check how spinlock (which already follows guidelines) handles view and inv:
+
+● Read verus/split/kernel/pm/sync/condvar.spec.rs lines 130-165
+  └ 36 lines read
+
+● Read verus/split/kernel/pm/sync/spinlock.spec.rs
+  └ 121 lines read
+
+Let me check how spinlock proofs handle the closed `inv()`:
+
+● Read verus/split/kernel/pm/sync/spinlock.proof.rs
+  └ 288 lines read
+
+● Read verus/split/kernel/pm/sync/spinlock.rs lines 135-280
+  └ 146 lines read
+
+Now I have a clear picture of the spinlock pattern. Let me create a plan and implement the fixes.
+
+● Read verus/split/kernel/pm/sync/spinlock.rs lines 276-335
+  └ 38 lines read
+
+Now I have the pattern clear. The spinlock already follows guidelines with `pub closed spec fn inv()`, `reveal(Spinlock::inv)` in proofs/exec, and a comment on `view()`. Let me apply the same pattern to mutex.
+
+● Edit verus/split/kernel/pm/sync/mutex.spec.rs (+6 -2)
+
+● Edit verus/split/kernel/pm/sync/mutex.spec.rs (+4)
+
+Now add `reveal(Mutex::wf)` in exec methods that need it:
+
+● Edit verus/split/kernel/pm/sync/mutex.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.rs (+1)
+
+Now add `reveal(Mutex::wf);` in all proof lemmas that reason about wf():
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+● Edit verus/split/kernel/pm/sync/mutex.proof.rs (+1)
+
+Now let me run verification:
+
+● Run mutex verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh mutex 2>&1
+  └ 25 lines...
+
+All 27 verified, 0 errors. Let me verify the final state of the files:
+
+● Read verus/split/kernel/pm/sync/mutex.spec.rs lines 69-115
+  └ 47 lines read
+
+
+Total usage est:        9 Premium requests
+API time spent:         1m 24.023s
+Total session time:     1m 41.332s
+Total code changes:     +24 -2
+Breakdown by AI model:
+ claude-opus-4.6-fast    603.0k in, 12.8k out, 513.7k cached (Est. 9 Premium requests)
+
+=== End ===
