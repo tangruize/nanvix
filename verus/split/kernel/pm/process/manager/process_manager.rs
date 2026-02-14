@@ -1904,8 +1904,6 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
-            self@.ready_pids =~= old(self)@.ready_pids,
-            self@.suspended_pids =~= old(self)@.suspended_pids,
             self@.interrupted_pids =~= old(self)@.interrupted_pids,
             self@.zombie_pids =~= old(self)@.zombie_pids,
     {
@@ -1938,8 +1936,6 @@ impl ProcessManagerInner {
             self@.next_pid == old(self)@.next_pid,
             self@.number_buffered_messages == old(self)@.number_buffered_messages,
             self@.interrupt_capable == old(self)@.interrupt_capable,
-            self@.ready_pids =~= old(self)@.ready_pids,
-            self@.suspended_pids =~= old(self)@.suspended_pids,
             self@.interrupted_pids =~= old(self)@.interrupted_pids,
             self@.zombie_pids =~= old(self)@.zombie_pids,
     {
