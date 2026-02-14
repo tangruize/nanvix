@@ -1,0 +1,33 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 15:55:47 CST 2026
+Module: kernel::pm::process::state::zombie
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::zombie
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::zombie
+
+error: postcondition not satisfied
+  --> kernel/pm/process/state/zombie.proof.rs:98:13
+   |
+90 |       proof fn lemma_mutation_frame_preserves_inv(
+   |  ___________-
+91 | |         old_self: &ZombieProcess,
+92 | |         new_self: &ZombieProcess,
+93 | |     )
+   | |_____- at the end of the function body
+...
+98 |               new_self.inv(),
+   |               ^^^^^^^^^^^^^^ failed this postcondition
+
+verification results:: 24 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 24
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::zombie (verified:24, errors:1)
