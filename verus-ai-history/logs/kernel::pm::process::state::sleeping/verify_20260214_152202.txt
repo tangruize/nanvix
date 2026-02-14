@@ -1,0 +1,50 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 15:22:02 CST 2026
+Module: kernel::pm::process::state::sleeping
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::sleeping
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::sleeping
+
+error: postcondition not satisfied
+  --> kernel/pm/process/state/sleeping.proof.rs:62:13
+   |
+52 | /     pub proof fn lemma_mutation_frame_preserves_wf(
+53 | |         old_self: &SleepingProcess,
+54 | |         new_self: &SleepingProcess,
+55 | |     )
+   | |_____- at the end of the function body
+...
+62 |               new_self.wf(),
+   |               ^^^^^^^^^^^^^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+   --> kernel/pm/process/state/sleeping.proof.rs:216:11
+    |
+216 |     proof fn lemma_find_thread_view_equiv(p: &SleepingProcess, tid: u64)
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+   --> kernel/pm/process/state/sleeping.proof.rs:228:20
+    |
+228 |             assert(p@.spec_has_sleeping_thread(tid as int));
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> kernel/pm/process/state/sleeping.proof.rs:244:20
+    |
+244 |             assert(p@.spec_has_zombie_thread(tid as int));
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 28 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 3 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 28
+Errors: 2
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::sleeping (verified:28, errors:2)
