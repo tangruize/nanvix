@@ -1,0 +1,52 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 11:42:45 CST 2026
+Module: kernel::pm::sync::condvar
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::sync::condvar
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0599]: no function or associated item named `spec_new_view` found for struct `kernel::pm::sync::condvar::Condvar` in the current scope
+   --> kernel/pm/sync/condvar.proof.rs:78:46
+    |
+ 78 |             let view: CondvarView = Condvar::spec_new_view();
+    |                                              ^^^^^^^^^^^^^ function or associated item not found in `kernel::pm::sync::condvar::Condvar`
+    |
+   ::: kernel/pm/sync/condvar.rs:206:1
+    |
+206 | pub struct Condvar {
+    | ------------------ function or associated item `spec_new_view` not found for this struct
+    |
+note: if you're trying to build a new `kernel::pm::sync::condvar::Condvar`, consider using `kernel::pm::sync::condvar::Condvar::new` which returns `kernel::pm::sync::condvar::Condvar`
+   --> kernel/pm/sync/condvar.rs:223:5
+    |
+223 |     pub fn new() -> (result: Self)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no function or associated item named `spec_new_view` found for struct `kernel::pm::sync::condvar::Condvar` in the current scope
+   --> kernel/pm/sync/condvar.proof.rs:772:22
+    |
+772 |             Condvar::spec_new_view().sleeping.len() == 0,
+    |                      ^^^^^^^^^^^^^ function or associated item not found in `kernel::pm::sync::condvar::Condvar`
+    |
+   ::: kernel/pm/sync/condvar.rs:206:1
+    |
+206 | pub struct Condvar {
+    | ------------------ function or associated item `spec_new_view` not found for this struct
+    |
+note: if you're trying to build a new `kernel::pm::sync::condvar::Condvar`, consider using `kernel::pm::sync::condvar::Condvar::new` which returns `kernel::pm::sync::condvar::Condvar`
+   --> kernel/pm/sync/condvar.rs:223:5
+    |
+223 |     pub fn new() -> (result: Self)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0599`.
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::sync::condvar (verified:0, errors:0)
