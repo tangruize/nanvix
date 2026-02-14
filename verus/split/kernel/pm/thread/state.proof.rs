@@ -34,6 +34,7 @@ impl ThreadState {
         ensures
             s.wf(),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: A newly constructed ThreadState is drop-safe (no locked mutexes).
@@ -236,6 +237,7 @@ impl ThreadState {
             seq_to_set(self.locked_mutex_set@.push(address)).len()
                 == seq_to_set(self.locked_mutex_set@).len() + 1,
     {
+        reveal(ThreadState::wf);
         // push(v) gives s.push(v), and seq_to_set(s.push(v))
         // = seq_to_set(s).insert(v as int) by definition.
         assert(self.locked_mutex_set@.push(address).drop_last() =~= self.locked_mutex_set@);
@@ -259,6 +261,7 @@ impl ThreadState {
             seq_to_set(self.locked_mutex_set@.push(address)).contains(other)
                 == seq_to_set(self.locked_mutex_set@).contains(other),
     {
+        reveal(ThreadState::wf);
         assert(self.locked_mutex_set@.push(address).drop_last() =~= self.locked_mutex_set@);
     }
 
@@ -278,6 +281,7 @@ impl ThreadState {
                 && new_seq.no_duplicates()
             }),
     {
+        reveal(ThreadState::wf);
         lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
         let idx: int = choose |k: int|
             0 <= k < self.locked_mutex_set@.len()
@@ -301,6 +305,7 @@ impl ThreadState {
                     == seq_to_set(self.locked_mutex_set@).contains(other)
             }),
     {
+        reveal(ThreadState::wf);
         lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
         let idx: int = choose |k: int|
             0 <= k < self.locked_mutex_set@.len()
@@ -316,6 +321,7 @@ impl ThreadState {
         ensures
             self.spec_drop_safe(),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: A well-formed state with nonzero locked mutexes is not drop-safe.
@@ -326,6 +332,7 @@ impl ThreadState {
         ensures
             !self.spec_drop_safe(),
     {
+        reveal(ThreadState::wf);
     }
 
     //==============================================================================================
@@ -345,6 +352,7 @@ impl ThreadState {
                 post.wf()
             }),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: take_user_stack preserves well-formedness.
@@ -360,6 +368,7 @@ impl ThreadState {
                 post.wf()
             }),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: set_interrupt_reason preserves well-formedness.
@@ -375,6 +384,7 @@ impl ThreadState {
                 post.wf()
             }),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: take_interrupt_reason preserves well-formedness.
@@ -390,6 +400,7 @@ impl ThreadState {
                 post.wf()
             }),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: store_thread_data_area preserves well-formedness.
@@ -405,6 +416,7 @@ impl ThreadState {
                 post.wf()
             }),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: store_mutex_guard preserves well-formedness.
@@ -418,6 +430,7 @@ impl ThreadState {
             self.locked_mutex_set@.push(address).len()
                 == self.locked_mutex_count as nat + 1,
     {
+        reveal(ThreadState::wf);
         if self.locked_mutex_set@.contains(address) {
             lemma_seq_to_set_contains_fwd(self.locked_mutex_set@, address);
         }
@@ -438,6 +451,7 @@ impl ThreadState {
                 && new_seq.len() == self.locked_mutex_count as nat - 1
             }),
     {
+        reveal(ThreadState::wf);
         lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
         let idx: int = choose |k: int|
             0 <= k < self.locked_mutex_set@.len()
@@ -536,6 +550,7 @@ impl ThreadState {
             self.spec_locked_mutex_count() == 0,
             forall|addr: int| !self.spec_has_mutex(addr),
     {
+        reveal(ThreadState::wf);
         // spec_drop_safe: locked_mutex_set@.len() == 0, so seq is empty.
         assert(self.locked_mutex_set@ =~= Seq::<u64>::empty());
         // seq_to_set of empty is empty.
@@ -556,6 +571,7 @@ impl ThreadState {
         ensures
             (self.locked_mutex_count == 0) == self.spec_drop_safe(),
     {
+        reveal(ThreadState::wf);
     }
 
     //==============================================================================================

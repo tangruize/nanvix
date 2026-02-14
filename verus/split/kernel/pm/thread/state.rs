@@ -170,6 +170,7 @@ impl ThreadState {
             result.spec_drop_safe(),
             result.wf(),
     {
+        proof { reveal(ThreadState::wf); }
         ThreadState {
             id: id,
             kernel_stack: kernel_stack,
@@ -215,6 +216,7 @@ impl ThreadState {
             forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
+        proof { reveal(ThreadState::wf); }
         let stack: Option<int> = self.kernel_stack;
         self.kernel_stack = None;
         stack
@@ -242,6 +244,7 @@ impl ThreadState {
             forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
+        proof { reveal(ThreadState::wf); }
         let stack: Option<int> = self.user_stack;
         self.user_stack = None;
         stack
@@ -266,6 +269,7 @@ impl ThreadState {
             forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
+        proof { reveal(ThreadState::wf); }
         self.interrupt_reason = Some(reason);
     }
 
@@ -289,6 +293,7 @@ impl ThreadState {
             forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
+        proof { reveal(ThreadState::wf); }
         let reason: Option<int> = self.interrupt_reason;
         self.interrupt_reason = None;
         reason
@@ -331,6 +336,7 @@ impl ThreadState {
             self.wf(),
     {
         proof {
+            reveal(ThreadState::wf);
             // Before push: self.locked_mutex_set@ is the old seq.
             let old_seq: Seq<u64> = self.locked_mutex_set@;
             // After push, the new seq is old_seq.push(address).
@@ -385,6 +391,7 @@ impl ThreadState {
             self.spec_interrupt_reason() == old(self).spec_interrupt_reason(),
             self.wf(),
     {
+        proof { reveal(ThreadState::wf); }
         // Save old sequence for proof reasoning after mutation.
         let ghost old_seq: Seq<u64> = self.locked_mutex_set@;
 
@@ -466,6 +473,7 @@ impl ThreadState {
             result == self.spec_drop_safe(),
             result == (self.spec_locked_mutex_count() == 0),
     {
+        proof { reveal(ThreadState::wf); }
         self.locked_mutex_count == 0
     }
 
@@ -487,6 +495,7 @@ impl ThreadState {
             forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
             self.wf(),
     {
+        proof { reveal(ThreadState::wf); }
         self.user_tda = user_tda;
     }
 

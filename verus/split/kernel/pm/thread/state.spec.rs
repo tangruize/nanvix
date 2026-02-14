@@ -106,7 +106,7 @@ impl ThreadState {
     /// A ThreadState is well-formed when:
     /// - The underlying Vec has no duplicate entries.
     /// - The Vec length equals the runtime counter.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.locked_mutex_set@.no_duplicates()
         && self.locked_mutex_set@.len() == self.locked_mutex_count as nat
     }
@@ -139,6 +139,9 @@ impl ThreadState {
 impl View for ThreadState {
     type V = ThreadStateView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ThreadStateView {
         ThreadStateView {
             id: self.id.spec_value(),
