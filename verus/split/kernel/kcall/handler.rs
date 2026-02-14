@@ -1019,4 +1019,59 @@ pub fn kcall_handler_loop(fuel: u32, stdio_enabled: bool) -> (result: (LoopResul
     }, history)
 }
 
+//==================================================================================================
+// Top-Level Entry Point (Shadow Model of Original kcall_handler)
+//==================================================================================================
+
+/// Models the original `kcall_handler` entry point.
+///
+/// # Description
+///
+/// The original `kcall_handler(hal, mm, pm) -> ExitStatus` (source lines 47-200)
+/// is the kernel's main event loop. This `external_body` function represents
+/// the original entry point in the Verus model. It cannot be directly compiled
+/// by Verus because:
+/// - Parameters `Hal`, `VirtMemoryManager`, `ProcessManager` are OS types with
+///   global mutable state, mutex/semaphore synchronization, and `unsafe` blocks.
+/// - The return type `ExitStatus` is an OS-specific type.
+/// - The original uses `panic!`, `unreachable!`, `cfg_if!`, and `unsafe` blocks.
+///
+/// The verified behavior is modeled by `kcall_handler_loop(fuel, stdio_enabled)`,
+/// which proves the control flow, termination, yield, and dispatch properties
+/// documented in the module header. See the API Mapping table for the full
+/// correspondence between original API calls and shadow model functions.
+///
+/// ## Equivalence Argument
+///
+/// `kcall_handler_loop` faithfully models `kcall_handler`:
+/// - Initialization: `event_init()` models `event::init(hal)`.
+/// - Loop body: `run_full_iteration()` models one iteration of the main loop.
+/// - Dispatch: `classify_and_check_invalid()` + `dispatch_to_subsystem()` model
+///   the `match KcallNumber::from(args.number)` statement.
+/// - Termination: `is_initd_terminated()` models `pid == ProcessIdentifier::INITD`.
+/// - Post-loop drain: `drain_remaining_zombies()` models the `while let` cleanup.
+/// - The `fuel` parameter is a verification artifact for Verus termination
+///   checking; the original loop runs indefinitely until INITD terminates.
+/// - The `stdio_enabled` parameter models `cfg_if!(feature = "stdio")`.
+///
+/// ## Trust Boundary
+///
+/// This function is the outermost trust boundary. Its postcondition is
+/// intentionally weak because the exit status originates from
+/// `harvest_zombies()` (T2) and is outside the verification scope.
+/// The verified properties (dispatch correctness, yield-iff-idle,
+/// termination-only-on-INITD, loop invariant) are proved on the
+/// decomposed model functions and composed in `kcall_handler_loop`.
+#[verifier::external_body]
+pub fn kcall_handler() -> (exit_status: u32)
+    ensures
+        // The exit status originates from harvest_zombies() (T2).
+        // Its correctness depends on ProcessManager state outside
+        // the verification scope. See kcall_handler_loop() for the
+        // verified control flow and termination properties.
+        true,
+{
+    unimplemented!()
+}
+
 } // verus!
