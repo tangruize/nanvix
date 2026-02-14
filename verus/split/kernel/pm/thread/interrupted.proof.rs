@@ -130,7 +130,7 @@ impl InterruptedThread {
             }),
     {
         reveal(InterruptedThread::wf);
-        reveal(ThreadState::wf);
+        self.state.lemma_set_interrupt_reason_preserves_wf(self.reason);
     }
 
     /// Lemma: Resume preserves the mutex accounting (count and per-address membership).
