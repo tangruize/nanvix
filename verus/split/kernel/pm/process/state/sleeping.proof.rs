@@ -317,6 +317,20 @@ impl SleepingProcessView {
         }
     }
 
+    /// Bridging lemma: wakeup() error result view matches spec_wakeup_not_found().
+    pub proof fn lemma_wakeup_not_found_refines_spec(
+        sv: SleepingProcessView,
+        result: SleepingProcessView,
+    )
+        requires
+            result.pid == sv.pid,
+            result.sleeping_thread_ids =~= sv.sleeping_thread_ids,
+            result.zombie_thread_ids =~= sv.zombie_thread_ids,
+        ensures
+            result =~= sv.spec_wakeup_not_found(),
+    {
+    }
+
     /// Bridging lemma: wakeup_alarm() expired result view matches spec_wakeup_alarm_expired().
     pub proof fn lemma_wakeup_alarm_expired_refines_spec(
         sv: SleepingProcessView,

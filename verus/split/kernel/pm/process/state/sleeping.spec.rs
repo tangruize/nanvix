@@ -15,6 +15,7 @@
 // - `spec_new(pid, sleeping, zombie)` — constructor.
 // - `spec_terminate(self)` — all sleeping → interrupted.
 // - `spec_wakeup(self, tid)` — remove sleeping thread, produce RunnableProcessView.
+// - `spec_wakeup_not_found(self)` — identity (thread not found in wakeup).
 // - `spec_wakeup_alarm_expired(self, interrupted, remaining)` — partition sleeping.
 // - `spec_wakeup_alarm_none(self)` — identity (no alarm expired).
 // - `spec_add_thread(self, ready_tid)` — add ready thread, produce RunnableProcessView.
@@ -251,6 +252,11 @@ impl RunnableProcess {
     }
 
     /// Spec function: well-formedness predicate.
+    ///
+    /// Only checks non-empty primary list. Cross-list disjointness and
+    /// no-duplicates are not enforced here because this is a boundary model
+    /// of a sibling module. Downstream consumers should use field-level
+    /// postconditions from transition functions for stronger properties.
     pub open spec fn wf(&self) -> bool {
         self.ready_thread_ids@.len() >= 1
     }
@@ -263,6 +269,11 @@ impl InterruptedProcess {
     }
 
     /// Spec function: well-formedness predicate.
+    ///
+    /// Only checks non-empty primary list. Cross-list disjointness and
+    /// no-duplicates are not enforced here because this is a boundary model
+    /// of a sibling module. Downstream consumers should use field-level
+    /// postconditions from transition functions for stronger properties.
     pub open spec fn wf(&self) -> bool {
         self.interrupted_thread_ids@.len() >= 1
     }
@@ -320,17 +331,33 @@ impl View for InterruptedProcess {
 // instead of listing every field change individually.
 
 impl SleepingProcessView {
+    /// View-level helper: checks whether a sequence has no duplicate elements.
+    /// Self-contained equivalent of `SleepingProcess::spec_no_duplicates`.
+    pub open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
+        forall|i: int, j: int| 0 <= i < j < s.len()
+            ==> s[i] != s[j]
+    }
+
+    /// View-level helper: checks whether two sequences share no common elements.
+    /// Self-contained equivalent of `SleepingProcess::spec_seqs_disjoint`.
+    pub open spec fn spec_seqs_disjoint(a: Seq<u64>, b: Seq<u64>) -> bool {
+        forall|i: int, j: int|
+            0 <= i < a.len() && 0 <= j < b.len()
+            ==> a[i] != b[j]
+    }
+
     /// View-level well-formedness predicate, equivalent to SleepingProcess::wf().
     pub open spec fn wf(&self) -> bool {
         &&& self.sleeping_thread_ids.len() >= 1
-        &&& SleepingProcess::spec_no_duplicates(self.sleeping_thread_ids)
-        &&& SleepingProcess::spec_no_duplicates(self.zombie_thread_ids)
-        &&& SleepingProcess::spec_seqs_disjoint(self.sleeping_thread_ids, self.zombie_thread_ids)
+        &&& Self::spec_no_duplicates(self.sleeping_thread_ids)
+        &&& Self::spec_no_duplicates(self.zombie_thread_ids)
+        &&& Self::spec_seqs_disjoint(self.sleeping_thread_ids, self.zombie_thread_ids)
     }
 
     /// View-level helper: removes element at index from a sequence.
+    /// Delegates to `SleepingProcess::spec_remove_at` to avoid duplication.
     pub open spec fn spec_remove_at_seq(s: Seq<u64>, idx: int) -> Seq<u64> {
-        s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
+        SleepingProcess::spec_remove_at(s, idx)
     }
 
     /// Abstract constructor: models `SleepingProcess::new()`.
@@ -370,6 +397,13 @@ impl SleepingProcessView {
             sleeping_thread_ids: Self::spec_remove_at_seq(self.sleeping_thread_ids, idx),
             zombie_thread_ids: self.zombie_thread_ids,
         }
+    }
+
+    /// Abstract transition: models `SleepingProcess::wakeup()` (error case).
+    ///
+    /// Thread not found; process remains sleeping with all state unchanged.
+    pub open spec fn spec_wakeup_not_found(self) -> SleepingProcessView {
+        self
     }
 
     /// Abstract transition: models `SleepingProcess::wakeup_alarm()` (expired case).
