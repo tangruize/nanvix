@@ -1,0 +1,25 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:36:19 CST 2026
+Module: kernel::pm::process::state::runnable
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::runnable
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::runnable
+
+error: Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.
+   --> kernel/pm/process/state/runnable.proof.rs:763:9
+    |
+763 |         assert forall|i: int| 0 <= i < tail_len
+    |         ^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+No changes to commit in verus/
