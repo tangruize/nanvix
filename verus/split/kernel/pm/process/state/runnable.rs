@@ -860,6 +860,17 @@ impl RunnableProcess {
             assert(result_proc@.zombie_thread_ids == self@.zombie_thread_ids);
             assert(result_proc@.ready_thread_ids
                 == self@.ready_thread_ids.push(tid as int));
+            // Check admission times existential.
+            assert(new_ready_time as int >= 0);
+            assert(result_proc@.ready_admission_times
+                == self@.ready_admission_times.push(new_ready_time as int));
+            // Check sleeping remove_at existential.
+            let fi2: int = found_idx_usize as int;
+            assert(result_proc@.sleeping_thread_ids
+                == RunnableProcessView::spec_remove_at(
+                    self@.sleeping_thread_ids, fi2));
+            // Check wf.
+            assert(result_proc.wf());
         }
 
         Ok(result_proc)
