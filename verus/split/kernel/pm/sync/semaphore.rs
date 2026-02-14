@@ -218,6 +218,7 @@ impl Semaphore {
             result.wf(),
             result.spec_drop_safe(),
     {
+        proof { reveal(Semaphore::wf); }
         Semaphore { value: value }
     }
 
@@ -254,6 +255,7 @@ impl Semaphore {
             self@.waiters == old(self)@.waiters,
             self.wf(),
     {
+        proof { reveal(Semaphore::wf); }
         self.value = self.value - 1;
     }
 
@@ -301,6 +303,7 @@ impl Semaphore {
             result == DownOutcome::WouldBlock ==> Semaphore::spec_down_or_block_ghost_view(old(self)@, result).value == 0,
             self.wf(),
     {
+        proof { reveal(Semaphore::wf); }
         if self.value > 0 {
             self.value = self.value - 1;
             DownOutcome::Acquired
@@ -332,6 +335,7 @@ impl Semaphore {
             self@.waiters == old(self)@.waiters,
             self.wf(),
     {
+        proof { reveal(Semaphore::wf); }
         if self.value > 0 {
             self.value = self.value - 1;
             true
@@ -378,6 +382,7 @@ impl Semaphore {
             self.spec_is_available(),
             self.wf(),
     {
+        proof { reveal(Semaphore::wf); }
         self.value = self.value + 1;
     }
 
@@ -398,6 +403,7 @@ impl Semaphore {
             result == self.value,
             result as nat == self@.value,
     {
+        proof { reveal(Semaphore::wf); }
         self.value
     }
 
@@ -418,6 +424,7 @@ impl Semaphore {
             result == self.spec_is_available(),
             result == (self.value > 0),
     {
+        proof { reveal(Semaphore::wf); }
         self.value > 0
     }
 }

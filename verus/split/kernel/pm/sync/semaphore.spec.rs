@@ -53,6 +53,18 @@ pub struct CallerContext {
 //==================================================================================================
 
 impl CallerContext {
+    /// Spec function: well-formedness predicate (invariant).
+    ///
+    /// # Description
+    ///
+    /// `CallerContext` is pure ghost state encoding safety preconditions for
+    /// `down()` and `up()`. All fields are independent boolean flags with no
+    /// internal consistency constraints, so the invariant is trivially true.
+    /// Provided per the specifying-and-proving-types methodology (Step 2).
+    pub closed spec fn inv(&self) -> bool {
+        true
+    }
+
     /// Spec function: caller context satisfies `down()` safety conditions.
     ///
     /// # Description
@@ -102,7 +114,7 @@ pub enum DownOutcome {
 }
 
 impl Semaphore {
-    /// Spec function: well-formedness predicate.
+    /// Spec function: well-formedness predicate (invariant).
     ///
     /// # Description
     ///
@@ -112,7 +124,11 @@ impl Semaphore {
     /// - If there are waiters, the value must be zero (threads only wait when
     ///   the semaphore count is exhausted). This constraint is enforced at the
     ///   spec level for ghost state transitions.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// This is `pub closed` per the specifying-and-proving-types methodology
+    /// (Step 2): users must maintain the invariant but cannot see implementation
+    /// internals. Use `reveal(Semaphore::wf)` in proofs that need the body.
+    pub closed spec fn wf(&self) -> bool {
         &&& self.value as nat == self@.value
         &&& (self@.waiters > 0 ==> self@.value == 0)
     }
@@ -321,6 +337,10 @@ impl Semaphore {
 impl View for Semaphore {
     type V = SemaphoreView;
 
+    /// NOTE: This must remain `open spec fn` because the Verus `View` trait
+    /// requires the view function to be `open`. The specifying-and-proving-types
+    /// methodology (Step 1) recommends `pub closed spec fn`, but the trait
+    /// definition cannot be satisfied with a `closed` implementation.
     open spec fn view(&self) -> SemaphoreView {
         SemaphoreView { value: self.value as nat, waiters: 0 }
     }

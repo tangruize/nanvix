@@ -42,6 +42,7 @@ impl Semaphore {
         ensures
             self@.value == self.value as nat,
     {
+        reveal(Semaphore::wf);
     }
 
     /// Lemma: Two semaphores with equal views have equal observable state.
@@ -88,6 +89,7 @@ impl Semaphore {
         ensures
             s@.waiters == 0,
     {
+        reveal(Semaphore::wf);
     }
 
     /// Lemma: Well-formedness with waiters implies exhausted.
@@ -99,6 +101,7 @@ impl Semaphore {
             s.spec_is_exhausted(),
             s@.value == 0,
     {
+        reveal(Semaphore::wf);
     }
 
     /// Lemma: A new semaphore is safe to drop (no waiters).
@@ -182,6 +185,7 @@ impl Semaphore {
             s@.value == 0,
             !s.spec_is_available(),
     {
+        reveal(Semaphore::wf);
     }
 
     /// Lemma: After `try_down()` succeeds, the value decreases by exactly 1.
