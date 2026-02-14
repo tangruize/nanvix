@@ -1,0 +1,49 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 14:01:11 CST 2026
+Module: kernel::pm::process::state::process_state
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::process_state
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: cannot find macro `verus` in this scope
+  --> kernel/pm/process/state/mod.proof.rs:11:1
+   |
+11 | verus! {
+   | ^^^^^
+   |
+   = note: macro `crate::kernel::mm::phys::upool::test::verus` exists but is inaccessible
+help: consider importing one of these macros
+  --> kernel/pm/process/state/mod.rs:5:1
+   |
+ 5 + use verus_builtin_macros::verus;
+  --> kernel/pm/process/state/mod.rs:5:1
+   |
+ 5 + use vstd::prelude::verus;
+   |
+
+error: cannot find macro `verus` in this scope
+  --> kernel/pm/process/state/mod.spec.rs:11:1
+   |
+11 | verus! {
+   | ^^^^^
+   |
+   = note: macro `crate::kernel::mm::phys::upool::test::verus` exists but is inaccessible
+help: consider importing one of these macros
+  --> kernel/pm/process/state/mod.rs:5:1
+   |
+ 5 + use verus_builtin_macros::verus;
+  --> kernel/pm/process/state/mod.rs:5:1
+   |
+ 5 + use vstd::prelude::verus;
+   |
+
+error: aborting due to 2 previous errors
+
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::process_state (verified:0, errors:0)
