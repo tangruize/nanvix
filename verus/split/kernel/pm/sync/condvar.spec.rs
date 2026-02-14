@@ -176,18 +176,20 @@ impl Condvar {
             0 <= i < self.sleeping@.len() as int
             ==> self.sleeping@[i].0 as int != CondvarView::spec_kernel_pid()
     }
+}
 
-    /// Private: concrete remove-at-seq for internal proofs.
-    ///
-    /// # Description
-    ///
-    /// Operates on the concrete `Seq<(i32, i32)>` for use in proof lemmas
-    /// that reason about implementation-level sequence operations.
-    spec fn concrete_remove_at_seq(s: Seq<(i32, i32)>, idx: int) -> Seq<(i32, i32)>
-        recommends 0 <= idx < s.len()
-    {
-        s.subrange(0, idx) + s.subrange(idx + 1, s.len() as int)
-    }
+/// Concrete remove-at-seq for internal proofs.
+///
+/// # Description
+///
+/// Operates on the concrete `Seq<(i32, i32)>` for use in proof lemmas
+/// that reason about implementation-level sequence operations.
+/// Defined at module level (not on `impl Condvar`) so it can be used
+/// in pub proof fn ensures without violating visibility rules.
+pub open spec fn concrete_remove_at_seq(s: Seq<(i32, i32)>, idx: int) -> Seq<(i32, i32)>
+    recommends 0 <= idx < s.len()
+{
+    s.subrange(0, idx) + s.subrange(idx + 1, s.len() as int)
 }
 
 //==================================================================================================

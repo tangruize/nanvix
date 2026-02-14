@@ -413,7 +413,7 @@ impl Condvar {
             let sub1: Seq<(i32, i32)> = s.subrange(0, idx_int);
             let sub2: Seq<(i32, i32)> = s.subrange(idx_int + 1, s.len() as int);
             let result: Seq<(i32, i32)> = sub1 + sub2;
-            assert(result =~= Condvar::concrete_remove_at_seq(s, idx_int));
+            assert(result =~= concrete_remove_at_seq(s, idx_int));
             assert forall|i: int|
                 #![trigger result[i]]
                 0 <= i < result.len() as int
