@@ -1,0 +1,92 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T08:33:08.866553
+Model: claude-opus-4.6
+Session: d619e882-ddcd-42df-aaaf-353c702c26b1
+Duration: 157.1s
+Exit code: 0
+
+=== Prompt ===
+Review the exec integrity report for interrupted_process.
+
+Original source: src/kernel/src/pm/process/state/interrupted.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - interrupted.rs (exec)
+  - interrupted.spec.rs (spec)
+  - interrupted.proof.rs (proof)
+
+Integrity report: /home/ubuntu/nanvix/verus-ai-history/integrity/interrupted_process_20260214_082922.md
+
+Review criteria:
+1. Were ALL differences between original and verified exec code identified?
+2. Were LOGIC_CHANGE items correctly fixed or properly justified?
+3. Are there any remaining semantic differences that were missed?
+4. Is the exec code still faithful to the original implementation?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh interrupted_process
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/interrupted_process/exec-integrity_20260214_082922.md.
+
+Output format:
+```markdown
+# Review: interrupted_process Exec Integrity (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+### High
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+
+
+
+
+● Read verus-ai-history/integrity/interrupted_process_20260214_082922.md
+  └ 59 lines read
+
+● Read src/kernel/src/pm/process/state/interrupted.rs
+  └ 184 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.rs
+  └ 558 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.proof.rs
+  └ 677 lines read
+
+● Read verus/split/kernel/pm/process/state/interrupted.spec.rs
+  └ 540 lines read
+
+Now let me check for prohibited patterns and run verification.
+
+● Grep "\bassume\b|\badmit\b|external_body" in interrupted*
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process/state)
+  └ 1 line found
+
+● Run verification for interrupted_process
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh interrupted_process 2>&1
+  └ 23 lines...
+
+Now let me create the review directory and write the review.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/interrupted_process
+  └ 1 line...
+
+● Create verus-ai-history/reviews/interrupted_process/exec-integrity_20260214_082922.md (+81)
+
+
+Total usage est:        3 Premium requests
+API time spent:         2m 20.564s
+Total session time:     2m 35.531s
+Total code changes:     +81 -0
+Breakdown by AI model:
+ claude-opus-4.6         323.2k in, 6.8k out, 263.5k cached (Est. 3 Premium requests)
+
+=== End ===
