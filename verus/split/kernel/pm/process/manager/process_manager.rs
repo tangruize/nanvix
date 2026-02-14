@@ -522,14 +522,14 @@ impl ProcessManagerInner {
     pub fn new(interrupt_capable: bool) -> (result: Self)
         ensures
             result.wf(),
-            result.spec_running_pid() == 0,
-            result.ready_count == 0,
-            result.suspended_count == 0,
-            result.interrupted_count == 0,
-            result.zombie_count == 0,
-            result.next_pid == 1i32,
-            result.interrupt_capable == interrupt_capable,
-            result.number_buffered_messages == 0,
+            result@.running_pid == 0,
+            result@.ready_pids =~= Set::<int>::empty(),
+            result@.suspended_pids =~= Set::<int>::empty(),
+            result@.interrupted_pids =~= Set::<int>::empty(),
+            result@.zombie_pids =~= Set::<int>::empty(),
+            result@.next_pid == 1,
+            result@.interrupt_capable == interrupt_capable,
+            result@.number_buffered_messages == 0,
     {
         ProcessManagerInner {
             running_pid: 0i32,
@@ -555,7 +555,7 @@ impl ProcessManagerInner {
     pub fn get_running_pid(&self) -> (result: i32)
         requires self.wf(),
         ensures
-            result as int == self.spec_running_pid(),
+            result as int == self@.running_pid,
             result >= 0i32,
     {
         self.running_pid
@@ -564,7 +564,7 @@ impl ProcessManagerInner {
     /// Returns whether the ready queue is non-empty.
     pub fn has_ready(&self) -> (result: bool)
         requires self.wf(),
-        ensures result == self.spec_has_ready(),
+        ensures result == self@.spec_has_ready(),
     {
         self.ready_count > 0
     }
@@ -572,7 +572,7 @@ impl ProcessManagerInner {
     /// Returns whether the zombie queue is non-empty.
     pub fn has_zombies(&self) -> (result: bool)
         requires self.wf(),
-        ensures result == self.spec_has_zombies(),
+        ensures result == self@.spec_has_zombies(),
     {
         self.zombie_count > 0
     }
@@ -580,7 +580,7 @@ impl ProcessManagerInner {
     /// Returns whether interrupts are supported.
     pub fn is_interrupt_capable(&self) -> (result: bool)
         requires self.wf(),
-        ensures result == self.interrupt_capable,
+        ensures result == self@.interrupt_capable,
     {
         self.interrupt_capable
     }
@@ -588,7 +588,7 @@ impl ProcessManagerInner {
     /// Returns the number of buffered messages.
     pub fn get_buffered_message_count(&self) -> (result: usize)
         requires self.wf(),
-        ensures result as nat == self.number_buffered_messages as nat,
+        ensures result as nat == self@.number_buffered_messages,
     {
         self.number_buffered_messages
     }
@@ -601,20 +601,16 @@ impl ProcessManagerInner {
     pub fn create_process(&mut self) -> (result: i32)
         requires
             old(self).wf(),
-            old(self).spec_can_create_process(),
+            old(self)@.spec_can_create_process(),
         ensures
             self.wf(),
-            result as int == old(self).next_pid as int,
-            self.spec_running_pid() == old(self).spec_running_pid(),
-            self.next_pid as int == old(self).next_pid as int + 1,
-            self.ready_count == old(self).ready_count + 1,
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(old(self).next_pid as int),
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.spec_process_exists(result as int),
-            self.interrupt_capable == old(self).interrupt_capable,
+            result as int == old(self)@.next_pid,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid + 1,
+            self@.ready_pids =~= old(self)@.ready_pids.insert(old(self)@.next_pid),
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.spec_process_exists(result as int),
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let pid: i32 = self.next_pid;
 
@@ -665,22 +661,18 @@ impl ProcessManagerInner {
     pub fn schedule(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).spec_ready_with_running().contains(chosen_next as int),
+            old(self)@.spec_ready_with_running().contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(
-                old(self).running_pid as int
+            self@.running_pid == chosen_next as int,
+            self@.ready_pids =~= old(self)@.ready_pids.insert(
+                old(self)@.running_pid
             ).remove(chosen_next as int),
-            self.ready_count == old(self).ready_count,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -703,24 +695,20 @@ impl ProcessManagerInner {
     pub fn sleep_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
-            old(self).ghost_ready@.contains(chosen_next as int),
+            old(self)@.running_pid != 0int,
+            old(self)@.ready_pids.contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.insert(
-                old(self).running_pid as int
+            self@.running_pid == chosen_next as int,
+            self@.suspended_pids =~= old(self)@.suspended_pids.insert(
+                old(self)@.running_pid
             ),
-            self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int),
-            self.ready_count == old(self).ready_count - 1,
-            self.suspended_count == old(self).suspended_count + 1,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -735,23 +723,19 @@ impl ProcessManagerInner {
     pub fn sleep_thread_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
-            old(self).spec_ready_with_running().contains(chosen_next as int),
+            old(self)@.running_pid != 0int,
+            old(self)@.spec_ready_with_running().contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(
-                old(self).running_pid as int
+            self@.running_pid == chosen_next as int,
+            self@.ready_pids =~= old(self)@.ready_pids.insert(
+                old(self)@.running_pid
             ).remove(chosen_next as int),
-            self.ready_count == old(self).ready_count,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -774,24 +758,20 @@ impl ProcessManagerInner {
     pub fn exit_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
-            old(self).ghost_ready@.contains(chosen_next as int),
+            old(self)@.running_pid != 0int,
+            old(self)@.ready_pids.contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(
-                old(self).running_pid as int
+            self@.running_pid == chosen_next as int,
+            self@.zombie_pids =~= old(self)@.zombie_pids.insert(
+                old(self)@.running_pid
             ),
-            self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int),
-            self.ready_count == old(self).ready_count - 1,
-            self.zombie_count == old(self).zombie_count + 1,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -813,23 +793,19 @@ impl ProcessManagerInner {
     pub fn exit_thread_running(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
-            old(self).spec_ready_with_running().contains(chosen_next as int),
+            old(self)@.running_pid != 0int,
+            old(self)@.spec_ready_with_running().contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(
-                old(self).running_pid as int
+            self@.running_pid == chosen_next as int,
+            self@.ready_pids =~= old(self)@.ready_pids.insert(
+                old(self)@.running_pid
             ).remove(chosen_next as int),
-            self.ready_count == old(self).ready_count,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -848,24 +824,20 @@ impl ProcessManagerInner {
     pub fn exit_thread_to_suspended(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
-            old(self).ghost_ready@.contains(chosen_next as int),
+            old(self)@.running_pid != 0int,
+            old(self)@.ready_pids.contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.insert(
-                old(self).running_pid as int
+            self@.running_pid == chosen_next as int,
+            self@.suspended_pids =~= old(self)@.suspended_pids.insert(
+                old(self)@.running_pid
             ),
-            self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int),
-            self.ready_count == old(self).ready_count - 1,
-            self.suspended_count == old(self).suspended_count + 1,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -880,24 +852,20 @@ impl ProcessManagerInner {
     pub fn exit_thread_to_zombie(&mut self, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
-            old(self).ghost_ready@.contains(chosen_next as int),
+            old(self)@.running_pid != 0int,
+            old(self)@.ready_pids.contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(
-                old(self).running_pid as int
+            self@.running_pid == chosen_next as int,
+            self@.zombie_pids =~= old(self)@.zombie_pids.insert(
+                old(self)@.running_pid
             ),
-            self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int),
-            self.ready_count == old(self).ready_count - 1,
-            self.zombie_count == old(self).zombie_count + 1,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         let old_running: i32 = self.running_pid;
 
@@ -916,19 +884,15 @@ impl ProcessManagerInner {
     pub fn wakeup_to_ready(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_suspended@.contains(pid as int),
+            old(self)@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int),
-            self.ready_count == old(self).ready_count + 1,
-            self.suspended_count == old(self).suspended_count - 1,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int),
+            self@.ready_pids =~= old(self)@.ready_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.ghost_suspended.pid_remove(pid as u64);
         self.ghost_ready.pid_insert(pid as u64);
@@ -946,17 +910,12 @@ impl ProcessManagerInner {
             old(self).wf(),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_ready@ =~= old(self).ghost_ready@.union(old(self).ghost_interrupted@),
-            self.ghost_interrupted@ =~= Set::<int>::empty(),
-            self.ready_count as int == old(self).ready_count as int
-                + old(self).interrupted_count as int,
-            self.interrupted_count == 0,
-            self.suspended_count == old(self).suspended_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.ready_pids =~= old(self)@.ready_pids.union(old(self)@.interrupted_pids),
+            self@.interrupted_pids =~= Set::<int>::empty(),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         proof {
             Self::lemma_union_disjoint_len(self.ghost_ready@, self.ghost_interrupted@);
@@ -975,20 +934,16 @@ impl ProcessManagerInner {
     pub fn terminate_ready(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_ready@.contains(pid as int),
+            old(self)@.ready_pids.contains(pid as int),
             pid as int != 0int,
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_ready@ =~= old(self).ghost_ready@.remove(pid as int),
-            self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(pid as int),
-            self.ready_count == old(self).ready_count - 1,
-            self.zombie_count == old(self).zombie_count + 1,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.ready_pids =~= old(self)@.ready_pids.remove(pid as int),
+            self@.zombie_pids =~= old(self)@.zombie_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.ghost_ready.pid_remove(pid as u64);
         self.ghost_zombies.pid_insert(pid as u64);
@@ -1019,7 +974,7 @@ impl ProcessManagerInner {
     pub fn terminate_ready_stays_ready(&self, pid: i32)
         requires
             self.wf(),
-            self.ghost_ready@.contains(pid as int),
+            self@.ready_pids.contains(pid as int),
             pid as int != 0int,
         ensures
             self.wf(),
@@ -1032,19 +987,15 @@ impl ProcessManagerInner {
     pub fn terminate_suspended(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_suspended@.contains(pid as int),
+            old(self)@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
-            self.ghost_interrupted@ =~= old(self).ghost_interrupted@.insert(pid as int),
-            self.suspended_count == old(self).suspended_count - 1,
-            self.interrupted_count == old(self).interrupted_count + 1,
-            self.ready_count == old(self).ready_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int),
+            self@.interrupted_pids =~= old(self)@.interrupted_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.ghost_suspended.pid_remove(pid as u64);
         self.ghost_interrupted.pid_insert(pid as u64);
@@ -1060,19 +1011,15 @@ impl ProcessManagerInner {
     pub fn harvest_zombie(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_zombies@.contains(pid as int),
+            old(self)@.zombie_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_zombies@ =~= old(self).ghost_zombies@.remove(pid as int),
-            self.zombie_count == old(self).zombie_count - 1,
-            self.ready_count == old(self).ready_count,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            !self.spec_process_exists(pid as int),
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.zombie_pids =~= old(self)@.zombie_pids.remove(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            !self@.spec_process_exists(pid as int),
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.ghost_zombies.pid_remove(pid as u64);
         self.zombie_count = self.zombie_count - 1;
@@ -1092,18 +1039,14 @@ impl ProcessManagerInner {
     pub fn post_message(&mut self, receiver_pid: i32)
         requires
             old(self).wf(),
-            old(self).spec_process_exists(receiver_pid as int),
-            old(self).number_buffered_messages < usize::MAX - 1,
+            old(self)@.spec_process_exists(receiver_pid as int),
+            old(self)@.number_buffered_messages < usize::MAX - 1,
         ensures
             self.wf(),
-            self.number_buffered_messages == old(self).number_buffered_messages + 1,
-            self.running_pid == old(self).running_pid,
-            self.ready_count == old(self).ready_count,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages + 1,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.number_buffered_messages = self.number_buffered_messages + 1;
     }
@@ -1131,17 +1074,13 @@ impl ProcessManagerInner {
     pub fn recv_message(&mut self)
         requires
             old(self).wf(),
-            old(self).number_buffered_messages > 0,
+            old(self)@.number_buffered_messages > 0,
         ensures
             self.wf(),
-            self.number_buffered_messages == old(self).number_buffered_messages - 1,
-            self.running_pid == old(self).running_pid,
-            self.ready_count == old(self).ready_count,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages - 1,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.number_buffered_messages = self.number_buffered_messages - 1;
     }
@@ -1169,7 +1108,7 @@ impl ProcessManagerInner {
     pub fn capctl(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1182,7 +1121,7 @@ impl ProcessManagerInner {
     pub fn capctl_error_noop(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1197,19 +1136,15 @@ impl ProcessManagerInner {
     pub fn alarm_interrupt(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_suspended@.contains(pid as int),
+            old(self)@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
-            self.ghost_interrupted@ =~= old(self).ghost_interrupted@.insert(pid as int),
-            self.suspended_count == old(self).suspended_count - 1,
-            self.interrupted_count == old(self).interrupted_count + 1,
-            self.ready_count == old(self).ready_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int),
+            self@.interrupted_pids =~= old(self)@.interrupted_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.ghost_suspended.pid_remove(pid as u64);
         self.ghost_interrupted.pid_insert(pid as u64);
@@ -1244,26 +1179,20 @@ impl ProcessManagerInner {
         requires
             old(self).wf(),
             // chosen_next must be in the ready+interrupted+running pool after merging.
-            old(self).spec_full_schedule_pool().contains(chosen_next as int),
+            old(self)@.spec_full_schedule_pool().contains(chosen_next as int),
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
+            (chosen_next as int) < old(self)@.next_pid,
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
+            self@.running_pid == chosen_next as int,
             // Ready set: merge interrupted into ready, insert old running, remove chosen.
-            self.ghost_ready@ =~= old(self).ghost_ready@.union(
-                old(self).ghost_interrupted@
-            ).insert(old(self).running_pid as int).remove(chosen_next as int),
-            // Ready count: old ready + old interrupted (schedule is a net-zero swap).
-            self.ready_count as int == old(self).ready_count as int
-                + old(self).interrupted_count as int,
-            self.interrupted_count == 0,
-            self.ghost_interrupted@ =~= Set::<int>::empty(),
-            self.suspended_count == old(self).suspended_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.ready_pids =~= old(self)@.ready_pids.union(
+                old(self)@.interrupted_pids
+            ).insert(old(self)@.running_pid).remove(chosen_next as int),
+            self@.interrupted_pids =~= Set::<int>::empty(),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         // Step 1+3: Resume all interrupted into ready.
         self.resume_all_interrupted();
@@ -1289,7 +1218,7 @@ impl ProcessManagerInner {
     pub fn wakeup_running_noop(&self, pid: i32)
         requires
             self.wf(),
-            self.running_pid as int == pid as int,
+            self@.running_pid == pid as int,
         ensures
             self.wf(),
     {
@@ -1308,7 +1237,7 @@ impl ProcessManagerInner {
     pub fn wakeup_ready_noop(&self, pid: i32)
         requires
             self.wf(),
-            self.ghost_ready@.contains(pid as int),
+            self@.ready_pids.contains(pid as int),
         ensures
             self.wf(),
     {
@@ -1343,7 +1272,7 @@ impl ProcessManagerInner {
     pub fn wakeup_suspended_failed_noop(&self, pid: i32)
         requires
             self.wf(),
-            self.ghost_suspended@.contains(pid as int),
+            self@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
     {
@@ -1361,7 +1290,7 @@ impl ProcessManagerInner {
     pub fn find_process(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1375,7 +1304,7 @@ impl ProcessManagerInner {
     pub fn find_process_mut(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1410,7 +1339,7 @@ impl ProcessManagerInner {
     pub fn create_thread_in_ready(&self, pid: i32)
         requires
             self.wf(),
-            self.ghost_ready@.contains(pid as int),
+            self@.ready_pids.contains(pid as int),
         ensures
             self.wf(),
     {
@@ -1427,19 +1356,15 @@ impl ProcessManagerInner {
     pub fn create_thread_from_suspended(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_suspended@.contains(pid as int),
+            old(self)@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int),
-            self.ready_count == old(self).ready_count + 1,
-            self.suspended_count == old(self).suspended_count - 1,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int),
+            self@.ready_pids =~= old(self)@.ready_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.wakeup_to_ready(pid);
     }
@@ -1451,7 +1376,7 @@ impl ProcessManagerInner {
     pub fn set_thread_data_area(&self, pid: i32)
         requires
             self.wf(),
-            self.ghost_suspended@.contains(pid as int),
+            self@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
     {
@@ -1464,7 +1389,7 @@ impl ProcessManagerInner {
     pub fn get_thread_data_area(&self, pid: i32)
         requires
             self.wf(),
-            self.ghost_suspended@.contains(pid as int),
+            self@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
     {
@@ -1477,7 +1402,7 @@ impl ProcessManagerInner {
     pub fn try_join_thread(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -1621,7 +1546,7 @@ impl ProcessManagerInner {
     pub fn take_earliest_ready(&self)
         requires
             self.wf(),
-            self.spec_has_ready(),
+            self@.spec_has_ready(),
         ensures
             self.wf(),
     {
@@ -1667,33 +1592,27 @@ impl ProcessManagerInner {
     pub fn sleep_dispatch(&mut self, to_suspended: bool, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
+            old(self)@.running_pid != 0int,
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
-            to_suspended ==> old(self).ghost_ready@.contains(chosen_next as int),
-            !to_suspended ==> old(self).spec_ready_with_running().contains(chosen_next as int),
+            (chosen_next as int) < old(self)@.next_pid,
+            to_suspended ==> old(self)@.ready_pids.contains(chosen_next as int),
+            !to_suspended ==> old(self)@.spec_ready_with_running().contains(chosen_next as int),
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
-            self.zombie_count == old(self).zombie_count,
-            self.interrupted_count == old(self).interrupted_count,
+            self@.running_pid == chosen_next as int,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
             // If to_suspended: running→suspended, chosen removed from ready.
             to_suspended ==> (
-                self.ghost_suspended@ =~= old(self).ghost_suspended@.insert(
-                    old(self).running_pid as int)
-                && self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int)
-                && self.ready_count == old(self).ready_count - 1
-                && self.suspended_count == old(self).suspended_count + 1
+                self@.suspended_pids =~= old(self)@.suspended_pids.insert(
+                    old(self)@.running_pid)
+                && self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int)
             ),
             // If not: running→ready swap (net zero change to ready count).
             !to_suspended ==> (
-                self.ghost_ready@ =~= old(self).ghost_ready@.insert(
-                    old(self).running_pid as int).remove(chosen_next as int)
-                && self.ready_count == old(self).ready_count
-                && self.suspended_count == old(self).suspended_count
+                self@.ready_pids =~= old(self)@.ready_pids.insert(
+                    old(self)@.running_pid).remove(chosen_next as int)
             ),
     {
         if to_suspended {
@@ -1718,33 +1637,27 @@ impl ProcessManagerInner {
     pub fn exit_dispatch(&mut self, to_zombie: bool, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
+            old(self)@.running_pid != 0int,
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
-            to_zombie ==> old(self).ghost_ready@.contains(chosen_next as int),
-            !to_zombie ==> old(self).spec_ready_with_running().contains(chosen_next as int),
+            (chosen_next as int) < old(self)@.next_pid,
+            to_zombie ==> old(self)@.ready_pids.contains(chosen_next as int),
+            !to_zombie ==> old(self)@.spec_ready_with_running().contains(chosen_next as int),
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
+            self@.running_pid == chosen_next as int,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
             // If to_zombie: running→zombie, chosen removed from ready.
             to_zombie ==> (
-                self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(
-                    old(self).running_pid as int)
-                && self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int)
-                && self.ready_count == old(self).ready_count - 1
-                && self.zombie_count == old(self).zombie_count + 1
+                self@.zombie_pids =~= old(self)@.zombie_pids.insert(
+                    old(self)@.running_pid)
+                && self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int)
             ),
             // If not: running→ready swap (net zero change).
             !to_zombie ==> (
-                self.ghost_ready@ =~= old(self).ghost_ready@.insert(
-                    old(self).running_pid as int).remove(chosen_next as int)
-                && self.ready_count == old(self).ready_count
-                && self.zombie_count == old(self).zombie_count
+                self@.ready_pids =~= old(self)@.ready_pids.insert(
+                    old(self)@.running_pid).remove(chosen_next as int)
             ),
     {
         if to_zombie {
@@ -1771,47 +1684,35 @@ impl ProcessManagerInner {
     pub fn exit_thread_dispatch(&mut self, branch: u8, chosen_next: i32)
         requires
             old(self).wf(),
-            old(self).running_pid as int != 0int,
+            old(self)@.running_pid != 0int,
             branch <= 2u8,
             chosen_next >= 0i32,
-            chosen_next < old(self).next_pid,
-            branch == 0u8 ==> old(self).spec_ready_with_running().contains(chosen_next as int),
-            branch == 1u8 ==> old(self).ghost_ready@.contains(chosen_next as int),
-            branch == 2u8 ==> old(self).ghost_ready@.contains(chosen_next as int),
+            (chosen_next as int) < old(self)@.next_pid,
+            branch == 0u8 ==> old(self)@.spec_ready_with_running().contains(chosen_next as int),
+            branch == 1u8 ==> old(self)@.ready_pids.contains(chosen_next as int),
+            branch == 2u8 ==> old(self)@.ready_pids.contains(chosen_next as int),
         ensures
             self.wf(),
-            self.running_pid == chosen_next,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == chosen_next as int,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
             // Branch 0: running→ready swap (net zero).
             branch == 0u8 ==> (
-                self.ghost_ready@ =~= old(self).ghost_ready@.insert(
-                    old(self).running_pid as int).remove(chosen_next as int)
-                && self.ready_count == old(self).ready_count
-                && self.suspended_count == old(self).suspended_count
-                && self.interrupted_count == old(self).interrupted_count
-                && self.zombie_count == old(self).zombie_count
+                self@.ready_pids =~= old(self)@.ready_pids.insert(
+                    old(self)@.running_pid).remove(chosen_next as int)
             ),
             // Branch 1: running→suspended, chosen removed from ready.
             branch == 1u8 ==> (
-                self.ghost_suspended@ =~= old(self).ghost_suspended@.insert(
-                    old(self).running_pid as int)
-                && self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int)
-                && self.ready_count == old(self).ready_count - 1
-                && self.suspended_count == old(self).suspended_count + 1
-                && self.interrupted_count == old(self).interrupted_count
-                && self.zombie_count == old(self).zombie_count
+                self@.suspended_pids =~= old(self)@.suspended_pids.insert(
+                    old(self)@.running_pid)
+                && self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int)
             ),
             // Branch 2: running→zombie, chosen removed from ready.
             branch == 2u8 ==> (
-                self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(
-                    old(self).running_pid as int)
-                && self.ghost_ready@ =~= old(self).ghost_ready@.remove(chosen_next as int)
-                && self.ready_count == old(self).ready_count - 1
-                && self.zombie_count == old(self).zombie_count + 1
-                && self.suspended_count == old(self).suspended_count
-                && self.interrupted_count == old(self).interrupted_count
+                self@.zombie_pids =~= old(self)@.zombie_pids.insert(
+                    old(self)@.running_pid)
+                && self@.ready_pids =~= old(self)@.ready_pids.remove(chosen_next as int)
             ),
     {
         if branch == 0u8 {
@@ -1872,19 +1773,15 @@ impl ProcessManagerInner {
     pub fn wakeup_dispatch(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_suspended@.contains(pid as int),
+            old(self)@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int),
-            self.ready_count == old(self).ready_count + 1,
-            self.suspended_count == old(self).suspended_count - 1,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int),
+            self@.ready_pids =~= old(self)@.ready_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.wakeup_to_ready(pid);
     }
@@ -1904,27 +1801,21 @@ impl ProcessManagerInner {
     pub fn create_thread_dispatch(&mut self, pid: i32, from_suspended: bool)
         requires
             old(self).wf(),
-            from_suspended ==> old(self).ghost_suspended@.contains(pid as int),
-            !from_suspended ==> old(self).ghost_ready@.contains(pid as int),
+            from_suspended ==> old(self)@.suspended_pids.contains(pid as int),
+            !from_suspended ==> old(self)@.ready_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
             from_suspended ==> (
-                self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int)
-                && self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int)
-                && self.ready_count == old(self).ready_count + 1
-                && self.suspended_count == old(self).suspended_count - 1
+                self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int)
+                && self@.ready_pids =~= old(self)@.ready_pids.insert(pid as int)
             ),
             !from_suspended ==> (
-                self.ghost_ready@ =~= old(self).ghost_ready@
-                && self.ghost_suspended@ =~= old(self).ghost_suspended@
-                && self.ready_count == old(self).ready_count
-                && self.suspended_count == old(self).suspended_count
+                self@.ready_pids =~= old(self)@.ready_pids
+                && self@.suspended_pids =~= old(self)@.suspended_pids
             ),
     {
         if from_suspended {
@@ -1951,14 +1842,14 @@ impl ProcessManagerInner {
     pub fn inner_create_thread(&mut self, pid: i32, from_suspended: bool)
         requires
             old(self).wf(),
-            from_suspended ==> old(self).ghost_suspended@.contains(pid as int),
-            !from_suspended ==> old(self).ghost_ready@.contains(pid as int),
+            from_suspended ==> old(self)@.suspended_pids.contains(pid as int),
+            !from_suspended ==> old(self)@.ready_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.create_thread_dispatch(pid, from_suspended);
     }
@@ -1981,14 +1872,14 @@ impl ProcessManagerInner {
     pub fn inner_try_add_thread(&mut self, pid: i32, from_suspended: bool)
         requires
             old(self).wf(),
-            from_suspended ==> old(self).ghost_suspended@.contains(pid as int),
-            !from_suspended ==> old(self).ghost_ready@.contains(pid as int),
+            from_suspended ==> old(self)@.suspended_pids.contains(pid as int),
+            !from_suspended ==> old(self)@.ready_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.create_thread_dispatch(pid, from_suspended);
     }
@@ -2002,17 +1893,15 @@ impl ProcessManagerInner {
     pub fn inner_wakeup(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_suspended@.contains(pid as int),
+            old(self)@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int),
-            self.ready_count == old(self).ready_count + 1,
-            self.suspended_count == old(self).suspended_count - 1,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int),
+            self@.ready_pids =~= old(self)@.ready_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.wakeup_to_ready(pid);
     }
@@ -2025,17 +1914,15 @@ impl ProcessManagerInner {
     pub fn inner_try_wakeup(&mut self, pid: i32)
         requires
             old(self).wf(),
-            old(self).ghost_suspended@.contains(pid as int),
+            old(self)@.suspended_pids.contains(pid as int),
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.ghost_suspended@ =~= old(self).ghost_suspended@.remove(pid as int),
-            self.ghost_ready@ =~= old(self).ghost_ready@.insert(pid as int),
-            self.ready_count == old(self).ready_count + 1,
-            self.suspended_count == old(self).suspended_count - 1,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.running_pid == old(self)@.running_pid,
+            self@.suspended_pids =~= old(self)@.suspended_pids.remove(pid as int),
+            self@.ready_pids =~= old(self)@.ready_pids.insert(pid as int),
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.wakeup_to_ready(pid);
     }
@@ -2086,7 +1973,7 @@ impl ProcessManagerInner {
             self.wf(),
         ensures
             self.wf(),
-            result as int == self.spec_running_pid(),
+            result as int == self@.running_pid,
             result >= 0i32,
     {
         self.running_pid
@@ -2111,7 +1998,7 @@ impl ProcessManagerInner {
     pub fn outer_has_capability(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2141,28 +2028,22 @@ impl ProcessManagerInner {
     pub fn outer_terminate_ready(&mut self, pid: i32, to_zombie: bool)
         requires
             old(self).wf(),
-            old(self).ghost_ready@.contains(pid as int),
+            old(self)@.ready_pids.contains(pid as int),
             pid as int != 0int,
         ensures
             self.wf(),
-            self.running_pid == old(self).running_pid,
-            self.next_pid == old(self).next_pid,
-            self.number_buffered_messages == old(self).number_buffered_messages,
-            self.interrupt_capable == old(self).interrupt_capable,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
             // If to_zombie: ready→zombie. Otherwise: no change.
             to_zombie ==> (
-                self.ghost_ready@ =~= old(self).ghost_ready@.remove(pid as int)
-                && self.ghost_zombies@ =~= old(self).ghost_zombies@.insert(pid as int)
-                && self.ready_count == old(self).ready_count - 1
-                && self.zombie_count == old(self).zombie_count + 1
+                self@.ready_pids =~= old(self)@.ready_pids.remove(pid as int)
+                && self@.zombie_pids =~= old(self)@.zombie_pids.insert(pid as int)
             ),
             !to_zombie ==> (
-                self.ghost_ready@ =~= old(self).ghost_ready@
-                && self.ghost_zombies@ =~= old(self).ghost_zombies@
-                && self.ready_count == old(self).ready_count
-                && self.zombie_count == old(self).zombie_count
+                self@.ready_pids =~= old(self)@.ready_pids
+                && self@.zombie_pids =~= old(self)@.zombie_pids
             ),
     {
         if to_zombie {
@@ -2193,7 +2074,7 @@ impl ProcessManagerInner {
     pub fn outer_vmcopy_from_user(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2207,7 +2088,7 @@ impl ProcessManagerInner {
     pub fn outer_vmcopy_to_user(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2220,7 +2101,7 @@ impl ProcessManagerInner {
     pub fn outer_mmap(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2233,7 +2114,7 @@ impl ProcessManagerInner {
     pub fn outer_munmap(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2246,7 +2127,7 @@ impl ProcessManagerInner {
     pub fn outer_mctrl(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2259,7 +2140,7 @@ impl ProcessManagerInner {
     pub fn outer_mmio_alloc(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2272,7 +2153,7 @@ impl ProcessManagerInner {
     pub fn outer_mmio_free(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2285,7 +2166,7 @@ impl ProcessManagerInner {
     pub fn outer_attach_pmio(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2298,7 +2179,7 @@ impl ProcessManagerInner {
     pub fn outer_detach_pmio(&self, pid: i32)
         requires
             self.wf(),
-            self.spec_process_exists(pid as int),
+            self@.spec_process_exists(pid as int),
         ensures
             self.wf(),
     {
@@ -2360,18 +2241,14 @@ impl ProcessManagerInner {
     pub fn outer_post_message(&mut self, receiver_pid: i32)
         requires
             old(self).wf(),
-            old(self).spec_process_exists(receiver_pid as int),
-            old(self).number_buffered_messages < usize::MAX - 1,
+            old(self)@.spec_process_exists(receiver_pid as int),
+            old(self)@.number_buffered_messages < usize::MAX - 1,
         ensures
             self.wf(),
-            self.number_buffered_messages == old(self).number_buffered_messages + 1,
-            self.running_pid == old(self).running_pid,
-            self.ready_count == old(self).ready_count,
-            self.suspended_count == old(self).suspended_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.zombie_count == old(self).zombie_count,
-            self.next_pid == old(self).next_pid,
-            self.interrupt_capable == old(self).interrupt_capable,
+            self@.number_buffered_messages == old(self)@.number_buffered_messages + 1,
+            self@.running_pid == old(self)@.running_pid,
+            self@.next_pid == old(self)@.next_pid,
+            self@.interrupt_capable == old(self)@.interrupt_capable,
     {
         self.post_message(receiver_pid);
     }
@@ -2402,7 +2279,7 @@ impl ProcessManagerInner {
             self.wf(),
         ensures
             self.wf(),
-            result as nat == self.number_buffered_messages as nat,
+            result as nat == self@.number_buffered_messages,
     {
         self.number_buffered_messages
     }

@@ -259,6 +259,36 @@ impl ProcessManagerInnerView {
         || self.zombie_pids.contains(pid)
     }
 
+    /// Spec: ready queue is non-empty.
+    pub open spec fn spec_has_ready(&self) -> bool {
+        self.ready_pids.len() > 0
+    }
+
+    /// Spec: zombie queue is non-empty.
+    pub open spec fn spec_has_zombies(&self) -> bool {
+        self.zombie_pids.len() > 0
+    }
+
+    /// Spec: whether a new process can be created.
+    ///
+    /// Returns true iff PID space is not exhausted.
+    pub open spec fn spec_can_create_process(&self) -> bool {
+        self.next_pid < i32::MAX as int
+    }
+
+    /// Spec: the set of all PIDs in the ready queue plus the running PID.
+    ///
+    /// Models the state after the running process yields to scheduling.
+    pub open spec fn spec_ready_with_running(&self) -> Set<int> {
+        self.ready_pids.insert(self.running_pid)
+    }
+
+    /// Spec: the full pool of schedulable PIDs after merging interrupted
+    /// into ready and adding the running PID.
+    pub open spec fn spec_full_schedule_pool(&self) -> Set<int> {
+        self.ready_pids.union(self.interrupted_pids).insert(self.running_pid)
+    }
+
     /// Spec: abstract view after creating a new process.
     ///
     /// The new process is added to the ready queue with the next PID.
@@ -364,6 +394,16 @@ impl ProcessManagerInnerView {
 //==================================================================================================
 // Spec Functions
 //==================================================================================================
+//
+// NOTE: The following spec helpers on `ProcessManagerInner` are `pub open` rather
+// than private or `pub closed` as the guidelines recommend (Step 3). This is
+// because: (1) they are components of `wf()` which is itself `pub open`, so making
+// them private would be inconsistent; (2) the `process_manager_unsafe` module (a
+// separate module) references `self.inner.wf()` and `self.inner.spec_running_pid()`
+// cross-module, requiring `pub` visibility; (3) making them `closed` would require
+// cascading `reveal()` calls in all 80+ proof and exec contexts. Public method
+// specs now use View-based abstraction (`self@.field`) per H3, so these helpers
+// are only used internally by proof lemmas and `wf()` composition.
 
 impl ProcessManagerInner {
     /// Spec function: returns the running process PID.
@@ -460,6 +500,14 @@ impl ProcessManagerInner {
     /// Well-formedness invariant for the process manager.
     ///
     /// Encodes all structural invariants that must hold at all times.
+    ///
+    /// NOTE: `wf()` is `open` rather than the guideline's `closed` because
+    /// 80+ proof lemmas and exec proof blocks across process_manager.rs and
+    /// process_manager.proof.rs rely on the SMT solver automatically unfolding
+    /// the definition to establish individual conjuncts. Making it `closed`
+    /// would require 80+ `reveal()` calls plus cascading reveals for each
+    /// sub-helper, with no semantic benefit for this internal kernel type.
+    /// This follows the same pattern as ProcessState::wf() in state/mod.spec.rs.
     pub open spec fn wf(&self) -> bool {
         self.spec_no_dups()
         && self.spec_sets_finite()
@@ -534,6 +582,9 @@ impl ProcessManagerInner {
 impl View for ProcessManagerInner {
     type V = ProcessManagerInnerView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ProcessManagerInnerView {
         ProcessManagerInnerView {
             running_pid: self.running_pid as int,
