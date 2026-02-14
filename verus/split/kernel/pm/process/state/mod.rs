@@ -123,6 +123,13 @@ pub struct ProcessState {
 impl ProcessState {
     /// Creates a new ProcessState.
     ///
+    /// # Signature Divergence
+    ///
+    /// The original `ProcessState::new(pid, vmem)` takes a second `Vmem`
+    /// parameter. `Vmem` is an opaque HAL boundary type excluded from the
+    /// verification model, so it is elided here. The verified properties
+    /// (PID, capabilities, mutex/condvar/PMIO initialization) are unaffected.
+    ///
     /// # Parameters
     ///
     /// - `pid`: Process identifier.
@@ -219,6 +226,17 @@ impl ProcessState {
     }
 
     /// Returns a mutex associated with the given address, or creates one.
+    ///
+    /// # Signature Divergence
+    ///
+    /// The original `get_mutex(mutex_addr: MutexAddress)` performs
+    /// `BTreeMap::entry()` lookup internally. In the verification model,
+    /// `BTreeMap` is abstracted to parallel Vecs, so the lookup result
+    /// (`already_present`) and index (`idx`) are hoisted to preconditions.
+    /// This is a standard verification technique for externalizing
+    /// nondeterministic container lookups. The return type changes from
+    /// `Result<Mutex, Error>` to `Result<u64, Error>` (ref count) since
+    /// `Mutex` is an opaque type modeled by its reference count.
     ///
     /// # Parameters
     ///
@@ -397,6 +415,14 @@ impl ProcessState {
 
     /// Releases a mutex associated with the given address.
     ///
+    /// # Signature Divergence
+    ///
+    /// The original `put_mutex(mutex_addr: MutexAddress)` performs
+    /// `contains_key()` and `extract_if()` internally. In the verification
+    /// model, the lookup result (`contains`), ref-count threshold check
+    /// (`ref_count_at_threshold`), and index (`idx`) are hoisted to
+    /// preconditions to externalize nondeterministic container operations.
+    ///
     /// # Parameters
     ///
     /// - `mutex_addr`: Address of the mutex.
@@ -526,6 +552,14 @@ impl ProcessState {
     }
 
     /// Returns a condition variable associated with the given address, or creates one.
+    ///
+    /// # Signature Divergence
+    ///
+    /// The original `get_cond(cond_addr: ConditionAddress)` performs
+    /// `BTreeMap::entry()` lookup internally. Same abstraction as
+    /// `get_mutex`: lookup result and index hoisted to preconditions.
+    /// Return type changes from `Result<Condvar, Error>` to
+    /// `Result<u64, Error>` (ref count) since `Condvar` is opaque.
     ///
     /// # Parameters
     ///
@@ -683,6 +717,13 @@ impl ProcessState {
 
     /// Releases a condition variable associated with the given address.
     ///
+    /// # Signature Divergence
+    ///
+    /// The original `put_cond(cond_addr: ConditionAddress)` performs
+    /// `contains_key()` and `extract_if()` internally. Same abstraction
+    /// as `put_mutex`: lookup result, threshold check, and index hoisted
+    /// to preconditions.
+    ///
     /// # Parameters
     ///
     /// - `cond_addr`: Address of the condition variable.
@@ -810,6 +851,12 @@ impl ProcessState {
 
     /// Adds an I/O port to the process.
     ///
+    /// # Signature Divergence
+    ///
+    /// The original `add_pmio(port: AnyIoPort)` takes the full opaque port
+    /// object. In the verification model, `AnyIoPort` is abstracted to its
+    /// port number (`u16`), so only the port number is accepted here.
+    ///
     /// # Parameters
     ///
     /// - `port_number`: Port number to add.
@@ -830,6 +877,14 @@ impl ProcessState {
     }
 
     /// Removes an I/O port from the process.
+    ///
+    /// # Signature Divergence
+    ///
+    /// The original `remove_pmio(port_number: u16) -> Result<AnyIoPort, Error>`
+    /// performs `iter().position()` internally and returns the removed port.
+    /// In the verification model, the position search result (`found`,
+    /// `found_idx`) is hoisted to preconditions, and the return type is
+    /// `Result<(), Error>` since `AnyIoPort` is an opaque HAL type.
     ///
     /// # Parameters
     ///
