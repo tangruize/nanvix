@@ -464,7 +464,7 @@ impl RunningProcessView {
     /// Running + ready threads become zombies; sleeping threads become interrupted;
     /// front interrupted thread resumes as sole ready thread.
     pub open spec fn spec_exit_to_runnable(&self) -> RunnableProcessView {
-        let combined_interrupted: Seq<u64> =
+        let combined_interrupted: Seq<int> =
             self.interrupted_thread_ids.add(self.sleeping_thread_ids);
         RunnableProcessView {
             pid: self.pid,

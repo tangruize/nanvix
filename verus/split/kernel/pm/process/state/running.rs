@@ -422,6 +422,9 @@ impl RunningProcess {
     {
         proof { reveal(RunningProcess::inv); }
         RunningProcess {
+            pid,
+            running_thread_id: running_tid,
+            ready_thread_ids: ready_ids,
             interrupted_thread_ids: interrupted_ids,
             sleeping_thread_ids: sleeping_ids,
             zombie_thread_ids: zombie_ids,
