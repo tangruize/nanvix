@@ -8,6 +8,17 @@ verus! {
 impl KernelFrame {
     //==============================================================================================
 
+    /// Invariant for kernel frames.
+    ///
+    /// # Properties Guaranteed
+    ///
+    /// - The frame address is page-aligned.
+    pub closed spec fn inv(&self) -> bool {
+        self.addr.spec_is_aligned()
+    }
+
+    //==============================================================================================
+
     /// Spec function to get the frame address.
     /// Closed because addr is private.
     pub closed spec fn spec_address(&self) -> FrameAddress {

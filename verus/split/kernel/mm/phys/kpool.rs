@@ -147,6 +147,7 @@ impl KernelFrame {
         requires
             addr.spec_is_aligned(),
         ensures
+            result.inv(),
             result.spec_address() == addr,
             result.spec_is_aligned(),
             result.spec_frame_number() == addr.spec_frame_number(),
@@ -357,6 +358,8 @@ impl Kpool {
             result is Ok ==> {
                 let kframe = result->Ok_0;
                 let frame_idx = kframe.spec_frame_number();
+                // The frame satisfies its invariant.
+                &&& kframe.inv()
                 // The frame address is valid and aligned.
                 &&& kframe.spec_is_aligned()
                 // The frame index is valid.
@@ -765,7 +768,7 @@ impl Kpool {
     pub fn free(&mut self, kframe: KernelFrame) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
-            kframe.spec_is_aligned(),
+            kframe.inv(),
             kframe.spec_frame_number() < old(self)@.capacity(),
             old(self)@.is_allocated(kframe.spec_frame_number()),
             // PROVENANCE: Frame must belong to this pool.
