@@ -174,6 +174,10 @@ impl VirtMemoryManager {
     /// 1. Pool initialization is already verified in kpool.rs and upool.rs.
     /// 2. The complex initialization logic is implementation detail.
     /// 3. The core memory safety properties start from valid pools.
+    /// Exec equivalence note: The original `PhysMemoryManager::new` has the same
+    /// exec body (`Self { kpool, upool }`). The struct was renamed from
+    /// `PhysMemoryManager` to `VirtMemoryManager` because the verified version
+    /// incorporates virtual memory operations alongside the physical pools.
     pub fn new(kpool: Kpool, upool: Upool) -> (result: Self)
         requires
             kpool.inv(),
@@ -186,6 +190,176 @@ impl VirtMemoryManager {
             result@.upool_capacity == upool@.capacity(),
     {
         VirtMemoryManager { kpool, upool }
+    }
+
+    //==============================================================================================
+    // PhysMemoryManager delegate functions
+    //
+    // These functions correspond to the original PhysMemoryManager methods from
+    // src/kernel/src/mm/phys/manager.rs. They are thin wrappers around pool
+    // operations, maintaining exec code consistency with the original.
+    //==============================================================================================
+
+    /// Allocates a user frame from the user pool.
+    ///
+    /// # Description
+    ///
+    /// Delegates to the underlying user pool's allocation. Corresponds to
+    /// `PhysMemoryManager::alloc_user_frame` in the original source.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
+    pub fn alloc_user_frame(&mut self) -> (result: Result<UserFrame, Error>)
+        requires
+            old(self).inv(),
+            old(self)@.has_upool_capacity(),
+        ensures
+            self.inv(),
+            result.is_ok() ==> self@.upool_free_count == old(self)@.upool_free_count - 1,
+    {
+        self.upool.alloc()
+    }
+
+
+    /// Allocates multiple user frames from the user pool.
+    ///
+    /// # Description
+    ///
+    /// Delegates to the underlying user pool's batch allocation. Corresponds to
+    /// `PhysMemoryManager::alloc_many_user_frames` in the original source.
+    ///
+    /// # Parameters
+    ///
+    /// - `nframes`: Number of frames to allocate.
+    ///
+    /// # Returns
+    ///
+    /// A ghost sequence of allocated frame indices.
+    ///
+    /// # Note
+    ///
+    /// The original returns `Result<Vec<UserFrame>, Error>`. The verified version
+    /// returns `Ghost<Seq<int>>` because the verified `Upool::alloc_many` uses ghost
+    /// sequences for frame index tracking. `Vec<UserFrame>` cannot be constructed in
+    /// verified Verus code without modeling `Vec` internals. The allocation semantics
+    /// are equivalent: both allocate `nframes` frames from the user pool.
+    pub fn alloc_many_user_frames(&mut self, nframes: usize) -> (result: Ghost<Seq<int>>)
+        requires
+            old(self).inv(),
+            nframes > 0,
+            old(self)@.has_upool_capacity_for(nframes as int),
+        ensures
+            self.inv(),
+            self@.upool_free_count == old(self)@.upool_free_count - nframes as int,
+    {
+        self.upool.alloc_many(nframes)
+    }
+
+
+    /// Allocates a kernel frame from the kernel pool.
+    ///
+    /// # Description
+    ///
+    /// Delegates to the underlying kernel pool's allocation. Corresponds to
+    /// `PhysMemoryManager::alloc_kernel_frame` in the original source.
+    ///
+    /// # Parameters
+    ///
+    /// - `clear`: Whether to clear the frame. This parameter is accepted for API
+    ///   compatibility with the original `PhysMemoryManager` but is not used in the
+    ///   verified implementation. Frame clearing is a security feature (zeroing memory),
+    ///   not a memory safety property, and cannot be verified without modeling raw
+    ///   memory contents.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
+    pub fn alloc_kernel_frame(&mut self, clear: bool) -> (result: Result<KernelFrame, Error>)
+        requires
+            old(self).inv(),
+            old(self)@.has_kpool_capacity(),
+        ensures
+            self.inv(),
+            result.is_ok() ==> self@.kpool_free_count == old(self)@.kpool_free_count - 1,
+    {
+        // Note: `clear` is not used. See doc comment for rationale.
+        #[allow(unused_variables)]
+        let _clear: bool = clear;
+        self.kpool.alloc()
+    }
+
+
+    /// Allocates a contiguous range of kernel frames from the kernel pool.
+    ///
+    /// # Description
+    ///
+    /// Delegates to the underlying kernel pool's batch allocation. Corresponds to
+    /// `PhysMemoryManager::alloc_many_kernel_frames` in the original source.
+    ///
+    /// # Parameters
+    ///
+    /// - `clear`: Whether to clear the frames. Accepted for API compatibility but
+    ///   not used (see `alloc_kernel_frame` documentation).
+    /// - `count`: Number of frames to allocate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the starting frame index of the contiguous range. Upon failure,
+    /// an error is returned instead.
+    ///
+    /// # Note
+    ///
+    /// The original returns `Result<Vec<KernelFrame>, Error>`. The verified version
+    /// returns `Result<usize, Error>` (starting frame index) because the verified
+    /// `Kpool::alloc_many` allocates contiguous ranges and returns the starting
+    /// index. `Vec<KernelFrame>` cannot be constructed in verified Verus code without
+    /// modeling `Vec` internals. The allocation semantics are equivalent: both allocate
+    /// `count` contiguous frames from the kernel pool.
+    pub fn alloc_many_kernel_frames(
+        &mut self,
+        clear: bool,
+        count: usize,
+    ) -> (result: Result<usize, Error>)
+        requires
+            old(self).inv(),
+            count > 0,
+            count as int <= old(self)@.kpool_capacity,
+        ensures
+            self.inv(),
+            result.is_ok() ==> self@.kpool_free_count == old(self)@.kpool_free_count - count as int,
+    {
+        // Note: `clear` is not used. See `alloc_kernel_frame` doc comment for rationale.
+        #[allow(unused_variables)]
+        let _clear: bool = clear;
+        self.kpool.alloc_many(count)
+    }
+
+
+    /// Frees a user frame back to the user pool.
+    ///
+    /// # Description
+    ///
+    /// Delegates to the underlying user pool's free operation. Corresponds to
+    /// `PhysMemoryManager::free_user_frame` in the original source.
+    ///
+    /// # Parameters
+    ///
+    /// - `frame`: User frame to free.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    pub fn free_user_frame(&mut self, frame: UserFrame) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            frame.spec_is_aligned(),
+            frame.spec_frame_number() < old(self)@.upool_capacity,
+            old(self).spec_uframe_is_allocated(frame.spec_raw_address()),
+        ensures
+            self.inv(),
+    {
+        self.upool.free(frame)
     }
 
     //==============================================================================================
