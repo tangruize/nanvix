@@ -30,7 +30,7 @@ impl InterruptedThread {
     pub proof fn lemma_from_state_wf(state: ThreadState, reason: int)
         requires
             state.wf(),
-            InterruptedThread::spec_valid_reason(reason),
+            InterruptedThreadView::spec_valid_reason(reason),
         ensures
             ({
                 let t: InterruptedThread = InterruptedThread { state: state, reason: reason };
@@ -45,7 +45,7 @@ impl InterruptedThread {
         ensures
             ({
                 let t: InterruptedThread = InterruptedThread { state: state, reason: reason };
-                t.spec_id() == state.spec_id()
+                t@.spec_id() == state.spec_id()
             }),
     {
     }
@@ -55,7 +55,7 @@ impl InterruptedThread {
         ensures
             ({
                 let t: InterruptedThread = InterruptedThread { state: state, reason: reason };
-                t.spec_reason() == reason
+                t@.spec_reason() == reason
             }),
     {
     }
@@ -67,7 +67,7 @@ impl InterruptedThread {
     /// Lemma: spec_id faithfully reflects the underlying state's identity.
     pub proof fn lemma_id_correct(&self)
         ensures
-            self.spec_id() == self.state.spec_id(),
+            self@.spec_id() == self.state.spec_id(),
     {
     }
 
@@ -94,7 +94,7 @@ impl InterruptedThread {
                     interrupt_reason: Some(self.reason),
                     ..self.state
                 };
-                post_state.spec_interrupt_reason() == Some(self.spec_reason())
+                post_state.spec_interrupt_reason() == Some(self@.spec_reason())
                 && post_state.spec_is_interrupted()
             }),
     {
@@ -111,7 +111,7 @@ impl InterruptedThread {
                     interrupt_reason: Some(self.reason),
                     ..self.state
                 };
-                post_state.spec_id() == self.spec_id()
+                post_state.spec_id() == self@.spec_id()
             }),
     {
     }
@@ -143,7 +143,7 @@ impl InterruptedThread {
                     interrupt_reason: Some(self.reason),
                     ..self.state
                 };
-                post_state.spec_locked_mutex_count() == self.spec_locked_mutex_count()
+                post_state.spec_locked_mutex_count() == self@.spec_locked_mutex_count()
                 && (forall|a: int| #![auto] post_state.spec_has_mutex(a) == self.state.spec_has_mutex(a))
             }),
     {
@@ -154,7 +154,7 @@ impl InterruptedThread {
     pub proof fn lemma_resume_preserves_drop_safety(&self)
         requires
             self.wf(),
-            self.spec_drop_safe(),
+            self@.spec_drop_safe(),
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
@@ -177,8 +177,8 @@ impl InterruptedThread {
                     interrupt_reason: Some(self.reason),
                     ..self.state
                 };
-                post_state.spec_kernel_stack() == self.spec_kernel_stack()
-                && post_state.spec_user_stack() == self.spec_user_stack()
+                post_state.spec_kernel_stack() == self@.spec_kernel_stack()
+                && post_state.spec_user_stack() == self@.spec_user_stack()
             }),
     {
         reveal(InterruptedThread::wf);
@@ -198,7 +198,7 @@ impl InterruptedThread {
     /// Lemma: A valid reason is either Killed or TimedOut (exhaustive and exclusive).
     pub proof fn lemma_valid_reason_exhaustive(reason: int)
         requires
-            InterruptedThread::spec_valid_reason(reason),
+            InterruptedThreadView::spec_valid_reason(reason),
         ensures
             reason == INTERRUPT_REASON_KILLED() || reason == INTERRUPT_REASON_TIMED_OUT(),
             !(reason == INTERRUPT_REASON_KILLED() && reason == INTERRUPT_REASON_TIMED_OUT()),
@@ -230,7 +230,7 @@ impl ReadyThread {
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: state };
-                r.spec_id() == state.spec_id()
+                r@.spec_id() == state.spec_id()
             }),
     {
     }
@@ -253,7 +253,7 @@ impl ReadyThread {
         ensures
             ({
                 let r: ReadyThread = ReadyThread { state: state };
-                r.spec_interrupt_reason() == state.spec_interrupt_reason()
+                r@.spec_interrupt_reason() == state.spec_interrupt_reason()
             }),
     {
     }

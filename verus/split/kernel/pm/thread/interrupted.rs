@@ -113,8 +113,8 @@ impl ReadyThread {
         requires
             state.wf(),
         ensures
-            result.spec_id() == state.spec_id(),
-            result.spec_interrupt_reason() == state.spec_interrupt_reason(),
+            result@.spec_id() == state.spec_id(),
+            result@.spec_interrupt_reason() == state.spec_interrupt_reason(),
             result.wf(),
     {
         proof { reveal(ReadyThread::wf); }
@@ -141,10 +141,10 @@ impl InterruptedThread {
     pub fn from_state(state: ThreadState, reason: int) -> (result: InterruptedThread)
         requires
             state.wf(),
-            InterruptedThread::spec_valid_reason(reason),
+            InterruptedThreadView::spec_valid_reason(reason),
         ensures
-            result.spec_id() == state.spec_id(),
-            result.spec_reason() == reason,
+            result@.spec_id() == state.spec_id(),
+            result@.spec_reason() == reason,
             result.wf(),
     {
         proof { reveal(InterruptedThread::wf); }
@@ -157,8 +157,10 @@ impl InterruptedThread {
     ///
     /// The thread identifier, unchanged from construction.
     pub fn id(&self) -> (result: ThreadIdentifier)
+        requires
+            self.wf(),
         ensures
-            result.spec_value() == self.spec_id(),
+            result.spec_value() == self@.spec_id(),
     {
         self.state.id()
     }
@@ -170,9 +172,11 @@ impl InterruptedThread {
     /// A reference to the underlying ThreadState with the same identity
     /// and full state transparency.
     pub fn thread_state(&self) -> (result: &ThreadState)
+        requires
+            self.wf(),
         ensures
-            result.spec_id() == self.spec_id(),
-            result@ == self.state@,
+            result.spec_id() == self@.spec_id(),
+            result@ == self@.state,
     {
         &self.state
     }
@@ -192,8 +196,8 @@ impl InterruptedThread {
         requires
             self.wf(),
         ensures
-            result.spec_id() == self.spec_id(),
-            result.spec_interrupt_reason() == Some(self.spec_reason()),
+            result@.spec_id() == self@.spec_id(),
+            result@.spec_interrupt_reason() == Some(self@.spec_reason()),
             result.wf(),
     {
         proof { reveal(InterruptedThread::wf); }

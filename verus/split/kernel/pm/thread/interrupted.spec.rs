@@ -87,13 +87,13 @@ pub open spec fn INTERRUPT_REASON_KILLED() -> int { 0 }
 pub open spec fn INTERRUPT_REASON_TIMED_OUT() -> int { 1 }
 
 //==================================================================================================
-// Spec Functions: InterruptedThread
+// Spec Functions: InterruptedThreadView
 //==================================================================================================
 
-impl InterruptedThread {
+impl InterruptedThreadView {
     /// Spec function: returns the thread identifier value.
     pub open spec fn spec_id(&self) -> int {
-        self.state.spec_id()
+        self.state.id
     }
 
     /// Spec function: returns the interrupt reason value.
@@ -104,18 +104,6 @@ impl InterruptedThread {
     /// Spec function: checks if a reason tag is valid (one of the two variants).
     pub open spec fn spec_valid_reason(reason: int) -> bool {
         reason == INTERRUPT_REASON_KILLED() || reason == INTERRUPT_REASON_TIMED_OUT()
-    }
-
-    /// Spec function: well-formedness predicate.
-    ///
-    /// An InterruptedThread is well-formed when:
-    /// - The underlying ThreadState is well-formed.
-    /// - The interrupt reason is a valid variant.
-    ///
-    /// Closed per methodology Step 2: users must maintain the invariant
-    /// but should not depend on its internal structure.
-    pub closed spec fn wf(&self) -> bool {
-        self.state.wf() && Self::spec_valid_reason(self.reason)
     }
 
     /// Spec function: checks if the reason is Killed.
@@ -130,32 +118,66 @@ impl InterruptedThread {
 
     /// Spec function: returns the underlying state's interrupt reason.
     pub open spec fn spec_state_interrupt_reason(&self) -> Option<int> {
-        self.state.spec_interrupt_reason()
+        self.state.interrupt_reason
     }
 
     /// Spec function: returns the underlying state's locked mutex count.
     pub open spec fn spec_locked_mutex_count(&self) -> nat {
-        self.state.spec_locked_mutex_count()
+        self.state.locked_mutex_count
     }
 
     /// Spec function: checks if the underlying state is drop-safe.
     pub open spec fn spec_drop_safe(&self) -> bool {
-        self.state.spec_drop_safe()
+        self.state.drop_safe()
     }
 
     /// Spec function: checks if the underlying state has a specific mutex.
     pub open spec fn spec_has_mutex(&self, address: int) -> bool {
-        self.state.spec_has_mutex(address)
+        self.state.has_mutex(address)
     }
 
     /// Spec function: returns the underlying state's kernel stack.
     pub open spec fn spec_kernel_stack(&self) -> Option<int> {
-        self.state.spec_kernel_stack()
+        self.state.kernel_stack
     }
 
     /// Spec function: returns the underlying state's user stack.
     pub open spec fn spec_user_stack(&self) -> Option<int> {
-        self.state.spec_user_stack()
+        self.state.user_stack
+    }
+}
+
+//==================================================================================================
+// Spec Functions: InterruptedThread
+//==================================================================================================
+
+impl InterruptedThread {
+    /// Spec function: well-formedness predicate.
+    ///
+    /// An InterruptedThread is well-formed when:
+    /// - The underlying ThreadState is well-formed.
+    /// - The interrupt reason is a valid variant.
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
+        self.state.wf() && InterruptedThreadView::spec_valid_reason(self.reason)
+    }
+}
+
+//==================================================================================================
+// Spec Functions: ReadyThreadView
+//==================================================================================================
+
+impl ReadyThreadView {
+    /// Spec function: returns the thread identifier value.
+    pub open spec fn spec_id(&self) -> int {
+        self.state.id
+    }
+
+    /// Spec function: returns the state's interrupt reason.
+    pub open spec fn spec_interrupt_reason(&self) -> Option<int> {
+        self.state.interrupt_reason
     }
 }
 
@@ -164,22 +186,12 @@ impl InterruptedThread {
 //==================================================================================================
 
 impl ReadyThread {
-    /// Spec function: returns the thread identifier value.
-    pub open spec fn spec_id(&self) -> int {
-        self.state.spec_id()
-    }
-
     /// Spec function: well-formedness predicate.
     ///
     /// Closed per methodology Step 2: users must maintain the invariant
     /// but should not depend on its internal structure.
     pub closed spec fn wf(&self) -> bool {
         self.state.wf()
-    }
-
-    /// Spec function: returns the state's interrupt reason.
-    pub open spec fn spec_interrupt_reason(&self) -> Option<int> {
-        self.state.spec_interrupt_reason()
     }
 }
 
