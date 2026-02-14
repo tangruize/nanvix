@@ -645,6 +645,9 @@ impl RunningProcess {
                 assert(old(self).zombie_thread_ids@[idx as int] == tid);
                 assert(self.zombie_thread_ids@ =~=
                     Self::spec_remove_at(old(self).zombie_thread_ids@, idx as int));
+
+                // Bridge concrete Seq<u64> to abstract Seq<int> for view-level postcondition.
+                lemma_seq_as_int_remove_at(old(self).zombie_thread_ids@, idx as int);
             }
 
             JOIN_TAG_ZOMBIE
@@ -677,7 +680,7 @@ impl RunningProcess {
         ensures
             result@ == self@.find_thread(tid as int),
     {
-        Ghost(self.spec_find_thread(tid))
+        Ghost(self@.find_thread(tid as int))
     }
 
     /// Finds a thread by its identifier (mutable variant).
@@ -704,7 +707,7 @@ impl RunningProcess {
             self@ == old(self)@,
             self.inv() == old(self).inv(),
     {
-        Ghost(old(self).spec_find_thread(tid))
+        Ghost(old(self)@.find_thread(tid as int))
     }
 
     /// Transitions to a RunnableProcess by scheduling the running thread.
@@ -1262,6 +1265,14 @@ impl RunningProcess {
 
         proof {
             assert(ready_thread_ids@.len() == ready_count as int + 1);
+
+            // Bridge concrete Seq<u64> to abstract Seq<int> for view-level postconditions.
+            // ready_thread_ids was push(tid) onto old ready list.
+            let old_ready: Seq<u64> = self.ready_thread_ids@;
+            lemma_seq_as_int_push(old_ready, tid);
+
+            // sleeping list had remove_at applied.
+            lemma_seq_as_int_remove_at(sleeping_thread_ids@, idx as int);
         }
 
         Ok(RunningProcess {

@@ -86,6 +86,88 @@ impl RunningProcess {
 }
 
 //==================================================================================================
+// Sequence Bridging Lemmas (Seq<u64> → Seq<int>)
+//
+// These lemmas prove that converting a sequence from u64 to int (via Seq::new
+// with `as int` mapping) commutes with standard sequence operations (push,
+// add, subrange, remove_at). They bridge concrete Vec<u64> results to
+// abstract Seq<int> postconditions.
+//==================================================================================================
+
+/// Proves that converting a pushed sequence matches pushing onto the converted sequence.
+proof fn lemma_seq_as_int_push(s: Seq<u64>, v: u64)
+    ensures
+        Seq::new(s.push(v).len(), |i: int| s.push(v)[i] as int)
+            =~= Seq::new(s.len(), |i: int| s[i] as int).push(v as int),
+{
+    let lhs: Seq<int> = Seq::new(s.push(v).len(), |i: int| s.push(v)[i] as int);
+    let rhs: Seq<int> = Seq::new(s.len(), |i: int| s[i] as int).push(v as int);
+    assert(lhs.len() == rhs.len());
+    assert forall |i: int| 0 <= i < lhs.len() implies lhs[i] == rhs[i]
+    by {
+        if i < s.len() as int {
+            assert(s.push(v)[i] == s[i]);
+        } else {
+            assert(s.push(v)[i] == v);
+        }
+    }
+}
+
+/// Proves that converting a concatenated sequence matches concatenating the converted sequences.
+proof fn lemma_seq_as_int_add(a: Seq<u64>, b: Seq<u64>)
+    ensures
+        Seq::new(a.add(b).len(), |i: int| a.add(b)[i] as int)
+            =~= Seq::new(a.len(), |i: int| a[i] as int).add(
+                Seq::new(b.len(), |i: int| b[i] as int)),
+{
+    let lhs: Seq<int> = Seq::new(a.add(b).len(), |i: int| a.add(b)[i] as int);
+    let rhs: Seq<int> = Seq::new(a.len(), |i: int| a[i] as int).add(
+        Seq::new(b.len(), |i: int| b[i] as int));
+    assert(lhs.len() == rhs.len());
+    assert forall |i: int| 0 <= i < lhs.len() implies lhs[i] == rhs[i]
+    by {
+        if i < a.len() as int {
+            assert(a.add(b)[i] == a[i]);
+        } else {
+            assert(a.add(b)[i] == b[i - a.len() as int]);
+        }
+    }
+}
+
+/// Proves that converting a sub-ranged sequence matches sub-ranging the converted sequence.
+proof fn lemma_seq_as_int_subrange(s: Seq<u64>, lo: int, hi: int)
+    requires
+        0 <= lo <= hi <= s.len(),
+    ensures
+        Seq::new(s.subrange(lo, hi).len(), |i: int| s.subrange(lo, hi)[i] as int)
+            =~= Seq::new(s.len(), |i: int| s[i] as int).subrange(lo, hi),
+{
+    let lhs: Seq<int> = Seq::new(s.subrange(lo, hi).len(), |i: int| s.subrange(lo, hi)[i] as int);
+    let rhs: Seq<int> = Seq::new(s.len(), |i: int| s[i] as int).subrange(lo, hi);
+    assert(lhs.len() == rhs.len());
+    assert forall |i: int| 0 <= i < lhs.len() implies lhs[i] == rhs[i]
+    by {
+        assert(s.subrange(lo, hi)[i] == s[lo + i]);
+    }
+}
+
+/// Proves that converting a remove_at result matches remove_at on the converted sequence.
+proof fn lemma_seq_as_int_remove_at(s: Seq<u64>, idx: int)
+    requires
+        0 <= idx < s.len(),
+    ensures
+        Seq::new(
+            RunningProcess::spec_remove_at(s, idx).len(),
+            |i: int| RunningProcess::spec_remove_at(s, idx)[i] as int
+        ) =~= RunningProcessView::seq_remove_at(
+            Seq::new(s.len(), |i: int| s[i] as int), idx),
+{
+    lemma_seq_as_int_subrange(s, 0, idx);
+    lemma_seq_as_int_subrange(s, idx + 1, s.len() as int);
+    lemma_seq_as_int_add(s.subrange(0, idx), s.subrange(idx + 1, s.len() as int));
+}
+
+//==================================================================================================
 // RunnableProcess Lemmas
 //==================================================================================================
 
