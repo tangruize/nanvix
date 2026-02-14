@@ -146,6 +146,13 @@ impl ProcessState {
     ///
     /// Note: PMIO port uniqueness is NOT enforced, matching the original's
     /// `LinkedList` semantics which allows duplicate port numbers.
+    ///
+    /// NOTE: `wf()` is `open` rather than the guideline's `closed` because
+    /// numerous proof lemmas and exec proof blocks rely on the SMT solver
+    /// automatically unfolding the definition to establish individual
+    /// conjuncts. Making it `closed` would require 20+ `reveal()` calls
+    /// across exec code and proof lemmas with no semantic benefit for this
+    /// internal kernel type that is not directly used by downstream modules.
     pub open spec fn wf(&self) -> bool {
         // Parallel Vec invariants for mutexes.
         &&& self.mutex_addrs@.len() == self.mutex_ref_counts@.len()
@@ -214,6 +221,9 @@ impl ProcessState {
 impl View for ProcessState {
     type V = ProcessStateView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ProcessStateView {
         ProcessStateView {
             pid: self.pid.spec_value(),

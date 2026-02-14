@@ -122,18 +122,19 @@ impl ProcessState {
     pub fn new(pid: ProcessIdentifier) -> (result: ProcessState)
         ensures
             result.spec_pid() == pid.spec_value(),
-            result.spec_capabilities_bits() == 0u8,
+            result@.capabilities_granted =~= Set::<Capability>::empty(),
             result.spec_mutex_count() == 0,
             result.spec_cond_count() == 0,
             result.spec_pmio_count() == 0,
             result.wf(),
     {
+        let caps: Capabilities = Capabilities::new();
         proof {
-            assert(0u8 & 0b1110_0000u8 == 0u8) by (bit_vector);
+            caps.lemma_view_bits();
         }
         ProcessState {
             pid: pid,
-            capabilities: Capabilities { bits: 0u8 },
+            capabilities: caps,
             mutex_count: 0usize,
             mutex_addrs: Vec::new(),
             mutex_ref_counts: Vec::new(),
@@ -157,7 +158,7 @@ impl ProcessState {
         requires
             old(self).wf(),
         ensures
-            self.capabilities.spec_has(capability),
+            self@.capabilities_granted.contains(capability),
             self.spec_pid() == old(self).spec_pid(),
             self.spec_mutex_count() == old(self).spec_mutex_count(),
             self.spec_cond_count() == old(self).spec_cond_count(),
@@ -167,6 +168,9 @@ impl ProcessState {
             self.wf(),
     {
         self.capabilities.set(capability);
+        proof {
+            self.capabilities.lemma_view_bits();
+        }
     }
 
     /// Clears a capability for this process.
@@ -174,7 +178,7 @@ impl ProcessState {
         requires
             old(self).wf(),
         ensures
-            !self.capabilities.spec_has(capability),
+            !self@.capabilities_granted.contains(capability),
             self.spec_pid() == old(self).spec_pid(),
             self.spec_mutex_count() == old(self).spec_mutex_count(),
             self.spec_cond_count() == old(self).spec_cond_count(),
@@ -184,13 +188,21 @@ impl ProcessState {
             self.wf(),
     {
         self.capabilities.clear(capability);
+        proof {
+            self.capabilities.lemma_view_bits();
+        }
     }
 
     /// Tests whether this process has a given capability.
     pub fn has_capability(&self, capability: Capability) -> (result: bool)
+        requires
+            self.wf(),
         ensures
-            result == self.capabilities.spec_has(capability),
+            result == self@.capabilities_granted.contains(capability),
     {
+        proof {
+            self.capabilities.lemma_view_bits();
+        }
         self.capabilities.has(capability)
     }
 
