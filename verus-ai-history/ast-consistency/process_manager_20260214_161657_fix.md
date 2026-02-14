@@ -94,9 +94,15 @@ are defined in `mod.rs`.
 
 ## Verification: PASS
 
+Command: `./verus-ai/scripts/verify.sh kernel::pm::process::manager`
+
 ```
 verification results:: 152 verified, 0 errors (module kernel::pm::process::manager)
 verification results:: 2015 verified, 0 errors (full crate)
 ```
 
 No `assume`, `admit`, or unjustified `external_body` added.
+
+**Note:** After the `include!()` restructuring, the short name `process_manager`
+resolves to `kernel::pm::process::manager::process_manager` (a non-existent
+submodule). Use the full module path `kernel::pm::process::manager` instead.
