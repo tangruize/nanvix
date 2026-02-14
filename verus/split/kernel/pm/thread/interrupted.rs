@@ -228,10 +228,10 @@ impl InterruptedThread {
     /// Callers that mutate the `ThreadState` through this reference operate
     /// outside the verification boundary. Callers MUST preserve:
     /// - `self.wf()` — the compound well-formedness invariant.
-    /// - `self.spec_id()` — the thread identity must not change.
+    /// - `self@.spec_id()` — the thread identity must not change.
     ///
     /// **Intended postconditions** (not machine-checked):
-    /// - `ensures old(self).spec_id() == self.spec_id()` (identity preserved).
+    /// - `ensures old(self)@.spec_id() == self@.spec_id()` (identity preserved).
     /// - `ensures old(self).wf() ==> self.wf()` (well-formedness preserved).
     ///
     /// **Known call sites** (in unverified kernel code):
