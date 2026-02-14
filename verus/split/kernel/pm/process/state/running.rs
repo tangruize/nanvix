@@ -412,12 +412,12 @@ impl RunningProcess {
             sleeping_count as nat == sleeping_ids@.len(),
             zombie_count as nat == zombie_ids@.len(),
         ensures
-            result.spec_pid() == pid,
-            result.spec_running_thread_id() == running_tid,
-            result.spec_ready_count() == ready_ids@.len(),
-            result.spec_interrupted_count() == interrupted_ids@.len(),
-            result.spec_sleeping_count() == sleeping_ids@.len(),
-            result.spec_zombie_count() == zombie_ids@.len(),
+            result@.pid == pid as int,
+            result@.running_thread_id == running_tid as int,
+            result@.ready_thread_ids.len() == ready_ids@.len(),
+            result@.interrupted_thread_ids.len() == interrupted_ids@.len(),
+            result@.sleeping_thread_ids.len() == sleeping_ids@.len(),
+            result@.zombie_thread_ids.len() == zombie_ids@.len(),
             result.inv(),
     {
         proof { reveal(RunningProcess::inv); }
@@ -444,7 +444,7 @@ impl RunningProcess {
     /// The thread identifier of the running thread.
     pub fn get_tid(&self) -> (result: u64)
         ensures
-            result == self.spec_running_thread_id(),
+            result as int == self@.running_thread_id,
     {
         self.running_thread_id
     }
@@ -462,7 +462,7 @@ impl RunningProcess {
     #[verifier::external_body]
     pub fn state(&self) -> (result: u64)
         ensures
-            result == self.spec_pid(),
+            result as int == self@.pid,
     {
         unimplemented!()
     }
@@ -481,14 +481,9 @@ impl RunningProcess {
     #[verifier::external_body]
     pub fn state_mut(&mut self) -> (result: u64)
         ensures
-            result == self.spec_pid(),
+            result as int == self@.pid,
             // Frame: mutation through state_mut does not change modeled fields.
-            self.spec_pid() == old(self).spec_pid(),
-            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
-            self.ready_thread_ids@ == old(self).ready_thread_ids@,
-            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
-            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
-            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            self@ == old(self)@,
             self.inv() == old(self).inv(),
     {
         unimplemented!()
@@ -508,14 +503,9 @@ impl RunningProcess {
     #[verifier::external_body]
     pub fn running_mut(&mut self) -> (result: u64)
         ensures
-            result == self.spec_running_thread_id(),
+            result as int == self@.running_thread_id,
             // Frame: mutation through running_mut does not change modeled fields.
-            self.spec_pid() == old(self).spec_pid(),
-            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
-            self.ready_thread_ids@ == old(self).ready_thread_ids@,
-            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
-            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
-            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            self@ == old(self)@,
             self.inv() == old(self).inv(),
     {
         unimplemented!()
@@ -553,32 +543,28 @@ impl RunningProcess {
     pub fn try_join_thread(&mut self, tid: u64, tag: u8) -> (result: u8)
         requires
             old(self).inv(),
-            tag as int == old(self).spec_try_join_thread(tid),
+            tag as int == old(self)@.try_join_tag(tid as int),
         ensures
             result == tag,
-            result as int == old(self).spec_try_join_thread(tid),
+            result as int == old(self)@.try_join_tag(tid as int),
             // PID and running thread unchanged.
-            self.spec_pid() == old(self).spec_pid(),
-            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
+            self@.pid == old(self)@.pid,
+            self@.running_thread_id == old(self)@.running_thread_id,
             // Ready, interrupted, sleeping lists unchanged.
-            self.ready_thread_ids@ == old(self).ready_thread_ids@,
-            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
-            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
-            self.ready_count == old(self).ready_count,
-            self.interrupted_count == old(self).interrupted_count,
-            self.sleeping_count == old(self).sleeping_count,
+            self@.ready_thread_ids =~= old(self)@.ready_thread_ids,
+            self@.interrupted_thread_ids =~= old(self)@.interrupted_thread_ids,
+            self@.sleeping_thread_ids =~= old(self)@.sleeping_thread_ids,
             // Zombie list: removed on success, unchanged otherwise.
             (tag == JOIN_TAG_ZOMBIE) ==> (
                 (exists|idx: int|
-                    0 <= idx < old(self).zombie_thread_ids@.len()
-                    && old(self).zombie_thread_ids@[idx] == tid
-                    && self.zombie_thread_ids@ ==
-                        Self::spec_remove_at(old(self).zombie_thread_ids@, idx))
-                && self.zombie_count as nat == old(self).spec_zombie_count() - 1
+                    0 <= idx < old(self)@.zombie_thread_ids.len()
+                    && old(self)@.zombie_thread_ids[idx] == tid as int
+                    && self@.zombie_thread_ids =~=
+                        RunningProcessView::seq_remove_at(old(self)@.zombie_thread_ids, idx))
+                && self@.zombie_thread_ids.len() == old(self)@.zombie_thread_ids.len() - 1
             ),
             (tag != JOIN_TAG_ZOMBIE) ==> (
-                self.zombie_thread_ids@ == old(self).zombie_thread_ids@
-                && self.zombie_count == old(self).zombie_count
+                self@.zombie_thread_ids =~= old(self)@.zombie_thread_ids
             ),
             self.inv(),
     {
@@ -689,7 +675,7 @@ impl RunningProcess {
     /// The ghost list variant.
     pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<int>>)
         ensures
-            result@ == self.spec_find_thread(tid),
+            result@ == self@.find_thread(tid as int),
     {
         Ghost(self.spec_find_thread(tid))
     }
@@ -713,14 +699,9 @@ impl RunningProcess {
         requires
             old(self).inv(),
         ensures
-            result@ == old(self).spec_find_thread(tid),
+            result@ == old(self)@.find_thread(tid as int),
             // Frame: find_thread_mut does not change any modeled fields.
-            self.spec_pid() == old(self).spec_pid(),
-            self.spec_running_thread_id() == old(self).spec_running_thread_id(),
-            self.ready_thread_ids@ == old(self).ready_thread_ids@,
-            self.interrupted_thread_ids@ == old(self).interrupted_thread_ids@,
-            self.sleeping_thread_ids@ == old(self).sleeping_thread_ids@,
-            self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
+            self@ == old(self)@,
             self.inv() == old(self).inv(),
     {
         Ghost(old(self).spec_find_thread(tid))
@@ -740,16 +721,16 @@ impl RunningProcess {
             self.inv(),
         ensures
             // PID preserved.
-            result.process.spec_pid() == self.spec_pid(),
+            result.process@.pid == self@.pid,
             // The formerly running thread is now in the ready list.
-            result.process.ready_thread_ids@.len() == self.spec_ready_count() + 1,
+            result.process@.ready_thread_ids.len() == self@.ready_thread_ids.len() + 1,
             // Content: ready list is old ready + running thread appended.
-            result.process.ready_thread_ids@ ==
-                self.ready_thread_ids@.push(self.running_thread_id),
+            result.process@.ready_thread_ids =~=
+                self@.ready_thread_ids.push(self@.running_thread_id),
             // Other lists preserved.
-            result.process.interrupted_thread_ids@ == self.interrupted_thread_ids@,
-            result.process.sleeping_thread_ids@ == self.sleeping_thread_ids@,
-            result.process.zombie_thread_ids@ == self.zombie_thread_ids@,
+            result.process@.interrupted_thread_ids =~= self@.interrupted_thread_ids,
+            result.process@.sleeping_thread_ids =~= self@.sleeping_thread_ids,
+            result.process@.zombie_thread_ids =~= self@.zombie_thread_ids,
             // Result is well-formed (non-empty ready list).
             result.process.inv(),
     {
@@ -802,45 +783,45 @@ impl RunningProcess {
         ensures
             match result {
                 SleepResult::Runnable(rp) => {
-                    rp.spec_pid() == self.spec_pid()
+                    rp@.pid == self@.pid
                     && rp.inv()
                     // Branch: there were ready or interrupted threads.
-                    && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
+                    && (self@.ready_thread_ids.len() > 0 || self@.interrupted_thread_ids.len() > 0)
                     // Sleeping threads in result include the running thread.
-                    && rp.sleeping_thread_ids@.len() == self.spec_sleeping_count() + 1
+                    && rp@.sleeping_thread_ids.len() == self@.sleeping_thread_ids.len() + 1
                     // Zombie threads preserved.
-                    && rp.zombie_thread_ids@ == self.zombie_thread_ids@
+                    && rp@.zombie_thread_ids =~= self@.zombie_thread_ids
                     // Ready branch: exact content specified.
-                    && (self.spec_ready_count() > 0 ==> {
-                        rp.ready_thread_ids@ == self.ready_thread_ids@
-                        && rp.sleeping_thread_ids@ ==
-                            self.sleeping_thread_ids@.push(self.running_thread_id)
-                        && rp.interrupted_thread_ids@ == self.interrupted_thread_ids@
+                    && (self@.ready_thread_ids.len() > 0 ==> {
+                        rp@.ready_thread_ids =~= self@.ready_thread_ids
+                        && rp@.sleeping_thread_ids =~=
+                            self@.sleeping_thread_ids.push(self@.running_thread_id)
+                        && rp@.interrupted_thread_ids =~= self@.interrupted_thread_ids
                     })
                     // Interrupted branch: details from strengthened interrupted_resume().
-                    && (self.spec_ready_count() == 0 && self.spec_interrupted_count() > 0 ==> {
-                        rp.sleeping_thread_ids@ ==
-                            self.sleeping_thread_ids@.push(self.running_thread_id)
-                        && rp.ready_thread_ids@.len() == 1
-                        && rp.ready_thread_ids@[0] == self.interrupted_thread_ids@[0]
-                        && rp.interrupted_thread_ids@ ==
-                            self.interrupted_thread_ids@.subrange(
-                                1, self.interrupted_thread_ids@.len() as int)
+                    && (self@.ready_thread_ids.len() == 0 && self@.interrupted_thread_ids.len() > 0 ==> {
+                        rp@.sleeping_thread_ids =~=
+                            self@.sleeping_thread_ids.push(self@.running_thread_id)
+                        && rp@.ready_thread_ids.len() == 1
+                        && rp@.ready_thread_ids[0] == self@.interrupted_thread_ids[0]
+                        && rp@.interrupted_thread_ids =~=
+                            self@.interrupted_thread_ids.subrange(
+                                1, self@.interrupted_thread_ids.len() as int)
                     })
                 },
                 SleepResult::Sleeping(sp) => {
-                    sp.spec_pid() == self.spec_pid()
+                    sp@.pid == self@.pid
                     && sp.inv()
                     // Branch: no ready and no interrupted threads.
-                    && self.spec_ready_count() == 0
-                    && self.spec_interrupted_count() == 0
+                    && self@.ready_thread_ids.len() == 0
+                    && self@.interrupted_thread_ids.len() == 0
                     // Sleeping list content: old sleeping + running thread.
-                    && sp.sleeping_thread_ids@ ==
-                        self.sleeping_thread_ids@.push(self.running_thread_id)
-                    && sp.sleeping_thread_ids@.len() ==
-                        self.spec_sleeping_count() + 1
+                    && sp@.sleeping_thread_ids =~=
+                        self@.sleeping_thread_ids.push(self@.running_thread_id)
+                    && sp@.sleeping_thread_ids.len() ==
+                        self@.sleeping_thread_ids.len() + 1
                     // Zombie threads preserved.
-                    && sp.zombie_thread_ids@ == self.zombie_thread_ids@
+                    && sp@.zombie_thread_ids =~= self@.zombie_thread_ids
                 },
             },
     {
@@ -921,42 +902,42 @@ impl RunningProcess {
         ensures
             match result {
                 ExitResult::Runnable(rp) => {
-                    rp.spec_pid() == self.spec_pid()
+                    rp@.pid == self@.pid
                     && rp.inv()
                     // Branch: there were interrupted or sleeping threads.
-                    && (self.spec_interrupted_count() > 0
-                        || self.spec_sleeping_count() > 0)
+                    && (self@.interrupted_thread_ids.len() > 0
+                        || self@.sleeping_thread_ids.len() > 0)
                     // Zombie threads in result: original zombie + running + ready (matches original ordering).
-                    && rp.zombie_thread_ids@.len() ==
-                        1 + self.spec_ready_count() + self.spec_zombie_count()
-                    && rp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id).add(
-                            self.ready_thread_ids@)
+                    && rp@.zombie_thread_ids.len() ==
+                        1 + self@.ready_thread_ids.len() + self@.zombie_thread_ids.len()
+                    && rp@.zombie_thread_ids =~=
+                        self@.zombie_thread_ids.push(self@.running_thread_id).add(
+                            self@.ready_thread_ids)
                     // No sleeping threads remain (all were converted to interrupted).
-                    && rp.sleeping_thread_ids@.len() == 0
+                    && rp@.sleeping_thread_ids.len() == 0
                     // Exactly one interrupted thread was resumed as ready.
-                    && rp.ready_thread_ids@.len() == 1
+                    && rp@.ready_thread_ids.len() == 1
                     // The ready thread is the first element of the combined interrupted list.
-                    && rp.ready_thread_ids@[0] ==
-                        self.interrupted_thread_ids@.add(self.sleeping_thread_ids@)[0]
+                    && rp@.ready_thread_ids[0] ==
+                        self@.interrupted_thread_ids.add(self@.sleeping_thread_ids)[0]
                     // The remaining interrupted threads are the tail.
-                    && rp.interrupted_thread_ids@ ==
-                        self.interrupted_thread_ids@.add(self.sleeping_thread_ids@).subrange(
-                            1, (self.spec_interrupted_count() + self.spec_sleeping_count()) as int)
+                    && rp@.interrupted_thread_ids =~=
+                        self@.interrupted_thread_ids.add(self@.sleeping_thread_ids).subrange(
+                            1, (self@.interrupted_thread_ids.len() + self@.sleeping_thread_ids.len()) as int)
                 },
                 ExitResult::Zombie(zp) => {
-                    zp.spec_pid() == self.spec_pid()
+                    zp@.pid == self@.pid
                     && zp.inv()
-                    && zp.spec_status() == status
+                    && zp@.status == status as int
                     // Branch: no interrupted or sleeping threads.
-                    && self.spec_interrupted_count() == 0
-                    && self.spec_sleeping_count() == 0
+                    && self@.interrupted_thread_ids.len() == 0
+                    && self@.sleeping_thread_ids.len() == 0
                     // Zombie list: original zombie + running + all ready (matches original ordering).
-                    && zp.zombie_thread_ids@.len() ==
-                        1 + self.spec_ready_count() + self.spec_zombie_count()
-                    && zp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id).add(
-                            self.ready_thread_ids@)
+                    && zp@.zombie_thread_ids.len() ==
+                        1 + self@.ready_thread_ids.len() + self@.zombie_thread_ids.len()
+                    && zp@.zombie_thread_ids =~=
+                        self@.zombie_thread_ids.push(self@.running_thread_id).add(
+                            self@.ready_thread_ids)
                 },
             },
     {
@@ -1040,52 +1021,52 @@ impl RunningProcess {
         ensures
             match result {
                 ExitThreadResult::Runnable(rp) => {
-                    rp.spec_pid() == self.spec_pid()
+                    rp@.pid == self@.pid
                     && rp.inv()
-                    && (self.spec_ready_count() > 0 || self.spec_interrupted_count() > 0)
+                    && (self@.ready_thread_ids.len() > 0 || self@.interrupted_thread_ids.len() > 0)
                     // Zombie list includes the exited running thread.
-                    && rp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id)
-                    && rp.zombie_thread_ids@.len() == 1 + self.spec_zombie_count()
+                    && rp@.zombie_thread_ids =~=
+                        self@.zombie_thread_ids.push(self@.running_thread_id)
+                    && rp@.zombie_thread_ids.len() == 1 + self@.zombie_thread_ids.len()
                     // Ready branch: content preserved.
-                    && (self.spec_ready_count() > 0 ==> {
-                        rp.ready_thread_ids@ == self.ready_thread_ids@
-                        && rp.interrupted_thread_ids@ == self.interrupted_thread_ids@
-                        && rp.sleeping_thread_ids@ == self.sleeping_thread_ids@
+                    && (self@.ready_thread_ids.len() > 0 ==> {
+                        rp@.ready_thread_ids =~= self@.ready_thread_ids
+                        && rp@.interrupted_thread_ids =~= self@.interrupted_thread_ids
+                        && rp@.sleeping_thread_ids =~= self@.sleeping_thread_ids
                     })
                     // Interrupted branch: details from strengthened interrupted_resume().
-                    && (self.spec_ready_count() == 0 && self.spec_interrupted_count() > 0 ==> {
-                        rp.sleeping_thread_ids@ == self.sleeping_thread_ids@
-                        && rp.ready_thread_ids@.len() == 1
-                        && rp.ready_thread_ids@[0] == self.interrupted_thread_ids@[0]
-                        && rp.interrupted_thread_ids@ ==
-                            self.interrupted_thread_ids@.subrange(
-                                1, self.interrupted_thread_ids@.len() as int)
+                    && (self@.ready_thread_ids.len() == 0 && self@.interrupted_thread_ids.len() > 0 ==> {
+                        rp@.sleeping_thread_ids =~= self@.sleeping_thread_ids
+                        && rp@.ready_thread_ids.len() == 1
+                        && rp@.ready_thread_ids[0] == self@.interrupted_thread_ids[0]
+                        && rp@.interrupted_thread_ids =~=
+                            self@.interrupted_thread_ids.subrange(
+                                1, self@.interrupted_thread_ids.len() as int)
                     })
                 },
                 ExitThreadResult::Sleeping(sp) => {
-                    sp.spec_pid() == self.spec_pid()
+                    sp@.pid == self@.pid
                     && sp.inv()
-                    && self.spec_ready_count() == 0
-                    && self.spec_interrupted_count() == 0
-                    && self.spec_sleeping_count() > 0
+                    && self@.ready_thread_ids.len() == 0
+                    && self@.interrupted_thread_ids.len() == 0
+                    && self@.sleeping_thread_ids.len() > 0
                     // Sleeping threads preserved.
-                    && sp.sleeping_thread_ids@ == self.sleeping_thread_ids@
+                    && sp@.sleeping_thread_ids =~= self@.sleeping_thread_ids
                     // Zombie list includes the exited running thread.
-                    && sp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id)
+                    && sp@.zombie_thread_ids =~=
+                        self@.zombie_thread_ids.push(self@.running_thread_id)
                 },
                 ExitThreadResult::Zombie(zp) => {
-                    zp.spec_pid() == self.spec_pid()
+                    zp@.pid == self@.pid
                     && zp.inv()
-                    && zp.spec_status() == status
-                    && self.spec_ready_count() == 0
-                    && self.spec_interrupted_count() == 0
-                    && self.spec_sleeping_count() == 0
+                    && zp@.status == status as int
+                    && self@.ready_thread_ids.len() == 0
+                    && self@.interrupted_thread_ids.len() == 0
+                    && self@.sleeping_thread_ids.len() == 0
                     // Zombie list includes the running thread + original zombie.
-                    && zp.zombie_thread_ids@ ==
-                        self.zombie_thread_ids@.push(self.running_thread_id)
-                    && zp.zombie_thread_ids@.len() == 1 + self.spec_zombie_count()
+                    && zp@.zombie_thread_ids =~=
+                        self@.zombie_thread_ids.push(self@.running_thread_id)
+                    && zp@.zombie_thread_ids.len() == 1 + self@.zombie_thread_ids.len()
                 },
             },
     {
@@ -1176,43 +1157,33 @@ impl RunningProcess {
     pub fn wakeup(self, tid: u64, found: bool) -> (result: Result<RunningProcess, RunningProcess>)
         requires
             self.inv(),
-            found == Self::spec_seq_contains(self.sleeping_thread_ids@, tid),
-            self.ready_count < u64::MAX,
+            found == RunningProcessView::seq_contains(self@.sleeping_thread_ids, tid as int),
+            self@.ready_thread_ids.len() < u64::MAX as int,
         ensures
             match result {
                 Ok(r) => {
                     found
-                    && r.spec_pid() == self.spec_pid()
-                    && r.spec_running_thread_id() == self.spec_running_thread_id()
-                    && r.spec_ready_count() == self.spec_ready_count() + 1
-                    && r.spec_sleeping_count() == self.spec_sleeping_count() - 1
-                    && r.spec_interrupted_count() == self.spec_interrupted_count()
-                    && r.spec_zombie_count() == self.spec_zombie_count()
+                    && r@.pid == self@.pid
+                    && r@.running_thread_id == self@.running_thread_id
+                    && r@.ready_thread_ids.len() == self@.ready_thread_ids.len() + 1
+                    && r@.sleeping_thread_ids.len() == self@.sleeping_thread_ids.len() - 1
+                    && r@.interrupted_thread_ids.len() == self@.interrupted_thread_ids.len()
+                    && r@.zombie_thread_ids.len() == self@.zombie_thread_ids.len()
                     // Content: ready list gets the woken thread appended.
-                    && r.ready_thread_ids@ == self.ready_thread_ids@.push(tid)
+                    && r@.ready_thread_ids =~= self@.ready_thread_ids.push(tid as int)
                     // Sleeping list has the found thread removed.
-                    && (exists|idx: int| 0 <= idx < self.sleeping_thread_ids@.len()
-                        && self.sleeping_thread_ids@[idx] == tid
-                        && r.sleeping_thread_ids@ ==
-                            Self::spec_remove_at(self.sleeping_thread_ids@, idx))
+                    && (exists|idx: int| 0 <= idx < self@.sleeping_thread_ids.len()
+                        && self@.sleeping_thread_ids[idx] == tid as int
+                        && r@.sleeping_thread_ids =~=
+                            RunningProcessView::seq_remove_at(self@.sleeping_thread_ids, idx))
                     // Other lists preserved exactly.
-                    && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
-                    && r.zombie_thread_ids@ == self.zombie_thread_ids@
+                    && r@.interrupted_thread_ids =~= self@.interrupted_thread_ids
+                    && r@.zombie_thread_ids =~= self@.zombie_thread_ids
                     && r.inv()
                 },
                 Err(r) => {
                     !found
-                    && r.spec_pid() == self.spec_pid()
-                    && r.spec_running_thread_id() == self.spec_running_thread_id()
-                    && r.spec_ready_count() == self.spec_ready_count()
-                    && r.spec_sleeping_count() == self.spec_sleeping_count()
-                    && r.spec_interrupted_count() == self.spec_interrupted_count()
-                    && r.spec_zombie_count() == self.spec_zombie_count()
-                    // Content preserved exactly.
-                    && r.ready_thread_ids@ == self.ready_thread_ids@
-                    && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
-                    && r.sleeping_thread_ids@ == self.sleeping_thread_ids@
-                    && r.zombie_thread_ids@ == self.zombie_thread_ids@
+                    && r@ == self@
                     && r.inv()
                 },
             },

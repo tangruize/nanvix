@@ -379,6 +379,63 @@ impl ZombieProcess {
 }
 
 //==================================================================================================
+// Abstract Query Functions — RunningProcessView
+//==================================================================================================
+
+impl RunningProcessView {
+    /// Whether `tid` occurs in the sequence `s`.
+    pub open spec fn seq_contains(s: Seq<int>, tid: int) -> bool {
+        exists|i: int| 0 <= i < s.len() && s[i] == tid
+    }
+
+    /// Classifies the join result for thread `tid`.
+    ///
+    /// Returns the abstract join tag:
+    /// - `0`: zombie — thread is in the zombie list.
+    /// - `1`: running — thread is the running thread (OperationNotPermitted).
+    /// - `2`: live — thread is ready, sleeping, or interrupted.
+    /// - `3`: not found.
+    pub open spec fn try_join_tag(&self, tid: int) -> int {
+        if self.running_thread_id == tid {
+            JOIN_TAG_RUNNING as int
+        } else if Self::seq_contains(self.zombie_thread_ids, tid) {
+            JOIN_TAG_ZOMBIE as int
+        } else if Self::seq_contains(self.ready_thread_ids, tid)
+            || Self::seq_contains(self.sleeping_thread_ids, tid)
+            || Self::seq_contains(self.interrupted_thread_ids, tid)
+        {
+            JOIN_TAG_LIVE as int
+        } else {
+            JOIN_TAG_NOT_FOUND as int
+        }
+    }
+
+    /// Locates a thread by `tid` and returns which list it belongs to.
+    ///
+    /// - `Some(0)`: running thread.
+    /// - `Some(1)`: ready thread.
+    /// - `Some(2)`: interrupted thread.
+    /// - `Some(3)`: sleeping thread.
+    /// - `Some(4)`: zombie thread.
+    /// - `None`: not found.
+    pub open spec fn find_thread(&self, tid: int) -> Option<int> {
+        if self.running_thread_id == tid {
+            Some(0)
+        } else if Self::seq_contains(self.ready_thread_ids, tid) {
+            Some(1)
+        } else if Self::seq_contains(self.interrupted_thread_ids, tid) {
+            Some(2)
+        } else if Self::seq_contains(self.sleeping_thread_ids, tid) {
+            Some(3)
+        } else if Self::seq_contains(self.zombie_thread_ids, tid) {
+            Some(4)
+        } else {
+            None
+        }
+    }
+}
+
+//==================================================================================================
 // Abstract State Transition Functions — RunningProcessView
 //==================================================================================================
 
