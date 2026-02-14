@@ -1,0 +1,120 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 12:52:01 CST 2026
+Module: kernel::pm::thread::running
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::thread::running
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::thread::running
+
+note: automatically chose triggers for this expression:
+  --> kernel/pm/thread/running.proof.rs:68:20
+   |
+68 |                 && (forall|a: int| r.spec_has_mutex(a) == state@.has_mutex(a))
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+  --> kernel/pm/thread/running.proof.rs:68:36
+   |
+68 |                 && (forall|a: int| r.spec_has_mutex(a) == state@.has_mutex(a))
+   |                                    ^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/thread/running.proof.rs:367:20
+    |
+367 |                 && (forall|a: int| zombie.spec_has_mutex(a) == state@.has_mutex(a))
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/thread/running.proof.rs:367:36
+    |
+367 |                 && (forall|a: int| zombie.spec_has_mutex(a) == state@.has_mutex(a))
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/thread/running.proof.rs:509:17
+    |
+509 |                 forall|a: int| z.spec_has_mutex(a) == state@.has_mutex(a)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/thread/running.proof.rs:509:32
+    |
+509 |                 forall|a: int| z.spec_has_mutex(a) == state@.has_mutex(a)
+    |                                ^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/thread/running.rs:152:13
+    |
+152 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/thread/running.rs:152:28
+    |
+152 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/thread/running.rs:193:13
+    |
+193 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/thread/running.rs:193:28
+    |
+193 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/thread/running.rs:237:13
+    |
+237 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/thread/running.rs:237:28
+    |
+237 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> kernel/pm/thread/running.rs:268:13
+    |
+268 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> kernel/pm/thread/running.rs:268:28
+    |
+268 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+   --> kernel/pm/thread/running.rs:268:13
+    |
+268 |             forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 47 verified, 0 errors (partial verification with `--verify-*`)
+
+Duration: 9s
+Exit code: 0
+
+=== Summary ===
+Verified: 47
+Errors: 0
+Status: PASSED
+No changes to commit in verus/
