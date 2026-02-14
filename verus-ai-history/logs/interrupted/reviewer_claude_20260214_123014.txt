@@ -1,0 +1,104 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T12:31:32.475113
+Model: claude-opus-4.6
+Session: 74ebd04a-aaed-4c3d-91fd-c06b16a1e04a
+Duration: 78.4s
+Exit code: 0
+
+=== Prompt ===
+Review exec consistency fixes for interrupted.
+
+Original source: src/kernel/src/pm/thread/interrupted.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - interrupted.rs (exec)
+  - interrupted.spec.rs (spec)
+  - interrupted.proof.rs (proof)
+
+Consistency report: /home/ubuntu/nanvix/verus-ai-history/ast-consistency/interrupted_20260214_122746_fix.md
+
+Review criteria:
+1. Were all MISMATCH functions properly restored or equivalence documented?
+2. Were MISSING functions added with proper verification?
+3. Are equivalence justifications sound?
+4. Does the exec code now faithfully represent the original source?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh interrupted
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/interrupted/exec-consistency_20260214_122746.md.
+
+Output format:
+```markdown
+# Review: interrupted Exec Consistency (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+
+
+I'll review the exec consistency fixes for `interrupted.rs` by examining the original source, the split files, and the consistency report.
+
+● Read verus/split/kernel/pm/thread/interrupted.spec.rs
+  └ 229 lines read
+
+● Read src/kernel/src/pm/thread/interrupted.rs
+  └ 130 lines read
+
+● Read verus-ai-history/ast-consistency/interrupted_20260214_122746_fix.md
+  └ 22 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.rs
+  └ 289 lines read
+
+● Read verus/split/kernel/pm/thread/interrupted.proof.rs
+  └ 262 lines read
+
+Now let me run the verification to confirm it passes, and check the original source more carefully for completeness.
+
+● Run verification for interrupted module
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh interrupted 2>&1 | tail -30
+  └ 23 lines...
+
+Verification passes: 21 verified, 0 errors. Now let me do a thorough comparison of functions between original and exec.
+
+● List all functions in exec file
+  $ cd /home/ubuntu/nanvix && grep -n 'fn \|#\[verifier' verus/split/kernel/pm/thread/interrupted.rs
+   | head -30
+  └ 12 lines...
+
+● List all functions in original source
+  $ cd /home/ubuntu/nanvix && grep -n 'fn \|pub fn\|pub(super) fn'
+  src/kernel/src/pm/thread/interrupted.rs
+  └ 7 lines...
+
+● Check for assume/admit/external usage
+  $ cd /home/ubuntu/nanvix && grep -n 'assume\|admit\|external_body\|#\[verifier::external\]'
+  verus/split/kernel/pm/thread/interrupted.rs verus/split/kernel/pm/thread/interrupted.spec.rs
+  verus/split/kernel/pm/thread/interrupted.proof.rs 2>/dev/null
+  └ 7 lines...
+
+Now let me create the review directory and write the review.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/interrupted
+  └ 1 line...
+
+● Create verus-ai-history/reviews/interrupted/exec-consistency_20260214_122746.md (+53)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 0.5s
+Total session time:     1m 17.215s
+Total code changes:     +53 -0
+Breakdown by AI model:
+ claude-opus-4.6         257.7k in, 2.6k out, 192.1k cached (Est. 3 Premium requests)
+
+=== End ===
