@@ -409,18 +409,18 @@ impl SleepError {
     pub proof fn lemma_wf_generic_produces_wf_result(&self)
         requires
             self.wf(),
-            self.kind =~= SleepErrorKind::Generic,
+            self.spec_kind() =~= SleepErrorKind::Generic,
         ensures
-            spec_result_wf(spec_handle_sleep_error(self.kind, self.error_code as int)),
+            spec_result_wf(spec_handle_sleep_error(self.spec_kind(), self.spec_error_code())),
     {
     }
 
     /// Lemma: A TimedOut sleep error always produces a well-formed dispatch result.
     pub proof fn lemma_timed_out_produces_wf_result(&self)
         requires
-            self.kind =~= SleepErrorKind::InterruptedTimedOut,
+            self.spec_kind() =~= SleepErrorKind::InterruptedTimedOut,
         ensures
-            spec_result_wf(spec_handle_sleep_error(self.kind, self.error_code as int)),
+            spec_result_wf(spec_handle_sleep_error(self.spec_kind(), self.spec_error_code())),
     {
     }
 }
