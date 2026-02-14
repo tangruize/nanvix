@@ -97,6 +97,12 @@ pub enum SlabSize {
 
 impl SlabSize {
     /// Returns the slab size as usize.
+    ///
+    /// # Justification (Extra in Verus)
+    ///
+    /// The original code uses `SlabSize::Variant as usize` via `#[repr(usize)]`.
+    /// Verus cannot reason about `repr` casts, so this explicit conversion
+    /// method is needed to bridge between spec (`spec_as_int`) and exec code.
     pub fn as_usize(&self) -> (result: usize)
         ensures result == self.spec_as_int() as usize
     {
@@ -121,6 +127,15 @@ impl SlabSize {
 ///
 /// Given a requested allocation size, returns the smallest slab size that can
 /// accommodate the request. Returns None if the size is too large.
+///
+/// # Equivalence Note
+///
+/// This function replaces the original `Kheap::layout_to_allocator(&Layout)`.
+/// The match logic is identical; only the parameter type differs:
+/// - Original: takes `&Layout`, uses `layout.size()` for matching.
+/// - Verus: takes `usize` directly (Verus cannot model `core::alloc::Layout`).
+/// The error type is also changed from `AllocError` to `Error` because
+/// `AllocError` is not available in the Verus verification context.
 ///
 /// # Parameters
 ///
@@ -156,6 +171,19 @@ pub fn layout_to_slab_size(size: usize) -> (result: Result<SlabSize, Error>)
 //==================================================================================================
 
 /// Kernel heap allocator managing multiple slabs.
+///
+/// # Equivalence Note
+///
+/// Compared to the original `Kheap` struct, this version adds two ghost fields
+/// (`base_addr`, `total_size`) for specification purposes. Ghost fields have no
+/// runtime representation and do not affect executable behavior. The original
+/// struct fields (`slab_8_bytes` through `slab_4096_bytes`) are preserved.
+///
+/// The original source also defines `ArenaAllocator` (a ZST implementing
+/// `GlobalAlloc`) and `HeapStorage` (a page-aligned static buffer). These are
+/// not modeled here because Verus cannot verify `GlobalAlloc` trait
+/// implementations or static mutable state (`static mut HEAP`, `static mut
+/// ALLOCATOR`, `static mut HEAP_STORAGE`).
 pub struct Kheap {
     /// 8-byte block slab.
     slab_8_bytes: Slab,
@@ -188,6 +216,23 @@ impl Kheap {
     ///
     /// Initializes the kernel heap by partitioning the given memory region
     /// into 8 equal-sized slabs, each handling a different block size.
+    ///
+    /// # Equivalence Note
+    ///
+    /// The original `from_raw_parts` performs three runtime validation checks
+    /// (address alignment, minimum size, size multiple) before constructing
+    /// slabs via `Slab::from_raw_parts` with raw pointer arithmetic
+    /// (`heap_start_addr.add(i * slab_size)`). The Verus version:
+    /// - Moves the runtime validation checks to preconditions (standard Verus
+    ///   pattern; the checks are still enforced, just at the caller site).
+    /// - Uses `Slab::from_raw_parts_at_offset(addr, slab_size, i, block_size)`
+    ///   instead of pointer arithmetic, because Verus cannot reason about
+    ///   `*mut u8` pointer operations. Both produce slabs at address
+    ///   `addr + i * slab_size` with the same block size.
+    /// - Omits `info!`/`error!` logging macros (not available in Verus context).
+    /// - Adds ghost fields `base_addr` and `total_size` for specification.
+    /// The executable dispatch logic (compute slab_size, construct 8 slabs at
+    /// consecutive offsets) is semantically identical.
     ///
     /// # Safety
     ///
@@ -531,6 +576,24 @@ impl Kheap {
         Ok(heap)
     }
 
+    /// Allocates a block of memory from the kernel heap.
+    ///
+    /// # Equivalence Note
+    ///
+    /// The original `allocate` takes `Layout` and returns `Result<*mut u8,
+    /// AllocError>`. This version takes `size: usize` and returns
+    /// `Result<usize, Error>` because Verus cannot model `core::alloc::Layout`,
+    /// `AllocError`, or raw pointer types. The dispatch logic is identical:
+    /// determine the slab via size-to-slab mapping, then call
+    /// `slab.allocate()`. The `?` operator is replaced by explicit match
+    /// (Verus limitation). The `.map_err(|_| AllocError)` is removed because
+    /// the Verus `Slab::allocate` already returns `Error`.
+    ///
+    /// The original `alloc` method (`GlobalAlloc::alloc` on `ArenaAllocator`)
+    /// is a thin wrapper that accesses `static mut HEAP` and delegates to this
+    /// method. It cannot be modeled in Verus because Verus does not support
+    /// `GlobalAlloc` trait implementations or static mutable state.
+    ///
     /// # Size Selection
     ///
     /// The allocator rounds up the requested size to the next power-of-two slab size.
@@ -654,6 +717,18 @@ impl Kheap {
     /// Given an address and the original allocation size, frees the block
     /// back to the appropriate slab.
     ///
+    /// # Equivalence Note
+    ///
+    /// The original `deallocate` takes `(*mut u8, Layout)` and returns
+    /// `Result<(), AllocError>`. This version takes `(addr: usize, size:
+    /// usize)` and returns `Result<(), Error>` for the same Verus type
+    /// limitations as `allocate`. The dispatch logic is identical: determine
+    /// the slab via size-to-slab mapping, then call `slab.deallocate(addr)`.
+    ///
+    /// The original `dealloc` method (`GlobalAlloc::dealloc` on
+    /// `ArenaAllocator`) is a thin wrapper that accesses `static mut HEAP`
+    /// and delegates to this method. It cannot be modeled in Verus.
+    ///
     /// # Parameters
     ///
     /// - `addr`: Address of the block to deallocate.
@@ -742,6 +817,15 @@ impl Kheap {
 ///
 /// This function mirrors the original `init()` function. It creates a Kheap
 /// from the given memory region.
+///
+/// # Equivalence Note
+///
+/// The original `init()` takes no parameters, reads from `static mut
+/// HEAP_STORAGE`, and stores the result in `static mut HEAP`. This version
+/// takes explicit `(addr, size)` parameters and returns `Result<Kheap, Error>`
+/// because Verus cannot model static mutable state. The executable logic is
+/// identical: delegate to `Kheap::from_raw_parts(addr, size)`. The original
+/// `info!` logging call is omitted (not available in Verus context).
 ///
 /// # Safety
 ///
