@@ -259,11 +259,11 @@ pub enum AccessPermission {
 #[derive(Debug, Clone, Copy)]
 pub struct PageMapping {
     /// Virtual address (page-aligned).
-    pub vaddr: usize,
+    vaddr: usize,
     /// Frame address (page-aligned).
-    pub frame_addr: usize,
+    frame_addr: usize,
     /// Whether this entry is valid/in-use.
-    pub valid: bool,
+    valid: bool,
 }
 
 //==================================================================================================
@@ -280,9 +280,9 @@ pub struct PageMapping {
 /// This allows us to verify the core properties while keeping the model tractable.
 pub struct Vmem {
     /// Array of user page mappings.
-    pub mappings: [PageMapping; MAX_USER_PAGES],
+    mappings: [PageMapping; MAX_USER_PAGES],
     /// Number of valid mappings.
-    pub mapping_count: usize,
+    mapping_count: usize,
 }
 
 impl Vmem {
@@ -316,7 +316,7 @@ impl Vmem {
     pub fn new() -> (result: Self)
         ensures
             result.inv(),
-            result.mapping_count == 0,
+            result@.mapping_count == 0,
     {
         let empty_mapping: PageMapping = PageMapping {
             vaddr: 0,
@@ -394,7 +394,7 @@ impl Vmem {
             from.inv(),
         ensures
             result.inv(),
-            result.mapping_count == 0,
+            result@.mapping_count == 0,
             // Note: Source preservation is guaranteed by Rust's borrow checker.
             // The `from: &Self` parameter is an immutable borrow, so Rust ensures
             // the source is unchanged. Verus's `old()` requires `&mut` so we cannot
@@ -510,7 +510,7 @@ impl Vmem {
             vaddr as int % PAGE_SIZE as int == 0,
         ensures
             self.inv(),
-            self.mapping_count == old(self).mapping_count,
+            self@.mapping_count == old(self)@.mapping_count,
     {
         unimplemented!()
     }
@@ -696,19 +696,19 @@ impl Vmem {
     ) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
-            old(self).has_mapping_capacity(),
+            old(self)@.has_mapping_capacity(),
             frame_addr.spec_is_aligned(),
             // Liveness: require valid parameters for guaranteed success.
             spec_is_user_addr(vaddr as int),
             vaddr as int % PAGE_SIZE as int == 0,
-            !old(self).spec_is_mapped(vaddr as int),
+            !old(self)@.spec_is_mapped(vaddr as int),
         ensures
             self.inv(),
             // LIVENESS: With all preconditions met, map always succeeds.
             result.is_ok(),
             result.is_ok() ==> {
-                &&& self.spec_is_mapped(vaddr as int)
-                &&& self.mapping_count == old(self).mapping_count + 1
+                &&& self@.spec_is_mapped(vaddr as int)
+                &&& self@.mapping_count == old(self)@.mapping_count + 1
             },
     {
         // Check if address is in user space.
@@ -808,22 +808,22 @@ impl Vmem {
     pub fn unmap(&mut self, vaddr: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
-            old(self).has_mappings(),
+            old(self)@.has_mappings(),
         ensures
             self.inv(),
             result.is_ok() ==> {
                 &&& spec_is_user_addr(vaddr as int)
                 &&& vaddr as int % PAGE_SIZE as int == 0
-                &&& self.mapping_count == old(self).mapping_count - 1
+                &&& self@.mapping_count == old(self)@.mapping_count - 1
                 // The returned value was a previously-mapped frame address.
-                &&& old(self).spec_is_mapped(vaddr as int)
+                &&& old(self)@.spec_is_mapped(vaddr as int)
                 // The returned frame address is frame-aligned.
                 &&& result.unwrap() as int % FRAME_SIZE as int == 0
                 // The returned frame address equals the one that was mapped.
-                &&& result.unwrap() as int == old(self).spec_get_frame_addr(vaddr as int)
+                &&& result.unwrap() as int == old(self)@.spec_get_frame_addr(vaddr as int)
             },
             result.is_err() ==> {
-                &&& self.mapping_count == old(self).mapping_count
+                &&& self@.mapping_count == old(self)@.mapping_count
             },
     {
         // Check if address is in user space.
@@ -971,7 +971,7 @@ impl Vmem {
                 &&& vaddr as int % PAGE_SIZE as int == 0
             },
             // Permission changes don't affect the mappings.
-            self.mapping_count == old(self).mapping_count,
+            self@.mapping_count == old(self)@.mapping_count,
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
@@ -1042,7 +1042,7 @@ impl Vmem {
             vaddr as int % PAGE_SIZE as int == 0,
         ensures
             self.inv(),
-            self.mapping_count == old(self).mapping_count,
+            self@.mapping_count == old(self)@.mapping_count,
     {
         unimplemented!()
     }
@@ -1096,7 +1096,7 @@ impl Vmem {
         requires
             self.inv(),
             // Source user pages must be mapped (original panics if not).
-            size > 0 ==> self.spec_user_region_is_mapped(src as int, size as int),
+            size > 0 ==> self@.spec_user_region_is_mapped(src as int, size as int),
         ensures
             result.is_ok() ==> {
                 &&& size > 0
@@ -1175,7 +1175,7 @@ impl Vmem {
         requires
             self.inv(),
             // Destination user pages must be mapped (original panics if not).
-            size > 0 ==> self.spec_user_region_is_mapped(dst as int, size as int),
+            size > 0 ==> self@.spec_user_region_is_mapped(dst as int, size as int),
         ensures
             result.is_ok() ==> {
                 &&& size > 0
@@ -1235,7 +1235,7 @@ impl Vmem {
     ) -> (result: Result<(), Error>)
         requires
             self.inv(),
-            size > 0 ==> self.spec_user_region_is_mapped(dst as int, size as int),
+            size > 0 ==> self@.spec_user_region_is_mapped(dst as int, size as int),
         ensures
             result.is_ok() ==> {
                 &&& size > 0
@@ -1270,7 +1270,7 @@ impl Vmem {
                 &&& vaddr as int % PAGE_SIZE as int == 0
             },
             // memset doesn't change mappings.
-            self.mapping_count == old(self).mapping_count,
+            self@.mapping_count == old(self)@.mapping_count,
     {
         // Check if address is in user space.
         if !Self::is_user_addr(vaddr) {
