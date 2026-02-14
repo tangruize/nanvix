@@ -109,8 +109,8 @@ impl FrameAllocator {
     ///
     /// # Note
     ///
+    /// Restored to match original Nanvix exec logic: calls Self::new(Bitmap::from_raw_array(storage)).
     /// The storage must be zero-initialized. All frames will initially be free.
-    /// This matches the original signature: `fn from_raw_storage(...) -> Result<Self, Error>`.
     pub fn from_raw_storage(storage: RawArray<u8>) -> (result: Result<FrameAllocator, Error>)
         requires
             storage@.len() > 0,
@@ -127,19 +127,8 @@ impl FrameAllocator {
             result->Ok_0@.is_empty(),
             result->Ok_0@.is_freshly_initialized(),
     {
-        let bitmap = Bitmap::from_raw_array(storage);
-        let alloc = FrameAllocator { bitmap };
-        proof {
-            // Bitmap is empty, so no bits are set.
-            // Therefore allocated_frames is the empty set.
-            assert forall|i: int| 0 <= i < alloc.bitmap@.number_of_bits()
-                implies !alloc.bitmap.is_bit_set(i) by {
-                // From bitmap postcondition: forall|i| !result.is_bit_set(i)
-            }
-            // Therefore the set is empty.
-            assert(alloc@.allocated_frames =~= Set::empty());
-        }
-        Ok(alloc)
+        // Restored original exec logic: Ok(Self::new(Bitmap::from_raw_array(storage))).
+        Ok(Self::new(Bitmap::from_raw_array(storage)))
     }
 
 
@@ -353,10 +342,6 @@ impl FrameAllocator {
     /// Books a specific frame (marks it as allocated without first allocating it).
     /// Used to reserve frames for memory-mapped I/O or other special purposes.
     ///
-    /// Note: If the frame is already allocated, the operation is idempotent (succeeds).
-    /// The postcondition guarantees the frame is allocated after the call regardless
-    /// of its prior state.
-    ///
     /// # Parameters
     ///
     /// - `phys_addr`: The page-aligned physical address to book.
@@ -365,6 +350,11 @@ impl FrameAllocator {
     ///
     /// Upon success, `Ok(())` is returned.
     /// Upon failure, an error is returned.
+    ///
+    /// # Note
+    ///
+    /// This matches the original Nanvix exec logic: directly calls bitmap.set().
+    /// If the frame is already allocated, bitmap.set() returns ResourceBusy error.
     pub fn book(&mut self, phys_addr: PageAlignedPhysAddr) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
@@ -372,43 +362,35 @@ impl FrameAllocator {
             phys_addr.spec_frame_number() < old(self)@.capacity,
         ensures
             self.inv(),
-            // LIVENESS: book always succeeds when preconditions are met.
-            result is Ok,
             // Capacity is preserved.
             self@.capacity == old(self)@.capacity,
-            // Frame is now allocated (idempotent - works whether or not already allocated).
-            // The frame is now allocated.
-            self@.is_allocated(phys_addr.spec_frame_number()),
-            // All other frames unchanged.
-            forall|i: int| #![trigger self@.is_allocated(i)]
-                0 <= i < self@.capacity && i != phys_addr.spec_frame_number() ==>
-                self@.is_allocated(i) == old(self)@.is_allocated(i),
-            // COUNT (idempotent): +1 if frame was free, unchanged if already allocated.
-            !old(self)@.is_allocated(phys_addr.spec_frame_number()) ==>
+            // LIVENESS: book succeeds when frame is not already allocated.
+            !old(self)@.is_allocated(phys_addr.spec_frame_number()) ==> result is Ok,
+            // On success: the frame is now allocated and was not previously allocated.
+            result is Ok ==> {
+                &&& self@.is_allocated(phys_addr.spec_frame_number())
+                &&& !old(self)@.is_allocated(phys_addr.spec_frame_number())
+                // All other frames unchanged.
+                &&& forall|i: int| #![trigger self@.is_allocated(i)]
+                    0 <= i < self@.capacity && i != phys_addr.spec_frame_number() ==>
+                    self@.is_allocated(i) == old(self)@.is_allocated(i)
+            },
+            // On success: exactly one more frame allocated.
+            result is Ok ==>
                 self.spec_num_allocated() == old(self).spec_num_allocated() + 1,
-            old(self)@.is_allocated(phys_addr.spec_frame_number()) ==>
-                self.spec_num_allocated() == old(self).spec_num_allocated(),
+            // On failure: state unchanged (frame was already allocated).
+            result is Err ==> {
+                &&& self@ == old(self)@
+                &&& old(self)@.is_allocated(phys_addr.spec_frame_number())
+            },
     {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
-        // Check if already allocated (idempotent behavior).
-        let already_set: bool = match self.bitmap.test(frame_number) {
-            Ok(b) => b,
-            Err(_) => false,  // Error means out of bounds, shouldn't happen given preconditions.
-        };
-        if already_set {
-            // Already allocated - nothing to do.
-            proof {
-                // The view doesn't change since the bit is already set.
-                assert(self@ == old(self)@);
-            }
-            return Ok(());
-        }
-        // Not allocated - set it.
+        // Restored original logic: directly call bitmap.set() without idempotency check.
+        // NOTE: Original Nanvix code has: error!("{error:?} (phys_addr={phys_addr:?})");
+        // Verus limitation: error!() macro unavailable, using error.log() instead.
         match self.bitmap.set(frame_number) {
             Ok(()) => Ok(()),
             Err(error) => {
-                // This should not happen since we checked test() above.
-                // NOTE: Original Nanvix code has: error!("{error:?} (phys_addr={phys_addr:?})");
                 error.log();
                 Err(error)
             },
