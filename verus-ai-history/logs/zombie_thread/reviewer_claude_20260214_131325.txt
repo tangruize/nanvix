@@ -1,0 +1,109 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T13:14:47.580107
+Model: claude-opus-4.6
+Session: 180ae2ec-9660-4915-b65f-682914cc9450
+Duration: 81.7s
+Exit code: 0
+
+=== Prompt ===
+Review spec methodology fixes for zombie_thread.
+
+Original source: src/kernel/src/pm/thread/zombie.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - zombie.rs (exec)
+  - zombie.spec.rs (spec)
+  - zombie.proof.rs (proof)
+
+Guidelines reference: specifying-and-proving-types.md
+
+Review criteria:
+1. Do View types use abstract types (int, Seq, Set, Map) not concrete (i32, Vec)?
+2. Is view() declared as `pub closed spec fn` (or justified if open)?
+3. Does inv()/wf() exist and is it `pub closed spec fn`?
+4. Do public method specs avoid self.field, using self@.field instead?
+5. Do public methods require/ensure inv()/wf() for self parameters?
+6. Are there any remaining assume/admit/unjustified external_body?
+7. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh zombie_thread
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_thread/spec-methodology_20260214_131155.md.
+
+Output format:
+```markdown
+# Review: zombie_thread Spec Methodology (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+### High
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+● Read specifying-and-proving-types.md
+  └ 111 lines read
+
+● Read verus/split/kernel/pm/thread/zombie.spec.rs
+  └ 125 lines read
+
+● Read verus/split/kernel/pm/thread/zombie.rs
+  └ 213 lines read
+
+● Read src/kernel/src/pm/thread/zombie.rs
+  └ 126 lines read
+
+● Read verus/split/kernel/pm/thread/zombie.proof.rs
+  └ 191 lines read
+
+Now let me run the verification and check for any assume/admit/external_body usage.
+
+● Grep "self\.(status|state)\b" (/home/ubuntu/nanvix/verus/split/kernel/pm/thread/zombie.spec.rs)
+  └ 12 lines found
+
+● Grep "pub open spec fn|pub closed spec fn"
+(/home/ubuntu/nanvix/verus/split/kernel/pm/thread/zombie.spec.rs)
+  └ 10 lines found
+
+● Grep "assume|admit|external_body" in zombie* (/home/ubuntu/nanvix/verus/split/kernel/pm/thread)
+  └ 1 line found
+
+● Run verification for zombie_thread
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh zombie_thread 2>&1 | tail -30
+  └ 23 lines...
+
+Now let me check public method specs for field access patterns and wf() requirements.
+
+● Grep "self\.(status|state)\b" (/home/ubuntu/nanvix/verus/split/kernel/pm/thread/zombie.rs)
+  └ 6 lines found
+
+● Grep "requires|ensures" (/home/ubuntu/nanvix/verus/split/kernel/pm/thread/zombie.rs)
+  └ 10 lines found
+
+Now let me check the public method specs in detail, focusing on methodology violations.
+
+● Read verus/split/kernel/pm/thread/zombie.rs lines 93-180
+  └ 88 lines read
+
+Now I have all the information needed. Let me create the review.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_thread
+  └ 1 line...
+
+● Create verus-ai-history/reviews/zombie_thread/spec-methodology_20260214_131155.md (+64)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 4.453s
+Total session time:     1m 20.521s
+Total code changes:     +64 -0
+Breakdown by AI model:
+ claude-opus-4.6         294.2k in, 3.0k out, 237.0k cached (Est. 3 Premium requests)
+
+=== End ===
