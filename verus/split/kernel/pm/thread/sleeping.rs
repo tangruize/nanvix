@@ -375,6 +375,7 @@ impl SleepingThread {
             self.spec_drop_safe() == old(self).spec_drop_safe(),
             self.wf(),
     {
+        proof { reveal(SleepingThread::wf); }
         self.state.store_thread_data_area(user_tda);
     }
 

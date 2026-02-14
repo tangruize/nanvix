@@ -233,6 +233,7 @@ impl SleepingThread {
                 && post_state.wf()
             }),
     {
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: set_thread_data_area on a SleepingThread round-trips at the SleepingThread level.
@@ -257,6 +258,8 @@ impl SleepingThread {
                 && post.wf()
             }),
     {
+        reveal(SleepingThread::wf);
+        reveal(ThreadState::wf);
     }
 
     //==============================================================================================
