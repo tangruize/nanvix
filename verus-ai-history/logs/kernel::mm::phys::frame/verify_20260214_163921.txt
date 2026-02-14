@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:39:21 CST 2026
+Module: kernel::mm::phys::frame
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::phys::frame
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0624]: method `alloc_range_checked` is private
+   --> kernel/mm/phys/kpool.rs:458:30
+    |
+458 |         self.frame_allocator.alloc_range_checked(start_frame, count)
+    |                              ^^^^^^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/phys/frame.rs:606:5
+    |
+606 |     fn alloc_range_checked(&mut self, start_frame: usize, count: usize) -> (result: Result<(), Error>)
+    |     ------------------------------------------------------------------------------------------------- private method defined here
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0624`.
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::phys::frame (verified:0, errors:0)
