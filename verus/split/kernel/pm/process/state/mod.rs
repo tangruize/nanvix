@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use vstd::prelude::*;
+
 // Include specifications.
 include!("mod.spec.rs");
 
