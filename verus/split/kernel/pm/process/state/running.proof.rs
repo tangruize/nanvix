@@ -143,4 +143,309 @@ impl ZombieProcess {
     }
 }
 
+//==================================================================================================
+// Connecting Lemmas — RunningProcessView
+//==================================================================================================
+//
+// These lemmas machine-check that the exec postconditions (field-level) imply
+// View-level equality with the corresponding spec transition function.
+// Usage:  after an exec call, invoke the lemma in a proof block to obtain
+//         `result@ =~= old(self)@.spec_foo(args)`.
+
+impl RunningProcessView {
+    /// Connecting lemma for `RunningProcess::schedule()`.
+    pub proof fn lemma_schedule_view_matches(
+        pre: RunningProcessView,
+        post: RunnableProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.ready_thread_ids =~= pre.ready_thread_ids.push(pre.running_thread_id),
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids,
+        ensures
+            post =~= pre.spec_schedule(),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::sleep()` — ready branch.
+    pub proof fn lemma_sleep_ready_view_matches(
+        pre: RunningProcessView,
+        post: RunnableProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.ready_thread_ids =~= pre.ready_thread_ids,
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids.push(pre.running_thread_id),
+            post.zombie_thread_ids =~= pre.zombie_thread_ids,
+        ensures
+            post =~= pre.spec_sleep_to_runnable_ready(),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::sleep()` — interrupted branch.
+    pub proof fn lemma_sleep_interrupted_view_matches(
+        pre: RunningProcessView,
+        post: RunnableProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids.push(pre.running_thread_id),
+            post.zombie_thread_ids =~= pre.zombie_thread_ids,
+            post.ready_thread_ids.len() == 1,
+            post.ready_thread_ids[0] == pre.interrupted_thread_ids[0],
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids.subrange(
+                1, pre.interrupted_thread_ids.len() as int),
+            pre.interrupted_thread_ids.len() > 0,
+        ensures
+            post =~= pre.spec_sleep_to_runnable_interrupted(),
+    {
+        assert(post.ready_thread_ids =~=
+            Seq::<u64>::empty().push(pre.interrupted_thread_ids[0]));
+    }
+
+    /// Connecting lemma for `RunningProcess::sleep()` — sleeping branch.
+    pub proof fn lemma_sleep_sleeping_view_matches(
+        pre: RunningProcessView,
+        post: SleepingProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids.push(pre.running_thread_id),
+            post.zombie_thread_ids =~= pre.zombie_thread_ids,
+        ensures
+            post =~= pre.spec_sleep_to_sleeping(),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::exit()` — runnable branch.
+    pub proof fn lemma_exit_runnable_view_matches(
+        pre: RunningProcessView,
+        post: RunnableProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.zombie_thread_ids =~=
+                pre.zombie_thread_ids.push(pre.running_thread_id).add(pre.ready_thread_ids),
+            post.sleeping_thread_ids.len() == 0,
+            post.ready_thread_ids.len() == 1,
+            post.ready_thread_ids[0] ==
+                pre.interrupted_thread_ids.add(pre.sleeping_thread_ids)[0],
+            post.interrupted_thread_ids =~=
+                pre.interrupted_thread_ids.add(pre.sleeping_thread_ids).subrange(
+                    1, (pre.interrupted_thread_ids.len() + pre.sleeping_thread_ids.len()) as int),
+            pre.interrupted_thread_ids.len() + pre.sleeping_thread_ids.len() > 0,
+        ensures
+            post =~= pre.spec_exit_to_runnable(),
+    {
+        let combined: Seq<u64> = pre.interrupted_thread_ids.add(pre.sleeping_thread_ids);
+        assert(post.sleeping_thread_ids =~= Seq::<u64>::empty());
+        assert(post.ready_thread_ids =~= Seq::<u64>::empty().push(combined[0]));
+    }
+
+    /// Connecting lemma for `RunningProcess::exit()` — zombie branch.
+    pub proof fn lemma_exit_zombie_view_matches(
+        pre: RunningProcessView,
+        post: ZombieProcessView,
+        status: u64,
+    )
+        requires
+            post.pid == pre.pid,
+            post.status == status,
+            post.zombie_thread_ids =~=
+                pre.zombie_thread_ids.push(pre.running_thread_id).add(pre.ready_thread_ids),
+        ensures
+            post =~= pre.spec_exit_to_zombie(status),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::exit_thread()` — ready branch.
+    pub proof fn lemma_exit_thread_ready_view_matches(
+        pre: RunningProcessView,
+        post: RunnableProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.ready_thread_ids =~= pre.ready_thread_ids,
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids.push(pre.running_thread_id),
+        ensures
+            post =~= pre.spec_exit_thread_to_runnable_ready(),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::exit_thread()` — interrupted branch.
+    pub proof fn lemma_exit_thread_interrupted_view_matches(
+        pre: RunningProcessView,
+        post: RunnableProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids.push(pre.running_thread_id),
+            post.ready_thread_ids.len() == 1,
+            post.ready_thread_ids[0] == pre.interrupted_thread_ids[0],
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids.subrange(
+                1, pre.interrupted_thread_ids.len() as int),
+            pre.interrupted_thread_ids.len() > 0,
+        ensures
+            post =~= pre.spec_exit_thread_to_runnable_interrupted(),
+    {
+        assert(post.ready_thread_ids =~=
+            Seq::<u64>::empty().push(pre.interrupted_thread_ids[0]));
+    }
+
+    /// Connecting lemma for `RunningProcess::exit_thread()` — sleeping branch.
+    pub proof fn lemma_exit_thread_sleeping_view_matches(
+        pre: RunningProcessView,
+        post: SleepingProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids.push(pre.running_thread_id),
+        ensures
+            post =~= pre.spec_exit_thread_to_sleeping(),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::exit_thread()` — zombie branch.
+    pub proof fn lemma_exit_thread_zombie_view_matches(
+        pre: RunningProcessView,
+        post: ZombieProcessView,
+        status: u64,
+    )
+        requires
+            post.pid == pre.pid,
+            post.status == status,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids.push(pre.running_thread_id),
+        ensures
+            post =~= pre.spec_exit_thread_to_zombie(status),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::wakeup()` — success (Ok) case.
+    ///
+    /// Requires `tid` to appear at most once in `sleeping_thread_ids` so that
+    /// the existential index from the exec postcondition matches the `choose`
+    /// index in `spec_wakeup_ok`.
+    pub proof fn lemma_wakeup_ok_view_matches(
+        pre: RunningProcessView,
+        post: RunningProcessView,
+        tid: u64,
+    )
+        requires
+            post.pid == pre.pid,
+            post.running_thread_id == pre.running_thread_id,
+            post.ready_thread_ids =~= pre.ready_thread_ids.push(tid),
+            exists|idx: int| 0 <= idx < pre.sleeping_thread_ids.len()
+                && pre.sleeping_thread_ids[idx] == tid
+                && post.sleeping_thread_ids =~=
+                    RunningProcess::spec_remove_at(pre.sleeping_thread_ids, idx),
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids,
+            // Uniqueness: tid appears at most once in sleeping list.
+            forall|i: int, j: int|
+                0 <= i < pre.sleeping_thread_ids.len()
+                && 0 <= j < pre.sleeping_thread_ids.len()
+                && pre.sleeping_thread_ids[i] == tid
+                && pre.sleeping_thread_ids[j] == tid
+                ==> i == j,
+        ensures
+            post =~= pre.spec_wakeup_ok(tid),
+    {
+        let s: Seq<u64> = pre.sleeping_thread_ids;
+        let exec_idx: int = choose|idx: int|
+            0 <= idx < s.len()
+            && s[idx] == tid
+            && post.sleeping_thread_ids =~= RunningProcess::spec_remove_at(s, idx);
+        let spec_idx: int = choose|i: int|
+            0 <= i < s.len() && #[trigger] s[i] == tid;
+        // Both satisfy s[_] == tid; uniqueness forces them equal.
+        assert(s[exec_idx] == tid);
+        assert(s[spec_idx] == tid);
+        assert(exec_idx == spec_idx);
+    }
+
+    /// Connecting lemma for `RunningProcess::wakeup()` — failure (Err) case.
+    pub proof fn lemma_wakeup_err_view_matches(
+        pre: RunningProcessView,
+        post: RunningProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.running_thread_id == pre.running_thread_id,
+            post.ready_thread_ids =~= pre.ready_thread_ids,
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids,
+        ensures
+            post =~= pre.spec_wakeup_err(),
+    {
+    }
+
+    /// Connecting lemma for `RunningProcess::try_join_thread()` — zombie case.
+    ///
+    /// Requires `tid` to appear at most once in `zombie_thread_ids` so that
+    /// the existential index from the exec postcondition matches the `choose`
+    /// index in `spec_join_zombie_result`.
+    pub proof fn lemma_join_zombie_view_matches(
+        pre: RunningProcessView,
+        post: RunningProcessView,
+        tid: u64,
+    )
+        requires
+            post.pid == pre.pid,
+            post.running_thread_id == pre.running_thread_id,
+            post.ready_thread_ids =~= pre.ready_thread_ids,
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids,
+            exists|idx: int| 0 <= idx < pre.zombie_thread_ids.len()
+                && pre.zombie_thread_ids[idx] == tid
+                && post.zombie_thread_ids =~=
+                    RunningProcess::spec_remove_at(pre.zombie_thread_ids, idx),
+            // Uniqueness: tid appears at most once in zombie list.
+            forall|i: int, j: int|
+                0 <= i < pre.zombie_thread_ids.len()
+                && 0 <= j < pre.zombie_thread_ids.len()
+                && pre.zombie_thread_ids[i] == tid
+                && pre.zombie_thread_ids[j] == tid
+                ==> i == j,
+        ensures
+            post =~= pre.spec_join_zombie_result(tid),
+    {
+        let s: Seq<u64> = pre.zombie_thread_ids;
+        let exec_idx: int = choose|idx: int|
+            0 <= idx < s.len()
+            && s[idx] == tid
+            && post.zombie_thread_ids =~= RunningProcess::spec_remove_at(s, idx);
+        let spec_idx: int = choose|i: int|
+            0 <= i < s.len() && #[trigger] s[i] == tid;
+        // Both satisfy s[_] == tid; uniqueness forces them equal.
+        assert(s[exec_idx] == tid);
+        assert(s[spec_idx] == tid);
+        assert(exec_idx == spec_idx);
+    }
+
+    /// Connecting lemma for `RunningProcess::try_join_thread()` — non-zombie case.
+    pub proof fn lemma_join_non_zombie_view_matches(
+        pre: RunningProcessView,
+        post: RunningProcessView,
+    )
+        requires
+            post.pid == pre.pid,
+            post.running_thread_id == pre.running_thread_id,
+            post.ready_thread_ids =~= pre.ready_thread_ids,
+            post.interrupted_thread_ids =~= pre.interrupted_thread_ids,
+            post.sleeping_thread_ids =~= pre.sleeping_thread_ids,
+            post.zombie_thread_ids =~= pre.zombie_thread_ids,
+        ensures
+            post =~= pre.spec_join_non_zombie_result(),
+    {
+    }
+}
+
 } // verus!

@@ -10,6 +10,14 @@
 //     ensures result@ =~= old(self)@.spec_foo(args)
 // instead of listing every field change individually.
 //
+// Each spec transition function has a corresponding connecting lemma in
+// `running.proof.rs` that machine-checks equivalence with the exec
+// postconditions, proving the spec function faithfully models the exec.
+// Usage example (from a downstream proof):
+//     let result = rp.schedule(); // exec call
+//     proof { RunningProcessView::lemma_schedule_view_matches(old_rp@, result.process@); }
+//     // Now: result.process@ =~= old_rp@.spec_schedule()
+//
 // Added functions on `RunningProcessView`:
 //   - `spec_new`                          — constructor.
 //   - `spec_schedule`                     — schedule transition → RunnableProcessView.
@@ -26,7 +34,7 @@
 //   - `spec_wakeup_err`                   — wakeup failure (identity) → RunningProcessView.
 //   - `spec_join_zombie_result`           — try_join_thread zombie case → RunningProcessView.
 //   - `spec_join_non_zombie_result`       — try_join_thread non-zombie case (identity) → RunningProcessView.
-//   - `seq_remove_at`                     — helper: remove element at index from Seq.
+//   - `seq_remove_at`                     — helper: delegates to RunningProcess::spec_remove_at.
 
 use vstd::prelude::*;
 
@@ -53,6 +61,7 @@ pub const JOIN_TAG_NOT_FOUND: u8 = 3;
 //==================================================================================================
 
 /// Abstract view of `RunningProcess`.
+#[verifier::ext_equal]
 pub struct RunningProcessView {
     /// Process identifier.
     pub pid: u64,
@@ -69,6 +78,7 @@ pub struct RunningProcessView {
 }
 
 /// Abstract view of `RunnableProcess`.
+#[verifier::ext_equal]
 pub struct RunnableProcessView {
     /// Process identifier.
     pub pid: u64,
@@ -83,6 +93,7 @@ pub struct RunnableProcessView {
 }
 
 /// Abstract view of `SleepingProcess`.
+#[verifier::ext_equal]
 pub struct SleepingProcessView {
     /// Process identifier.
     pub pid: u64,
@@ -93,6 +104,7 @@ pub struct SleepingProcessView {
 }
 
 /// Abstract view of `InterruptedProcess`.
+#[verifier::ext_equal]
 pub struct InterruptedProcessView {
     /// Process identifier.
     pub pid: u64,
@@ -105,6 +117,7 @@ pub struct InterruptedProcessView {
 }
 
 /// Abstract view of `ZombieProcess`.
+#[verifier::ext_equal]
 pub struct ZombieProcessView {
     /// Process identifier.
     pub pid: u64,
@@ -369,8 +382,10 @@ impl ZombieProcess {
 
 impl RunningProcessView {
     /// Removes element at `idx` from sequence `s`.
+    ///
+    /// Delegates to `RunningProcess::spec_remove_at` to avoid duplication.
     pub open spec fn seq_remove_at(s: Seq<u64>, idx: int) -> Seq<u64> {
-        s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
+        RunningProcess::spec_remove_at(s, idx)
     }
 
     /// Abstract state produced by `RunningProcess::new()`.
