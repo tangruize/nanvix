@@ -12,6 +12,7 @@
 //
 //   - `ZombieProcessView::spec_new(pid, zombie_thread_ids, status)`:
 //     abstract constructor — `ensures result@ == ZombieProcessView::spec_new(..)`.
+//   - `spec_state(self)`: abstract accessor — returns `self.pid`.
 //   - `spec_bury(self)`: abstract decomposition — returns `(Seq<u64>, u64, i64)`.
 //   - `spec_state_mut(self)`: frame-preserving mutation — returns `self` unchanged.
 //   - `spec_find_thread(self, tid)`: abstract search — returns `Option<u64>`.
@@ -371,6 +372,15 @@ impl ZombieProcessView {
         }
     }
 
+    /// Abstract accessor: models `state()` at the View level.
+    ///
+    /// Returns the process identifier. Provides symmetry with
+    /// `spec_state_mut()` so downstream modules have a uniform API
+    /// for both accessor variants.
+    pub open spec fn spec_state(self) -> u64 {
+        self.pid
+    }
+
     /// Abstract decomposition: models the result of `bury()` at the View level.
     ///
     /// Downstream modules can write:
@@ -383,6 +393,17 @@ impl ZombieProcessView {
     ///
     /// Downstream modules can write:
     ///   `ensures self@ == old(self)@.spec_state_mut()`
+    ///
+    /// ## Scope Limitation
+    ///
+    /// This models only the ZombieProcess-level frame (PID, zombie thread
+    /// list, exit status are unchanged). The original `state_mut()` returns
+    /// `&mut ProcessState`, through which callers can mutate non-PID
+    /// ProcessState fields (capabilities, vmem, mailbox, etc.). Those
+    /// internal mutations are invisible at this abstraction level. If
+    /// future verification needs to track ProcessState-internal changes
+    /// through a ZombieProcess, the model must be extended to include
+    /// ProcessState fields in the View.
     pub open spec fn spec_state_mut(self) -> ZombieProcessView {
         self
     }

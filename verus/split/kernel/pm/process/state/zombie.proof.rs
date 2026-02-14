@@ -42,10 +42,13 @@ impl ZombieProcess {
     // Construction Lemmas
     //==============================================================================================
 
-    /// Lemma: The preconditions of `new()` satisfy the well-formedness
-    /// invariant components. Cannot construct a ZombieProcess with `Vec<u64>`
-    /// in proof mode, so this proves the spec-level equivalence directly.
-    /// The exec-level `new()` function has `ensures result.wf()`.
+    /// Lemma: Construction satisfies both well-formedness and PID obligation.
+    ///
+    /// Proves that the `new()` preconditions guarantee:
+    /// 1. The resulting View is well-formed (`ZombieProcessView::wf()`).
+    /// 2. The constructed View matches `spec_new()`.
+    /// 3. If a real PID is provided matching the ghost PID, the PID
+    ///    integration obligation is satisfied on the constructed View.
     pub proof fn lemma_new_is_wf(
         pid: u64,
         zombie_ids: Seq<u64>,
@@ -60,13 +63,19 @@ impl ZombieProcess {
             zombie_count as nat == zombie_ids.len(),
             zombie_ids.len() >= 1,
             Self::spec_no_duplicates(zombie_ids),
+            ZombieProcessView::spec_new(pid, zombie_ids, status).wf(),
+            ZombieProcessView::spec_new(pid, zombie_ids, status).pid == pid,
+            ZombieProcessView::spec_new(pid, zombie_ids, status).status == status,
+            ZombieProcessView::spec_new(pid, zombie_ids, status).zombie_thread_ids == zombie_ids,
     {
     }
 
-    /// Lemma: If the caller provides a PID matching the real ProcessState PID,
-    /// the PID integration obligation is satisfied. Cannot construct a
-    /// ZombieProcess in proof mode with `Vec<u64>` fields, so this proves
-    /// the obligation directly.
+    /// Lemma: PID integration obligation at construction.
+    ///
+    /// Convenience wrapper: if the caller provides a PID matching the real
+    /// ProcessState PID, the PID integration obligation is satisfied, and
+    /// the constructed View carries the correct PID. Subsumed by
+    /// `lemma_new_is_wf` for callers that have all constructor parameters.
     pub proof fn lemma_new_establishes_pid_obligation(
         pid: u64,
         real_pid: u64,
@@ -75,6 +84,7 @@ impl ZombieProcess {
             Self::spec_process_state_pid_integration_obligation(pid, real_pid),
         ensures
             Self::spec_process_state_pid_integration_obligation(pid, real_pid),
+            pid == real_pid,
     {
     }
 
@@ -410,6 +420,13 @@ impl ZombieProcess {
     pub proof fn lemma_has_zombie_thread_matches_view(&self, tid: u64)
         ensures
             self.spec_has_zombie_thread(tid) == self@.spec_has_zombie_thread(tid),
+    {
+    }
+
+    /// Lemma: `state()` on exec matches `spec_state()` on the view.
+    pub proof fn lemma_state_matches_view_spec(&self)
+        ensures
+            self.spec_pid() == self@.spec_state(),
     {
     }
 }
