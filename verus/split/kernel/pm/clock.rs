@@ -180,6 +180,12 @@ impl TimerTicks {
     ///
     /// Models the original `const fn new()` which creates AtomicU32 pairs.
     ///
+    /// # Exec Divergence
+    ///
+    /// The original is `const fn` and uses `AtomicU32::new(0)`. This model
+    /// uses plain `u32` fields (see struct-level documentation for the
+    /// AtomicU32 → u32 modeling rationale).
+    ///
     /// # Returns
     ///
     /// A new TimerTicks with both halves set to zero.
@@ -201,13 +207,13 @@ impl TimerTicks {
     ///
     /// Models the original `get()` which loads from AtomicU32.
     ///
-    /// # Note on Consistency
+    /// # Exec Divergence
     ///
-    /// The original performs two separate atomic loads. Under the single-writer
-    /// assumption (timer interrupt handler on one core), the pair is always a
-    /// consistent snapshot — see Trust Boundary T1. The caller must establish
-    /// `spec_no_concurrent_writer_assumption()` (via `axiom_no_concurrent_writer`)
-    /// before calling `get()`, making the trust boundary mechanically enforced.
+    /// The original uses `self.major.load(ORDER)` and `self.minor.load(ORDER)`
+    /// (two separate atomic loads). This model accesses plain `u32` fields
+    /// directly. Consistency is guaranteed by the single-writer assumption
+    /// (Trust Boundary T1), mechanically enforced via the
+    /// `spec_no_concurrent_writer_assumption()` precondition.
     ///
     /// # Returns
     ///
@@ -232,13 +238,16 @@ impl TimerTicks {
     /// Models `wrapping_add(1)` on the minor counter. When the minor counter
     /// wraps to 0, the major counter is also incremented (wrapping if at max).
     ///
-    /// # API Divergence
+    /// # Exec Divergence
     ///
-    /// The original uses `&self` with `AtomicU32` interior mutability. This
-    /// verified model uses `&mut self` because Verus requires exclusive
-    /// references for state mutation. The `&mut self` requirement is strictly
-    /// stronger than `&self` + single-writer: it proves correctness under
-    /// exclusive access but does not prove absence of data races.
+    /// - **`&self` → `&mut self`**: The original uses `&self` with `AtomicU32`
+    ///   interior mutability. This model uses `&mut self` because Verus requires
+    ///   exclusive references for state mutation. The `&mut self` requirement is
+    ///   strictly stronger than `&self` + single-writer.
+    /// - **`wrapping_add(1)` → explicit branching**: The original uses
+    ///   `minor.wrapping_add(1)`. This model uses `if minor < u32::MAX { minor + 1 }
+    ///   else { 0 }`, which is semantically identical (Trust Boundary T2, proved
+    ///   by `lemma_wrapping_add_equiv`).
     ///
     /// # Returns
     ///
@@ -313,6 +322,17 @@ impl TimerTicks {
     ///
     /// Combines major and minor into a single u64: `major * 2^32 + minor`.
     /// Models the original standalone `ticks()` function.
+    ///
+    /// # Exec Divergence
+    ///
+    /// - The original uses `((major as u64) << 32) + (minor as u64)`. This model
+    ///   uses `(major as u64) * 0x1_0000_0000u64 + (minor as u64)`, which is
+    ///   semantically identical (`x << 32 == x * 2^32`). Multiplication is used
+    ///   because Verus has stronger reasoning support for integer arithmetic than
+    ///   for bitwise shift operations.
+    /// - The original is a standalone function that calls `TIMER_TICKS.get()`;
+    ///   this is a method that accesses fields directly. The standalone pattern
+    ///   is mirrored by `standalone_ticks()`.
     ///
     /// # Returns
     ///
@@ -455,6 +475,22 @@ impl TimerTicks {
     /// function proves that can never happen, eliminating the `unreachable!()`
     /// panic path.
     ///
+    /// # Exec Divergence
+    ///
+    /// - **Return type**: The original returns `SystemTime`; this returns
+    ///   `(u64, u32)` because `SystemTime` is an external type not available
+    ///   in the Verus model. The pair represents `(seconds, nanoseconds)`.
+    /// - **`timer_freq` parameter**: The original determines `timer_freq` via
+    ///   `#[cfg(feature = "pit")]` branches; this takes it as a parameter
+    ///   because Verus cannot model `#[cfg]` conditional compilation. The
+    ///   `now_fallback_model()` and `now_pit_model()` functions cover both
+    ///   cfg paths.
+    /// - **Helper decomposition**: The inline arithmetic is factored into
+    ///   `compute_seconds()` and `compute_nanoseconds()` for modular proof
+    ///   decomposition. The arithmetic is identical to the original.
+    /// - **No `unreachable!()`**: The proof eliminates the panic path by
+    ///   showing `nanoseconds < NANOSECONDS_PER_SECOND` always holds.
+    ///
     /// # Parameters
     ///
     /// - `timer_freq`: The timer frequency in Hz. Must be > 0. In the original,
@@ -499,20 +535,28 @@ impl TimerTicks {
     /// # Description
     ///
     /// This is the verified behavioral model of the original `timer_handler()`.
-    /// It calls `increment()` exactly once, which is the only effect of the
-    /// handler on the clock counter. The original handler also:
+    /// The original `timer_handler()` cannot be directly ported to Verus because
+    /// it depends on `unsafe`, HAL types (`InterruptNumber`), global mutable
+    /// state (`TIMER_TICKS`), `#[cfg]` conditional compilation, and scheduler
+    /// interactions (`ProcessManager::giveup()`).
+    ///
+    /// This model calls `increment()` exactly once, which is the only effect of
+    /// the handler on the clock counter. The original handler also:
     /// - Checks for VM pause requests (volatile read + I/O port write).
     /// - Attempts a context switch via `ProcessManager::giveup()`.
     ///
     /// These side effects are HAL/scheduler interactions modeled as Trust
     /// Boundary T3: they do not modify `major` or `minor`.
     ///
-    /// # API Divergence
+    /// # Exec Divergence
     ///
-    /// The original `timer_handler` is `pub unsafe fn` taking an `InterruptNumber`
-    /// parameter and accessing the global `TIMER_TICKS` singleton. This model
-    /// takes `&mut self` and operates on a local instance. The global singleton
-    /// access is Trust Boundary T1.
+    /// - **Name**: `timer_handler_model` (not `timer_handler`) to distinguish
+    ///   the verified model from the original.
+    /// - **Signature**: The original is `pub unsafe fn timer_handler(_intnum:
+    ///   InterruptNumber)` accessing the global `TIMER_TICKS`. This model takes
+    ///   `&mut self` and operates on a local instance.
+    /// - **Side effects omitted**: VM pause check and context switch are
+    ///   HAL/scheduler interactions that do not affect clock state (T3).
     pub fn timer_handler_model(&mut self)
         requires
             old(self).wf(),
