@@ -748,26 +748,23 @@ impl RunnableProcess {
         let sel: int = sel_exec;
         // Element-level hint for subrange distribution.
         assert forall|i: int| 0 <= i < sel
-            implies spec_i64_seq_as_int(s.subrange(0, sel))[i]
+            implies (#[trigger] spec_i64_seq_as_int(s.subrange(0, sel))[i])
                 == s_int.subrange(0, sel)[i]
         by {
-            assert(spec_i64_seq_as_int(s.subrange(0, sel))[i]
-                == s.subrange(0, sel)[i] as int);
             assert(s.subrange(0, sel)[i] == s[i]);
             assert(s_int.subrange(0, sel)[i] == s_int[i]);
             assert(s_int[i] == s[i] as int);
         }
         assert(spec_i64_seq_as_int(s.subrange(0, sel))
             =~= s_int.subrange(0, sel));
-        let tail_len: int = s.len() as int - (sel + 1);
-        assert forall|i: int| 0 <= i < tail_len
-            implies spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))[i]
+        assert forall|i: int| 0 <= i < (s.len() as int - (sel + 1))
+            implies (#[trigger] spec_i64_seq_as_int(
+                s.subrange(sel + 1, s.len() as int))[i])
                 == s_int.subrange(sel + 1, s_int.len() as int)[i]
         by {
-            assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))[i]
-                == s.subrange(sel + 1, s.len() as int)[i] as int);
             assert(s.subrange(sel + 1, s.len() as int)[i] == s[sel + 1 + i]);
-            assert(s_int.subrange(sel + 1, s_int.len() as int)[i] == s_int[sel + 1 + i]);
+            assert(s_int.subrange(sel + 1, s_int.len() as int)[i]
+                == s_int[sel + 1 + i]);
             assert(s_int[sel + 1 + i] == s[sel + 1 + i] as int);
         }
         assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))

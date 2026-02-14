@@ -483,7 +483,7 @@ impl RunnableProcess {
             let s: Seq<i64> = self.ready_thread_ids@;
             let s_int: Seq<int> = self@.ready_thread_ids;
             assert forall|i: int| 0 <= i < sel
-                implies spec_i64_seq_as_int(s.subrange(0, sel))[i]
+                implies (#[trigger] spec_i64_seq_as_int(s.subrange(0, sel))[i])
                     == s_int.subrange(0, sel)[i]
             by {
                 assert(s.subrange(0, sel)[i] == s[i]);
@@ -492,10 +492,9 @@ impl RunnableProcess {
             }
             assert(spec_i64_seq_as_int(s.subrange(0, sel))
                 =~= s_int.subrange(0, sel));
-            let tail_len: int = s.len() as int - (sel + 1);
-            assert forall|i: int| 0 <= i < tail_len
-                implies spec_i64_seq_as_int(
-                    s.subrange(sel + 1, s.len() as int))[i]
+            assert forall|i: int| 0 <= i < (s.len() as int - (sel + 1))
+                implies (#[trigger] spec_i64_seq_as_int(
+                    s.subrange(sel + 1, s.len() as int))[i])
                     == s_int.subrange(sel + 1, s_int.len() as int)[i]
             by {
                 assert(s.subrange(sel + 1, s.len() as int)[i] == s[sel + 1 + i]);
@@ -793,7 +792,7 @@ impl RunnableProcess {
             let sl_int: Seq<int> = self@.sleeping_thread_ids;
             let fi: int = found_idx_usize as int;
             assert forall|i: int| 0 <= i < fi
-                implies spec_i64_seq_as_int(sl.subrange(0, fi))[i]
+                implies (#[trigger] spec_i64_seq_as_int(sl.subrange(0, fi))[i])
                     == sl_int.subrange(0, fi)[i]
             by {
                 assert(sl.subrange(0, fi)[i] == sl[i]);
@@ -802,10 +801,9 @@ impl RunnableProcess {
             }
             assert(spec_i64_seq_as_int(sl.subrange(0, fi))
                 =~= sl_int.subrange(0, fi));
-            let sl_tail_len: int = sl.len() as int - (fi + 1);
-            assert forall|i: int| 0 <= i < sl_tail_len
-                implies spec_i64_seq_as_int(
-                    sl.subrange(fi + 1, sl.len() as int))[i]
+            assert forall|i: int| 0 <= i < (sl.len() as int - (fi + 1))
+                implies (#[trigger] spec_i64_seq_as_int(
+                    sl.subrange(fi + 1, sl.len() as int))[i])
                     == sl_int.subrange(fi + 1, sl_int.len() as int)[i]
             by {
                 assert(sl.subrange(fi + 1, sl.len() as int)[i]
