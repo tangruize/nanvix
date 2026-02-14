@@ -1,0 +1,23 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 08:34:26 CST 2026
+Module: kernel::pm::process::state::zombie
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::zombie
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error: struct literals are not allowed here; try surrounding the struct literal with parentheses
+   --> kernel/pm/process/state/zombie.proof.rs:360:17
+    |
+360 |                 ZombieProcessView { pid, zombie_thread_ids: zombie_ids, status },
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 1 previous error
+
+
+Duration: 2s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::pm::process::state::zombie (verified:0, errors:0)
