@@ -1,0 +1,197 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 17:48:03 CST 2026
+Module: kernel::mm::virt::vmem
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::virt::vmem
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:406:20
+    |
+406 |             result.mapping_count == 0,
+    |                    ^^^^^^^^^^^^^ private field
+
+error[E0599]: no method named `has_mapping_capacity` found for mutable reference `&mut kernel::mm::virt::vmem::Vmem` in the current scope
+   --> kernel/mm/phys/manager.rs:454:23
+    |
+454 |             old(vmem).has_mapping_capacity(),
+    |                       ^^^^^^^^^^^^^^^^^^^^ method not found in `&mut kernel::mm::virt::vmem::Vmem`
+
+error[E0624]: method `spec_is_mapped` is private
+   --> kernel/mm/phys/manager.rs:457:24
+    |
+457 |             !old(vmem).spec_is_mapped(vaddr as int),
+    |                        ^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:281:10
+    |
+281 |     spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+    |          -------------------------------------------- private method defined here
+
+error[E0624]: method `spec_is_mapped` is private
+   --> kernel/mm/phys/manager.rs:462:26
+    |
+462 |                 &&& vmem.spec_is_mapped(vaddr as int)
+    |                          ^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:281:10
+    |
+281 |     spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+    |          -------------------------------------------- private method defined here
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:463:26
+    |
+463 |                 &&& vmem.mapping_count == old(vmem).mapping_count + 1
+    |                          ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:463:53
+    |
+463 |                 &&& vmem.mapping_count == old(vmem).mapping_count + 1
+    |                                                     ^^^^^^^^^^^^^ private field
+
+error[E0599]: no method named `has_mapping_capacity` found for mutable reference `&mut kernel::mm::virt::vmem::Vmem` in the current scope
+   --> kernel/mm/phys/manager.rs:479:25
+    |
+479 |             assert(vmem.has_mapping_capacity());
+    |                         ^^^^^^^^^^^^^^^^^^^^ method not found in `&mut kernel::mm::virt::vmem::Vmem`
+
+error[E0624]: method `spec_is_mapped` is private
+   --> kernel/mm/phys/manager.rs:480:26
+    |
+480 |             assert(!vmem.spec_is_mapped(vaddr as int));
+    |                          ^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:281:10
+    |
+281 |     spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+    |          -------------------------------------------- private method defined here
+
+error[E0624]: method `spec_is_mapped` is private
+   --> kernel/mm/phys/manager.rs:488:25
+    |
+488 |             assert(vmem.spec_is_mapped(vaddr as int));
+    |                         ^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:281:10
+    |
+281 |     spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+    |          -------------------------------------------- private method defined here
+
+error[E0599]: no method named `has_mappings` found for mutable reference `&mut kernel::mm::virt::vmem::Vmem` in the current scope
+   --> kernel/mm/phys/manager.rs:525:23
+    |
+525 |             old(vmem).has_mappings(),
+    |                       ^^^^^^^^^^^^ method not found in `&mut kernel::mm::virt::vmem::Vmem`
+
+error[E0624]: method `spec_is_mapped` is private
+   --> kernel/mm/phys/manager.rs:528:23
+    |
+528 |             old(vmem).spec_is_mapped(vaddr as int),
+    |                       ^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:281:10
+    |
+281 |     spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+    |          -------------------------------------------- private method defined here
+
+error[E0624]: method `spec_get_frame_addr` is private
+   --> kernel/mm/phys/manager.rs:531:58
+    |
+531 |             old(self).spec_uframe_is_allocated(old(vmem).spec_get_frame_addr(vaddr as int)),
+    |                                                          ^^^^^^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:291:10
+    |
+291 |     spec fn spec_get_frame_addr(&self, vaddr: int) -> int
+    |          ------------------------------------------------ private method defined here
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:536:26
+    |
+536 |                 &&& vmem.mapping_count == old(vmem).mapping_count - 1
+    |                          ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:536:53
+    |
+536 |                 &&& vmem.mapping_count == old(vmem).mapping_count - 1
+    |                                                     ^^^^^^^^^^^^^ private field
+
+error[E0624]: method `spec_is_mapped` is private
+   --> kernel/mm/phys/manager.rs:585:23
+    |
+585 |             old(vmem).spec_is_mapped(vaddr as int),
+    |                       ^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:281:10
+    |
+281 |     spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+    |          -------------------------------------------- private method defined here
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:589:18
+    |
+589 |             vmem.mapping_count == old(vmem).mapping_count,
+    |                  ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:589:45
+    |
+589 |             vmem.mapping_count == old(vmem).mapping_count,
+    |                                             ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:729:23
+    |
+729 |             old(vmem).mapping_count as int + nframes as int <= MAX_USER_PAGES as int,
+    |                       ^^^^^^^^^^^^^ private field
+
+error[E0624]: method `spec_is_mapped` is private
+   --> kernel/mm/phys/manager.rs:737:32
+    |
+737 |                     !old(vmem).spec_is_mapped(vaddr as int + i * PAGE_SIZE as int),
+    |                                ^^^^^^^^^^^^^^ private method
+    |
+   ::: kernel/mm/virt/vmem.spec.rs:281:10
+    |
+281 |     spec fn spec_is_mapped(&self, vaddr: int) -> bool {
+    |          -------------------------------------------- private method defined here
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:743:26
+    |
+743 |                 &&& vmem.mapping_count == old(vmem).mapping_count + nframes
+    |                          ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:743:53
+    |
+743 |                 &&& vmem.mapping_count == old(vmem).mapping_count + nframes
+    |                                                     ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:745:38
+    |
+745 |             result.is_err() ==> vmem.mapping_count == old(vmem).mapping_count,
+    |                                      ^^^^^^^^^^^^^ private field
+
+error[E0616]: field `mapping_count` of struct `kernel::mm::virt::vmem::Vmem` is private
+   --> kernel/mm/phys/manager.rs:745:65
+    |
+745 |             result.is_err() ==> vmem.mapping_count == old(vmem).mapping_count,
+    |                                                                 ^^^^^^^^^^^^^ private field
+
+error: aborting due to 23 previous errors
+
+Some errors have detailed explanations: E0599, E0616, E0624.
+For more information about an error, try `rustc --explain E0599`.
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for kernel::mm::virt::vmem (verified:0, errors:0)
