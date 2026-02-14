@@ -461,7 +461,7 @@ pub fn store_with_ghost(
 ///
 /// # Trust Assumption
 ///
-/// The postcondition `result.unwrap() == spec_load_result(ghost.view, index)` relies
+/// The postcondition `result.unwrap() as int == spec_load_result(ghost.view(), index)` relies
 /// on T2 (volatile reads return last written value). This is captured by the
 /// `axiom_volatile_read_consistency` proof function, bridging the gap between the abstract model
 /// and the implementation.
