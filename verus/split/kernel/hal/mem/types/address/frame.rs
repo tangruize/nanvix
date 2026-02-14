@@ -34,6 +34,13 @@ pub const MAX_FRAME_NUMBER: usize = 0xFFFF_FFFF / FRAME_SIZE;
 
 /// A type that represents a frame number.
 /// A frame number is in the range from `0` to `MAX_FRAME_NUMBER` (inclusive).
+///
+/// # Verification Addition
+///
+/// In the original source, `FrameNumber` is defined in `arch::mem::paging::frame::number`.
+/// It is replicated here for Verus verification since the original module is not
+/// in scope. The exec logic (`from_raw_value`, `into_raw_value`) is identical to
+/// the original: validate `value <= MAX` and wrap/unwrap the inner `usize`.
 #[derive(Debug, Clone, Copy)]
 pub struct FrameNumber {
     /// NOTE: Field is pub for cross-module struct literal construction.
@@ -75,7 +82,20 @@ impl FrameNumber {
 
 /// A type that represents a frame address.
 /// A frame address is page-aligned (multiple of FRAME_SIZE).
-#[derive(Debug, Clone, Copy)]
+///
+/// # Structural Note (Verus Simplification)
+///
+/// The original type is `FrameAddress(PageAligned<PhysicalAddress>)` — a newtype
+/// wrapping a generic wrapper around `PhysicalAddress`. For Verus verification,
+/// the nested generic types are flattened into a single `raw_addr: usize` field.
+/// All exec functions preserve the same observable behavior as the original.
+///
+/// The following original functions depend on types not present in the Verus
+/// verification context and are omitted:
+/// - `into_page_address`: depends on `PageAddress` (cross-module type in `kernel::mm::virt`).
+/// - `fmt` (Debug): original uses custom format `FrameAddress({:#010x})`; Verus derives
+///   `Debug` which produces a different (but functionally equivalent) format.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrameAddress {
     /// NOTE: Field is pub for cross-module struct literal construction.
     /// Per methodology Step 1, new callers should use from_frame_number() instead.
@@ -84,7 +104,49 @@ pub struct FrameAddress {
 
 impl FrameAddress {
 
+    /// Constructs a FrameAddress from a page-aligned physical address.
+    ///
+    /// # Equivalence
+    ///
+    /// Original: `Self(address)` where address is `PageAligned<PhysicalAddress>`.
+    /// Verus: copies `raw_addr` from `PageAlignedPhysAddr` (the Verus equivalent).
+    /// Both produce a FrameAddress holding the same page-aligned address value.
+    pub fn new(address: PageAlignedPhysAddr) -> (result: FrameAddress)
+        requires address.inv(),
+        ensures
+            result.inv(),
+            result.spec_raw_value() == address.spec_raw_value(),
+    {
+        FrameAddress { raw_addr: address.raw_addr }
+    }
+
+
+    /// Returns the underlying page-aligned physical address.
+    ///
+    /// # Equivalence
+    ///
+    /// Original: returns `PageAligned<PhysicalAddress>` (the inner field).
+    /// Verus: returns `PageAlignedPhysAddr` (the Verus equivalent type).
+    /// Both unwrap the same page-aligned address value.
+    pub fn into_physical_address(self) -> (result: PageAlignedPhysAddr)
+        requires self.inv(),
+        ensures
+            result.inv(),
+            result.spec_raw_value() == self.spec_raw_value(),
+    {
+        PageAlignedPhysAddr { raw_addr: self.raw_addr }
+    }
+
+
     /// Constructs a FrameAddress from a frame number.
+    ///
+    /// # Equivalence
+    ///
+    /// Original: `Ok(Self(PageAligned::from_address(PhysicalAddress::from_number(frame_number))?))`.
+    /// Verus: directly computes `frame_number * FRAME_SIZE` and checks overflow.
+    /// Both convert a frame number to a page-aligned address by multiplying by
+    /// FRAME_SIZE, with the original delegating through `PhysicalAddress::from_number`
+    /// and `PageAligned::from_address` which perform the same arithmetic.
     /// Precondition: spec_raw_value() <= MAX_FRAME_NUMBER ensures no overflow.
     pub fn from_frame_number(frame_number: FrameNumber) -> (result: Result<FrameAddress, Error>)
         requires
@@ -114,6 +176,13 @@ impl FrameAddress {
 
 
     /// Converts a FrameAddress into a frame number.
+    ///
+    /// # Equivalence
+    ///
+    /// Original: `self.0.into_frame_number()` which delegates to
+    /// `PageAligned<PhysicalAddress>::into_frame_number()`, computing `raw_addr / FRAME_SIZE`.
+    /// Verus: directly computes `self.raw_addr / FRAME_SIZE`.
+    /// Both divide the raw address by FRAME_SIZE to obtain the frame number.
     pub fn into_frame_number(self) -> (result: FrameNumber)
         requires self.inv(),
         ensures
@@ -124,7 +193,37 @@ impl FrameAddress {
     }
 
 
+    /// Constructs a FrameAddress from a raw address value.
+    ///
+    /// # Equivalence
+    ///
+    /// Original: `Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))`.
+    /// Verus: directly checks page-alignment and constructs.
+    /// Both validate that the address is page-aligned before constructing.
+    pub fn from_raw_value(raw_addr: usize) -> (result: Result<FrameAddress, Error>)
+        ensures
+            result is Ok ==> {
+                let addr = result->Ok_0;
+                &&& addr.inv()
+                &&& addr.spec_raw_value() == raw_addr as int
+                &&& raw_addr % FRAME_SIZE == 0
+            },
+            result is Err ==> raw_addr % FRAME_SIZE != 0,
+    {
+        if raw_addr % FRAME_SIZE != 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "address not page-aligned"));
+        }
+        Ok(FrameAddress { raw_addr })
+    }
+
+
     /// Gets the raw address value.
+    ///
+    /// # Equivalence
+    ///
+    /// Original: `self.0.into_raw_value()` which unwraps `PageAligned<PhysicalAddress>`.
+    /// Verus: directly returns `self.raw_addr`.
+    /// Both return the underlying raw address value.
     pub fn into_raw_value(self) -> (result: usize)
         requires self.inv(),
         ensures result as int == self.spec_raw_value()
@@ -136,6 +235,14 @@ impl FrameAddress {
 //==================================================================================================
 
 /// A page-aligned physical address (simplified for verification).
+///
+/// # Verification Addition
+///
+/// This type replaces the original `PageAligned<PhysicalAddress>` generic wrapper.
+/// It is a verification helper that flattens the generic nesting for Verus.
+/// Extra in Verus: `into_frame_number` is provided here as a convenience for
+/// callers that hold a `PageAlignedPhysAddr` directly. The original
+/// `PageAligned<PhysicalAddress>` also has `into_frame_number`.
 #[derive(Debug, Clone, Copy)]
 pub struct PageAlignedPhysAddr {
     /// NOTE: Field is pub for cross-module struct literal construction.
@@ -178,6 +285,14 @@ impl PageAlignedPhysAddr {
 //==================================================================================================
 
 /// A simplified memory region where both start and size are page-aligned.
+///
+/// # Verification Addition
+///
+/// This type and its methods (`new`, `start`, `size`, `frame_count`) are extra
+/// in Verus — they represent `TruncatedMemoryRegion<PhysicalAddress>` from the
+/// original source, simplified for frame allocator verification. The `start`,
+/// `size`, and `frame_count` accessor methods are verification helpers that
+/// expose properties needed by callers since the struct fields are private.
 ///
 /// # Description
 ///
