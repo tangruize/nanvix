@@ -6,6 +6,13 @@
 verus! {
 
 impl UserFrame {
+    /// Invariant for the user frame.
+    /// Ensures the frame address is page-aligned.
+    pub closed spec fn inv(&self) -> bool {
+        self.addr.spec_is_aligned()
+    }
+
+
     /// Spec function to get the frame address.
     pub open spec fn spec_address(&self) -> FrameAddress {
         self.addr

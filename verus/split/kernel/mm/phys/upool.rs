@@ -119,6 +119,7 @@ impl UserFrame {
         requires
             addr.spec_is_aligned(),
         ensures
+            result.inv(),
             result.spec_address() == addr,
             result.spec_is_aligned(),
             result.spec_frame_number() == addr.spec_frame_number(),
