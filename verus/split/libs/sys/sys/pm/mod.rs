@@ -3,5 +3,6 @@
 
 //! # Process Management Module
 
+pub mod capability;
 pub mod pid;
 pub mod tid;
