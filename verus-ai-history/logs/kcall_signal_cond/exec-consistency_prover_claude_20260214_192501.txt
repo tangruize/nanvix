@@ -1,0 +1,181 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T19:26:21.828030
+Model: claude-opus-4.6-fast
+Session: 8c84a929-035b-4eb2-bc2a-60a3806d1722
+Duration: 80.2s
+Exit code: 0
+
+=== Prompt ===
+Fix exec code inconsistencies for kcall_signal_cond detected by AST analysis.
+
+Original source: src/kernel/src/pm/kcall/signal_cond.rs
+Verified code directory: verus/split/kernel/pm/kcall/
+  - signal_cond.rs (exec)
+  - signal_cond.spec.rs (spec)
+  - signal_cond.proof.rs (proof)
+
+== TREE-SITTER AST DIFF REPORT ==
+
+The following inconsistencies were detected by comparing AST hashes of exec
+functions between the original source and the verified version (ghost/proof
+annotations are stripped before comparison):
+
+# Exec Consistency Report
+
+**Source:** `/home/ubuntu/nanvix/src/kernel/src/pm/kcall/signal_cond.rs`
+**Verus:** `/home/ubuntu/nanvix/verus/split/kernel/pm/kcall/signal_cond.rs`
+
+## Summary
+
+- Functions matched: 0/1
+- Functions mismatched: 0
+- Missing in Verus: 1
+- Extra in Verus: 3
+- **Consistent: NO**
+
+## Inconsistent Functions
+
+| Function | Status | Source Lines | Verus Lines |
+|----------|--------|-------------|-------------|
+| `signal_cond` | MISSING_IN_VERUS | 50-75 |  |
+| `drop_cond_model` | EXTRA_IN_VERUS |  | 356-364 |
+| `put_cond_model` | EXTRA_IN_VERUS |  | 384-551 |
+| `signal_cond_model` | EXTRA_IN_VERUS |  | 426-549 |
+
+## All Functions
+
+| Function | Status | Hash Match |
+|----------|--------|------------|
+| `signal_cond` | MISSING_IN_VERUS | ❌ |
+| `drop_cond_model` | EXTRA_IN_VERUS | ❌ |
+| `put_cond_model` | EXTRA_IN_VERUS | ❌ |
+| `signal_cond_model` | EXTRA_IN_VERUS | ❌ |
+
+
+== YOUR TASK ==
+
+For each inconsistency:
+
+1. **MISMATCH functions**: Compare the source and verus versions side by side.
+   - If the verus version changed executable logic: RESTORE the original logic
+     and update specs/proofs to verify the original code.
+   - If the change is purely structural but semantically equivalent (e.g.,
+     variable renaming, reordering): document WHY it is equivalent.
+   - If the change was necessary for verification (Verus limitation): document
+     the limitation and prove the equivalence informally.
+
+2. **MISSING_IN_VERUS functions**: Add the missing function to the verus exec
+   file with proper verification (requires/ensures).
+
+3. **EXTRA_IN_VERUS exec functions**: Remove unless justified (helper functions
+   extracted for verification are acceptable if documented).
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+- For each change, write a brief justification comment.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh kcall_signal_cond
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/ast-consistency/kcall_signal_cond_20260214_192501_fix.md:
+
+```markdown
+# Exec Consistency Fix: kcall_signal_cond
+
+## Summary
+- Mismatches fixed: N
+- Missing functions added: M
+- Documented equivalences: K
+
+## Changes
+| Function | Action | Justification |
+|----------|--------|---------------|
+
+## Verification: PASS/FAIL
+```
+
+=== Output ===
+
+
+
+
+● Read verus/split/kernel/pm/kcall/signal_cond.rs
+  └ 551 lines read
+
+● Read src/kernel/src/pm/kcall/signal_cond.rs
+  └ 75 lines read
+
+● Read verus/split/kernel/pm/kcall/signal_cond.spec.rs
+  └ 354 lines read
+
+● Read verus/split/kernel/pm/kcall/signal_cond.proof.rs
+  └ 516 lines read
+
+● List kcall verus files
+  $ ls /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/
+  └ 6 lines...
+
+● Check verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh
+  └ 199 lines...
+
+Let me check how other kcall files handle the naming pattern.
+
+● Check lock_mutex verus functions
+  $ grep 'pub.*fn ' /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/lock_mutex.rs
+  └ 15 lines...
+
+● Check wait_cond original functions
+  $ grep 'pub.*fn ' /home/ubuntu/nanvix/src/kernel/src/pm/kcall/wait_cond.rs
+  └ 2 lines...
+
+● Check lock_mutex original
+  $ head -5 /home/ubuntu/nanvix/src/kernel/src/pm/kcall/lock_mutex.rs && echo "---" && grep 'pub.*fn
+   ' /home/ubuntu/nanvix/src/kernel/src/pm/kcall/lock_mutex.rs
+  └ 8 lines...
+
+● Check wait_cond verus functions
+  $ grep 'pub.*fn ' /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/wait_cond.rs
+  └ 23 lines...
+
+● Find lock_mutex wrapper line
+  $ grep -n 'pub fn lock_mutex\b' /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/lock_mutex.rs
+  └ 2 lines...
+
+● Find wait_cond wrapper line
+  $ grep -n 'pub fn wait_cond\b' /home/ubuntu/nanvix/verus/split/kernel/pm/kcall/wait_cond.rs
+  └ 2 lines...
+
+● Read verus/split/kernel/pm/kcall/lock_mutex.rs lines 720-780
+  └ 43 lines read
+
+● Read verus/split/kernel/pm/kcall/wait_cond.rs lines 870-940
+  └ 43 lines read
+
+● Edit verus/split/kernel/pm/kcall/signal_cond.rs (+40)
+
+Now run verification:
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh kcall_signal_cond 2>&1
+  └ 25 lines...
+
+Verification passed (22 verified, 0 errors). Now write the report:
+
+● Create verus-ai-history/ast-consistency/kcall_signal_cond_20260214_192501_fix.md (+19)
+
+● Create report directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/ast-consistency
+  └ 1 line...
+
+
+Total usage est:        9 Premium requests
+API time spent:         59s
+Total session time:     1m 18.839s
+Total code changes:     +59 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    527.1k in, 7.7k out, 478.0k cached (Est. 9 Premium requests)
+
+=== End ===
