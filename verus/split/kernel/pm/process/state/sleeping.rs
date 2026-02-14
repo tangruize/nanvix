@@ -154,6 +154,7 @@ impl SleepingProcess {
             result.spec_sleeping_count() == sleeping_ids@.len(),
             result.wf(),
     {
+        proof { reveal(SleepingProcess::wf); }
         SleepingProcess {
             pid,
             sleeping_thread_ids: sleeping_ids,
@@ -219,6 +220,8 @@ impl SleepingProcess {
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
     {
         proof {
+            reveal(SleepingProcess::wf);
+            reveal(InterruptedProcess::wf);
             assert(self.sleeping_thread_ids@.len() >= 1);
         }
 
@@ -290,6 +293,10 @@ impl SleepingProcess {
                 },
             },
     {
+        proof {
+            reveal(SleepingProcess::wf);
+            reveal(RunnableProcess::wf);
+        }
         if !found {
             return Err(self);
         }
@@ -438,6 +445,10 @@ impl SleepingProcess {
                 },
             },
     {
+        proof {
+            reveal(SleepingProcess::wf);
+            reveal(InterruptedProcess::wf);
+        }
         if has_expired {
             proof {
                 assert(interrupted_ids@.len() >= 1);
@@ -492,6 +503,10 @@ impl SleepingProcess {
             // Zombie threads preserved.
             result.zombie_thread_ids@ == self.zombie_thread_ids@,
     {
+        proof {
+            reveal(SleepingProcess::wf);
+            reveal(RunnableProcess::wf);
+        }
         let mut ready: Vec<u64> = Vec::new();
         ready.push(ready_tid);
 
@@ -561,6 +576,7 @@ impl SleepingProcess {
             self.zombie_thread_ids@ == old(self).zombie_thread_ids@,
             self.wf(),
     {
+        proof { reveal(SleepingProcess::wf); }
         Ghost(old(self).spec_find_thread(tid))
     }
 }

@@ -57,6 +57,7 @@ impl SleepingProcess {
         ensures
             new_self.wf(),
     {
+        reveal(SleepingProcess::wf);
     }
 
     //==============================================================================================
@@ -252,13 +253,113 @@ impl SleepingProcessView {
         ensures
             p.wf() <==> p@.wf(),
     {
+        reveal(SleepingProcess::wf);
+        // spec_u64_seq_as_int preserves length.
+        assert(spec_u64_seq_as_int(p.sleeping_thread_ids@).len()
+            == p.sleeping_thread_ids@.len());
+        assert(spec_u64_seq_as_int(p.zombie_thread_ids@).len()
+            == p.zombie_thread_ids@.len());
+
+        // No-duplicates is preserved by the injective u64-to-int cast.
+        assert(SleepingProcess::spec_no_duplicates(p.sleeping_thread_ids@) ==>
+            SleepingProcessView::spec_no_duplicates(
+                spec_u64_seq_as_int(p.sleeping_thread_ids@))) by {
+            if SleepingProcess::spec_no_duplicates(p.sleeping_thread_ids@) {
+                assert forall|i: int, j: int|
+                    0 <= i < j < spec_u64_seq_as_int(p.sleeping_thread_ids@).len()
+                    implies spec_u64_seq_as_int(p.sleeping_thread_ids@)[i]
+                        != spec_u64_seq_as_int(p.sleeping_thread_ids@)[j]
+                by {
+                    assert(p.sleeping_thread_ids@[i] != p.sleeping_thread_ids@[j]);
+                }
+            }
+        };
+        assert(SleepingProcessView::spec_no_duplicates(
+                spec_u64_seq_as_int(p.sleeping_thread_ids@)) ==>
+            SleepingProcess::spec_no_duplicates(p.sleeping_thread_ids@)) by {
+            if SleepingProcessView::spec_no_duplicates(
+                    spec_u64_seq_as_int(p.sleeping_thread_ids@)) {
+                assert forall|i: int, j: int|
+                    0 <= i < j < p.sleeping_thread_ids@.len()
+                    implies p.sleeping_thread_ids@[i] != p.sleeping_thread_ids@[j]
+                by {
+                    assert(spec_u64_seq_as_int(p.sleeping_thread_ids@)[i]
+                        != spec_u64_seq_as_int(p.sleeping_thread_ids@)[j]);
+                }
+            }
+        };
+
+        assert(SleepingProcess::spec_no_duplicates(p.zombie_thread_ids@) ==>
+            SleepingProcessView::spec_no_duplicates(
+                spec_u64_seq_as_int(p.zombie_thread_ids@))) by {
+            if SleepingProcess::spec_no_duplicates(p.zombie_thread_ids@) {
+                assert forall|i: int, j: int|
+                    0 <= i < j < spec_u64_seq_as_int(p.zombie_thread_ids@).len()
+                    implies spec_u64_seq_as_int(p.zombie_thread_ids@)[i]
+                        != spec_u64_seq_as_int(p.zombie_thread_ids@)[j]
+                by {
+                    assert(p.zombie_thread_ids@[i] != p.zombie_thread_ids@[j]);
+                }
+            }
+        };
+        assert(SleepingProcessView::spec_no_duplicates(
+                spec_u64_seq_as_int(p.zombie_thread_ids@)) ==>
+            SleepingProcess::spec_no_duplicates(p.zombie_thread_ids@)) by {
+            if SleepingProcessView::spec_no_duplicates(
+                    spec_u64_seq_as_int(p.zombie_thread_ids@)) {
+                assert forall|i: int, j: int|
+                    0 <= i < j < p.zombie_thread_ids@.len()
+                    implies p.zombie_thread_ids@[i] != p.zombie_thread_ids@[j]
+                by {
+                    assert(spec_u64_seq_as_int(p.zombie_thread_ids@)[i]
+                        != spec_u64_seq_as_int(p.zombie_thread_ids@)[j]);
+                }
+            }
+        };
+
+        // Disjointness is preserved by the injective u64-to-int cast.
+        assert(SleepingProcess::spec_seqs_disjoint(
+                p.sleeping_thread_ids@, p.zombie_thread_ids@) ==>
+            SleepingProcessView::spec_seqs_disjoint(
+                spec_u64_seq_as_int(p.sleeping_thread_ids@),
+                spec_u64_seq_as_int(p.zombie_thread_ids@))) by {
+            if SleepingProcess::spec_seqs_disjoint(
+                    p.sleeping_thread_ids@, p.zombie_thread_ids@) {
+                assert forall|i: int, j: int|
+                    0 <= i < spec_u64_seq_as_int(p.sleeping_thread_ids@).len()
+                    && 0 <= j < spec_u64_seq_as_int(p.zombie_thread_ids@).len()
+                    implies spec_u64_seq_as_int(p.sleeping_thread_ids@)[i]
+                        != spec_u64_seq_as_int(p.zombie_thread_ids@)[j]
+                by {
+                    assert(p.sleeping_thread_ids@[i] != p.zombie_thread_ids@[j]);
+                }
+            }
+        };
+        assert(SleepingProcessView::spec_seqs_disjoint(
+                spec_u64_seq_as_int(p.sleeping_thread_ids@),
+                spec_u64_seq_as_int(p.zombie_thread_ids@)) ==>
+            SleepingProcess::spec_seqs_disjoint(
+                p.sleeping_thread_ids@, p.zombie_thread_ids@)) by {
+            if SleepingProcessView::spec_seqs_disjoint(
+                    spec_u64_seq_as_int(p.sleeping_thread_ids@),
+                    spec_u64_seq_as_int(p.zombie_thread_ids@)) {
+                assert forall|i: int, j: int|
+                    0 <= i < p.sleeping_thread_ids@.len()
+                    && 0 <= j < p.zombie_thread_ids@.len()
+                    implies p.sleeping_thread_ids@[i] != p.zombie_thread_ids@[j]
+                by {
+                    assert(spec_u64_seq_as_int(p.sleeping_thread_ids@)[i]
+                        != spec_u64_seq_as_int(p.zombie_thread_ids@)[j]);
+                }
+            }
+        };
     }
 
     /// Bridging lemma: new() result view matches spec_new().
     pub proof fn lemma_new_refines_spec(
-        pid: u64,
-        sleeping_ids: Seq<u64>,
-        zombie_ids: Seq<u64>,
+        pid: int,
+        sleeping_ids: Seq<int>,
+        zombie_ids: Seq<int>,
     )
         ensures
             SleepingProcessView::spec_new(pid, sleeping_ids, zombie_ids)
@@ -275,7 +376,7 @@ impl SleepingProcessView {
             sv.wf(),
             result.pid == sv.pid,
             result.interrupted_thread_ids =~= sv.sleeping_thread_ids,
-            result.sleeping_thread_ids =~= Seq::<u64>::empty(),
+            result.sleeping_thread_ids =~= Seq::<int>::empty(),
             result.zombie_thread_ids =~= sv.zombie_thread_ids,
         ensures
             result =~= sv.spec_terminate(),
@@ -289,7 +390,7 @@ impl SleepingProcessView {
     pub proof fn lemma_wakeup_refines_spec(
         sv: SleepingProcessView,
         result: RunnableProcessView,
-        tid: u64,
+        tid: int,
         idx: int,
     )
         requires
@@ -297,8 +398,8 @@ impl SleepingProcessView {
             0 <= idx < sv.sleeping_thread_ids.len(),
             sv.sleeping_thread_ids[idx] == tid,
             result.pid == sv.pid,
-            result.ready_thread_ids =~= Seq::<u64>::empty().push(tid),
-            result.interrupted_thread_ids =~= Seq::<u64>::empty(),
+            result.ready_thread_ids =~= Seq::<int>::empty().push(tid),
+            result.interrupted_thread_ids =~= Seq::<int>::empty(),
             result.sleeping_thread_ids =~= SleepingProcessView::spec_remove_at_seq(
                 sv.sleeping_thread_ids, idx),
             result.zombie_thread_ids =~= sv.zombie_thread_ids,
@@ -335,8 +436,8 @@ impl SleepingProcessView {
     pub proof fn lemma_wakeup_alarm_expired_refines_spec(
         sv: SleepingProcessView,
         result: InterruptedProcessView,
-        interrupted_ids: Seq<u64>,
-        remaining_ids: Seq<u64>,
+        interrupted_ids: Seq<int>,
+        remaining_ids: Seq<int>,
     )
         requires
             sv.wf(),
@@ -367,13 +468,13 @@ impl SleepingProcessView {
     pub proof fn lemma_add_thread_refines_spec(
         sv: SleepingProcessView,
         result: RunnableProcessView,
-        ready_tid: u64,
+        ready_tid: int,
     )
         requires
             sv.wf(),
             result.pid == sv.pid,
-            result.ready_thread_ids =~= Seq::<u64>::empty().push(ready_tid),
-            result.interrupted_thread_ids =~= Seq::<u64>::empty(),
+            result.ready_thread_ids =~= Seq::<int>::empty().push(ready_tid),
+            result.interrupted_thread_ids =~= Seq::<int>::empty(),
             result.sleeping_thread_ids =~= sv.sleeping_thread_ids,
             result.zombie_thread_ids =~= sv.zombie_thread_ids,
         ensures
