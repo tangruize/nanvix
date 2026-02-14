@@ -125,7 +125,7 @@ impl ZombieProcess {
     }
 
     /// Spec helper: checks if a sequence contains a given value.
-    open spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
+    spec fn spec_seq_contains(s: Seq<u64>, tid: u64) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
@@ -150,7 +150,7 @@ impl ZombieProcess {
     }
 
     /// Spec helper: checks whether a sequence has no duplicate elements.
-    open spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
+    spec fn spec_no_duplicates(s: Seq<u64>) -> bool {
         forall|i: int, j: int| 0 <= i < j < s.len()
             ==> s[i] != s[j]
     }
