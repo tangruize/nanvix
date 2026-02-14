@@ -1,0 +1,95 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T15:51:59.788246
+Model: claude-opus-4.6
+Session: 93566fc0-b01c-4649-91e6-77e5030531c0
+Duration: 83.8s
+Exit code: 0
+
+=== Prompt ===
+Review spec methodology fixes for zombie_process.
+
+Original source: src/kernel/src/pm/process/state/zombie.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - zombie.rs (exec)
+  - zombie.spec.rs (spec)
+  - zombie.proof.rs (proof)
+
+Guidelines reference: specifying-and-proving-types.md
+
+Review criteria:
+1. Do View types use abstract types (int, Seq, Set, Map) not concrete (i32, Vec)?
+2. Is view() declared as `pub closed spec fn` (or justified if open)?
+3. Does inv()/wf() exist and is it `pub closed spec fn`?
+4. Do public method specs avoid self.field, using self@.field instead?
+5. Do public methods require/ensure inv()/wf() for self parameters?
+6. Are there any remaining assume/admit/unjustified external_body?
+7. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh zombie_process
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process/spec-methodology_20260214_154434.md.
+
+Output format:
+```markdown
+# Review: zombie_process Spec Methodology (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+### High
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+● List directory verus/split/kernel/pm/process/state
+  └ 24 files found
+
+● Read specifying-and-proving-types.md
+  └ 111 lines read
+
+● Read src/kernel/src/pm/process/state/zombie.rs
+  └ 106 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.rs
+  └ 312 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.proof.rs
+  └ 510 lines read
+
+● Read verus/split/kernel/pm/process/state/zombie.spec.rs
+  └ 481 lines read
+
+Now let me run the verification and check for any remaining issues.
+
+● Run verification for zombie_process
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh zombie_process 2>&1 | tail -30
+  └ 23 lines...
+
+Good — 25 verified, 0 errors. Now let me check for assume/admit/external_body usage:
+
+● Grep "assume|admit|external_body" in zombie*
+(/home/ubuntu/nanvix/verus/split/kernel/pm/process/state)
+  └ 14 lines found
+
+Now let me write the review. Let me analyze the findings:
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/zombie_process
+  └ 1 line...
+
+● Create verus-ai-history/reviews/zombie_process/spec-methodology_20260214_154434.md (+38)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 6.09s
+Total session time:     1m 22.495s
+Total code changes:     +38 -0
+Breakdown by AI model:
+ claude-opus-4.6         351.6k in, 2.7k out, 238.9k cached (Est. 3 Premium requests)
+
+=== End ===
