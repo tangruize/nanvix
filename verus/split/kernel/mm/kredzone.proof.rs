@@ -46,7 +46,7 @@ pub proof fn lemma_entry_size_matches_target()
 //==================================================================================================
 
 /// Lemma: Updating an entry preserves the length.
-pub proof fn lemma_update_preserves_len(view: KernelRedZoneView, i: int, value: usize)
+pub proof fn lemma_update_preserves_len(view: KernelRedZoneView, i: int, value: int)
     requires
         view.in_bounds(i),
     ensures
@@ -57,7 +57,7 @@ pub proof fn lemma_update_preserves_len(view: KernelRedZoneView, i: int, value: 
 
 
 /// Lemma: Updating index i only changes index i.
-pub proof fn lemma_update_only_changes_index(view: KernelRedZoneView, i: int, value: usize, j: int)
+pub proof fn lemma_update_only_changes_index(view: KernelRedZoneView, i: int, value: int, j: int)
     requires
         view.in_bounds(i),
         view.in_bounds(j),
@@ -70,7 +70,7 @@ pub proof fn lemma_update_only_changes_index(view: KernelRedZoneView, i: int, va
 
 
 /// Lemma: Updating index i sets index i to the new value.
-pub proof fn lemma_update_sets_index(view: KernelRedZoneView, i: int, value: usize)
+pub proof fn lemma_update_sets_index(view: KernelRedZoneView, i: int, value: int)
     requires
         view.in_bounds(i),
     ensures
@@ -102,7 +102,7 @@ pub proof fn lemma_valid_index_in_bounds(view: KernelRedZoneView, i: int)
 
 
 /// Lemma: Update preserves well-formedness.
-pub proof fn lemma_update_preserves_well_formed(view: KernelRedZoneView, i: int, value: usize)
+pub proof fn lemma_update_preserves_well_formed(view: KernelRedZoneView, i: int, value: int)
     requires
         view.is_well_formed(),
         view.in_bounds(i),
@@ -141,9 +141,9 @@ pub proof fn lemma_update_preserves_well_formed(view: KernelRedZoneView, i: int,
 pub proof fn create_initial_ghost() -> (tracked result: KernelRedZoneGhost)
     ensures
         result.inv(),
-        forall|i: int| #![auto] spec_is_valid_index(i) ==> result.view.index(i) == 0usize,
+        forall|i: int| #![auto] spec_is_valid_index(i) ==> result.view().index(i) == 0int,
 {
-    let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| 0usize);
+    let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| 0int);
     let view = KernelRedZoneView { contents };
     KernelRedZoneGhost { view }
 }
@@ -153,7 +153,7 @@ pub proof fn create_initial_ghost() -> (tracked result: KernelRedZoneGhost)
 /// Property: Store then load at the same index returns the stored value.
 ///
 /// This is the fundamental read-after-write property.
-pub proof fn lemma_store_then_load(view: KernelRedZoneView, index: int, value: usize)
+pub proof fn lemma_store_then_load(view: KernelRedZoneView, index: int, value: int)
     requires
         view.is_well_formed(),
         spec_is_valid_index(index),
@@ -171,7 +171,7 @@ pub proof fn lemma_store_then_load(view: KernelRedZoneView, index: int, value: u
 pub proof fn lemma_store_does_not_affect_other(
     view: KernelRedZoneView,
     i: int,
-    value: usize,
+    value: int,
     j: int,
 )
     requires
@@ -189,7 +189,7 @@ pub proof fn lemma_store_does_not_affect_other(
 
 
 /// Property: Store preserves well-formedness.
-pub proof fn lemma_store_preserves_invariant(view: KernelRedZoneView, index: int, value: usize)
+pub proof fn lemma_store_preserves_invariant(view: KernelRedZoneView, index: int, value: int)
     requires
         view.is_well_formed(),
         spec_is_valid_index(index),
@@ -202,7 +202,7 @@ pub proof fn lemma_store_preserves_invariant(view: KernelRedZoneView, index: int
 
 
 /// Property: Two consecutive stores to the same index result in the last value.
-pub proof fn lemma_store_overwrite(view: KernelRedZoneView, index: int, v1: usize, v2: usize)
+pub proof fn lemma_store_overwrite(view: KernelRedZoneView, index: int, v1: int, v2: int)
     requires
         view.is_well_formed(),
         spec_is_valid_index(index),
@@ -221,7 +221,7 @@ pub proof fn lemma_store_overwrite(view: KernelRedZoneView, index: int, v1: usiz
 
 
 /// Property: Stores to different indices commute.
-pub proof fn lemma_store_commutes(view: KernelRedZoneView, i: int, vi: usize, j: int, vj: usize)
+pub proof fn lemma_store_commutes(view: KernelRedZoneView, i: int, vi: int, j: int, vj: int)
     requires
         view.is_well_formed(),
         spec_is_valid_index(i),
@@ -261,7 +261,7 @@ pub proof fn axiom_volatile_read_consistency(
         ghost_view.is_well_formed(),
         spec_is_valid_index(index),
     ensures
-        actual_value == spec_load_result(ghost_view, index),
+        actual_value as int == spec_load_result(ghost_view, index),
 {
 }
 
@@ -296,7 +296,7 @@ pub proof fn lemma_negative_index_invalid(i: int)
 
     /// Test: Basic view properties.
     proof fn test_view_properties() {
-        let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| 0usize);
+        let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| 0int);
         let view: KernelRedZoneView = KernelRedZoneView { contents };
 
         // View is well-formed.
@@ -312,7 +312,7 @@ pub proof fn lemma_negative_index_invalid(i: int)
 
     /// Test: Update preserves length.
     proof fn test_update_preserves_len() {
-        let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| 0usize);
+        let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| 0int);
         let view: KernelRedZoneView = KernelRedZoneView { contents };
 
         let updated: KernelRedZoneView = view.update(0, 42);
@@ -323,7 +323,7 @@ pub proof fn lemma_negative_index_invalid(i: int)
 
     /// Test: Read-after-write property.
     proof fn test_read_after_write() {
-        let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| 0usize);
+        let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| 0int);
         let view: KernelRedZoneView = KernelRedZoneView { contents };
 
         lemma_store_then_load(view, 5, 123);
@@ -333,7 +333,7 @@ pub proof fn lemma_negative_index_invalid(i: int)
 
     /// Test: Non-interference property.
     proof fn test_non_interference() {
-        let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| i as usize);
+        let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| i);
         let view: KernelRedZoneView = KernelRedZoneView { contents };
 
         // Store at index 3, should not affect index 7.
@@ -344,7 +344,7 @@ pub proof fn lemma_negative_index_invalid(i: int)
 
     /// Test: Store overwrites previous value.
     proof fn test_store_overwrite() {
-        let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| 0usize);
+        let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| 0int);
         let view: KernelRedZoneView = KernelRedZoneView { contents };
 
         lemma_store_overwrite(view, 2, 100, 200);
@@ -356,7 +356,7 @@ pub proof fn lemma_negative_index_invalid(i: int)
 
     /// Test: Stores commute.
     proof fn test_stores_commute() {
-        let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| 0usize);
+        let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| 0int);
         let view: KernelRedZoneView = KernelRedZoneView { contents };
 
         lemma_store_commutes(view, 1, 10, 4, 40);
@@ -384,7 +384,7 @@ pub proof fn lemma_negative_index_invalid(i: int)
 
     /// Test: Well-formedness preservation.
     proof fn test_well_formedness_preservation() {
-        let contents: Seq<usize> = Seq::new(SPEC_NUM_ENTRIES as nat, |i| 0usize);
+        let contents: Seq<int> = Seq::new(SPEC_NUM_ENTRIES as nat, |i: int| 0int);
         let view: KernelRedZoneView = KernelRedZoneView { contents };
 
         assert(view.is_well_formed());
@@ -413,15 +413,15 @@ pub proof fn lemma_negative_index_invalid(i: int)
         
         // Model a store operation at index 0 with value 42.
         lemma_valid_index_in_bounds(ghost.view, 0);
-        let new_view = spec_store_effect(ghost.view, 0, 42);
-        lemma_update_preserves_well_formed(ghost.view, 0, 42);
+        let new_view: KernelRedZoneView = spec_store_effect(ghost.view, 0, 42int);
+        lemma_update_preserves_well_formed(ghost.view, 0, 42int);
         ghost.view = new_view;
         
         // Verify the new ghost state is well-formed.
         assert(ghost.inv());
         
         // Verify read-after-write: loading from index 0 should return 42.
-        lemma_store_then_load(ghost.view, 0, 42);
+        lemma_store_then_load(ghost.view, 0, 42int);
         // After store(0, 42), spec_load_result(view, 0) == 42.
     }
 

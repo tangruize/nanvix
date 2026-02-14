@@ -214,11 +214,11 @@ pub const NUM_ENTRIES: usize = KREDZONE_SIZE / ENTRY_SIZE;
 
 /// Abstract view of the kernel red zone for specification purposes.
 ///
-/// This view models the red zone as a sequence of usize values.
+/// This view models the red zone as a sequence of abstract integer values.
 #[verifier::ext_equal]
 pub struct KernelRedZoneView {
     /// The logical contents of the red zone.
-    pub contents: Seq<usize>,
+    contents: Seq<int>,
 }
 
 //==================================================================================================
@@ -429,20 +429,20 @@ pub fn store_with_ghost(
     ensures
         result.is_ok() ==> {
             &&& spec_is_valid_index(index as int)
-            &&& ghost.view == spec_store_effect(old(ghost).view, index as int, value)
+            &&& ghost.view() == spec_store_effect(old(ghost).view(), index as int, value as int)
             &&& ghost.inv()
         },
         result.is_err() ==> {
             &&& !spec_is_valid_index(index as int)
-            &&& ghost.view == old(ghost).view
+            &&& ghost.view() == old(ghost).view()
         },
 {
     let res = store(index, value);
     if res.is_ok() {
         proof {
             lemma_valid_index_in_bounds(ghost.view, index as int);
-            lemma_update_preserves_well_formed(ghost.view, index as int, value);
-            ghost.view = spec_store_effect(ghost.view, index as int, value);
+            lemma_update_preserves_well_formed(ghost.view, index as int, value as int);
+            ghost.view = spec_store_effect(ghost.view, index as int, value as int);
         }
     }
     res
@@ -474,7 +474,7 @@ pub fn load_with_ghost(
     ensures
         result.is_ok() ==> {
             &&& spec_is_valid_index(index as int)
-            &&& result.unwrap() == spec_load_result(ghost.view, index as int)
+            &&& result.unwrap() as int == spec_load_result(ghost.view(), index as int)
         },
         result.is_err() ==> !spec_is_valid_index(index as int),
 {

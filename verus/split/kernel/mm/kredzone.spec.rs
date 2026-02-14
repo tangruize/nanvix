@@ -28,14 +28,14 @@ impl KernelRedZoneView {
     }
 
     /// Returns the value at index i.
-    pub open spec fn index(&self, i: int) -> usize
+    pub open spec fn index(&self, i: int) -> int
         recommends 0 <= i < self.len() as int
     {
         self.contents[i]
     }
 
     /// Returns a new view with the element at index i updated to value.
-    pub open spec fn update(&self, i: int, value: usize) -> KernelRedZoneView
+    pub open spec fn update(&self, i: int, value: int) -> KernelRedZoneView
         recommends 0 <= i < self.len() as int
     {
         KernelRedZoneView {
@@ -53,7 +53,7 @@ impl KernelRedZoneView {
     //==============================================================================================
 
     /// Returns true if the view represents a well-formed kernel red zone.
-    pub open spec fn is_well_formed(&self) -> bool {
+    pub closed spec fn is_well_formed(&self) -> bool {
         self.len() == SPEC_NUM_ENTRIES as nat
     }
 }
@@ -89,7 +89,7 @@ impl KernelRedZoneView {
 /// ghost state through an incompatible interface.
 #[verifier::ext_equal]
 pub tracked struct KernelRedZoneGhost {
-    pub ghost view: KernelRedZoneView,
+    ghost view: KernelRedZoneView,
 }
 
 
@@ -113,7 +113,7 @@ impl KernelRedZoneGhost {
 pub open spec fn spec_store_effect(
     view: KernelRedZoneView,
     index: int,
-    value: usize,
+    value: int,
 ) -> KernelRedZoneView
     recommends
         view.is_well_formed(),
@@ -126,7 +126,7 @@ pub open spec fn spec_store_effect(
 /// Specification function: Result of a load operation on abstract state.
 ///
 /// Given the current view and a valid load operation, returns the value.
-pub open spec fn spec_load_result(view: KernelRedZoneView, index: int) -> usize
+pub open spec fn spec_load_result(view: KernelRedZoneView, index: int) -> int
     recommends
         view.is_well_formed(),
         spec_is_valid_index(index),
