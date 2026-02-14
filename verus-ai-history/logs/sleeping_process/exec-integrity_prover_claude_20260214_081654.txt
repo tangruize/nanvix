@@ -1,0 +1,109 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T08:18:03.590177
+Model: claude-opus-4.6-fast
+Session: 27ee8e5e-f830-4f3b-9b60-3fbf22151d9c
+Duration: 69.1s
+Exit code: 0
+
+=== Prompt ===
+Check exec code integrity for sleeping_process.
+
+Original source: src/kernel/src/pm/process/state/sleeping.rs
+Verified code directory: verus/split/kernel/pm/process/state/
+  - sleeping.rs (exec)
+  - sleeping.spec.rs (spec)
+  - sleeping.proof.rs (proof)
+
+== YOUR TASK ==
+
+Compare the verified exec code (verus/split/kernel/pm/process/state/sleeping.rs) against the
+original source (src/kernel/src/pm/process/state/sleeping.rs) and produce a detailed integrity report.
+
+== STEPS ==
+
+1. Identify ALL differences between the original source and the verified exec
+   code. Focus on executable logic, not ghost/proof annotations.
+2. For each difference, classify it:
+   - GHOST_ANNOTATION: Added requires/ensures/invariant (acceptable)
+   - GHOST_FIELD: Added ghost/tracked field to struct (needs justification)
+   - LOGIC_CHANGE: Changed control flow, arithmetic, data structure (must fix or justify)
+   - TYPE_CHANGE: Changed types (must document why)
+   - MISSING_FUNCTION: Function in original but not in verified (must add)
+   - INVENTED_FUNCTION: Exec function in verified but not in original (must remove or justify)
+3. For LOGIC_CHANGE items: fix the verified code to match the original, then
+   re-verify. If the change is necessary for verification, document why.
+4. For MISSING_FUNCTION items: add the function with verification.
+5. For INVENTED_FUNCTION items: remove unless justified.
+
+== CONSTRAINTS ==
+- Do NOT add assume, admit, or unjustified external_body.
+- Verification must pass after fixes.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh sleeping_process
+
+== OUTPUT ==
+Write report to /home/ubuntu/nanvix/verus-ai-history/integrity/sleeping_process_20260214_081654.md:
+
+```markdown
+# Exec Integrity: sleeping_process
+
+## Summary
+- Total differences: N
+- Acceptable (ghost annotations): M
+- Fixed: K
+- Unfixable (documented): J
+
+## Differences
+| # | Type | Location | Description | Action |
+|---|------|----------|-------------|--------|
+| 1 | GHOST_ANNOTATION | fn foo() | Added requires clause | Acceptable |
+| 2 | LOGIC_CHANGE | fn bar() | Loop bound changed | Fixed |
+
+## Verification Status
+- Before: [PASS/FAIL]
+- After: [PASS/FAIL]
+```
+
+=== Output ===
+
+
+
+
+● Read src/kernel/src/pm/process/state/sleeping.rs
+  └ 252 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.rs
+  └ 568 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.proof.rs
+  └ 385 lines read
+
+● Read verus/split/kernel/pm/process/state/sleeping.spec.rs
+  └ 448 lines read
+
+● Check verification script
+  $ cd /home/ubuntu/nanvix && cat verus-ai/scripts/verify.sh | head -30
+  └ 31 lines...
+
+● Run Verus verification
+  $ cd /home/ubuntu/nanvix && bash verus-ai/scripts/verify.sh sleeping_process 2>&1 | tail -40
+  └ 23 lines...
+
+Verification passes (29 verified, 0 errors). Now let me create the integrity report.
+
+● Create integrity directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/integrity
+  └ 1 line...
+
+● Create verus-ai-history/integrity/sleeping_process_20260214_081654.md (+77)
+
+
+Total usage est:        9 Premium requests
+API time spent:         52s
+Total session time:     1m 7.775s
+Total code changes:     +77 -0
+Breakdown by AI model:
+ claude-opus-4.6-fast    331.1k in, 5.3k out, 284.3k cached (Est. 9 Premium requests)
+
+=== End ===
