@@ -118,7 +118,11 @@ verus! {
 ///
 /// # Representation
 ///
-/// The fields are `pub` as required by Verus for `pub open spec fn` access.
+/// The fields are `pub` because the Verus `View` trait requires `open spec fn view()`,
+/// which accesses struct fields directly. Verus mandates that field expressions in
+/// `pub open spec fn` are well-formed everywhere, which requires `pub` visibility.
+/// Verified code should use the `View` trait (`self@`) and `FenceView` predicates
+/// rather than direct field access.
 pub struct Fence {
     /// Number of signals received so far.
     pub count: usize,
@@ -147,15 +151,14 @@ impl Fence {
     /// A new `Fence` with zero signals received and the given total.
     pub fn new(total: usize) -> (result: Self)
         ensures
-            result.count == 0,
-            result.total == total,
-            result.spec_count() == 0,
-            result.spec_total() == total as nat,
-            result@ == Fence::spec_new_view(total as nat),
+            result@ == FenceView::spec_new(total as nat),
+            result@.count == 0,
+            result@.total == total as nat,
             result.inv(),
-            total == 0 ==> result.spec_is_satisfied(),
-            total > 0 ==> result.spec_is_waiting(),
+            total == 0 ==> result@.is_satisfied(),
+            total > 0 ==> result@.is_waiting(),
     {
+        proof { reveal(Fence::inv); }
         Fence { count: 0, total }
     }
 
@@ -176,10 +179,9 @@ impl Fence {
     pub fn wait(&self)
         requires
             self.inv(),
-            self.spec_is_satisfied(),
+            self@.is_satisfied(),
         ensures
-            self.spec_is_satisfied(),
-            self.count as nat >= self.total as nat,
+            self@.is_satisfied(),
     {
         // In the sequential model, the precondition guarantees satisfaction,
         // so the spin loop body is never entered.
@@ -199,16 +201,15 @@ impl Fence {
     pub fn signal(&mut self)
         requires
             old(self).inv(),
-            old(self).spec_is_waiting(),
+            old(self)@.is_waiting(),
         ensures
-            self.count == old(self).count + 1,
-            self.total == old(self).total,
-            self.spec_count() == old(self).spec_count() + 1,
-            self.spec_total() == old(self).spec_total(),
+            self@.count == old(self)@.count + 1,
+            self@.total == old(self)@.total,
             self.inv(),
-            old(self).spec_remaining() > 0 ==> self.spec_remaining() == old(self).spec_remaining() - 1,
-            self.spec_remaining() == 0 ==> self.spec_is_satisfied(),
+            old(self)@.remaining() > 0 ==> self@.remaining() == old(self)@.remaining() - 1,
+            self@.remaining() == 0 ==> self@.is_satisfied(),
     {
+        proof { reveal(Fence::inv); }
         self.count = self.count + 1;
     }
 
@@ -225,8 +226,7 @@ impl Fence {
         requires
             self.inv(),
         ensures
-            result == self.spec_is_satisfied(),
-            result == (self.count as nat >= self.total as nat),
+            result == self@.is_satisfied(),
     {
         self.count >= self.total
     }
@@ -242,8 +242,7 @@ impl Fence {
     /// The current signal count.
     pub fn get_count(&self) -> (result: usize)
         ensures
-            result == self.count,
-            result as nat == self.spec_count(),
+            result as nat == self@.count,
     {
         self.count
     }
@@ -259,8 +258,7 @@ impl Fence {
     /// The total signal count.
     pub fn get_total(&self) -> (result: usize)
         ensures
-            result == self.total,
-            result as nat == self.spec_total(),
+            result as nat == self@.total,
     {
         self.total
     }

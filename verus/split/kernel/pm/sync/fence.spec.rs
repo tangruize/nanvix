@@ -25,7 +25,40 @@ pub struct FenceView {
 }
 
 //==================================================================================================
-// Spec Functions
+// Spec Functions — FenceView
+//==================================================================================================
+
+impl FenceView {
+    /// Returns whether the fence is satisfied (all signals received).
+    pub open spec fn is_satisfied(&self) -> bool {
+        self.count >= self.total
+    }
+
+    /// Returns whether the fence is waiting (not yet satisfied).
+    pub open spec fn is_waiting(&self) -> bool {
+        self.count < self.total
+    }
+
+    /// Returns the number of remaining signals needed.
+    ///
+    /// # Note
+    ///
+    /// For meaningful results, `count` should be `<= total`. If `count > total`,
+    /// nat subtraction saturates to 0.
+    pub open spec fn remaining(&self) -> nat
+        recommends self.count <= self.total,
+    {
+        (self.total - self.count) as nat
+    }
+
+    /// The view of a newly created fence with the given total.
+    pub open spec fn spec_new(total: nat) -> FenceView {
+        FenceView { count: 0, total: total }
+    }
+}
+
+//==================================================================================================
+// Spec Functions — Fence
 //==================================================================================================
 
 impl Fence {
@@ -40,43 +73,6 @@ impl Fence {
     /// - `wait()` is a pure observer and does not modify state.
     pub closed spec fn inv(&self) -> bool {
         self.count as nat <= self.total as nat
-    }
-
-    /// Spec function: returns whether the fence is satisfied (all signals received).
-    pub open spec fn spec_is_satisfied(&self) -> bool {
-        self.count as nat >= self.total as nat
-    }
-
-    /// Spec function: returns whether the fence is waiting (not yet satisfied).
-    pub open spec fn spec_is_waiting(&self) -> bool {
-        (self.count as nat) < (self.total as nat)
-    }
-
-    /// Spec function: returns the number of signals received.
-    pub open spec fn spec_count(&self) -> nat {
-        self.count as nat
-    }
-
-    /// Spec function: returns the total number of signals required.
-    pub open spec fn spec_total(&self) -> nat {
-        self.total as nat
-    }
-
-    /// Spec function: returns the number of remaining signals needed.
-    ///
-    /// # Note
-    ///
-    /// This function assumes `inv()` for meaningful results. Without `inv()`,
-    /// if `count > total`, nat subtraction saturates to 0.
-    pub open spec fn spec_remaining(&self) -> nat
-        recommends self.inv(),
-    {
-        (self.total as nat - self.count as nat) as nat
-    }
-
-    /// Spec function: the view of a newly created fence with the given total.
-    pub open spec fn spec_new_view(total: nat) -> FenceView {
-        FenceView { count: 0, total: total }
     }
 }
 

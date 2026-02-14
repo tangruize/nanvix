@@ -13,7 +13,7 @@ verus! {
 // The following lemmas are intentionally shallow definition-unfolding
 // properties. They serve as executable documentation and regression tests
 // that guard against accidental spec changes (e.g., a typo in inv() or
-// spec_is_satisfied()). They are automatically discharged by Verus and do
+// is_satisfied()). They are automatically discharged by Verus and do
 // not exercise the prover in a meaningful way. The substantive protocol
 // proofs are in the "Protocol Properties" and "Concurrency Properties"
 // sections below.
@@ -22,9 +22,9 @@ impl Fence {
     /// Lemma: A newly created fence has zero count and the given total.
     pub proof fn lemma_new_is_unsatisfied(total: nat)
         ensures
-            Fence::spec_new_view(total) == (FenceView { count: 0, total: total }),
-            Fence::spec_new_view(total).count == 0,
-            Fence::spec_new_view(total).total == total,
+            FenceView::spec_new(total) == (FenceView { count: 0, total: total }),
+            FenceView::spec_new(total).count == 0,
+            FenceView::spec_new(total).total == total,
     {
     }
 
@@ -33,27 +33,27 @@ impl Fence {
         requires
             self.inv(),
         ensures
-            self.spec_is_satisfied() || self.spec_is_waiting(),
-            !(self.spec_is_satisfied() && self.spec_is_waiting()),
+            self@.is_satisfied() || self@.is_waiting(),
+            !(self@.is_satisfied() && self@.is_waiting()),
     {
         reveal(Fence::inv);
     }
 
-    /// Lemma: spec_is_satisfied and spec_is_waiting are complementary for well-formed fences.
+    /// Lemma: is_satisfied and is_waiting are complementary for well-formed fences.
     pub proof fn lemma_satisfied_waiting_complementary(&self)
         requires
             self.inv(),
         ensures
-            self.spec_is_satisfied() == !self.spec_is_waiting(),
+            self@.is_satisfied() == !self@.is_waiting(),
     {
         reveal(Fence::inv);
     }
 
-    /// Lemma: View reflects the count and total fields.
+    /// Lemma: View reflects predicates consistently.
     pub proof fn lemma_view_reflects_state(&self)
         ensures
-            self@.count == self.spec_count(),
-            self@.total == self.spec_total(),
+            (self@.count >= self@.total) == self@.is_satisfied(),
+            (self@.count < self@.total) == self@.is_waiting(),
     {
     }
 
@@ -62,17 +62,17 @@ impl Fence {
         requires
             a@ == b@,
         ensures
-            a.spec_count() == b.spec_count(),
-            a.spec_total() == b.spec_total(),
-            a.spec_is_satisfied() == b.spec_is_satisfied(),
-            a.spec_is_waiting() == b.spec_is_waiting(),
+            a@.count == b@.count,
+            a@.total == b@.total,
+            a@.is_satisfied() == b@.is_satisfied(),
+            a@.is_waiting() == b@.is_waiting(),
     {
     }
 
     /// Lemma: Well-formedness is preserved: new fences are well-formed.
     pub proof fn lemma_new_is_wf(total: nat)
         ensures ({
-            let view: FenceView = Fence::spec_new_view(total);
+            let view: FenceView = FenceView::spec_new(total);
             view.count == 0 && view.total == total && view.count <= view.total
         }),
     {
@@ -83,7 +83,7 @@ impl Fence {
         requires
             total > 0,
         ensures
-            Fence::spec_new_view(total).count < Fence::spec_new_view(total).total,
+            FenceView::spec_new(total).is_waiting(),
     {
     }
 
@@ -92,7 +92,7 @@ impl Fence {
         requires
             total == 0,
         ensures
-            Fence::spec_new_view(total).count >= Fence::spec_new_view(total).total,
+            FenceView::spec_new(total).is_satisfied(),
     {
     }
 }
@@ -141,8 +141,8 @@ impl Fence {
     {
     }
 
-    /// Lemma: Signaling preserves well-formedness when the fence is waiting.
-    pub proof fn lemma_signal_preserves_wf(pre_count: nat, total: nat)
+    /// Lemma: Signaling preserves the invariant when the fence is waiting.
+    pub proof fn lemma_signal_preserves_inv(pre_count: nat, total: nat)
         requires
             pre_count < total,
         ensures
@@ -179,13 +179,13 @@ impl Fence {
     {
     }
 
-    /// Lemma: An unlocked fence has the same view as a new fence with its total.
+    /// Lemma: An unsignaled fence has the same view as a new fence with its total.
     pub proof fn lemma_unsignaled_eq_new_view(s: &Fence)
         requires
-            s.spec_count() == 0,
+            s@.count == 0,
             s.inv(),
         ensures
-            s@ == Fence::spec_new_view(s.spec_total()),
+            s@ == FenceView::spec_new(s@.total),
     {
         reveal(Fence::inv);
     }
@@ -195,7 +195,7 @@ impl Fence {
         requires
             s.inv(),
         ensures
-            (s.spec_remaining() == 0) == s.spec_is_satisfied(),
+            (s@.remaining() == 0) == s@.is_satisfied(),
     {
         reveal(Fence::inv);
     }
@@ -248,7 +248,7 @@ impl Fence {
             count + n == total,
         ensures
             count + n >= total,
-            // Each intermediate state preserves wf.
+            // Each intermediate state preserves inv.
             forall|i: nat| #![trigger (count + i)] i <= n ==> count + i <= total,
             // The final state is satisfied.
             count + n == total,
