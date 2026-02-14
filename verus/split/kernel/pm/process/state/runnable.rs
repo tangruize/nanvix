@@ -308,11 +308,11 @@ impl RunnableProcess {
         requires
             ready_time >= 0i64,
         ensures
-            result.spec_pid() == pid.spec_value(),
-            result.spec_ready_count() == 1,
-            result.spec_interrupted_count() == 0,
-            result.spec_sleeping_count() == 0,
-            result.spec_zombie_count() == 0,
+            result@.pid == pid.spec_value(),
+            result@.ready_thread_ids.len() == 1,
+            result@.interrupted_thread_ids.len() == 0,
+            result@.sleeping_thread_ids.len() == 0,
+            result@.zombie_thread_ids.len() == 0,
             result.wf(),
     {
         proof { reveal(RunnableProcess::wf); }
@@ -369,11 +369,11 @@ impl RunnableProcess {
             interrupted_count as nat == interrupted_ids@.len(),
             sleeping_count as nat == sleeping_ids@.len(),
         ensures
-            result.spec_pid() == pid.spec_value(),
-            result.spec_ready_count() == ready_ids@.len(),
-            result.spec_interrupted_count() == interrupted_ids@.len(),
-            result.spec_sleeping_count() == sleeping_ids@.len(),
-            result.spec_zombie_count() == zombie_ids@.len(),
+            result@.pid == pid.spec_value(),
+            result@.ready_thread_ids.len() == ready_ids@.len(),
+            result@.interrupted_thread_ids.len() == interrupted_ids@.len(),
+            result@.sleeping_thread_ids.len() == sleeping_ids@.len(),
+            result@.zombie_thread_ids.len() == zombie_ids@.len(),
             result.wf(),
     {
         proof { reveal(RunnableProcess::wf); }
@@ -392,7 +392,7 @@ impl RunnableProcess {
     /// Returns the process identifier as i32.
     pub fn pid_i32(&self) -> (result: i32)
         ensures
-            result as int == self.spec_pid(),
+            result as int == self@.pid,
     {
         self.pid.into_i32()
     }
@@ -416,19 +416,19 @@ impl RunnableProcess {
         requires
             self.wf(),
         ensures
-            result.spec_pid() == self.spec_pid(),
+            result@.pid == self@.pid,
             // The selected thread has the earliest admission time.
             ({
-                let sel: int = self.spec_earliest_ready_index();
-                result.running_thread_id as int == self.ready_thread_ids@[sel] as int
-                && result.ready_thread_ids@ ==
-                    Self::spec_remove_at(self.ready_thread_ids@, sel)
-                && result.ready_thread_ids@.len() == self.spec_ready_count() - 1
+                let sel: int = self@.spec_earliest_ready_index();
+                result@.running_thread_id == self@.ready_thread_ids[sel]
+                && result@.ready_thread_ids ==
+                    RunnableProcessView::spec_remove_at(self@.ready_thread_ids, sel)
+                && result@.ready_thread_ids.len() == self@.ready_thread_ids.len() - 1
             }),
             // Other lists are preserved exactly.
-            result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
-            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
-            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+            result@.interrupted_thread_ids == self@.interrupted_thread_ids,
+            result@.sleeping_thread_ids == self@.sleeping_thread_ids,
+            result@.zombie_thread_ids == self@.zombie_thread_ids,
     {
         proof { reveal(RunnableProcess::wf); }
         // Find the index of the thread with earliest admission time via concrete loop.
@@ -501,33 +501,34 @@ impl RunnableProcess {
             match result {
                 TerminateResult::Interrupted(ip) => {
                     // PID preserved.
-                    ip.spec_pid() == self.spec_pid()
+                    ip@.pid == self@.pid
                     // Interrupted threads are exactly original interrupted + sleeping->interrupted.
-                    && ip.interrupted_thread_ids@.len() ==
-                        self.spec_interrupted_count() + self.spec_sleeping_count()
-                    && ip.interrupted_thread_ids@ ==
-                        self.interrupted_thread_ids@.add(self.sleeping_thread_ids@)
+                    && ip@.interrupted_thread_ids.len() ==
+                        self@.interrupted_thread_ids.len() + self@.sleeping_thread_ids.len()
+                    && ip@.interrupted_thread_ids ==
+                        self@.interrupted_thread_ids.add(self@.sleeping_thread_ids)
                     // Zombie threads include all original ready + original zombie.
-                    && ip.zombie_thread_ids@.len() ==
-                        self.spec_ready_count() + self.spec_zombie_count()
-                    && ip.zombie_thread_ids@ ==
-                        self.ready_thread_ids@.add(self.zombie_thread_ids@)
+                    && ip@.zombie_thread_ids.len() ==
+                        self@.ready_thread_ids.len() + self@.zombie_thread_ids.len()
+                    && ip@.zombie_thread_ids ==
+                        self@.ready_thread_ids.add(self@.zombie_thread_ids)
                     && ip.wf()
                     // Branch taken iff there were interrupted or sleeping threads.
-                    && (self.spec_interrupted_count() > 0 || self.spec_sleeping_count() > 0)
+                    && (self@.interrupted_thread_ids.len() > 0
+                        || self@.sleeping_thread_ids.len() > 0)
                 },
                 TerminateResult::Zombie(zp) => {
                     // PID preserved.
-                    zp.spec_pid() == self.spec_pid()
+                    zp@.pid == self@.pid
                     // No interrupted or sleeping threads existed.
-                    && self.spec_interrupted_count() == 0
-                    && self.spec_sleeping_count() == 0
+                    && self@.interrupted_thread_ids.len() == 0
+                    && self@.sleeping_thread_ids.len() == 0
                     // Zombie threads include all original ready + original zombie.
-                    && zp.zombie_thread_ids@.len() ==
-                        self.spec_ready_count() + self.spec_zombie_count()
-                    && zp.zombie_thread_ids@ ==
-                        self.ready_thread_ids@.add(self.zombie_thread_ids@)
-                    && zp.spec_status() == EXIT_STATUS_INTERRUPTED()
+                    && zp@.zombie_thread_ids.len() ==
+                        self@.ready_thread_ids.len() + self@.zombie_thread_ids.len()
+                    && zp@.zombie_thread_ids ==
+                        self@.ready_thread_ids.add(self@.zombie_thread_ids)
+                    && zp@.status == EXIT_STATUS_INTERRUPTED()
                     && zp.wf()
                 },
             },
@@ -593,40 +594,44 @@ impl RunnableProcess {
         ensures
             match result {
                 Ok(r) => {
-                    Self::spec_seq_contains(self.sleeping_thread_ids@, tid)
-                    && r.spec_pid() == self.spec_pid()
-                    && r.spec_ready_count() == self.spec_ready_count() + 1
-                    && r.spec_sleeping_count() == self.spec_sleeping_count() - 1
-                    && r.spec_interrupted_count() == self.spec_interrupted_count()
-                    && r.spec_zombie_count() == self.spec_zombie_count()
+                    RunnableProcessView::spec_seq_contains(
+                        self@.sleeping_thread_ids, tid as int)
+                    && r@.pid == self@.pid
+                    && r@.ready_thread_ids.len() == self@.ready_thread_ids.len() + 1
+                    && r@.sleeping_thread_ids.len() == self@.sleeping_thread_ids.len() - 1
+                    && r@.interrupted_thread_ids.len() == self@.interrupted_thread_ids.len()
+                    && r@.zombie_thread_ids.len() == self@.zombie_thread_ids.len()
                     // Content specs: ready list gets the woken thread appended.
-                    && r.ready_thread_ids@ == self.ready_thread_ids@.push(tid)
+                    && r@.ready_thread_ids == self@.ready_thread_ids.push(tid as int)
                     // Admission times grow by exactly one non-negative element.
-                    && (exists|t: i64| t >= 0i64
-                        && r.ready_admission_times@ == self.ready_admission_times@.push(t))
+                    && (exists|t: int| t >= 0
+                        && r@.ready_admission_times
+                            == self@.ready_admission_times.push(t))
                     // Sleeping list has the found thread removed.
-                    && (exists|idx: int| 0 <= idx < self.sleeping_thread_ids@.len()
-                        && self.sleeping_thread_ids@[idx] == tid
-                        && r.sleeping_thread_ids@ ==
-                            Self::spec_remove_at(self.sleeping_thread_ids@, idx))
+                    && (exists|idx: int| 0 <= idx < self@.sleeping_thread_ids.len()
+                        && self@.sleeping_thread_ids[idx] == tid as int
+                        && r@.sleeping_thread_ids ==
+                            RunnableProcessView::spec_remove_at(
+                                self@.sleeping_thread_ids, idx))
                     // Other lists preserved exactly.
-                    && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
-                    && r.zombie_thread_ids@ == self.zombie_thread_ids@
+                    && r@.interrupted_thread_ids == self@.interrupted_thread_ids
+                    && r@.zombie_thread_ids == self@.zombie_thread_ids
                     && r.wf()
                 },
                 Err(r) => {
-                    !Self::spec_seq_contains(self.sleeping_thread_ids@, tid)
-                    && r.spec_pid() == self.spec_pid()
-                    && r.spec_ready_count() == self.spec_ready_count()
-                    && r.spec_sleeping_count() == self.spec_sleeping_count()
-                    && r.spec_interrupted_count() == self.spec_interrupted_count()
-                    && r.spec_zombie_count() == self.spec_zombie_count()
+                    !RunnableProcessView::spec_seq_contains(
+                        self@.sleeping_thread_ids, tid as int)
+                    && r@.pid == self@.pid
+                    && r@.ready_thread_ids.len() == self@.ready_thread_ids.len()
+                    && r@.sleeping_thread_ids.len() == self@.sleeping_thread_ids.len()
+                    && r@.interrupted_thread_ids.len() == self@.interrupted_thread_ids.len()
+                    && r@.zombie_thread_ids.len() == self@.zombie_thread_ids.len()
                     // Content preserved exactly.
-                    && r.ready_thread_ids@ == self.ready_thread_ids@
-                    && r.ready_admission_times@ == self.ready_admission_times@
-                    && r.interrupted_thread_ids@ == self.interrupted_thread_ids@
-                    && r.sleeping_thread_ids@ == self.sleeping_thread_ids@
-                    && r.zombie_thread_ids@ == self.zombie_thread_ids@
+                    && r@.ready_thread_ids == self@.ready_thread_ids
+                    && r@.ready_admission_times == self@.ready_admission_times
+                    && r@.interrupted_thread_ids == self@.interrupted_thread_ids
+                    && r@.sleeping_thread_ids == self@.sleeping_thread_ids
+                    && r@.zombie_thread_ids == self@.zombie_thread_ids
                     && r.wf()
                 },
             },
@@ -735,18 +740,19 @@ impl RunnableProcess {
             self.wf(),
             ready_time >= 0i64,
         ensures
-            result.spec_pid() == self.spec_pid(),
-            result.spec_ready_count() == self.spec_ready_count() + 1,
-            result.spec_interrupted_count() == self.spec_interrupted_count(),
-            result.spec_sleeping_count() == self.spec_sleeping_count(),
-            result.spec_zombie_count() == self.spec_zombie_count(),
+            result@.pid == self@.pid,
+            result@.ready_thread_ids.len() == self@.ready_thread_ids.len() + 1,
+            result@.interrupted_thread_ids.len() == self@.interrupted_thread_ids.len(),
+            result@.sleeping_thread_ids.len() == self@.sleeping_thread_ids.len(),
+            result@.zombie_thread_ids.len() == self@.zombie_thread_ids.len(),
             // Content specs: ready list gets the new thread appended.
-            result.ready_thread_ids@ == self.ready_thread_ids@.push(ready_tid),
-            result.ready_admission_times@ == self.ready_admission_times@.push(ready_time),
+            result@.ready_thread_ids == self@.ready_thread_ids.push(ready_tid as int),
+            result@.ready_admission_times
+                == self@.ready_admission_times.push(ready_time as int),
             // Other lists preserved exactly.
-            result.interrupted_thread_ids@ == self.interrupted_thread_ids@,
-            result.sleeping_thread_ids@ == self.sleeping_thread_ids@,
-            result.zombie_thread_ids@ == self.zombie_thread_ids@,
+            result@.interrupted_thread_ids == self@.interrupted_thread_ids,
+            result@.sleeping_thread_ids == self@.sleeping_thread_ids,
+            result@.zombie_thread_ids == self@.zombie_thread_ids,
             result.wf(),
     {
         proof { reveal(RunnableProcess::wf); }

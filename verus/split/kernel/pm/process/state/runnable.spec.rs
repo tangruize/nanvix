@@ -113,21 +113,29 @@ verus! {
 // View Types
 //==================================================================================================
 
+/// Helper: converts a concrete sequence of i64 to an abstract sequence of int.
+///
+/// Used by view() implementations to lift `Vec<i64>@` (`Seq<i64>`) to the
+/// abstract `Seq<int>` representation required by View types (Step 1).
+pub open spec fn spec_i64_seq_as_int(s: Seq<i64>) -> Seq<int> {
+    Seq::new(s.len(), |i: int| s[i] as int)
+}
+
 /// Abstract view of a RunnableProcess.
 #[verifier::ext_equal]
 pub struct RunnableProcessView {
     /// Process identifier value.
     pub pid: int,
     /// Sequence of ready thread IDs (non-empty).
-    pub ready_thread_ids: Seq<i64>,
+    pub ready_thread_ids: Seq<int>,
     /// Sequence of ready thread admission times, parallel to ready_thread_ids.
-    pub ready_admission_times: Seq<i64>,
+    pub ready_admission_times: Seq<int>,
     /// Sequence of interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Seq<i64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Sequence of sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<i64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Sequence of zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<i64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 /// Abstract view of a RunningProcess (boundary type).
@@ -143,13 +151,13 @@ pub struct RunningProcessView {
     /// The running thread ID.
     pub running_thread_id: int,
     /// Ready thread IDs (may be empty).
-    pub ready_thread_ids: Seq<i64>,
+    pub ready_thread_ids: Seq<int>,
     /// Interrupted thread IDs (may be empty).
-    pub interrupted_thread_ids: Seq<i64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Sleeping thread IDs (may be empty).
-    pub sleeping_thread_ids: Seq<i64>,
+    pub sleeping_thread_ids: Seq<int>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<i64>,
+    pub zombie_thread_ids: Seq<int>,
     /// Interrupt reason (unconstrained at this abstraction level).
     pub interrupt_reason: int,
 }
@@ -160,9 +168,9 @@ pub struct InterruptedProcessView {
     /// Process identifier value.
     pub pid: int,
     /// Interrupted thread IDs (non-empty).
-    pub interrupted_thread_ids: Seq<i64>,
+    pub interrupted_thread_ids: Seq<int>,
     /// Zombie thread IDs (may be empty).
-    pub zombie_thread_ids: Seq<i64>,
+    pub zombie_thread_ids: Seq<int>,
 }
 
 /// Abstract view of a ZombieProcess (boundary type).
@@ -171,7 +179,7 @@ pub struct ZombieProcessView {
     /// Process identifier value.
     pub pid: int,
     /// Zombie thread IDs (non-empty).
-    pub zombie_thread_ids: Seq<i64>,
+    pub zombie_thread_ids: Seq<int>,
     /// Exit status.
     pub status: int,
 }
@@ -520,7 +528,7 @@ impl RunnableProcessView {
         &&& self.ready_thread_ids.len() >= 1
         &&& self.ready_thread_ids.len() == self.ready_admission_times.len()
         &&& forall|i: int| 0 <= i < self.ready_admission_times.len()
-                ==> #[trigger] self.ready_admission_times[i] >= 0i64
+                ==> #[trigger] self.ready_admission_times[i] >= 0
     }
 
     // Note: The helpers `spec_seq_contains`, `spec_remove_at`, and
@@ -530,19 +538,19 @@ impl RunnableProcessView {
     // `spec_min_index_rec`; the other two are structurally identical.
 
     /// View-level helper: checks if a sequence contains a given value.
-    pub open spec fn spec_seq_contains(s: Seq<i64>, tid: i64) -> bool {
+    pub open spec fn spec_seq_contains(s: Seq<int>, tid: int) -> bool {
         exists|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
     /// View-level helper: removes element at index `idx` from sequence `s`.
-    pub open spec fn spec_remove_at(s: Seq<i64>, idx: int) -> Seq<i64>
+    pub open spec fn spec_remove_at(s: Seq<int>, idx: int) -> Seq<int>
         recommends 0 <= idx < s.len()
     {
         s.subrange(0, idx).add(s.subrange(idx + 1, s.len() as int))
     }
 
     /// View-level helper: recursively finds the index of the minimum in `s[0..n]`.
-    pub open spec fn spec_min_index_rec(s: Seq<i64>, n: int) -> int
+    pub open spec fn spec_min_index_rec(s: Seq<int>, n: int) -> int
         recommends 1 <= n <= s.len()
         decreases n
     {
@@ -569,21 +577,21 @@ impl RunnableProcessView {
     }
 
     /// View-level helper: selects a witness index for `tid` in sequence `s`.
-    pub open spec fn spec_find_index(s: Seq<i64>, tid: i64) -> int
+    pub open spec fn spec_find_index(s: Seq<int>, tid: int) -> int
         recommends Self::spec_seq_contains(s, tid)
     {
         choose|i: int| 0 <= i < s.len() && s[i] == tid
     }
 
     /// Abstract state transition: constructs initial view (models `new()`).
-    pub open spec fn spec_new(pid: int, ready_tid: i64, ready_time: i64) -> RunnableProcessView {
+    pub open spec fn spec_new(pid: int, ready_tid: int, ready_time: int) -> RunnableProcessView {
         RunnableProcessView {
             pid: pid,
             ready_thread_ids: seq![ready_tid],
             ready_admission_times: seq![ready_time],
-            interrupted_thread_ids: Seq::<i64>::empty(),
-            sleeping_thread_ids: Seq::<i64>::empty(),
-            zombie_thread_ids: Seq::<i64>::empty(),
+            interrupted_thread_ids: Seq::<int>::empty(),
+            sleeping_thread_ids: Seq::<int>::empty(),
+            zombie_thread_ids: Seq::<int>::empty(),
         }
     }
 
@@ -593,11 +601,11 @@ impl RunnableProcessView {
     /// running to runnable).
     pub open spec fn spec_from_state(
         pid: int,
-        ready_ids: Seq<i64>,
-        ready_times: Seq<i64>,
-        interrupted_ids: Seq<i64>,
-        sleeping_ids: Seq<i64>,
-        zombie_ids: Seq<i64>,
+        ready_ids: Seq<int>,
+        ready_times: Seq<int>,
+        interrupted_ids: Seq<int>,
+        sleeping_ids: Seq<int>,
+        zombie_ids: Seq<int>,
     ) -> RunnableProcessView {
         RunnableProcessView {
             pid: pid,
@@ -624,7 +632,7 @@ impl RunnableProcessView {
         let sel: int = self.spec_earliest_ready_index();
         RunningProcessView {
             pid: self.pid,
-            running_thread_id: self.ready_thread_ids[sel] as int,
+            running_thread_id: self.ready_thread_ids[sel],
             ready_thread_ids: Self::spec_remove_at(self.ready_thread_ids, sel),
             interrupted_thread_ids: self.interrupted_thread_ids,
             sleeping_thread_ids: self.sleeping_thread_ids,
@@ -667,7 +675,7 @@ impl RunnableProcessView {
     /// admission time assigned by `clock_now()` at exec level. The `idx`
     /// parameter is the index of `tid` in the sleeping list, determined by
     /// the concrete search at exec level.
-    pub open spec fn spec_wakeup(&self, tid: i64, time: i64, idx: int) -> RunnableProcessView
+    pub open spec fn spec_wakeup(&self, tid: int, time: int, idx: int) -> RunnableProcessView
         recommends
             0 <= idx < self.sleeping_thread_ids.len(),
             self.sleeping_thread_ids[idx] == tid,
@@ -684,7 +692,7 @@ impl RunnableProcessView {
 
     /// Abstract state transition: appends a thread to the ready queue
     /// (models `add_thread()`).
-    pub open spec fn spec_add_thread(&self, ready_tid: i64, ready_time: i64) -> RunnableProcessView {
+    pub open spec fn spec_add_thread(&self, ready_tid: int, ready_time: int) -> RunnableProcessView {
         RunnableProcessView {
             ready_thread_ids: self.ready_thread_ids.push(ready_tid),
             ready_admission_times: self.ready_admission_times.push(ready_time),
@@ -709,11 +717,11 @@ impl View for RunnableProcess {
     open spec fn view(&self) -> RunnableProcessView {
         RunnableProcessView {
             pid: self.pid.spec_value(),
-            ready_thread_ids: self.ready_thread_ids@,
-            ready_admission_times: self.ready_admission_times@,
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            ready_thread_ids: spec_i64_seq_as_int(self.ready_thread_ids@),
+            ready_admission_times: spec_i64_seq_as_int(self.ready_admission_times@),
+            interrupted_thread_ids: spec_i64_seq_as_int(self.interrupted_thread_ids@),
+            sleeping_thread_ids: spec_i64_seq_as_int(self.sleeping_thread_ids@),
+            zombie_thread_ids: spec_i64_seq_as_int(self.zombie_thread_ids@),
         }
     }
 }
@@ -725,10 +733,10 @@ impl View for RunningProcess {
         RunningProcessView {
             pid: self.pid.spec_value(),
             running_thread_id: self.running_thread_id as int,
-            ready_thread_ids: self.ready_thread_ids@,
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            sleeping_thread_ids: self.sleeping_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            ready_thread_ids: spec_i64_seq_as_int(self.ready_thread_ids@),
+            interrupted_thread_ids: spec_i64_seq_as_int(self.interrupted_thread_ids@),
+            sleeping_thread_ids: spec_i64_seq_as_int(self.sleeping_thread_ids@),
+            zombie_thread_ids: spec_i64_seq_as_int(self.zombie_thread_ids@),
             interrupt_reason: self.interrupt_reason as int,
         }
     }
@@ -740,8 +748,8 @@ impl View for InterruptedProcess {
     open spec fn view(&self) -> InterruptedProcessView {
         InterruptedProcessView {
             pid: self.pid.spec_value(),
-            interrupted_thread_ids: self.interrupted_thread_ids@,
-            zombie_thread_ids: self.zombie_thread_ids@,
+            interrupted_thread_ids: spec_i64_seq_as_int(self.interrupted_thread_ids@),
+            zombie_thread_ids: spec_i64_seq_as_int(self.zombie_thread_ids@),
         }
     }
 }
@@ -752,7 +760,7 @@ impl View for ZombieProcess {
     open spec fn view(&self) -> ZombieProcessView {
         ZombieProcessView {
             pid: self.pid.spec_value(),
-            zombie_thread_ids: self.zombie_thread_ids@,
+            zombie_thread_ids: spec_i64_seq_as_int(self.zombie_thread_ids@),
             status: self.status as int,
         }
     }
