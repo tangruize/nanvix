@@ -8,6 +8,13 @@ verus! {
 impl PageAddress {
     //==============================================================================================
 
+    /// Invariant for the page address.
+    ///
+    /// Ensures that the raw address is page-aligned.
+    pub closed spec fn inv(&self) -> bool {
+        self.raw_addr as int % PAGE_SIZE as int == 0
+    }
+
     /// Spec function to get the raw address value.
     pub open spec fn spec_raw_value(&self) -> int {
         self.raw_addr as int

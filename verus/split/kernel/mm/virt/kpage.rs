@@ -134,6 +134,7 @@ impl PageAddress {
         requires
             raw_addr as int % PAGE_SIZE as int == 0,
         ensures
+            result.inv(),
             result.spec_raw_value() == raw_addr as int,
             result.spec_is_aligned(),
     {
@@ -148,6 +149,8 @@ impl PageAddress {
     ///
     /// The raw virtual address.
     pub fn into_raw_value(self) -> (result: usize)
+        requires
+            self.inv(),
         ensures result as int == self.spec_raw_value()
     {
         self.raw_addr
@@ -167,7 +170,7 @@ impl PageAddress {
     /// The page table entry index (0 to 1023 for x86 32-bit).
     pub fn get_pte_index(&self) -> (result: usize)
         requires
-            self.spec_is_aligned(),
+            self.inv(),
         ensures
             result as int == self.spec_pte_index(),
             result < PTES_PER_PGTAB,
@@ -202,6 +205,9 @@ pub trait PageAddressEqSpec {
 ///
 /// True if both addresses have the same raw value.
 pub fn page_address_eq(a: &PageAddress, b: &PageAddress) -> (result: bool)
+    requires
+        a.inv(),
+        b.inv(),
     ensures
         result == (a.raw_addr == b.raw_addr),
         result == a.eq_spec(b),
@@ -331,6 +337,7 @@ impl KernelPage {
         requires
             self.inv(),
         ensures
+            result.inv(),
             result.spec_raw_value() == self@.page_address(),
             result.spec_is_aligned(),
     {
