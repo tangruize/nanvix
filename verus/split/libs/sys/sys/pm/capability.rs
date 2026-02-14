@@ -92,7 +92,7 @@ impl Capability {
             result is Ok ==> {
                 &&& CapabilityView::is_valid_discriminant(value as int)
                 &&& result->Ok_0@.value == value as int
-                &&& result->Ok_0 == Self::spec_from_discriminant(value as int)
+                &&& result->Ok_0 == CapabilityView::from_discriminant(value as int)
                 &&& result->Ok_0.inv()
             },
             result is Err ==> {
@@ -151,7 +151,7 @@ impl TryFrom<u32> for Capability {
             result is Ok ==> {
                 &&& CapabilityView::is_valid_discriminant(value as int)
                 &&& result->Ok_0@.value == value as int
-                &&& result->Ok_0 == Self::spec_from_discriminant(value as int)
+                &&& result->Ok_0 == CapabilityView::from_discriminant(value as int)
                 &&& result->Ok_0.inv()
             },
             result is Err ==> {

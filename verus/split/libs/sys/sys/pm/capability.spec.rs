@@ -30,41 +30,19 @@ pub struct CapabilityView {
 impl CapabilityView {
     /// Whether the discriminant corresponds to a valid capability variant.
     pub open spec fn is_valid(&self) -> bool {
-        0 <= self.value && self.value <= 4
+        Self::is_valid_discriminant(self.value)
     }
 
     /// Whether a given int is a valid capability discriminant.
     pub open spec fn is_valid_discriminant(v: int) -> bool {
         0 <= v && v <= 4
     }
-}
 
-//==================================================================================================
-// Capability Spec Functions
-//==================================================================================================
-
-impl Capability {
-    /// Spec function: returns the discriminant value as an int.
-    pub open spec fn spec_discriminant(&self) -> int {
-        match *self {
-            Capability::ExceptionControl => 0,
-            Capability::InterruptControl => 1,
-            Capability::IoManagement => 2,
-            Capability::MemoryManagement => 3,
-            Capability::ProcessManagement => 4,
-        }
-    }
-
-    /// Spec function: checks whether an int value maps to a valid capability.
-    pub open spec fn spec_is_valid_discriminant(value: int) -> bool {
-        0 <= value && value <= 4
-    }
-
-    /// Spec function: maps a valid discriminant to the expected capability variant.
+    /// Maps a valid discriminant to the expected capability variant.
     ///
     /// For out-of-range inputs, the result is unspecified (`arbitrary()`).
-    pub open spec fn spec_from_discriminant(value: int) -> Capability
-        recommends Self::spec_is_valid_discriminant(value)
+    pub open spec fn from_discriminant(value: int) -> Capability
+        recommends Self::is_valid_discriminant(value)
     {
         if value == 0 {
             Capability::ExceptionControl
@@ -83,6 +61,26 @@ impl Capability {
 }
 
 //==================================================================================================
+// Private Capability Spec Functions
+//==================================================================================================
+
+impl Capability {
+    /// Returns the discriminant value as an int.
+    ///
+    /// Private per methodology Step 3: only `inv()` and `view()` are public
+    /// spec functions on `impl Capability`. Used internally by `view()`.
+    open spec fn spec_discriminant(&self) -> int {
+        match *self {
+            Capability::ExceptionControl => 0,
+            Capability::InterruptControl => 1,
+            Capability::IoManagement => 2,
+            Capability::MemoryManagement => 3,
+            Capability::ProcessManagement => 4,
+        }
+    }
+}
+
+//==================================================================================================
 // View Implementation
 //==================================================================================================
 
@@ -90,7 +88,8 @@ impl View for Capability {
     type V = CapabilityView;
 
     // Closed per methodology Step 1: hides implementation internals from users.
-    closed spec fn view(&self) -> CapabilityView {
+    // `pub` is inherited from the View trait.
+    pub closed spec fn view(&self) -> CapabilityView {
         CapabilityView { value: self.spec_discriminant() }
     }
 }
@@ -108,7 +107,7 @@ impl Capability {
     /// well-formed by construction (discriminants are always in [0, 4]),
     /// so the invariant is trivially true.
     pub closed spec fn inv(&self) -> bool {
-        Self::spec_is_valid_discriminant(self.spec_discriminant())
+        CapabilityView::is_valid_discriminant(self@.value)
     }
 }
 
