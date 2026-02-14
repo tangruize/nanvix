@@ -170,6 +170,7 @@ impl KernelFrame {
         ensures
             result == self.spec_address(),
             result.spec_frame_number() == self@.frame_number,
+            result.spec_is_aligned() == self.spec_is_aligned(),
     {
         self.addr
     }
@@ -181,7 +182,9 @@ impl KernelFrame {
     ///
     /// The pool identifier of the kernel frame.
     pub fn pool_id(&self) -> (result: usize)
-        ensures result as int == self@.pool_id
+        ensures
+            result as int == self@.pool_id,
+            result as int == self.spec_pool_id(),
     {
         self.pool_id
     }
@@ -196,6 +199,7 @@ impl KernelFrame {
         ensures
             result == self.spec_address(),
             result.spec_frame_number() == self@.frame_number,
+            result.spec_is_aligned() == self.spec_is_aligned(),
     {
         self.addr
     }
