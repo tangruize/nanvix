@@ -347,7 +347,6 @@ impl SleepingThread {
             result.spec_id() == self.spec_id(),
             result@ == self@.state,
     {
-        proof { reveal(SleepingThread::view); }
         &self.state
     }
 
