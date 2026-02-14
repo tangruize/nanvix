@@ -37,6 +37,7 @@ impl InterruptedThread {
                 t.wf()
             }),
     {
+        reveal(InterruptedThread::wf);
     }
 
     /// Lemma: Construction preserves the thread identity.
@@ -97,6 +98,7 @@ impl InterruptedThread {
                 && post_state.spec_is_interrupted()
             }),
     {
+        reveal(InterruptedThread::wf);
     }
 
     /// Lemma: After resume, the thread identity is preserved.
@@ -127,6 +129,8 @@ impl InterruptedThread {
                 post_state.wf()
             }),
     {
+        reveal(InterruptedThread::wf);
+        reveal(ThreadState::wf);
     }
 
     /// Lemma: Resume preserves the mutex accounting (count and per-address membership).
@@ -143,6 +147,7 @@ impl InterruptedThread {
                 && (forall|a: int| #![auto] post_state.spec_has_mutex(a) == self.state.spec_has_mutex(a))
             }),
     {
+        reveal(InterruptedThread::wf);
     }
 
     /// Lemma: Resume preserves drop safety when the source state is drop-safe.
@@ -159,6 +164,7 @@ impl InterruptedThread {
                 post_state.spec_drop_safe()
             }),
     {
+        reveal(InterruptedThread::wf);
     }
 
     /// Lemma: Resume preserves kernel and user stack ownership.
@@ -175,6 +181,7 @@ impl InterruptedThread {
                 && post_state.spec_user_stack() == self.spec_user_stack()
             }),
     {
+        reveal(InterruptedThread::wf);
     }
 
     //==============================================================================================
@@ -238,6 +245,7 @@ impl ReadyThread {
                 r.wf()
             }),
     {
+        reveal(ReadyThread::wf);
     }
 
     /// Lemma: from_state preserves interrupt reason.

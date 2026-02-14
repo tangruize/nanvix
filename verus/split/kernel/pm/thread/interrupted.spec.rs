@@ -111,7 +111,10 @@ impl InterruptedThread {
     /// An InterruptedThread is well-formed when:
     /// - The underlying ThreadState is well-formed.
     /// - The interrupt reason is a valid variant.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf() && Self::spec_valid_reason(self.reason)
     }
 
@@ -167,7 +170,10 @@ impl ReadyThread {
     }
 
     /// Spec function: well-formedness predicate.
-    pub open spec fn wf(&self) -> bool {
+    ///
+    /// Closed per methodology Step 2: users must maintain the invariant
+    /// but should not depend on its internal structure.
+    pub closed spec fn wf(&self) -> bool {
         self.state.wf()
     }
 
@@ -181,6 +187,10 @@ impl ReadyThread {
 // View Implementations
 //==================================================================================================
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// The methodology recommends `pub closed spec fn view()`, but trait impls
+/// cannot override the trait's openness. Abstraction is preserved because
+/// `InterruptedThreadView` only exposes abstract types.
 impl View for InterruptedThread {
     type V = InterruptedThreadView;
 
@@ -192,6 +202,8 @@ impl View for InterruptedThread {
     }
 }
 
+/// NOTE: view() is `open spec fn` because the Verus `View` trait requires it.
+/// See InterruptedThread's View impl for rationale.
 impl View for ReadyThread {
     type V = ReadyThreadView;
 

@@ -117,6 +117,7 @@ impl ReadyThread {
             result.spec_interrupt_reason() == state.spec_interrupt_reason(),
             result.wf(),
     {
+        proof { reveal(ReadyThread::wf); }
         ReadyThread { state: state }
     }
 }
@@ -146,6 +147,7 @@ impl InterruptedThread {
             result.spec_reason() == reason,
             result.wf(),
     {
+        proof { reveal(InterruptedThread::wf); }
         InterruptedThread { state: state, reason: reason }
     }
 
@@ -194,6 +196,7 @@ impl InterruptedThread {
             result.spec_interrupt_reason() == Some(self.spec_reason()),
             result.wf(),
     {
+        proof { reveal(InterruptedThread::wf); }
         let reason_value: int = self.reason;
         let mut state: ThreadState = self.state;
         state.set_interrupt_reason(reason_value);
