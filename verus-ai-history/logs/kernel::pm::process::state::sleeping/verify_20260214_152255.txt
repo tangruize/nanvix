@@ -1,0 +1,65 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 15:22:55 CST 2026
+Module: kernel::pm::process::state::sleeping
+Command: verus --crate-type lib lib.rs --verify-module kernel::pm::process::state::sleeping
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::pm::process::state::sleeping
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> kernel/pm/process/state/sleeping.proof.rs:52:5
+   |
+52 | /     pub proof fn lemma_mutation_frame_preserves_wf(
+53 | |         old_self: &SleepingProcess,
+54 | |         new_self: &SleepingProcess,
+55 | |     )
+   | |_____^
+
+[rust_verify/src/verifier.rs:100:17] &note = "recommendation not met"
+[rust_verify/src/verifier.rs:100:17] &sp.as_string = "vstd/seq.rs:62:13: 62:32 (#0)"
+note: recommendation not met
+  --> kernel/pm/process/state/sleeping.proof.rs:70:57
+   |
+70 |             implies new_self.sleeping_thread_ids@[i] == old_self.sleeping_thread_ids@[i]
+   |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+  --> kernel/pm/process/state/sleeping.proof.rs:79:21
+   |
+79 |             implies new_self.zombie_thread_ids@[i] == old_self.zombie_thread_ids@[i]
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+[rust_verify/src/verifier.rs:100:17] &note = "recommendation not met"
+[rust_verify/src/verifier.rs:100:17] &sp.as_string = "vstd/seq.rs:62:13: 62:32 (#0)"
+note: recommendation not met
+  --> kernel/pm/process/state/sleeping.proof.rs:79:55
+   |
+79 |             implies new_self.zombie_thread_ids@[i] == old_self.zombie_thread_ids@[i]
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: assertion failed
+  --> kernel/pm/process/state/sleeping.proof.rs:84:16
+   |
+84 |         assert(new_self.zombie_thread_ids@ =~= old_self.zombie_thread_ids@);
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+error: assertion failed
+   --> kernel/pm/process/state/sleeping.proof.rs:267:16
+    |
+267 |           assert(p.spec_has_zombie_thread(tid) ==>
+    |  ________________^
+268 | |             p@.spec_has_zombie_thread(tid as int)) by {
+    | |_________________________________________________^ assertion failed
+
+verification results:: 28 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 3 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 28
+Errors: 2
+Status: FAILED
+No changes to commit in verus/
