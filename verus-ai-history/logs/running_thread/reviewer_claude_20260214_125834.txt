@@ -1,0 +1,126 @@
+=== Copilot Session ===
+Timestamp: 2026-02-14T13:00:23.656396
+Model: claude-opus-4.6
+Session: 0cbef10a-0784-475a-bb96-514d184fdfdc
+Duration: 109.3s
+Exit code: 0
+
+=== Prompt ===
+Review exec consistency fixes for running_thread.
+
+Original source: src/kernel/src/pm/thread/running.rs
+Verified code directory: verus/split/kernel/pm/thread/
+  - running.rs (exec)
+  - running.spec.rs (spec)
+  - running.proof.rs (proof)
+
+Consistency report: /home/ubuntu/nanvix/verus-ai-history/ast-consistency/running_thread_20260214_125647_fix.md
+
+Review criteria:
+1. Were all MISMATCH functions properly restored or equivalence documented?
+2. Were MISSING functions added with proper verification?
+3. Are equivalence justifications sound?
+4. Does the exec code now faithfully represent the original source?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh running_thread
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/running_thread/exec-consistency_20260214_125647.md.
+
+Output format:
+```markdown
+# Review: running_thread Exec Consistency (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output ===
+
+
+I'll review the exec consistency fixes for `running_thread` by examining all relevant files.
+
+● Read verus-ai-history/ast-consistency/running_thread_20260214_125647_fix.md
+  └ 47 lines read
+
+● Read verus/split/kernel/pm/thread/running.rs
+  └ 510 lines read
+
+● Read src/kernel/src/pm/thread/running.rs
+  └ 206 lines read
+
+● Read verus/split/kernel/pm/thread/running.spec.rs
+  └ 321 lines read
+
+● Read verus/split/kernel/pm/thread/running.proof.rs
+  └ 515 lines read
+
+Now let me run the verification and check if there's a verify script.
+
+● Check verify script
+  $ cat /home/ubuntu/nanvix/verus-ai/scripts/verify.sh
+  └ 199 lines...
+
+● Run verification for running_thread
+  $ cd /home/ubuntu/nanvix && ./verus-ai/scripts/verify.sh running_thread 2>&1 | tail -20
+  └ 21 lines...
+
+Verification passes with 47 verified, 0 errors. Now let me do a thorough comparison of every function.
+
+● Create review directory
+  $ mkdir -p /home/ubuntu/nanvix/verus-ai-history/reviews/running_thread
+  └ 1 line...
+
+Now let me do a detailed function-by-function comparison before writing the review.
+
+Let me analyze each function systematically:
+
+**Original vs Verified exec code:**
+
+1. **`RunningThread` struct**: Original has `state: Box<ThreadState>`, verified has `state: ThreadState`. ✅ Box is transparent — documented.
+
+2. **`from_state`**: Original: `pub(super) fn from_state(state: Box<ThreadState>) -> Self { Self { state } }`. Verified: `pub fn from_state(state: ThreadState) -> (result: RunningThread)` with `RunningThread { state: state }`. ✅ Core logic identical after Box removal. Visibility widened for proof ergonomics — documented.
+
+3. **`sleep`**: Original: `pub fn sleep(mut self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation)` with `let ctx = self.state.context_mut(); (SleepingThread::from_state(self.state, alarm), ctx)`. Verified: `pub fn sleep(self, alarm: Option<int>) -> (result: SleepingThread)` with `SleepingThread::from_state(self.state, alarm)`. ✅ Core delegation identical. `*mut ContextInformation` omitted (HAL boundary). `SystemTime` → `int`. `mut self` → `self` (no longer calls `context_mut()`).
+
+4. **`schedule`**: Original: `pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation)` with `let ctx = self.state.context_mut(); (ReadyThread::from_state(self.state), ctx)`. Verified: `pub fn schedule(self) -> (result: ReadyThread)` with `ReadyThread::from_state(self.state)`. ✅ Same pattern as sleep.
+
+5. **`id`**: Original: `self.state.id()`. Verified: `self.state.id()`. ✅ Identical.
+
+6. **`thread_state`**: Original: `&self.state`. Verified: `&self.state`. ✅ Identical.
+
+7. **`thread_state_mut`**: Original: `&mut self.state`. Verified: `#[verifier::external] pub fn thread_state_mut(&mut self) -> &mut ThreadState { &mut self.state }`. ✅ Marked external with thorough trust boundary docs.
+
+8. **`exit`**: Original: `pub fn exit(mut self, status: ExitStatus) -> (ZombieThread, *mut ContextInformation)` with `let ctx = self.state.context_mut(); (ZombieThread::from_state(self.state, status), ctx)`. Verified: `pub fn exit(self, status: int) -> (result: ZombieThread)` with `ZombieThread::from_state(self.state, status)`. ✅ Same pattern as sleep/schedule.
+
+9. **`put_mutex_guard`**: Original: `pub fn put_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) { self.state.store_mutex_guard(mutex_addr, guard); }`. Verified: `pub fn put_mutex_guard(&mut self, address: u64) { self.state.store_mutex_guard(address); }`. ✅ `MutexAddress` → `u64`, `MutexGuard` elided. Core delegation identical.
+
+10. **`take_mutex_guard`**: Original: `pub fn take_mutex_guard(&mut self, mutex_addr: MutexAddress) -> Option<MutexGuard> { self.state.take_mutex_guard(mutex_addr) }`. Verified: `pub fn take_mutex_guard(&mut self, address: u64) { self.state.take_mutex_guard(address); }`. ✅ `MutexAddress` → `u64`. Return type `Option<MutexGuard>` → unit (precondition makes `None` unreachable). Documented as trust assumption T2.
+
+11. **`join_cond`**: Original: `pub fn join_cond(&self) -> Condvar { self.state.join_cond() }`. Verified: **omitted**. ✅ Documented: `Condvar` is sync boundary type.
+
+Let me also check for `assume` or `external_body` patterns:
+
+● Grep "assume\s*\(|external_body|external\b" in running*
+(/home/ubuntu/nanvix/verus/split/kernel/pm/thread)
+  └ 5 lines found
+
+Good — only one `#[verifier::external]` on `thread_state_mut`, no `assume()` or `external_body`. Now I'll write the review.
+
+● Create verus-ai-history/reviews/running_thread/exec-consistency_20260214_125647.md (+82)
+
+
+Total usage est:        3 Premium requests
+API time spent:         1m 30.915s
+Total session time:     1m 48.062s
+Total code changes:     +82 -0
+Breakdown by AI model:
+ claude-opus-4.6         371.4k in, 4.3k out, 318.0k cached (Est. 3 Premium requests)
+
+=== End ===
