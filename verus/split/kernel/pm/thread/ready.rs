@@ -187,7 +187,7 @@ impl RunningThread {
             result.spec_id() == state.spec_id(),
             result.spec_is_interrupted() == state.spec_is_interrupted(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            forall|a: int| #![auto] result.spec_has_mutex(a) == state@.has_mutex(a),
             result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
     {
@@ -303,7 +303,7 @@ impl ReadyThread {
             result.spec_kernel_stack() == state.spec_kernel_stack(),
             result.spec_user_stack() == state.spec_user_stack(),
             result.spec_locked_mutex_count() == state.spec_locked_mutex_count(),
-            forall|a: int| result.spec_has_mutex(a) == state@.has_mutex(a),
+            forall|a: int| #![auto] result.spec_has_mutex(a) == state@.has_mutex(a),
             result.spec_drop_safe() == state@.drop_safe(),
             result.wf(),
             result.spec_admission_time() >= 0,
@@ -336,7 +336,7 @@ impl ReadyThread {
     pub fn thread_state(&self) -> (result: &ThreadState)
         ensures
             result.spec_id() == self.spec_id(),
-            result@ == self.state@,
+            result@ == self@.state,
     {
         &self.state
     }
@@ -396,7 +396,7 @@ impl ReadyThread {
     pub fn store_mutex_guard(&mut self, address: u64)
         requires
             old(self).wf(),
-            old(self).state.locked_mutex_count < usize::MAX,
+            old(self).spec_locked_mutex_count() < usize::MAX as nat,
             !old(self).spec_has_mutex(address as int),
         ensures
             self.spec_has_mutex(address as int),
