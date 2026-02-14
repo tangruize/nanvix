@@ -357,7 +357,7 @@ impl ZombieProcess {
             Self::spec_no_duplicates(zombie_ids),
         ensures
             ZombieProcessView::spec_new(pid, zombie_ids, status) =~=
-                ZombieProcessView { pid, zombie_thread_ids: zombie_ids, status },
+                (ZombieProcessView { pid, zombie_thread_ids: zombie_ids, status }),
     {
     }
 
