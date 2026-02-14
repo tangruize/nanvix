@@ -69,7 +69,8 @@ impl Capability {
     ///
     /// Private per methodology Step 3: only `inv()` and `view()` are public
     /// spec functions on `impl Capability`. Used internally by `view()`.
-    open spec fn spec_discriminant(&self) -> int {
+    /// Closed: body is hidden; proofs use `self@.value` instead.
+    closed spec fn spec_discriminant(&self) -> int {
         match *self {
             Capability::ExceptionControl => 0,
             Capability::InterruptControl => 1,
