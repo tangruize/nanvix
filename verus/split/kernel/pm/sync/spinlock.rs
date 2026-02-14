@@ -12,7 +12,7 @@
 //! - `try_lock` fails iff the lock was previously locked, leaving state unchanged.
 //! - `unlock` transitions the lock from locked to unlocked and consumes the token.
 //! - Lock-then-unlock round-trip restores the original unlocked state.
-//! - `spec_is_locked` and `spec_is_unlocked` are complementary predicates.
+//! - `is_locked` and `is_unlocked` (on `SpinlockView`) are complementary predicates.
 //! - Lock instance identity (`id`) is preserved across all state transitions.
 //! - Tokens are bound to the producing lock instance via view identity.
 //! - Invariant (`inv()`) enforces: unlocked implies no token outstanding.
@@ -44,7 +44,7 @@
 //!   concurrent thread access or atomic memory ordering.
 //! - **Liveness and progress**: The spinning behavior of `lock()` and its termination
 //!   under fairness assumptions are not modeled. The `lock()` precondition
-//!   (`spec_is_unlocked`) effectively models the instant-success case.
+//!   (`is_unlocked`) effectively models the instant-success case.
 //! - **Drop-based RAII**: Automatic lock release via `SpinlockGuard`/`Drop` is modeled
 //!   via explicit `LockToken` consumption in `unlock()`.
 //!
@@ -60,7 +60,7 @@
 //! ## Trust Boundaries
 //!
 //! - `lock()`: Fully verified. The sequential model's preconditions (`inv()`,
-//!   `spec_is_unlocked()`, `!token_issued()`) guarantee that the lock is acquirable,
+//!   `is_unlocked()`, `!token_issued`) guarantee that the lock is acquirable,
 //!   so `lock()` delegates to `try_lock()` without needing `external_body`. The
 //!   original implementation's spin-wait loop (atomic CAS + pause) is a HAL-level
 //!   concern not modeled in the sequential verification.
@@ -104,11 +104,11 @@ verus! {
 ///
 /// # Representation
 ///
-/// The fields are `pub` as required by Verus for `pub open spec fn` access.
-/// Verus mandates that field expressions in `pub open spec fn` are well-formed
-/// everywhere, which requires `pub` visibility. Verified code should use the
-/// provided methods and `View` trait rather than direct field access. The `id`
-/// field provides instance identity for token binding.
+/// The fields are `pub` because the Verus `View` trait requires `open spec fn view()`,
+/// which accesses struct fields directly. Verus mandates that field expressions in
+/// `pub open spec fn` are well-formed everywhere, which requires `pub` visibility.
+/// Verified code should use the `View` trait (`self@`) and `SpinlockView` predicates
+/// rather than direct field access.
 pub struct Spinlock {
     /// Lock state: `true` means locked, `false` means unlocked.
     pub locked: bool,
@@ -137,9 +137,9 @@ impl Spinlock {
     /// A new `Spinlock` in the unlocked state with the given identity.
     pub fn new(id: usize) -> (result: Self)
         ensures
-            !result.locked,
-            result.spec_is_unlocked(),
-            result@ == Spinlock::spec_new_view(id as nat),
+            !result@.locked,
+            result@.is_unlocked(),
+            result@ == SpinlockView::spec_new(id as nat),
             result@.id == id as nat,
             result.inv(),
     {
@@ -172,10 +172,10 @@ impl Spinlock {
         requires
             old(self).inv(),
         ensures
-            result.0 == !old(self).locked,
+            result.0 == !old(self)@.locked,
             // Unconditional: lock is always held after try_lock (success: acquired;
             // failure: was already locked, state unchanged).
-            self.locked,
+            self@.locked,
             self@.id == old(self)@.id,
             !result.0 ==> self@ == old(self)@,
             result.0 ==> self@.token_issued,
@@ -205,7 +205,7 @@ impl Spinlock {
     ///
     /// The `requires` clause enforces sequential-model safety: calling `lock()` on an
     /// already-locked spinlock would be an infinite loop (deadlock) in the sequential model.
-    /// Under `lock()`'s preconditions (`spec_is_unlocked()` + `inv()`), `try_lock()` is
+    /// Under `lock()`'s preconditions (`is_unlocked()` + `inv()`), `try_lock()` is
     /// guaranteed to succeed, so delegation is sound without `external_body`.
     ///
     /// Returns a tracked `LockToken` that the caller must pass to `unlock()` to
@@ -213,12 +213,12 @@ impl Spinlock {
     /// pattern from the original implementation.
     pub fn lock(&mut self) -> (token: Tracked<LockToken>)
         requires
-            old(self).spec_is_unlocked(),
+            old(self)@.is_unlocked(),
             old(self).inv(),
-            !old(self).token_issued(),
+            !old(self)@.token_issued,
         ensures
-            self.locked,
-            self.spec_is_locked(),
+            self@.locked,
+            self@.is_locked(),
             self@.id == old(self)@.id,
             self@.token_issued,
             token@.view == self@,
@@ -245,17 +245,17 @@ impl Spinlock {
     /// The lock must be held (locked) and the token must match the current lock state.
     pub fn unlock(&mut self, Tracked(token): Tracked<LockToken>)
         requires
-            old(self).locked,
+            old(self)@.locked,
             old(self).inv(),
-            old(self).token_issued(),
+            old(self)@.token_issued,
             token.view == old(self)@,
         ensures
-            old(self).spec_is_locked(),
-            !self.locked,
-            self.spec_is_unlocked(),
+            old(self)@.is_locked(),
+            !self@.locked,
+            self@.is_unlocked(),
             self@.id == old(self)@.id,
             !self@.token_issued,
-            self@ == Spinlock::spec_new_view(old(self)@.id),
+            self@ == SpinlockView::spec_new(old(self)@.id),
             self.inv(),
     {
         proof { reveal(Spinlock::inv); }
@@ -273,8 +273,8 @@ impl Spinlock {
     /// `true` if the spinlock is locked, `false` otherwise.
     pub fn is_locked(&self) -> (result: bool)
         ensures
-            result == self.locked,
-            result == self.spec_is_locked(),
+            result == self@.locked,
+            result == self@.is_locked(),
     {
         self.locked
     }

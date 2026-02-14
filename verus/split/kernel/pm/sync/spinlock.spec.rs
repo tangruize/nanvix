@@ -17,6 +17,13 @@ verus! {
 /// Represents the observable state of a spinlock: whether it is locked or unlocked,
 /// which instance it belongs to (via the ghost `id` field), and whether a lock token
 /// is currently outstanding (via `token_issued`).
+///
+/// # Note on `bool` fields
+///
+/// The methodology guide recommends abstract types in View types (e.g., `int` not
+/// `i32`). `bool` is already maximally abstract for a two-valued domain — there is
+/// no wider abstract counterpart. The `id` field correctly uses `nat` instead of
+/// the concrete `usize`.
 #[verifier::ext_equal]
 pub struct SpinlockView {
     /// Whether the spinlock is currently held.
@@ -53,20 +60,31 @@ pub tracked struct LockToken {
 }
 
 //==================================================================================================
-// Spec Functions
+// Spec Functions — SpinlockView
 //==================================================================================================
 
-impl Spinlock {
-    /// Spec function: returns whether the spinlock is locked.
-    pub open spec fn spec_is_locked(&self) -> bool {
+impl SpinlockView {
+    /// Returns whether the spinlock view represents a locked state.
+    pub open spec fn is_locked(&self) -> bool {
         self.locked
     }
 
-    /// Spec function: returns whether the spinlock is unlocked.
-    pub open spec fn spec_is_unlocked(&self) -> bool {
+    /// Returns whether the spinlock view represents an unlocked state.
+    pub open spec fn is_unlocked(&self) -> bool {
         !self.locked
     }
 
+    /// The view of a newly created spinlock with the given identity.
+    pub open spec fn spec_new(id: nat) -> SpinlockView {
+        SpinlockView { locked: false, id: id, token_issued: false }
+    }
+}
+
+//==================================================================================================
+// Spec Functions — Spinlock
+//==================================================================================================
+
+impl Spinlock {
     /// Invariant predicate for internal consistency.
     ///
     /// # Description
@@ -80,17 +98,7 @@ impl Spinlock {
     /// This prevents both "unlocked with token outstanding" (double-unlock) and
     /// "locked without token" (unreachable from API, but now excluded by inv).
     pub closed spec fn inv(&self) -> bool {
-        self.locked == self.token_issued()
-    }
-
-    /// Spec function: returns whether a token is currently outstanding.
-    pub open spec fn token_issued(&self) -> bool {
-        self@.token_issued
-    }
-
-    /// Spec function: the view of a newly created spinlock with the given identity.
-    pub open spec fn spec_new_view(id: nat) -> SpinlockView {
-        SpinlockView { locked: false, id: id, token_issued: false }
+        self.locked == self.token_issued
     }
 }
 
