@@ -154,7 +154,7 @@ impl InterruptedThread {
     pub proof fn lemma_resume_preserves_drop_safety(&self)
         requires
             self.wf(),
-            self@.spec_drop_safe(),
+            self.state.spec_drop_safe(),
         ensures
             ({
                 let post_state: ThreadState = ThreadState {
