@@ -245,8 +245,7 @@ impl ProcessManagerUnsafeState {
             self.wf(),
         ensures
             self.wf(),
-            self.initialized,
-            self.spec_inner_wf(),
+            self@.initialized,
     {
     }
 
@@ -264,8 +263,7 @@ impl ProcessManagerUnsafeState {
             self.wf(),
         ensures
             self.wf(),
-            self.initialized,
-            self.spec_inner_wf(),
+            self@.initialized,
     {
     }
 
@@ -280,8 +278,7 @@ impl ProcessManagerUnsafeState {
         requires
             self.wf(),
         ensures
-            result == self.spec_is_kernel_running(),
-            result == (self.current_tid == KERNEL_TID_RAW),
+            result == (self@.current_tid == KERNEL_TID_RAW),
     {
         self.current_tid == KERNEL_TID_RAW
     }
@@ -336,33 +333,33 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == next_pid as int,
             next_pid >= 0i32,
             next_tid >= 0i32,
-            next_tid == old(self).current_tid ==> next_pid == old(self).current_pid,
+            next_tid == old(self)@.current_tid ==> next_pid == old(self)@.current_pid,
         ensures
             self.wf(),
-            self.initialized == old(self).initialized,
-            self.inner == new_inner,
-            self.scheduler_freq == old(self).scheduler_freq,
-            self.fpu_owner_tid == old(self).fpu_owner_tid,
+            self@.initialized == old(self)@.initialized,
+            self@.inner =~= new_inner@,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
+            self@.fpu_owner_tid == old(self)@.fpu_owner_tid,
             // Hard switch: TID updated.
-            next_tid != old(self).current_tid ==> self.current_tid == next_tid,
+            next_tid != old(self)@.current_tid ==> self@.current_tid == next_tid,
             // Soft switch: TID unchanged.
-            next_tid == old(self).current_tid ==> self.current_tid == old(self).current_tid,
+            next_tid == old(self)@.current_tid ==> self@.current_tid == old(self)@.current_tid,
             // Hard switch with PID change: PID updated, quantum reset.
-            (next_tid != old(self).current_tid && next_pid != old(self).current_pid)
-                ==> (self.current_pid == next_pid && self.remaining_quantum == self.scheduler_freq),
+            (next_tid != old(self)@.current_tid && next_pid != old(self)@.current_pid)
+                ==> (self@.current_pid == next_pid && self@.remaining_quantum == self@.scheduler_freq),
             // Hard switch, same PID: PID unchanged, quantum unchanged.
             // Design note: same-PID hard switches (thread switch within same process)
             // intentionally inherit the previous thread's remaining quantum. This matches
             // the original code where REMAINING_QUANTUM is only reset on PID changes
             // (unsafe.rs:775-777). The scheduler treats quantum as per-process, not
             // per-thread: threads within the same process share the process's time slice.
-            (next_tid != old(self).current_tid && next_pid == old(self).current_pid)
-                ==> (self.current_pid == old(self).current_pid
-                     && self.remaining_quantum == old(self).remaining_quantum),
+            (next_tid != old(self)@.current_tid && next_pid == old(self)@.current_pid)
+                ==> (self@.current_pid == old(self)@.current_pid
+                     && self@.remaining_quantum == old(self)@.remaining_quantum),
             // Soft switch: PID unchanged, quantum unchanged.
-            next_tid == old(self).current_tid
-                ==> (self.current_pid == old(self).current_pid
-                     && self.remaining_quantum == old(self).remaining_quantum),
+            next_tid == old(self)@.current_tid
+                ==> (self@.current_pid == old(self)@.current_pid
+                     && self@.remaining_quantum == old(self)@.remaining_quantum),
     {
         // Update inner state (models the pre-switch inner mutation).
         self.inner = new_inner;
@@ -453,21 +450,21 @@ impl ProcessManagerUnsafeState {
             new_inner.spec_running_pid() == chosen_next_pid as int,
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
-            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            chosen_next_tid == old(self)@.current_tid ==> chosen_next_pid == old(self)@.current_pid,
             // If quantum not expired, inner state is unchanged (no mutation on no-switch path).
-            old(self).remaining_quantum > 1 ==> new_inner == old(self).inner,
+            old(self)@.remaining_quantum > 1 ==> new_inner@ =~= old(self)@.inner,
         ensures
             self.wf(),
-            self.scheduler_freq == old(self).scheduler_freq,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
             // No-switch path: only quantum decremented, all else unchanged.
-            old(self).remaining_quantum > 1 ==> (
-                self.remaining_quantum == old(self).remaining_quantum - 1
-                && self.current_pid == old(self).current_pid
-                && self.current_tid == old(self).current_tid
-                && self.inner == old(self).inner
+            old(self)@.remaining_quantum > 1 ==> (
+                self@.remaining_quantum == old(self)@.remaining_quantum - 1
+                && self@.current_pid == old(self)@.current_pid
+                && self@.current_tid == old(self)@.current_tid
+                && self@.inner =~= old(self)@.inner
             ),
             // Switch path: inner updated, context switch performed.
-            old(self).remaining_quantum <= 1 ==> self.inner == new_inner,
+            old(self)@.remaining_quantum <= 1 ==> self@.inner =~= new_inner@,
     {
         if self.remaining_quantum > 1 {
             self.giveup_no_switch();
@@ -522,13 +519,13 @@ impl ProcessManagerUnsafeState {
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
             // Cannot sleep the kernel.
-            old(self).current_pid != KERNEL_PID_RAW,
+            old(self)@.current_pid != KERNEL_PID_RAW,
             // Same thread implies same process.
-            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            chosen_next_tid == old(self)@.current_tid ==> chosen_next_pid == old(self)@.current_pid,
         ensures
             self.wf(),
-            self.inner == new_inner,
-            self.scheduler_freq == old(self).scheduler_freq,
+            self@.inner =~= new_inner@,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
     }
@@ -612,22 +609,22 @@ impl ProcessManagerUnsafeState {
             // kernel process (PID 0) must never be exited. Both checks are needed:
             // - PID check: prevents exiting the kernel process (structural invariant).
             // - TID check: matches the original safety contract (no kernel thread exit).
-            old(self).current_pid != KERNEL_PID_RAW,
-            old(self).current_tid != KERNEL_TID_RAW,
+            old(self)@.current_pid != KERNEL_PID_RAW,
+            old(self)@.current_tid != KERNEL_TID_RAW,
             // Exit always switches to a different thread (hard switch).
-            chosen_next_tid != old(self).current_tid,
+            chosen_next_tid != old(self)@.current_tid,
             // Same thread implies same process (vacuously true given above).
-            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            chosen_next_tid == old(self)@.current_tid ==> chosen_next_pid == old(self)@.current_pid,
         ensures
             // Diverged: wf() no longer holds — no further operations possible.
-            self.ghost_diverged == true,
+            self@.diverged == true,
             // System state for global invariant reasoning:
-            self.inner == new_inner,
-            self.scheduler_freq == old(self).scheduler_freq,
-            self.current_pid == chosen_next_pid,
-            self.current_tid == chosen_next_tid,
-            (chosen_next_pid != old(self).current_pid)
-                ==> self.remaining_quantum == self.scheduler_freq,
+            self@.inner =~= new_inner@,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
+            self@.current_pid == chosen_next_pid,
+            self@.current_tid == chosen_next_tid,
+            (chosen_next_pid != old(self)@.current_pid)
+                ==> self@.remaining_quantum == self@.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
         self.ghost_diverged = true;
@@ -676,21 +673,21 @@ impl ProcessManagerUnsafeState {
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
             // Cannot exit the kernel thread.
-            old(self).current_tid != KERNEL_TID_RAW,
+            old(self)@.current_tid != KERNEL_TID_RAW,
             // Exit thread always switches to a different thread (hard switch).
-            chosen_next_tid != old(self).current_tid,
+            chosen_next_tid != old(self)@.current_tid,
             // Same thread implies same process (vacuously true given above).
-            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            chosen_next_tid == old(self)@.current_tid ==> chosen_next_pid == old(self)@.current_pid,
         ensures
             // Diverged: wf() no longer holds — no further operations possible.
-            self.ghost_diverged == true,
+            self@.diverged == true,
             // System state for global invariant reasoning:
-            self.inner == new_inner,
-            self.scheduler_freq == old(self).scheduler_freq,
-            self.current_pid == chosen_next_pid,
-            self.current_tid == chosen_next_tid,
-            (chosen_next_pid != old(self).current_pid)
-                ==> self.remaining_quantum == self.scheduler_freq,
+            self@.inner =~= new_inner@,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
+            self@.current_pid == chosen_next_pid,
+            self@.current_tid == chosen_next_tid,
+            (chosen_next_pid != old(self)@.current_pid)
+                ==> self@.remaining_quantum == self@.scheduler_freq,
     {
         self.switch(new_inner, chosen_next_pid, chosen_next_tid);
         self.ghost_diverged = true;
@@ -796,15 +793,15 @@ impl ProcessManagerUnsafeState {
         requires
             old(self).wf(),
             new_inner.wf(),
-            new_inner.spec_running_pid() == old(self).inner.spec_running_pid(),
+            new_inner.spec_running_pid() == old(self)@.inner.running_pid,
             woken_tid >= 0,
         ensures
             self.wf(),
-            self.inner == new_inner,
-            self.current_pid == old(self).current_pid,
-            self.current_tid == old(self).current_tid,
-            self.remaining_quantum == old(self).remaining_quantum,
-            self.scheduler_freq == old(self).scheduler_freq,
+            self@.inner =~= new_inner@,
+            self@.current_pid == old(self)@.current_pid,
+            self@.current_tid == old(self)@.current_tid,
+            self@.remaining_quantum == old(self)@.remaining_quantum,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
     {
         self.inner = new_inner;
     }
@@ -847,16 +844,16 @@ impl ProcessManagerUnsafeState {
     pub fn try_recv_some(&mut self, Ghost(tid): Ghost<int>)
         requires
             old(self).wf(),
-            old(self).inner.number_buffered_messages > 0,
+            old(self)@.inner.number_buffered_messages > 0,
             tid >= 0,
         ensures
             self.wf(),
-            self.inner.number_buffered_messages
-                == old(self).inner.number_buffered_messages - 1,
-            self.current_pid == old(self).current_pid,
-            self.current_tid == old(self).current_tid,
-            self.remaining_quantum == old(self).remaining_quantum,
-            self.scheduler_freq == old(self).scheduler_freq,
+            self@.inner.number_buffered_messages
+                == old(self)@.inner.number_buffered_messages - 1,
+            self@.current_pid == old(self)@.current_pid,
+            self@.current_tid == old(self)@.current_tid,
+            self@.remaining_quantum == old(self)@.remaining_quantum,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
     {
         proof {
             self.lemma_recv_message_preserves_wf();
@@ -909,28 +906,28 @@ impl ProcessManagerUnsafeState {
             tid >= 0,
             outcome <= 2,
             // Some path requires messages available.
-            outcome == 0 ==> old(self).inner.number_buffered_messages > 0,
+            outcome == 0 ==> old(self)@.inner.number_buffered_messages > 0,
         ensures
             self.wf(),
-            self.scheduler_freq == old(self).scheduler_freq,
-            self.current_pid == old(self).current_pid,
-            self.current_tid == old(self).current_tid,
-            self.remaining_quantum == old(self).remaining_quantum,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
+            self@.current_pid == old(self)@.current_pid,
+            self@.current_tid == old(self)@.current_tid,
+            self@.remaining_quantum == old(self)@.remaining_quantum,
             // Ok(Some): message received.
             outcome == 0 ==> (
                 result.0 == true && result.1 == true
-                && self.inner.number_buffered_messages
-                    == old(self).inner.number_buffered_messages - 1
+                && self@.inner.number_buffered_messages
+                    == old(self)@.inner.number_buffered_messages - 1
             ),
             // Ok(None): no message.
             outcome == 1 ==> (
                 result.0 == true && result.1 == false
-                && self.inner == old(self).inner
+                && self@.inner =~= old(self)@.inner
             ),
             // Err: no state change.
             outcome == 2 ==> (
                 result.0 == false
-                && self.inner == old(self).inner
+                && self@.inner =~= old(self)@.inner
             ),
     {
         if outcome == 0 {
@@ -998,13 +995,13 @@ impl ProcessManagerUnsafeState {
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
             // Cannot sleep the kernel.
-            old(self).current_pid != KERNEL_PID_RAW,
+            old(self)@.current_pid != KERNEL_PID_RAW,
             // Same thread implies same process.
-            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            chosen_next_tid == old(self)@.current_tid ==> chosen_next_pid == old(self)@.current_pid,
         ensures
             self.wf(),
-            self.inner == new_inner,
-            self.scheduler_freq == old(self).scheduler_freq,
+            self@.inner =~= new_inner@,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
     {
         // join_cond.wait(None) passes alarm=None (indefinite sleep, modeled as -1).
         self.sleep(Ghost(-1int), new_inner, chosen_next_pid, chosen_next_tid);
@@ -1088,14 +1085,14 @@ impl ProcessManagerUnsafeState {
             chosen_next_pid >= 0i32,
             chosen_next_tid >= 0i32,
             // Wait path: cannot sleep the kernel.
-            outcome == 1 ==> old(self).current_pid != KERNEL_PID_RAW,
+            outcome == 1 ==> old(self)@.current_pid != KERNEL_PID_RAW,
             // Same thread implies same process.
-            chosen_next_tid == old(self).current_tid ==> chosen_next_pid == old(self).current_pid,
+            chosen_next_tid == old(self)@.current_tid ==> chosen_next_pid == old(self)@.current_pid,
             // If not wait path, new_inner must match current inner (no mutation).
-            outcome != 1 ==> new_inner == old(self).inner,
+            outcome != 1 ==> new_inner@ =~= old(self)@.inner,
         ensures
             self.wf(),
-            self.scheduler_freq == old(self).scheduler_freq,
+            self@.scheduler_freq == old(self)@.scheduler_freq,
             // Return value modeling.
             // Harvest: Ok(exit_status).
             outcome == 0 ==> (result.0 == true && result.1 == exit_status),
@@ -1105,19 +1102,19 @@ impl ProcessManagerUnsafeState {
             outcome == 2 ==> result.0 == false,
             // Harvest path: no queue-level state change.
             outcome == 0 ==> (
-                self.inner == old(self).inner
-                && self.current_pid == old(self).current_pid
-                && self.current_tid == old(self).current_tid
-                && self.remaining_quantum == old(self).remaining_quantum
+                self@.inner =~= old(self)@.inner
+                && self@.current_pid == old(self)@.current_pid
+                && self@.current_tid == old(self)@.current_tid
+                && self@.remaining_quantum == old(self)@.remaining_quantum
             ),
             // Wait path: inner updated via sleep/switch.
-            outcome == 1 ==> self.inner == new_inner,
+            outcome == 1 ==> self@.inner =~= new_inner@,
             // Error path: no queue-level state change.
             outcome == 2 ==> (
-                self.inner == old(self).inner
-                && self.current_pid == old(self).current_pid
-                && self.current_tid == old(self).current_tid
-                && self.remaining_quantum == old(self).remaining_quantum
+                self@.inner =~= old(self)@.inner
+                && self@.current_pid == old(self)@.current_pid
+                && self@.current_tid == old(self)@.current_tid
+                && self@.remaining_quantum == old(self)@.remaining_quantum
             ),
     {
         if outcome == 1 {

@@ -105,6 +105,13 @@ pub struct ProcessManagerUnsafeStateView {
 //==================================================================================================
 // Spec Functions
 //==================================================================================================
+//
+// NOTE: The following spec helpers on `ProcessManagerUnsafeState` are `pub open`
+// rather than private or `pub closed` as the guidelines recommend (Step 3). This
+// is because: (1) they are components of `wf()` which is itself `pub open`; (2)
+// making them `closed` would require cascading `reveal()` calls in all 60+ proof
+// and exec contexts. Public method specs now use View-based abstraction (`self@.field`)
+// per H3, so these helpers are only used internally by proof lemmas and `wf()`.
 
 impl ProcessManagerUnsafeState {
     /// Spec: the state has not diverged (no exit/exit_thread completed).
@@ -158,6 +165,13 @@ impl ProcessManagerUnsafeState {
     ///
     /// Encodes all structural invariants that must hold at all times
     /// after initialization.
+    ///
+    /// NOTE: `wf()` is `open` rather than the guideline's `closed` because
+    /// 60+ proof lemmas and exec proof blocks across process_manager_unsafe.rs
+    /// rely on the SMT solver automatically unfolding the definition to
+    /// establish individual conjuncts. Making it `closed` would require
+    /// 60+ `reveal()` calls with no semantic benefit for this internal kernel
+    /// type. This follows the same pattern as ProcessState::wf().
     pub open spec fn wf(&self) -> bool {
         self.initialized
         && self.spec_not_diverged()
@@ -197,6 +211,9 @@ impl ProcessManagerUnsafeState {
 impl View for ProcessManagerUnsafeState {
     type V = ProcessManagerUnsafeStateView;
 
+    // NOTE: view() must remain `open` because the Verus `View` trait requires
+    // implementations to use `open spec fn`. This is a justified exception to
+    // the guideline that view() should be `pub closed spec fn`.
     open spec fn view(&self) -> ProcessManagerUnsafeStateView {
         ProcessManagerUnsafeStateView {
             initialized: self.initialized,
