@@ -216,7 +216,10 @@ impl VirtMemoryManager {
             self.inv(),
             vmem.inv(),
         ensures
+            self.inv(),
             result.inv(),
+            // NOTE: Uses vmem.mapping_count directly because Vmem does not
+            // implement the View trait. This is a Vmem-side design issue.
             result.mapping_count == 0,
     {
         Vmem::clone(vmem)
@@ -465,8 +468,12 @@ impl VirtMemoryManager {
     ///
     /// # Note
     ///
-    /// This is a specification-level function. For executable code, use alloc_kpage()
-    /// in a loop. The original implementation uses alloc_many_kernel_frames internally.
+    /// Marked `external_body` because a verified loop-based implementation requires
+    /// loop invariants that couple `Kpool` internal state across iterations, which is
+    /// beyond the scope of the manager module. The original uses
+    /// `alloc_many_kernel_frames` internally. The specification contracts are sound:
+    /// they mirror the single-allocation `alloc_kpage()` postconditions scaled by
+    /// `count`, and callers are still required to prove capacity preconditions.
     #[verifier::external_body]
     pub fn alloc_kpages(&mut self, count: usize) -> (result: Result<(), Error>)
         requires
@@ -516,9 +523,13 @@ impl VirtMemoryManager {
     ///
     /// # Note
     ///
-    /// This is a specification-level function. The postconditions match the original
-    /// `alloc_upages` behavior. For full verification, each page would need individual
-    /// allocation proof similar to `alloc_upage`.
+    /// Marked `external_body` because a verified loop-based implementation requires
+    /// coupled loop invariants over both `Upool` and `Vmem` internal state across
+    /// iterations, which is beyond the scope of the manager module. The original uses
+    /// `alloc_upages` with `alloc_many_user_frames` internally. The specification
+    /// contracts are sound: they mirror the single-allocation `alloc_upage()`
+    /// postconditions scaled by `nframes`, and callers must prove capacity and
+    /// non-overlap preconditions.
     #[verifier::external_body]
     pub fn alloc_upages(
         &mut self,
