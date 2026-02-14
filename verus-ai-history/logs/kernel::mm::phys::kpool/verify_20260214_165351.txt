@@ -1,0 +1,51 @@
+=== Verus Verification ===
+Timestamp: Sat Feb 14 16:53:51 CST 2026
+Module: kernel::mm::phys::kpool
+Command: verus --crate-type lib lib.rs --verify-module kernel::mm::phys::kpool
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module kernel::mm::phys::kpool
+
+note: verifying module kernel::mm::phys::kpool::test
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:403:13
+    |
+403 |               result is Err ==> self@ == old(self)@,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+404 |       {
+405 | /         match self.frame_allocator.alloc() {
+406 | |             Ok(addr) => {
+407 | |                 let kframe: KernelFrame = KernelFrame::new_internal(addr, self.pool_id);
+408 | |                 Ok(kframe)
+409 | |             },
+410 | |             Err(error) => Err(error),
+411 | |         }
+    | |_________- at the end of the function body
+
+error: postcondition not satisfied
+   --> kernel/mm/phys/kpool.rs:550:13
+    |
+550 |               result is Err ==> self@ == old(self)@,
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+554 | /         match self.frame_allocator.alloc_contiguous_range(count) {
+555 | |             Ok(start) => {
+556 | |                 proof {
+...   |
+579 | |             Err(e) => Err(e),
+580 | |         }
+    | |_________- at the end of the function body
+
+verification results:: 31 verified, 2 errors (partial verification with `--verify-*`)
+error: aborting due to 2 previous errors
+
+
+Duration: 7s
+Exit code: 1
+
+=== Summary ===
+Verified: 31
+Errors: 2
+Status: FAILED
+No changes to commit in verus/
