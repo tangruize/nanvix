@@ -46,19 +46,22 @@ impl SleepingProcess {
     {
     }
 
-    /// Lemma: mutation_frame_preserved preserves well-formedness.
+    /// Lemma: frame-preserving mutation preserves well-formedness.
+    ///
+    /// If the PID and thread lists are unchanged after mutation, wf() is preserved.
     pub proof fn lemma_mutation_frame_preserves_wf(
         old_self: &SleepingProcess,
         new_self: &SleepingProcess,
     )
         requires
             old_self.wf(),
-            SleepingProcess::mutation_frame_preserved(old_self, new_self),
+            new_self@.pid == old_self@.pid,
+            new_self@.sleeping_thread_ids =~= old_self@.sleeping_thread_ids,
+            new_self@.zombie_thread_ids =~= old_self@.zombie_thread_ids,
         ensures
             new_self.wf(),
     {
         reveal(SleepingProcess::wf);
-        reveal(SleepingProcess::mutation_frame_preserved);
     }
 
     //==============================================================================================
@@ -164,7 +167,7 @@ impl SleepingProcess {
     //==============================================================================================
 
     /// Lemma: spec_find_thread returns None iff the thread is not in any list.
-    pub proof fn lemma_find_thread_not_found(&self, tid: u64)
+    proof fn lemma_find_thread_not_found(&self, tid: u64)
         requires
             !self.spec_has_sleeping_thread(tid),
             !self.spec_has_zombie_thread(tid),
@@ -177,7 +180,7 @@ impl SleepingProcess {
     }
 
     /// Lemma: spec_find_thread result is consistent with spec_has_thread.
-    pub proof fn lemma_find_thread_iff_has_thread(&self, tid: u64)
+    proof fn lemma_find_thread_iff_has_thread(&self, tid: u64)
         ensures
             self.spec_find_thread(tid).is_some() <==> self.spec_has_thread(tid),
     {
