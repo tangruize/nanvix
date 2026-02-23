@@ -765,6 +765,9 @@ impl Vmem {
 
         // Add the new mapping.
         let slot: usize = self.mapping_count;
+        proof {
+            frame_addr.lemma_inv_from_aligned();
+        }
         self.mappings[slot] = PageMapping {
             vaddr: vaddr,
             frame_addr: frame_addr.into_raw_value(),

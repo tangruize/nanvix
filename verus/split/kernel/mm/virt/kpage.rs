@@ -365,6 +365,9 @@ impl KernelPage {
         // simplified verus FrameAddress. Under identity mapping, both chains produce the same raw
         // address value (see module-level docs for equivalence proof).
         let frame_addr: FrameAddress = self.kframe.base();
+        proof {
+            frame_addr.lemma_inv_from_aligned();
+        }
         PageAddress::new(frame_addr.into_raw_value())
     }
 

@@ -276,6 +276,9 @@ impl FrameAllocator {
                     assert(frame_idx as int <= MAX_FRAME_NUMBER as int);
                 }
                 let frame_number = FrameNumber { value: frame_idx };
+                proof {
+                    frame_number.lemma_inv_from_bound();
+                }
                 let frame_addr = FrameAddress::from_frame_number(frame_number);
                 frame_addr
             },
@@ -324,6 +327,9 @@ impl FrameAllocator {
             // EXPLICIT COUNT: exactly one fewer frame allocated.
             self.spec_num_allocated() == old(self).spec_num_allocated() - 1,
     {
+        proof {
+            frame.lemma_inv_from_aligned();
+        }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         // Explicitly prove the bitmap precondition is satisfied.
@@ -364,6 +370,7 @@ impl FrameAllocator {
     pub fn book(&mut self, phys_addr: PageAlignedPhysAddr) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
+            phys_addr.inv(),
             // Frame index must be within capacity.
             phys_addr.spec_frame_number() < old(self)@.capacity,
         ensures

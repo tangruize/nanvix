@@ -26,6 +26,7 @@ impl ProcessState {
     pub proof fn lemma_new_is_wf(pid: ProcessIdentifier)
         ensures
             forall|s: ProcessState|
+                #![trigger s.wf()]
                 s.pid.spec_value() == pid.spec_value()
                 && s.capabilities.spec_bits() == 0u8
                 && s.capabilities.wf()
@@ -45,6 +46,9 @@ impl ProcessState {
     pub proof fn lemma_new_has_empty_collections(pid: ProcessIdentifier)
         ensures
             forall|s: ProcessState|
+                #![trigger s.spec_mutex_count()]
+                #![trigger s.spec_cond_count()]
+                #![trigger s.spec_pmio_count()]
                 s.mutex_count == 0
                 && s.cond_count == 0
                 && s.pmio_ports@.len() == 0
@@ -60,6 +64,7 @@ impl ProcessState {
     pub proof fn lemma_new_no_capabilities(pid: ProcessIdentifier)
         ensures
             forall|s: ProcessState|
+                #![trigger s.spec_capabilities_bits()]
                 s.capabilities.spec_bits() == 0u8
                 ==> s.spec_capabilities_bits() == 0u8,
     {
@@ -73,6 +78,7 @@ impl ProcessState {
     pub proof fn lemma_set_capability_preserves_pid(&self, cap_bits: u8)
         ensures
             forall|post: ProcessState|
+                #![trigger post.spec_pid()]
                 post.pid.spec_value() == self.pid.spec_value()
                 ==> post.spec_pid() == self.spec_pid(),
     {
@@ -82,6 +88,7 @@ impl ProcessState {
     pub proof fn lemma_mutex_change_preserves_pid(&self)
         ensures
             forall|post: ProcessState|
+                #![trigger post.spec_pid()]
                 post.pid.spec_value() == self.pid.spec_value()
                 ==> post.spec_pid() == self.spec_pid(),
     {
@@ -91,6 +98,7 @@ impl ProcessState {
     pub proof fn lemma_cond_change_preserves_pid(&self)
         ensures
             forall|post: ProcessState|
+                #![trigger post.spec_pid()]
                 post.pid.spec_value() == self.pid.spec_value()
                 ==> post.spec_pid() == self.spec_pid(),
     {
@@ -100,6 +108,7 @@ impl ProcessState {
     pub proof fn lemma_pmio_change_preserves_pid(&self)
         ensures
             forall|post: ProcessState|
+                #![trigger post.spec_pid()]
                 post.pid.spec_value() == self.pid.spec_value()
                 ==> post.spec_pid() == self.spec_pid(),
     {
@@ -348,6 +357,7 @@ impl ProcessState {
             new_caps.wf(),
         ensures
             forall|post: ProcessState|
+                #![trigger post.wf()]
                 post.capabilities == new_caps
                 && post.mutex_count == self.mutex_count
                 && post.mutex_addrs@ =~= self.mutex_addrs@
@@ -366,6 +376,7 @@ impl ProcessState {
             self.wf(),
         ensures
             forall|post: ProcessState|
+                #![trigger post.wf()]
                 post.pid.spec_value() == self.pid.spec_value()
                 && post.capabilities == self.capabilities
                 && post.mutex_count == self.mutex_count
