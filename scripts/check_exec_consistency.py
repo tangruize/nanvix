@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # Tree-sitter setup.
-LANGUAGE_SO = os.environ.get("VERUS_LANGUAGE_SO", "/tmp/verus-tools-venv/verus.so")
+LANGUAGE_SO = os.environ.get("VERUS_LANGUAGE_SO", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "verus-tools-venv", "verus.so"))
 
 try:
     from tree_sitter import Language, Parser

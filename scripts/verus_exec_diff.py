@@ -824,7 +824,7 @@ def main() -> None:
     )
     arg_parser.add_argument(
         "--language-path",
-        default="/tmp/verus-tools-venv/verus.so",
+        default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "verus-tools-venv", "verus.so"),
         help="Path to tree-sitter Verus language .so file.",
     )
     arg_parser.add_argument(
