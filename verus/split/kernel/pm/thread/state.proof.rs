@@ -238,9 +238,10 @@ impl ThreadState {
                 == seq_to_set(self.locked_mutex_set@).len() + 1,
     {
         reveal(ThreadState::wf);
-        // push(v) gives s.push(v), and seq_to_set(s.push(v))
-        // = seq_to_set(s).insert(v as int) by definition.
-        assert(self.locked_mutex_set@.push(address).drop_last() =~= self.locked_mutex_set@);
+        let s = self.locked_mutex_set@;
+        let f = |v: u64| v as int;
+        s.lemma_push_to_set_commute(address);
+        s.to_set().lemma_set_map_insert_commute(address, f);
         if self.locked_mutex_set@.contains(address) {
             lemma_seq_to_set_contains_fwd(self.locked_mutex_set@, address);
         }
@@ -262,7 +263,10 @@ impl ThreadState {
                 == seq_to_set(self.locked_mutex_set@).contains(other),
     {
         reveal(ThreadState::wf);
-        assert(self.locked_mutex_set@.push(address).drop_last() =~= self.locked_mutex_set@);
+        let s = self.locked_mutex_set@;
+        let f = |v: u64| v as int;
+        s.lemma_push_to_set_commute(address);
+        s.to_set().lemma_set_map_insert_commute(address, f);
     }
 
     /// Lemma: Taking a mutex guard removes the address and decrements count.

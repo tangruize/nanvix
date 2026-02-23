@@ -338,19 +338,17 @@ impl ThreadState {
     {
         proof {
             reveal(ThreadState::wf);
-            // Before push: self.locked_mutex_set@ is the old seq.
             let old_seq: Seq<u64> = self.locked_mutex_set@;
-            // After push, the new seq is old_seq.push(address).
-            // seq_to_set(old_seq.push(address)) == seq_to_set(old_seq).insert(address as int).
-            assert(old_seq.push(address).drop_last() =~= old_seq);
+            let f = |v: u64| v as int;
+            // to_set of push equals insert; map distributes over insert.
+            old_seq.lemma_push_to_set_commute(address);
+            old_seq.to_set().lemma_set_map_insert_commute(address, f);
             // Prove no_duplicates after push.
             if old_seq.contains(address) {
                 lemma_seq_to_set_contains_fwd(old_seq, address);
             }
             assert(!old_seq.contains(address));
             assert(old_seq.push(address).no_duplicates());
-            // The new set contains address.
-            // seq_to_set(old_seq.push(address)) = seq_to_set(old_seq).insert(address as int).
             // Prove len: since no_dups, len == seq len.
             lemma_seq_to_set_len(old_seq.push(address));
             lemma_seq_to_set_len(old_seq);
