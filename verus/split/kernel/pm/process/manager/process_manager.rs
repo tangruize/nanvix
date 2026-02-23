@@ -138,7 +138,7 @@ impl PidSet {
             s.to_set().lemma_set_map_insert_commute(pid, f);
             // no_duplicates: pid not in old seq (from contains/no_dups).
             if s.contains(pid) {
-                lemma_seq_to_set_contains_fwd(s, pid);
+                assert(s.to_set().contains(pid));
             }
             assert(!s.contains(pid));
             assert(s.push(pid).no_duplicates());
@@ -175,9 +175,6 @@ impl PidSet {
             idx < self.pids@.len(),
             self.pids@[idx as int] == pid,
     {
-        proof {
-            lemma_seq_to_set_contains_rev(self.pids@, pid);
-        }
         let mut i: usize = 0;
         while i < self.pids.len()
             invariant
@@ -225,8 +222,17 @@ impl PidSet {
             other.no_dups(),
     {
         proof {
-            lemma_seq_to_set_append(self.pids@, other.pids@);
-            lemma_seq_no_dups_append(self.pids@, other.pids@);
+            vstd::seq_lib::seq_to_set_distributes_over_add(self.pids@, other.pids@);
+            self.pids@.to_set().lemma_map_union_commute(other.pids@.to_set(), |v: u64| v as int);
+            assert forall |i: int, j: int|
+                0 <= i < self.pids@.len() && 0 <= j < other.pids@.len()
+            implies self.pids@[i] != other.pids@[j] by {
+                assert(self.pids@.to_set().contains(self.pids@[i]));
+                assert(seq_to_set(self.pids@).contains(self.pids@[i] as int));
+                assert(other.pids@.to_set().contains(other.pids@[j]));
+                assert(seq_to_set(other.pids@).contains(other.pids@[j] as int));
+            }
+            vstd::seq_lib::lemma_no_dup_in_concat(self.pids@, other.pids@);
         }
         self.pids.append(&mut other.pids);
     }
@@ -235,59 +241,6 @@ impl PidSet {
 //==================================================================================================
 // seq_to_set Proof Lemmas
 //==================================================================================================
-
-/// Lemma: seq_to_set of any sequence is finite.
-pub proof fn lemma_seq_to_set_finite(s: Seq<u64>)
-    ensures
-        seq_to_set(s).finite(),
-{
-    vstd::seq_lib::seq_to_set_is_finite(s);
-    s.to_set().lemma_map_finite(|v: u64| v as int);
-}
-
-/// Lemma: seq_to_set length equals seq length when no duplicates.
-pub proof fn lemma_seq_to_set_len(s: Seq<u64>)
-    requires
-        s.no_duplicates(),
-    ensures
-        seq_to_set(s).finite(),
-        seq_to_set(s).len() == s.len(),
-{
-    lemma_seq_to_set_finite(s);
-    vstd::seq_lib::seq_to_set_is_finite(s);
-    s.unique_seq_to_set();
-    let f = |v: u64| v as int;
-    assert(vstd::relations::injective(f));
-    assert forall |a: u64| s.to_set().contains(a) implies seq_to_set(s).contains(#[trigger] f(a)) by {}
-    assert forall |b: int| (#[trigger] seq_to_set(s).contains(b)) implies exists |a: u64| s.to_set().contains(a) && f(a) == b by {}
-    vstd::set_lib::lemma_map_size(s.to_set(), seq_to_set(s), f);
-}
-
-/// Lemma: an element in the seq is in the set.
-pub proof fn lemma_seq_to_set_contains_fwd(s: Seq<u64>, v: u64)
-    requires
-        s.contains(v),
-    ensures
-        seq_to_set(s).contains(v as int),
-{
-    assert(s.to_set().contains(v));
-}
-
-/// Lemma: an element in the set comes from the seq.
-pub proof fn lemma_seq_to_set_contains_rev(s: Seq<u64>, v: u64)
-    ensures
-        seq_to_set(s).contains(v as int) ==> s.contains(v),
-{
-}
-
-/// Lemma: if v is NOT in the seq, then v as int is NOT in the set.
-pub proof fn lemma_seq_to_set_not_contains(s: Seq<u64>, v: u64)
-    requires
-        !s.contains(v),
-    ensures
-        !seq_to_set(s).contains(v as int),
-{
-}
 
 /// Lemma: seq_to_set after removing element at index i equals set minus that element.
 pub proof fn lemma_seq_to_set_remove(s: Seq<u64>, i: int)
@@ -301,7 +254,7 @@ pub proof fn lemma_seq_to_set_remove(s: Seq<u64>, i: int)
     let f = |v: u64| v as int;
     let removed = s.remove(i);
     // s.remove(i).to_set() =~= s.to_set().remove(s[i])
-    assert forall |x: u64| removed.to_set().contains(x) == s.to_set().remove(s[i]).contains(x) by {
+    assert forall |x: u64| #[trigger] removed.to_set().contains(x) == s.to_set().remove(s[i]).contains(x) by {
         if removed.to_set().contains(x) {
             let k: int = choose |k: int| 0 <= k < removed.len() && removed[k] == x;
             if k < i {
@@ -330,33 +283,6 @@ pub proof fn lemma_seq_to_set_remove(s: Seq<u64>, i: int)
         == s.to_set().map(f).remove(f(s[i])).contains(a) by {
         assert(f(s[i]) == (s[i] as int));
     }
-}
-
-/// Lemma: seq_to_set of concatenation equals union of seq_to_sets.
-pub proof fn lemma_seq_to_set_append(a: Seq<u64>, b: Seq<u64>)
-    ensures
-        seq_to_set(a + b) =~= seq_to_set(a).union(seq_to_set(b)),
-{
-    vstd::seq_lib::seq_to_set_distributes_over_add(a, b);
-    a.to_set().lemma_map_union_commute(b.to_set(), |v: u64| v as int);
-}
-
-/// Lemma: appending two no-dup seqs with disjoint sets preserves no-duplicates.
-pub proof fn lemma_seq_no_dups_append(a: Seq<u64>, b: Seq<u64>)
-    requires
-        a.no_duplicates(),
-        b.no_duplicates(),
-        seq_to_set(a).disjoint(seq_to_set(b)),
-    ensures
-        (a + b).no_duplicates(),
-{
-    assert forall |i: int, j: int|
-        0 <= i < a.len() && 0 <= j < b.len()
-    implies a[i] != b[j] by {
-        lemma_seq_to_set_contains_fwd(a, a[i]);
-        lemma_seq_to_set_contains_fwd(b, b[j]);
-    }
-    vstd::seq_lib::lemma_no_dup_in_concat(a, b);
 }
 
 } // verus! (PidSet block)

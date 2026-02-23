@@ -83,11 +83,6 @@
 use crate::kernel::pm::sys::tid::ThreadIdentifier;
 use crate::kernel::pm::process::manager::{
     seq_to_set,
-    lemma_seq_to_set_finite,
-    lemma_seq_to_set_len,
-    lemma_seq_to_set_contains_fwd,
-    lemma_seq_to_set_contains_rev,
-    lemma_seq_to_set_not_contains,
     lemma_seq_to_set_remove,
 };
 use vstd::prelude::*;
@@ -345,13 +340,28 @@ impl ThreadState {
             old_seq.to_set().lemma_set_map_insert_commute(address, f);
             // Prove no_duplicates after push.
             if old_seq.contains(address) {
-                lemma_seq_to_set_contains_fwd(old_seq, address);
+                assert(old_seq.to_set().contains(address));
             }
             assert(!old_seq.contains(address));
             assert(old_seq.push(address).no_duplicates());
-            // Prove len: since no_dups, len == seq len.
-            lemma_seq_to_set_len(old_seq.push(address));
-            lemma_seq_to_set_len(old_seq);
+            // Prove len: since no_dups, len == seq len (inlined vstd calls).
+            {
+                let f = |v: u64| v as int;
+                let pushed: Seq<u64> = old_seq.push(address);
+                vstd::seq_lib::seq_to_set_is_finite(pushed);
+                pushed.to_set().lemma_map_finite(f);
+                pushed.unique_seq_to_set();
+                assert(vstd::relations::injective(f));
+                assert forall |a: u64| pushed.to_set().contains(a) implies seq_to_set(pushed).contains(#[trigger] f(a)) by {}
+                assert forall |b: int| (#[trigger] seq_to_set(pushed).contains(b)) implies exists |a: u64| pushed.to_set().contains(a) && f(a) == b by {}
+                vstd::set_lib::lemma_map_size(pushed.to_set(), seq_to_set(pushed), f);
+                vstd::seq_lib::seq_to_set_is_finite(old_seq);
+                old_seq.to_set().lemma_map_finite(f);
+                old_seq.unique_seq_to_set();
+                assert forall |a: u64| old_seq.to_set().contains(a) implies seq_to_set(old_seq).contains(#[trigger] f(a)) by {}
+                assert forall |b: int| (#[trigger] seq_to_set(old_seq).contains(b)) implies exists |a: u64| old_seq.to_set().contains(a) && f(a) == b by {}
+                vstd::set_lib::lemma_map_size(old_seq.to_set(), seq_to_set(old_seq), f);
+            }
         }
         self.locked_mutex_count = self.locked_mutex_count + 1;
         self.locked_mutex_set.push(address);
@@ -394,9 +404,6 @@ impl ThreadState {
         // Save old sequence for proof reasoning after mutation.
         let ghost old_seq: Seq<u64> = self.locked_mutex_set@;
 
-        proof {
-            lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
-        }
         let mut i: usize = 0;
         while i < self.locked_mutex_set.len()
             invariant

@@ -243,12 +243,29 @@ impl ThreadState {
         s.lemma_push_to_set_commute(address);
         s.to_set().lemma_set_map_insert_commute(address, f);
         if self.locked_mutex_set@.contains(address) {
-            lemma_seq_to_set_contains_fwd(self.locked_mutex_set@, address);
+            assert(self.locked_mutex_set@.to_set().contains(address));
         }
         assert(!self.locked_mutex_set@.contains(address));
         assert(self.locked_mutex_set@.push(address).no_duplicates());
-        lemma_seq_to_set_len(self.locked_mutex_set@.push(address));
-        lemma_seq_to_set_len(self.locked_mutex_set@);
+        // Inline seq_to_set_len for pushed and original sequences.
+        {
+            let f = |v: u64| v as int;
+            let pushed: Seq<u64> = self.locked_mutex_set@.push(address);
+            vstd::seq_lib::seq_to_set_is_finite(pushed);
+            pushed.to_set().lemma_map_finite(f);
+            pushed.unique_seq_to_set();
+            assert(vstd::relations::injective(f));
+            assert forall |a: u64| pushed.to_set().contains(a) implies seq_to_set(pushed).contains(#[trigger] f(a)) by {}
+            assert forall |b: int| (#[trigger] seq_to_set(pushed).contains(b)) implies exists |a: u64| pushed.to_set().contains(a) && f(a) == b by {}
+            vstd::set_lib::lemma_map_size(pushed.to_set(), seq_to_set(pushed), f);
+            let orig: Seq<u64> = self.locked_mutex_set@;
+            vstd::seq_lib::seq_to_set_is_finite(orig);
+            orig.to_set().lemma_map_finite(f);
+            orig.unique_seq_to_set();
+            assert forall |a: u64| orig.to_set().contains(a) implies seq_to_set(orig).contains(#[trigger] f(a)) by {}
+            assert forall |b: int| (#[trigger] seq_to_set(orig).contains(b)) implies exists |a: u64| orig.to_set().contains(a) && f(a) == b by {}
+            vstd::set_lib::lemma_map_size(orig.to_set(), seq_to_set(orig), f);
+        }
     }
 
     /// Lemma: Pushing a new address preserves membership of other addresses.
@@ -286,7 +303,6 @@ impl ThreadState {
             }),
     {
         reveal(ThreadState::wf);
-        lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
         let idx: int = choose |k: int|
             0 <= k < self.locked_mutex_set@.len()
             && self.locked_mutex_set@[k] == address;
@@ -310,7 +326,6 @@ impl ThreadState {
             }),
     {
         reveal(ThreadState::wf);
-        lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
         let idx: int = choose |k: int|
             0 <= k < self.locked_mutex_set@.len()
             && self.locked_mutex_set@[k] == address;
@@ -436,7 +451,7 @@ impl ThreadState {
     {
         reveal(ThreadState::wf);
         if self.locked_mutex_set@.contains(address) {
-            lemma_seq_to_set_contains_fwd(self.locked_mutex_set@, address);
+            assert(self.locked_mutex_set@.to_set().contains(address));
         }
     }
 
@@ -456,7 +471,6 @@ impl ThreadState {
             }),
     {
         reveal(ThreadState::wf);
-        lemma_seq_to_set_contains_rev(self.locked_mutex_set@, address);
         let idx: int = choose |k: int|
             0 <= k < self.locked_mutex_set@.len()
             && self.locked_mutex_set@[k] == address;
