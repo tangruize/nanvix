@@ -8,8 +8,8 @@
 ## Changes
 | Function | Action | Justification |
 |----------|--------|---------------|
-| `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs) | Documented equivalence | Structural decomposition for verification; see §1 below. |
-| `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) | [handle_sleep_error_source.rs](handle_sleep_error_source.rs) | [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) | Documented equivalence | Killed-path split for divergence modeling; see §2 below. |
+| `do_kcall` [do_kcall.diff](do_kcall.diff) [do_kcall_source.rs](do_kcall_source.rs) [do_kcall_verus.rs](do_kcall_verus.rs) | Documented equivalence | Structural decomposition for verification; see §1 below. |
+| `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) [handle_sleep_error_source.rs](handle_sleep_error_source.rs) [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) | Documented equivalence | Killed-path split for divergence modeling; see §2 below. |
 | `classify_kcall_number` [classify_kcall_number_verus.rs](classify_kcall_number_verus.rs) | Kept (justified) | Verification helper: exec mirror of `spec_classify_kcall`; models `KcallNumber::from(u32)` match arms. |
 | `convert_fallible` [convert_fallible_verus.rs](convert_fallible_verus.rs) | Kept (justified) | Verification helper: factors `Ok→Success / Err→Error` pattern for fallible calls. |
 | `convert_sleepable` [convert_sleepable_verus.rs](convert_sleepable_verus.rs) | Kept (justified) | Verification helper: factors `Ok→Success / Err→handle_sleep_error` pattern for sleepable calls. |
@@ -17,7 +17,7 @@
 | `do_kcall_abi` [do_kcall_abi_verus.rs](do_kcall_abi_verus.rs) | Kept (justified) | Closes ABI gap (T5): matches original `extern "C" fn(u32,u32,u32,u32,u32)->i64` signature. |
 | `do_kcall_context` [do_kcall_context_verus.rs](do_kcall_context_verus.rs) | Kept (justified) | Verification decomposition: separates pid/tid retrieval from dispatch logic. |
 | `do_kcall_dispatch` [do_kcall_dispatch_verus.rs](do_kcall_dispatch_verus.rs) | Kept (justified) | Verification decomposition: verified match dispatch after pid/tid are available. |
-| `do_kcall_encoded` [do_kcall_encoded_verus.rs](do_kcall_encoded_verus.rs) | Kept (justified) | Composes `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs) + `encode_result` [encode_result_verus.rs](encode_result_verus.rs); provides result+encoding pair for callers. |
+| `do_kcall_encoded` [do_kcall_encoded_verus.rs](do_kcall_encoded_verus.rs) | Kept (justified) | Composes `do_kcall` + `encode_result`; provides result+encoding pair for callers. |
 | `encode_result` [encode_result_verus.rs](encode_result_verus.rs) | Kept (justified) | Models `KcallResult::into::<i64>()` ABI encoding; verified identity on value field. |
 | `error` [error_verus.rs](error_verus.rs) | Kept (justified) | `DispatchResult::error()` constructor modeling `KcallResult::Error`. |
 | `event_resume` [event_resume_verus.rs](event_resume_verus.rs) | Kept (justified) | External body (T3): models `event::resume(arg0 as usize)`. |
@@ -46,12 +46,12 @@
 | `scoreboard_dispatch_call` [scoreboard_dispatch_call_verus.rs](scoreboard_dispatch_call_verus.rs) | Kept (justified) | External body (T2): models `scoreboard.dispatch(number, pid, tid, arg0, arg1, arg2, arg3)`. |
 | `scoreboard_get_mut` [scoreboard_get_mut_verus.rs](scoreboard_get_mut_verus.rs) | Kept (justified) | External body (T2): models `ScoreBoard::get_mut()`. |
 | `success` [success_verus.rs](success_verus.rs) | Kept (justified) | `DispatchResult::success()` constructor modeling `KcallResult::Success`. |
-| `DispatchArgs` [struct_DispatchArgs_verus.rs](struct_DispatchArgs_verus.rs) (struct) | Kept (justified) | Models the five u32 arguments to `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs) for typed verification. |
-| `DispatchResult` [struct_DispatchResult_verus.rs](struct_DispatchResult_verus.rs) (struct) | Kept (justified) | Models `KcallResult` enum with `is_success`/`value` for spec-level reasoning. |
-| `FallibleOutcome` [struct_FallibleOutcome_verus.rs](struct_FallibleOutcome_verus.rs) (struct) | Kept (justified) | Models `Result<T, Error>` return type for non-sleeping subsystem calls. |
-| `ScoreboardDispatchOutcome` [struct_ScoreboardDispatchOutcome_verus.rs](struct_ScoreboardDispatchOutcome_verus.rs) (struct) | Kept (justified) | Models `Result<KcallResult, SleepError>` from `scoreboard.dispatch()`. |
-| `SleepError` [struct_SleepError_verus.rs](struct_SleepError_verus.rs) (struct) | Kept (justified) | Models original `pm::SleepError` enum as flat struct for Verus verification. |
-| `SleepableOutcome` [struct_SleepableOutcome_verus.rs](struct_SleepableOutcome_verus.rs) (struct) | Kept (justified) | Models `Result<T, SleepError>` return type for sleeping subsystem calls. |
+| `DispatchArgs` (struct) | Kept (justified) | Models the five u32 arguments to `do_kcall` for typed verification. |
+| `DispatchResult` (struct) | Kept (justified) | Models `KcallResult` enum with `is_success`/`value` for spec-level reasoning. |
+| `FallibleOutcome` (struct) | Kept (justified) | Models `Result<T, Error>` return type for non-sleeping subsystem calls. |
+| `ScoreboardDispatchOutcome` (struct) | Kept (justified) | Models `Result<KcallResult, SleepError>` from `scoreboard.dispatch()`. |
+| `SleepError` (struct) | Kept (justified) | Models original `pm::SleepError` enum as flat struct for Verus verification. |
+| `SleepableOutcome` (struct) | Kept (justified) | Models `Result<T, SleepError>` return type for sleeping subsystem calls. |
 
 ## Verification: PASS
 
@@ -59,7 +59,7 @@
 
 ---
 
-## §1 — `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs) MISMATCH: Structural Decomposition (Semantically Equivalent)
+## §1 — `do_kcall` MISMATCH: Structural Decomposition (Semantically Equivalent)
 
 ### Original (lines 54–146)
 
@@ -84,18 +84,18 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
 The monolithic function is split into four verified layers:
 
 1. **`do_kcall_abi(number, arg0, arg1, arg2, arg3) -> i64`** — matches the
-   original C ABI signature exactly. Constructs `DispatchArgs` [struct_DispatchArgs_verus.rs](struct_DispatchArgs_verus.rs), calls
-   `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs), encodes the result via `encode_result` [encode_result_verus.rs](encode_result_verus.rs). This closes trust
+   original C ABI signature exactly. Constructs `DispatchArgs`, calls
+   `do_kcall`, encodes the result via `encode_result`. This closes trust
    boundary T5.
 
 2. **`do_kcall(args: DispatchArgs) -> DispatchResult`** — thin wrapper that
-   delegates to `do_kcall_context` [do_kcall_context_verus.rs](do_kcall_context_verus.rs). Provides the named entry point for
+   delegates to `do_kcall_context`. Provides the named entry point for
    verification postconditions.
 
 3. **`do_kcall_context(args) -> DispatchResult`** — retrieves pid/tid via
    `pm_get_pid()` / `pm_get_tid()` (external bodies modeling
    `ProcessManager::get().get_pid/tid()`). On success, delegates to
-   `do_kcall_dispatch` [do_kcall_dispatch_verus.rs](do_kcall_dispatch_verus.rs).
+   `do_kcall_dispatch`.
 
 4. **`do_kcall_dispatch(pid, tid, args) -> DispatchResult`** — the core match
    dispatch. Each branch maps to the original match arm:
@@ -130,7 +130,7 @@ The monolithic function is split into four verified layers:
 - The `.into()` at the end of the original match converts `KcallResult` to
   `i64`; the Verus version models this via `encode_result()` which is verified
   to be the identity on the value field (`lemma_encode_result_is_value`).
-- The factoring into `convert_sleepable` [convert_sleepable_verus.rs](convert_sleepable_verus.rs) / `convert_fallible` [convert_fallible_verus.rs](convert_fallible_verus.rs) captures the
+- The factoring into `convert_sleepable` / `convert_fallible` captures the
   `Ok→Success / Err→handle_sleep_error` and `Ok→Success / Err→Error` patterns
   without changing behavior.
 
@@ -143,7 +143,7 @@ between them.
 
 ---
 
-## §2 — `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) | [handle_sleep_error_source.rs](handle_sleep_error_source.rs) | [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) MISMATCH: Divergence Split (Semantically Equivalent)
+## §2 — `handle_sleep_error` MISMATCH: Divergence Split (Semantically Equivalent)
 
 ### Original (lines 148–167)
 
@@ -188,16 +188,16 @@ Two functions:
   in `src/libs/error/src/lib.rs:235`. The `error!()` log is omitted (side effect).
 - **Killed path**: The original calls `ProcessManager::exit()` then `panic!()`.
   The Verus version splits this into `pm_exit_interrupted()` + `diverge_after_exit()`,
-  which models the same sequence. The precondition on `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) | [handle_sleep_error_source.rs](handle_sleep_error_source.rs) | [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) excludes
+  which models the same sequence. The precondition on `handle_sleep_error` excludes
   `InterruptedKilled`, and callers route `Killed` to `handle_sleep_error_killed()`
-  instead (see `convert_sleepable` [convert_sleepable_verus.rs](convert_sleepable_verus.rs) and `remote_dispatch_verified` [remote_dispatch_verified_verus.rs](remote_dispatch_verified_verus.rs)).
+  instead (see `convert_sleepable` and `remote_dispatch_verified`).
 
 ### Verus Limitation Requiring Split
 
 Verus cannot model a function that conditionally returns or diverges in the same
 body (there is no `!` return type support with conditional divergence). Splitting
-into a returning function (`handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) | [handle_sleep_error_source.rs](handle_sleep_error_source.rs) | [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs), precondition excludes Killed) and
-a diverging function (`handle_sleep_error_killed` [handle_sleep_error_killed_verus.rs](handle_sleep_error_killed_verus.rs), `ensures false`) is the
+into a returning function (`handle_sleep_error`, precondition excludes Killed) and
+a diverging function (`handle_sleep_error_killed`, `ensures false`) is the
 standard Verus pattern for modeling conditional divergence.
 
 ---
@@ -206,37 +206,37 @@ standard Verus pattern for modeling conditional divergence.
 
 All 36 extra functions and 6 extra structs are verification artifacts:
 
-- **6 structs** (`DispatchResult` [struct_DispatchResult_verus.rs](struct_DispatchResult_verus.rs), `DispatchArgs` [struct_DispatchArgs_verus.rs](struct_DispatchArgs_verus.rs), `SleepError` [struct_SleepError_verus.rs](struct_SleepError_verus.rs),
-  `SleepableOutcome` [struct_SleepableOutcome_verus.rs](struct_SleepableOutcome_verus.rs), `FallibleOutcome` [struct_FallibleOutcome_verus.rs](struct_FallibleOutcome_verus.rs), `ScoreboardDispatchOutcome` [struct_ScoreboardDispatchOutcome_verus.rs](struct_ScoreboardDispatchOutcome_verus.rs)):
+- **6 structs** (`DispatchResult`, `DispatchArgs`, `SleepError`,
+  `SleepableOutcome`, `FallibleOutcome`, `ScoreboardDispatchOutcome`):
   Model original Rust types (`KcallResult`, raw args, `pm::SleepError`,
   `Result<T, SleepError>`, `Result<T, Error>`, scoreboard dispatch result)
   as flat structs with View types for spec-level reasoning.
 
-- **12 external body functions** (`pm_get_pid` [pm_get_pid_verus.rs](pm_get_pid_verus.rs), `pm_get_tid` [pm_get_tid_verus.rs](pm_get_tid_verus.rs), `pm_exit` [pm_exit_verus.rs](pm_exit_verus.rs),
-  `pm_exit_thread` [pm_exit_thread_verus.rs](pm_exit_thread_verus.rs), `pm_join_thread` [pm_join_thread_verus.rs](pm_join_thread_verus.rs), `ipc_recv` [ipc_recv_verus.rs](ipc_recv_verus.rs), `event_resume` [event_resume_verus.rs](event_resume_verus.rs),
-  `pm_lock_mutex` [pm_lock_mutex_verus.rs](pm_lock_mutex_verus.rs), `pm_unlock_mutex` [pm_unlock_mutex_verus.rs](pm_unlock_mutex_verus.rs), `pm_wait_cond` [pm_wait_cond_verus.rs](pm_wait_cond_verus.rs), `pm_signal_cond` [pm_signal_cond_verus.rs](pm_signal_cond_verus.rs),
-  `pm_giveup` [pm_giveup_verus.rs](pm_giveup_verus.rs), `pm_sleep` [pm_sleep_verus.rs](pm_sleep_verus.rs), `scoreboard_get_mut` [scoreboard_get_mut_verus.rs](scoreboard_get_mut_verus.rs), `scoreboard_dispatch_call` [scoreboard_dispatch_call_verus.rs](scoreboard_dispatch_call_verus.rs),
-  `pm_exit_interrupted` [pm_exit_interrupted_verus.rs](pm_exit_interrupted_verus.rs), `diverge_after_exit` [diverge_after_exit_verus.rs](diverge_after_exit_verus.rs)): Model `unsafe` subsystem
+- **12 external body functions** (`pm_get_pid`, `pm_get_tid`, `pm_exit`,
+  `pm_exit_thread`, `pm_join_thread`, `ipc_recv`, `event_resume`,
+  `pm_lock_mutex`, `pm_unlock_mutex`, `pm_wait_cond`, `pm_signal_cond`,
+  `pm_giveup`, `pm_sleep`, `scoreboard_get_mut`, `scoreboard_dispatch_call`,
+  `pm_exit_interrupted`, `diverge_after_exit`): Model `unsafe` subsystem
   calls that Verus cannot verify directly. Each has postconditions matching
   the original function's return-type contract.
 
-- **7 constructors** (`ok` [ok_verus.rs](ok_verus.rs), `success` [success_verus.rs](success_verus.rs), `error` [error_verus.rs](error_verus.rs), `new` [new_verus.rs](new_verus.rs), `generic` [generic_verus.rs](generic_verus.rs),
-  `interrupted_killed` [interrupted_killed_verus.rs](interrupted_killed_verus.rs), `interrupted_timed_out` [interrupted_timed_out_verus.rs](interrupted_timed_out_verus.rs)): Verified constructors
+- **7 constructors** (`ok`, `success`, `error`, `new`, `generic`,
+  `interrupted_killed`, `interrupted_timed_out`): Verified constructors
   with postconditions enabling downstream proofs.
 
-- **5 classification/query functions** (`classify_kcall_number` [classify_kcall_number_verus.rs](classify_kcall_number_verus.rs),
-  `is_locally_handled` [is_locally_handled_verus.rs](is_locally_handled_verus.rs), `is_sleepable` [is_sleepable_verus.rs](is_sleepable_verus.rs), `convert_sleepable` [convert_sleepable_verus.rs](convert_sleepable_verus.rs),
-  `convert_fallible` [convert_fallible_verus.rs](convert_fallible_verus.rs)): Factor verification-relevant patterns from the
-  monolithic `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs).
+- **5 classification/query functions** (`classify_kcall_number`,
+  `is_locally_handled`, `is_sleepable`, `convert_sleepable`,
+  `convert_fallible`): Factor verification-relevant patterns from the
+  monolithic `do_kcall`.
 
-- **5 dispatch/encoding functions** (`do_kcall_dispatch` [do_kcall_dispatch_verus.rs](do_kcall_dispatch_verus.rs),
-  `do_kcall_context` [do_kcall_context_verus.rs](do_kcall_context_verus.rs), `remote_dispatch_verified` [remote_dispatch_verified_verus.rs](remote_dispatch_verified_verus.rs), `encode_result` [encode_result_verus.rs](encode_result_verus.rs),
-  `do_kcall_encoded` [do_kcall_encoded_verus.rs](do_kcall_encoded_verus.rs), `do_kcall_abi` [do_kcall_abi_verus.rs](do_kcall_abi_verus.rs)): Decompose the original
-  `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs) into verifiable layers.
+- **5 dispatch/encoding functions** (`do_kcall_dispatch`,
+  `do_kcall_context`, `remote_dispatch_verified`, `encode_result`,
+  `do_kcall_encoded`, `do_kcall_abi`): Decompose the original
+  `do_kcall` into verifiable layers.
 
-- **1 divergence handler** (`handle_sleep_error_killed` [handle_sleep_error_killed_verus.rs](handle_sleep_error_killed_verus.rs)): Models the
+- **1 divergence handler** (`handle_sleep_error_killed`): Models the
   `Interrupted(Killed)` divergent path separately from the returning
-  `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) | [handle_sleep_error_source.rs](handle_sleep_error_source.rs) | [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs).
+  `handle_sleep_error`.
 
 All are documented in the module-level doc comment (lines 4–125 of the
 Verus file) with trust boundary annotations (T1–T6) and an API mapping

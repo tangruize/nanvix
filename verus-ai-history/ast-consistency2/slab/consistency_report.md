@@ -15,9 +15,9 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `allocate` [allocate.diff](allocate.diff) | [allocate_source.rs](allocate_source.rs) | [allocate_verus.rs](allocate_verus.rs) | MISMATCH | 171-179 | 547-733 |
-| `deallocate` [deallocate.diff](deallocate.diff) | [deallocate_source.rs](deallocate_source.rs) | [deallocate_verus.rs](deallocate_verus.rs) | MISMATCH | 200-223 | 749-1015 |
-| `from_raw_parts` [from_raw_parts.diff](from_raw_parts.diff) | [from_raw_parts_source.rs](from_raw_parts_source.rs) | [from_raw_parts_verus.rs](from_raw_parts_verus.rs) | MISMATCH | 86-159 | 139-412 |
+| `allocate` [allocate.diff](allocate.diff) [allocate_source.rs](allocate_source.rs) [allocate_verus.rs](allocate_verus.rs) | MISMATCH | 171-179 | 547-733 |
+| `deallocate` [deallocate.diff](deallocate.diff) [deallocate_source.rs](deallocate_source.rs) [deallocate_verus.rs](deallocate_verus.rs) | MISMATCH | 200-223 | 749-1015 |
+| `from_raw_parts` [from_raw_parts.diff](from_raw_parts.diff) [from_raw_parts_source.rs](from_raw_parts_source.rs) [from_raw_parts_verus.rs](from_raw_parts_verus.rs) | MISMATCH | 86-159 | 139-412 |
 | `block_size` [block_size_verus.rs](block_size_verus.rs) | EXTRA_IN_VERUS |  | 529-534 |
 | `from_raw_parts_at_offset` [from_raw_parts_at_offset_verus.rs](from_raw_parts_at_offset_verus.rs) | EXTRA_IN_VERUS |  | 435-508 |
 | `is_power_of_two` [is_power_of_two_verus.rs](is_power_of_two_verus.rs) | EXTRA_IN_VERUS |  | 94-113 |
@@ -40,9 +40,9 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `allocate` [allocate.diff](allocate.diff) | [allocate_source.rs](allocate_source.rs) | [allocate_verus.rs](allocate_verus.rs) | MISMATCH | ❌ |
-| `deallocate` [deallocate.diff](deallocate.diff) | [deallocate_source.rs](deallocate_source.rs) | [deallocate_verus.rs](deallocate_verus.rs) | MISMATCH | ❌ |
-| `from_raw_parts` [from_raw_parts.diff](from_raw_parts.diff) | [from_raw_parts_source.rs](from_raw_parts_source.rs) | [from_raw_parts_verus.rs](from_raw_parts_verus.rs) | MISMATCH | ❌ |
+| `allocate` [allocate.diff](allocate.diff) [allocate_source.rs](allocate_source.rs) [allocate_verus.rs](allocate_verus.rs) | MISMATCH | ❌ |
+| `deallocate` [deallocate.diff](deallocate.diff) [deallocate_source.rs](deallocate_source.rs) [deallocate_verus.rs](deallocate_verus.rs) | MISMATCH | ❌ |
+| `from_raw_parts` [from_raw_parts.diff](from_raw_parts.diff) [from_raw_parts_source.rs](from_raw_parts_source.rs) [from_raw_parts_verus.rs](from_raw_parts_verus.rs) | MISMATCH | ❌ |
 | `block_size` [block_size_verus.rs](block_size_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `from_raw_parts_at_offset` [from_raw_parts_at_offset_verus.rs](from_raw_parts_at_offset_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `is_power_of_two` [is_power_of_two_verus.rs](is_power_of_two_verus.rs) | EXTRA_IN_VERUS | ❌ |
@@ -63,4 +63,4 @@
 
 ## Inconsistent Structs
 
-- `Slab` [struct_Slab.diff](struct_Slab.diff) | [struct_Slab_source.rs](struct_Slab_source.rs) | [struct_Slab_verus.rs](struct_Slab_verus.rs): MISMATCH
+- `Slab` [struct_Slab.diff](struct_Slab.diff) [struct_Slab_source.rs](struct_Slab_source.rs) [struct_Slab_verus.rs](struct_Slab_verus.rs): MISMATCH

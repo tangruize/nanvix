@@ -15,12 +15,12 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `alloc_kernel_frame` [alloc_kernel_frame.diff](alloc_kernel_frame.diff) | [alloc_kernel_frame_source.rs](alloc_kernel_frame_source.rs) | [alloc_kernel_frame_verus.rs](alloc_kernel_frame_verus.rs) | MISSING_IN_VERUS | 56-58 |  |
-| `alloc_many_kernel_frames` [alloc_many_kernel_frames.diff](alloc_many_kernel_frames.diff) | [alloc_many_kernel_frames_source.rs](alloc_many_kernel_frames_source.rs) | [alloc_many_kernel_frames_verus.rs](alloc_many_kernel_frames_verus.rs) | MISSING_IN_VERUS | 75-81 |  |
-| `alloc_many_user_frames` [alloc_many_user_frames.diff](alloc_many_user_frames.diff) | [alloc_many_user_frames_source.rs](alloc_many_user_frames_source.rs) | [alloc_many_user_frames_verus.rs](alloc_many_user_frames_verus.rs) | MISSING_IN_VERUS | 39-41 |  |
-| `alloc_user_frame` [alloc_user_frame.diff](alloc_user_frame.diff) | [alloc_user_frame_source.rs](alloc_user_frame_source.rs) | [alloc_user_frame_verus.rs](alloc_user_frame_verus.rs) | MISSING_IN_VERUS | 35-37 |  |
-| `free_user_frame` [free_user_frame.diff](free_user_frame.diff) | [free_user_frame_source.rs](free_user_frame_source.rs) | [free_user_frame_verus.rs](free_user_frame_verus.rs) | MISSING_IN_VERUS | 96-98 |  |
-| `new` [new.diff](new.diff) | [new_source.rs](new_source.rs) | [new_verus.rs](new_verus.rs) | MISMATCH | 31-33 | 177-189 |
+| `alloc_kernel_frame` [alloc_kernel_frame.diff](alloc_kernel_frame.diff) [alloc_kernel_frame_source.rs](alloc_kernel_frame_source.rs) [alloc_kernel_frame_verus.rs](alloc_kernel_frame_verus.rs) | MISSING_IN_VERUS | 56-58 |  |
+| `alloc_many_kernel_frames` [alloc_many_kernel_frames.diff](alloc_many_kernel_frames.diff) [alloc_many_kernel_frames_source.rs](alloc_many_kernel_frames_source.rs) [alloc_many_kernel_frames_verus.rs](alloc_many_kernel_frames_verus.rs) | MISSING_IN_VERUS | 75-81 |  |
+| `alloc_many_user_frames` [alloc_many_user_frames.diff](alloc_many_user_frames.diff) [alloc_many_user_frames_source.rs](alloc_many_user_frames_source.rs) [alloc_many_user_frames_verus.rs](alloc_many_user_frames_verus.rs) | MISSING_IN_VERUS | 39-41 |  |
+| `alloc_user_frame` [alloc_user_frame.diff](alloc_user_frame.diff) [alloc_user_frame_source.rs](alloc_user_frame_source.rs) [alloc_user_frame_verus.rs](alloc_user_frame_verus.rs) | MISSING_IN_VERUS | 35-37 |  |
+| `free_user_frame` [free_user_frame.diff](free_user_frame.diff) [free_user_frame_source.rs](free_user_frame_source.rs) [free_user_frame_verus.rs](free_user_frame_verus.rs) | MISSING_IN_VERUS | 96-98 |  |
+| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | MISMATCH | 31-33 | 177-189 |
 | `alloc_kpage` [alloc_kpage_verus.rs](alloc_kpage_verus.rs) | EXTRA_IN_VERUS |  | 426-447 |
 | `alloc_kpages` [alloc_kpages_verus.rs](alloc_kpages_verus.rs) | EXTRA_IN_VERUS |  | 478-489 |
 | `alloc_upage` [alloc_upage_verus.rs](alloc_upage_verus.rs) | EXTRA_IN_VERUS |  | 261-309 |
@@ -35,12 +35,12 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `alloc_kernel_frame` [alloc_kernel_frame.diff](alloc_kernel_frame.diff) | [alloc_kernel_frame_source.rs](alloc_kernel_frame_source.rs) | [alloc_kernel_frame_verus.rs](alloc_kernel_frame_verus.rs) | MISSING_IN_VERUS | ❌ |
-| `alloc_many_kernel_frames` [alloc_many_kernel_frames.diff](alloc_many_kernel_frames.diff) | [alloc_many_kernel_frames_source.rs](alloc_many_kernel_frames_source.rs) | [alloc_many_kernel_frames_verus.rs](alloc_many_kernel_frames_verus.rs) | MISSING_IN_VERUS | ❌ |
-| `alloc_many_user_frames` [alloc_many_user_frames.diff](alloc_many_user_frames.diff) | [alloc_many_user_frames_source.rs](alloc_many_user_frames_source.rs) | [alloc_many_user_frames_verus.rs](alloc_many_user_frames_verus.rs) | MISSING_IN_VERUS | ❌ |
-| `alloc_user_frame` [alloc_user_frame.diff](alloc_user_frame.diff) | [alloc_user_frame_source.rs](alloc_user_frame_source.rs) | [alloc_user_frame_verus.rs](alloc_user_frame_verus.rs) | MISSING_IN_VERUS | ❌ |
-| `free_user_frame` [free_user_frame.diff](free_user_frame.diff) | [free_user_frame_source.rs](free_user_frame_source.rs) | [free_user_frame_verus.rs](free_user_frame_verus.rs) | MISSING_IN_VERUS | ❌ |
-| `new` [new.diff](new.diff) | [new_source.rs](new_source.rs) | [new_verus.rs](new_verus.rs) | MISMATCH | ❌ |
+| `alloc_kernel_frame` [alloc_kernel_frame.diff](alloc_kernel_frame.diff) [alloc_kernel_frame_source.rs](alloc_kernel_frame_source.rs) [alloc_kernel_frame_verus.rs](alloc_kernel_frame_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `alloc_many_kernel_frames` [alloc_many_kernel_frames.diff](alloc_many_kernel_frames.diff) [alloc_many_kernel_frames_source.rs](alloc_many_kernel_frames_source.rs) [alloc_many_kernel_frames_verus.rs](alloc_many_kernel_frames_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `alloc_many_user_frames` [alloc_many_user_frames.diff](alloc_many_user_frames.diff) [alloc_many_user_frames_source.rs](alloc_many_user_frames_source.rs) [alloc_many_user_frames_verus.rs](alloc_many_user_frames_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `alloc_user_frame` [alloc_user_frame.diff](alloc_user_frame.diff) [alloc_user_frame_source.rs](alloc_user_frame_source.rs) [alloc_user_frame_verus.rs](alloc_user_frame_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `free_user_frame` [free_user_frame.diff](free_user_frame.diff) [free_user_frame_source.rs](free_user_frame_source.rs) [free_user_frame_verus.rs](free_user_frame_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | MISMATCH | ❌ |
 | `alloc_kpage` [alloc_kpage_verus.rs](alloc_kpage_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `alloc_kpages` [alloc_kpages_verus.rs](alloc_kpages_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `alloc_upage` [alloc_upage_verus.rs](alloc_upage_verus.rs) | EXTRA_IN_VERUS | ❌ |

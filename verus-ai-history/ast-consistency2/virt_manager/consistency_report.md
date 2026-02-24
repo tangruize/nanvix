@@ -22,7 +22,7 @@
 | `ctrl_upage` [ctrl_upage_source.rs](ctrl_upage_source.rs) | MISSING_IN_VERUS | 323-330 |  |
 | `get` [get_source.rs](get_source.rs) | MISSING_IN_VERUS | 123-130 |  |
 | `get_mut` [get_mut_source.rs](get_mut_source.rs) | MISSING_IN_VERUS | 147-154 |  |
-| `init` [init.diff](init.diff) | [init_source.rs](init_source.rs) | [init_verus.rs](init_verus.rs) | MISMATCH | 87-105 | 1178-1492 |
+| `init` [init.diff](init.diff) [init_source.rs](init_source.rs) [init_verus.rs](init_verus.rs) | MISMATCH | 87-105 | 1178-1492 |
 | `load_elf` [load_elf_source.rs](load_elf_source.rs) | MISSING_IN_VERUS | 391-397 |  |
 | `new` [new_source.rs](new_source.rs) | MISSING_IN_VERUS | 166-182 |  |
 | `new_vmem` [new_vmem_source.rs](new_vmem_source.rs) | MISSING_IN_VERUS | 185-195 |  |
@@ -57,7 +57,7 @@
 | `ctrl_upage` [ctrl_upage_source.rs](ctrl_upage_source.rs) | MISSING_IN_VERUS | ❌ |
 | `get` [get_source.rs](get_source.rs) | MISSING_IN_VERUS | ❌ |
 | `get_mut` [get_mut_source.rs](get_mut_source.rs) | MISSING_IN_VERUS | ❌ |
-| `init` [init.diff](init.diff) | [init_source.rs](init_source.rs) | [init_verus.rs](init_verus.rs) | MISMATCH | ❌ |
+| `init` [init.diff](init.diff) [init_source.rs](init_source.rs) [init_verus.rs](init_verus.rs) | MISMATCH | ❌ |
 | `load_elf` [load_elf_source.rs](load_elf_source.rs) | MISSING_IN_VERUS | ❌ |
 | `new` [new_source.rs](new_source.rs) | MISSING_IN_VERUS | ❌ |
 | `new_vmem` [new_vmem_source.rs](new_vmem_source.rs) | MISSING_IN_VERUS | ❌ |

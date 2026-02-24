@@ -15,11 +15,11 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `fmt` [fmt.diff](fmt.diff) | [fmt_source.rs](fmt_source.rs) | [fmt_verus.rs](fmt_verus.rs) | MISMATCH | 191-193 | 646-648 |
-| `from` [from.diff](from.diff) | [from_source.rs](from_source.rs) | [from_verus.rs](from_verus.rs) | MISMATCH | 133-135 | 674-676 |
-| `from_ne_bytes` [from_ne_bytes.diff](from_ne_bytes.diff) | [from_ne_bytes_source.rs](from_ne_bytes_source.rs) | [from_ne_bytes_verus.rs](from_ne_bytes_verus.rs) | MISMATCH | 66-68 | 434-440 |
-| `to_ne_bytes` [to_ne_bytes.diff](to_ne_bytes.diff) | [to_ne_bytes_source.rs](to_ne_bytes_source.rs) | [to_ne_bytes_verus.rs](to_ne_bytes_verus.rs) | MISMATCH | 62-64 | 410-417 |
-| `try_from` [try_from.diff](try_from.diff) | [try_from_source.rs](try_from_source.rs) | [try_from_verus.rs](try_from_verus.rs) | MISMATCH | 180-187 | 746-748 |
+| `fmt` [fmt.diff](fmt.diff) [fmt_source.rs](fmt_source.rs) [fmt_verus.rs](fmt_verus.rs) | MISMATCH | 191-193 | 646-648 |
+| `from` [from.diff](from.diff) [from_source.rs](from_source.rs) [from_verus.rs](from_verus.rs) | MISMATCH | 133-135 | 674-676 |
+| `from_ne_bytes` [from_ne_bytes.diff](from_ne_bytes.diff) [from_ne_bytes_source.rs](from_ne_bytes_source.rs) [from_ne_bytes_verus.rs](from_ne_bytes_verus.rs) | MISMATCH | 66-68 | 434-440 |
+| `to_ne_bytes` [to_ne_bytes.diff](to_ne_bytes.diff) [to_ne_bytes_source.rs](to_ne_bytes_source.rs) [to_ne_bytes_verus.rs](to_ne_bytes_verus.rs) | MISMATCH | 62-64 | 410-417 |
+| `try_from` [try_from.diff](try_from.diff) [try_from_source.rs](try_from_source.rs) [try_from_verus.rs](try_from_verus.rs) | MISMATCH | 180-187 | 746-748 |
 | `cmp` [cmp_verus.rs](cmp_verus.rs) | EXTRA_IN_VERUS |  | 639-641 |
 | `cmp_ord` [cmp_ord_verus.rs](cmp_ord_verus.rs) | EXTRA_IN_VERUS |  | 571-587 |
 | `default` [default_verus.rs](default_verus.rs) | EXTRA_IN_VERUS |  | 616-618 |
@@ -48,11 +48,11 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `fmt` [fmt.diff](fmt.diff) | [fmt_source.rs](fmt_source.rs) | [fmt_verus.rs](fmt_verus.rs) | MISMATCH | ❌ |
-| `from` [from.diff](from.diff) | [from_source.rs](from_source.rs) | [from_verus.rs](from_verus.rs) | MISMATCH | ❌ |
-| `from_ne_bytes` [from_ne_bytes.diff](from_ne_bytes.diff) | [from_ne_bytes_source.rs](from_ne_bytes_source.rs) | [from_ne_bytes_verus.rs](from_ne_bytes_verus.rs) | MISMATCH | ❌ |
-| `to_ne_bytes` [to_ne_bytes.diff](to_ne_bytes.diff) | [to_ne_bytes_source.rs](to_ne_bytes_source.rs) | [to_ne_bytes_verus.rs](to_ne_bytes_verus.rs) | MISMATCH | ❌ |
-| `try_from` [try_from.diff](try_from.diff) | [try_from_source.rs](try_from_source.rs) | [try_from_verus.rs](try_from_verus.rs) | MISMATCH | ❌ |
+| `fmt` [fmt.diff](fmt.diff) [fmt_source.rs](fmt_source.rs) [fmt_verus.rs](fmt_verus.rs) | MISMATCH | ❌ |
+| `from` [from.diff](from.diff) [from_source.rs](from_source.rs) [from_verus.rs](from_verus.rs) | MISMATCH | ❌ |
+| `from_ne_bytes` [from_ne_bytes.diff](from_ne_bytes.diff) [from_ne_bytes_source.rs](from_ne_bytes_source.rs) [from_ne_bytes_verus.rs](from_ne_bytes_verus.rs) | MISMATCH | ❌ |
+| `to_ne_bytes` [to_ne_bytes.diff](to_ne_bytes.diff) [to_ne_bytes_source.rs](to_ne_bytes_source.rs) [to_ne_bytes_verus.rs](to_ne_bytes_verus.rs) | MISMATCH | ❌ |
+| `try_from` [try_from.diff](try_from.diff) [try_from_source.rs](try_from_source.rs) [try_from_verus.rs](try_from_verus.rs) | MISMATCH | ❌ |
 | `cmp` [cmp_verus.rs](cmp_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `cmp_ord` [cmp_ord_verus.rs](cmp_ord_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `default` [default_verus.rs](default_verus.rs) | EXTRA_IN_VERUS | ❌ |
@@ -79,4 +79,4 @@
 
 ## Inconsistent Structs
 
-- `ProcessIdentifier` [struct_ProcessIdentifier.diff](struct_ProcessIdentifier.diff) | [struct_ProcessIdentifier_source.rs](struct_ProcessIdentifier_source.rs) | [struct_ProcessIdentifier_verus.rs](struct_ProcessIdentifier_verus.rs): MISMATCH
+- `ProcessIdentifier` [struct_ProcessIdentifier.diff](struct_ProcessIdentifier.diff) [struct_ProcessIdentifier_source.rs](struct_ProcessIdentifier_source.rs) [struct_ProcessIdentifier_verus.rs](struct_ProcessIdentifier_verus.rs): MISMATCH

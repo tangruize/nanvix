@@ -15,8 +15,8 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs) | MISMATCH | 54-146 | 1102-1123 |
-| `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) | [handle_sleep_error_source.rs](handle_sleep_error_source.rs) | [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) | MISMATCH | 148-167 | 496-517 |
+| `do_kcall` [do_kcall.diff](do_kcall.diff) [do_kcall_source.rs](do_kcall_source.rs) [do_kcall_verus.rs](do_kcall_verus.rs) | MISMATCH | 54-146 | 1102-1123 |
+| `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) [handle_sleep_error_source.rs](handle_sleep_error_source.rs) [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) | MISMATCH | 148-167 | 496-517 |
 | `classify_kcall_number` [classify_kcall_number_verus.rs](classify_kcall_number_verus.rs) | EXTRA_IN_VERUS |  | 404-427 |
 | `convert_fallible` [convert_fallible_verus.rs](convert_fallible_verus.rs) | EXTRA_IN_VERUS |  | 886-899 |
 | `convert_sleepable` [convert_sleepable_verus.rs](convert_sleepable_verus.rs) | EXTRA_IN_VERUS |  | 837-869 |
@@ -58,8 +58,8 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `do_kcall` [do_kcall.diff](do_kcall.diff) | [do_kcall_source.rs](do_kcall_source.rs) | [do_kcall_verus.rs](do_kcall_verus.rs) | MISMATCH | ❌ |
-| `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) | [handle_sleep_error_source.rs](handle_sleep_error_source.rs) | [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) | MISMATCH | ❌ |
+| `do_kcall` [do_kcall.diff](do_kcall.diff) [do_kcall_source.rs](do_kcall_source.rs) [do_kcall_verus.rs](do_kcall_verus.rs) | MISMATCH | ❌ |
+| `handle_sleep_error` [handle_sleep_error.diff](handle_sleep_error.diff) [handle_sleep_error_source.rs](handle_sleep_error_source.rs) [handle_sleep_error_verus.rs](handle_sleep_error_verus.rs) | MISMATCH | ❌ |
 | `classify_kcall_number` [classify_kcall_number_verus.rs](classify_kcall_number_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `convert_fallible` [convert_fallible_verus.rs](convert_fallible_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `convert_sleepable` [convert_sleepable_verus.rs](convert_sleepable_verus.rs) | EXTRA_IN_VERUS | ❌ |

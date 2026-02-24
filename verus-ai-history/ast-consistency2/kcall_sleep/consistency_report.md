@@ -15,7 +15,7 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `sleep` [sleep.diff](sleep.diff) | [sleep_source.rs](sleep_source.rs) | [sleep_verus.rs](sleep_verus.rs) | MISSING_IN_VERUS | 46-67 |  |
+| `sleep` [sleep.diff](sleep.diff) [sleep_source.rs](sleep_source.rs) [sleep_verus.rs](sleep_verus.rs) | MISSING_IN_VERUS | 46-67 |  |
 | `checked_add_duration` [checked_add_duration_verus.rs](checked_add_duration_verus.rs) | EXTRA_IN_VERUS |  | 272-283 |
 | `clock_now` [clock_now_verus.rs](clock_now_verus.rs) | EXTRA_IN_VERUS |  | 256-263 |
 | `duration_new` [duration_new_verus.rs](duration_new_verus.rs) | EXTRA_IN_VERUS |  | 340-364 |
@@ -28,7 +28,7 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `sleep` [sleep.diff](sleep.diff) | [sleep_source.rs](sleep_source.rs) | [sleep_verus.rs](sleep_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `sleep` [sleep.diff](sleep.diff) [sleep_source.rs](sleep_source.rs) [sleep_verus.rs](sleep_verus.rs) | MISSING_IN_VERUS | ❌ |
 | `checked_add_duration` [checked_add_duration_verus.rs](checked_add_duration_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `clock_now` [clock_now_verus.rs](clock_now_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `duration_new` [duration_new_verus.rs](duration_new_verus.rs) | EXTRA_IN_VERUS | ❌ |

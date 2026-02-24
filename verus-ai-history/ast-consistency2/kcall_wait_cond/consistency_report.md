@@ -15,7 +15,7 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `wait_cond` [wait_cond.diff](wait_cond.diff) | [wait_cond_source.rs](wait_cond_source.rs) | [wait_cond_verus.rs](wait_cond_verus.rs) | MISSING_IN_VERUS | 72-138 |  |
+| `wait_cond` [wait_cond.diff](wait_cond.diff) [wait_cond_source.rs](wait_cond_source.rs) [wait_cond_verus.rs](wait_cond_verus.rs) | MISSING_IN_VERUS | 72-138 |  |
 | `cond_wait_model` [cond_wait_model_verus.rs](cond_wait_model_verus.rs) | EXTRA_IN_VERUS |  | 412-424 |
 | `get_cond_and_wait_model` [get_cond_and_wait_model_verus.rs](get_cond_and_wait_model_verus.rs) | EXTRA_IN_VERUS |  | 536-863 |
 | `mutex_lock_model` [mutex_lock_model_verus.rs](mutex_lock_model_verus.rs) | EXTRA_IN_VERUS |  | 463-471 |
@@ -26,7 +26,7 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `wait_cond` [wait_cond.diff](wait_cond.diff) | [wait_cond_source.rs](wait_cond_source.rs) | [wait_cond_verus.rs](wait_cond_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `wait_cond` [wait_cond.diff](wait_cond.diff) [wait_cond_source.rs](wait_cond_source.rs) [wait_cond_verus.rs](wait_cond_verus.rs) | MISSING_IN_VERUS | ❌ |
 | `cond_wait_model` [cond_wait_model_verus.rs](cond_wait_model_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `get_cond_and_wait_model` [get_cond_and_wait_model_verus.rs](get_cond_and_wait_model_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `mutex_lock_model` [mutex_lock_model_verus.rs](mutex_lock_model_verus.rs) | EXTRA_IN_VERUS | ❌ |

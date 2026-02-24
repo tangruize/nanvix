@@ -8,10 +8,10 @@
 ## Changes
 | Function | Action | Justification |
 |----------|--------|---------------|
-| `sleep` [sleep.diff](sleep.diff) | [sleep_source.rs](sleep_source.rs) | [sleep_verus.rs](sleep_verus.rs) | Added as `external_body` | Original function (lines 46-67) uses real kernel types (`SystemTime`, `Duration`, `ProcessManager`, `SleepError`) not available in Verus. Added with postconditions matching properties proven by `sleep_model()` and `sleep_end_to_end()`. The `external_body` is justified because the control flow is fully verified by `sleep_model()`. |
-| `SystemTimeModel` [struct_SystemTimeModel_verus.rs](struct_SystemTimeModel_verus.rs) (struct) | Documented | Verification model type for `SystemTime` which has private fields. Required for spec reasoning about time values. |
-| `DurationModel` [struct_DurationModel_verus.rs](struct_DurationModel_verus.rs) (struct) | Documented | Verification model type for `core::time::Duration` which has private fields. Required for spec reasoning about duration values. |
-| `new` [new_verus.rs](new_verus.rs) (SystemTimeModel) | Documented | Constructor for the verification model type. No original equivalent; the original obtains `SystemTime` via `clock::now()`. |
+| `sleep` [sleep.diff](sleep.diff) [sleep_source.rs](sleep_source.rs) [sleep_verus.rs](sleep_verus.rs) | Added as `external_body` | Original function (lines 46-67) uses real kernel types (`SystemTime`, `Duration`, `ProcessManager`, `SleepError`) not available in Verus. Added with postconditions matching properties proven by `sleep_model()` and `sleep_end_to_end()`. The `external_body` is justified because the control flow is fully verified by `sleep_model()`. |
+| `SystemTimeModel` (struct) | Documented | Verification model type for `SystemTime` which has private fields. Required for spec reasoning about time values. |
+| `DurationModel` (struct) | Documented | Verification model type for `core::time::Duration` which has private fields. Required for spec reasoning about duration values. |
+| `new` (SystemTimeModel) | Documented | Constructor for the verification model type. No original equivalent; the original obtains `SystemTime` via `clock::now()`. |
 | `clock_now` [clock_now_verus.rs](clock_now_verus.rs) | Documented | External body modeling `clock::now()` (original line 50). Real clock not available in Verus. |
 | `checked_add_duration` [checked_add_duration_verus.rs](checked_add_duration_verus.rs) | Documented | External body modeling `SystemTime::checked_add_duration()` (original line 54). Real method operates on types not available in Verus. |
 | `process_manager_sleep` [process_manager_sleep_verus.rs](process_manager_sleep_verus.rs) | Documented | External body modeling `ProcessManager::sleep()` (original line 62). Involves context switching not available in Verus. |

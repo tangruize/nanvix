@@ -15,11 +15,11 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `get` [get.diff](get.diff) | [get_source.rs](get_source.rs) | [get_verus.rs](get_verus.rs) | MISMATCH | 64-66 | 215-226 |
-| `increment` [increment.diff](increment.diff) | [increment_source.rs](increment_source.rs) | [increment_verus.rs](increment_verus.rs) | MISMATCH | 69-83 | 246-308 |
-| `new` [new.diff](new.diff) | [new_source.rs](new_source.rs) | [new_verus.rs](new_verus.rs) | MISMATCH | 56-61 | 186-196 |
-| `now` [now.diff](now.diff) | [now_source.rs](now_source.rs) | [now_verus.rs](now_verus.rs) | MISMATCH | 148-168 | 466-491 |
-| `ticks` [ticks.diff](ticks.diff) | [ticks_source.rs](ticks_source.rs) | [ticks_verus.rs](ticks_verus.rs) | MISMATCH | 138-141 | 320-330 |
+| `get` [get.diff](get.diff) [get_source.rs](get_source.rs) [get_verus.rs](get_verus.rs) | MISMATCH | 64-66 | 215-226 |
+| `increment` [increment.diff](increment.diff) [increment_source.rs](increment_source.rs) [increment_verus.rs](increment_verus.rs) | MISMATCH | 69-83 | 246-308 |
+| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | MISMATCH | 56-61 | 186-196 |
+| `now` [now.diff](now.diff) [now_source.rs](now_source.rs) [now_verus.rs](now_verus.rs) | MISMATCH | 148-168 | 466-491 |
+| `ticks` [ticks.diff](ticks.diff) [ticks_source.rs](ticks_source.rs) [ticks_verus.rs](ticks_verus.rs) | MISMATCH | 138-141 | 320-330 |
 | `timer_handler` [timer_handler_source.rs](timer_handler_source.rs) | MISSING_IN_VERUS | 105-128 |  |
 | `compute_nanoseconds` [compute_nanoseconds_verus.rs](compute_nanoseconds_verus.rs) | EXTRA_IN_VERUS |  | 399-411 |
 | `compute_seconds` [compute_seconds_verus.rs](compute_seconds_verus.rs) | EXTRA_IN_VERUS |  | 429-440 |
@@ -35,11 +35,11 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `get` [get.diff](get.diff) | [get_source.rs](get_source.rs) | [get_verus.rs](get_verus.rs) | MISMATCH | ❌ |
-| `increment` [increment.diff](increment.diff) | [increment_source.rs](increment_source.rs) | [increment_verus.rs](increment_verus.rs) | MISMATCH | ❌ |
-| `new` [new.diff](new.diff) | [new_source.rs](new_source.rs) | [new_verus.rs](new_verus.rs) | MISMATCH | ❌ |
-| `now` [now.diff](now.diff) | [now_source.rs](now_source.rs) | [now_verus.rs](now_verus.rs) | MISMATCH | ❌ |
-| `ticks` [ticks.diff](ticks.diff) | [ticks_source.rs](ticks_source.rs) | [ticks_verus.rs](ticks_verus.rs) | MISMATCH | ❌ |
+| `get` [get.diff](get.diff) [get_source.rs](get_source.rs) [get_verus.rs](get_verus.rs) | MISMATCH | ❌ |
+| `increment` [increment.diff](increment.diff) [increment_source.rs](increment_source.rs) [increment_verus.rs](increment_verus.rs) | MISMATCH | ❌ |
+| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | MISMATCH | ❌ |
+| `now` [now.diff](now.diff) [now_source.rs](now_source.rs) [now_verus.rs](now_verus.rs) | MISMATCH | ❌ |
+| `ticks` [ticks.diff](ticks.diff) [ticks_source.rs](ticks_source.rs) [ticks_verus.rs](ticks_verus.rs) | MISMATCH | ❌ |
 | `timer_handler` [timer_handler_source.rs](timer_handler_source.rs) | MISSING_IN_VERUS | ❌ |
 | `compute_nanoseconds` [compute_nanoseconds_verus.rs](compute_nanoseconds_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `compute_seconds` [compute_seconds_verus.rs](compute_seconds_verus.rs) | EXTRA_IN_VERUS | ❌ |
@@ -53,4 +53,4 @@
 
 ## Inconsistent Structs
 
-- `TimerTicks` [struct_TimerTicks.diff](struct_TimerTicks.diff) | [struct_TimerTicks_source.rs](struct_TimerTicks_source.rs) | [struct_TimerTicks_verus.rs](struct_TimerTicks_verus.rs): MISMATCH
+- `TimerTicks` [struct_TimerTicks.diff](struct_TimerTicks.diff) [struct_TimerTicks_source.rs](struct_TimerTicks_source.rs) [struct_TimerTicks_verus.rs](struct_TimerTicks_verus.rs): MISMATCH

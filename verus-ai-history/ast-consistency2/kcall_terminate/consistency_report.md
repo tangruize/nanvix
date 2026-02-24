@@ -15,10 +15,10 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `terminate` [terminate.diff](terminate.diff) | [terminate_source.rs](terminate_source.rs) | [terminate_verus.rs](terminate_verus.rs) | MISSING_IN_VERUS | 21-34 |  |
+| `terminate` [terminate.diff](terminate.diff) [terminate_source.rs](terminate_source.rs) [terminate_verus.rs](terminate_verus.rs) | MISSING_IN_VERUS | 21-34 |  |
 
 ## All Functions
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `terminate` [terminate.diff](terminate.diff) | [terminate_source.rs](terminate_source.rs) | [terminate_verus.rs](terminate_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `terminate` [terminate.diff](terminate.diff) [terminate_source.rs](terminate_source.rs) [terminate_verus.rs](terminate_verus.rs) | MISSING_IN_VERUS | ❌ |

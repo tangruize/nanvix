@@ -15,10 +15,10 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `join_thread` [join_thread.diff](join_thread.diff) | [join_thread_source.rs](join_thread_source.rs) | [join_thread_verus.rs](join_thread_verus.rs) | MISSING_IN_VERUS | 57-78 |  |
+| `join_thread` [join_thread.diff](join_thread.diff) [join_thread_source.rs](join_thread_source.rs) [join_thread_verus.rs](join_thread_verus.rs) | MISSING_IN_VERUS | 57-78 |  |
 
 ## All Functions
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `join_thread` [join_thread.diff](join_thread.diff) | [join_thread_source.rs](join_thread_source.rs) | [join_thread_verus.rs](join_thread_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `join_thread` [join_thread.diff](join_thread.diff) [join_thread_source.rs](join_thread_source.rs) [join_thread_verus.rs](join_thread_verus.rs) | MISSING_IN_VERUS | ❌ |

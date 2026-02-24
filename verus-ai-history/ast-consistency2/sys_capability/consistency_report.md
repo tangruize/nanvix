@@ -15,7 +15,7 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `try_from` [try_from.diff](try_from.diff) | [try_from_source.rs](try_from_source.rs) | [try_from_verus.rs](try_from_verus.rs) | MISMATCH | 43-52 | 149-164 |
+| `try_from` [try_from.diff](try_from.diff) [try_from_source.rs](try_from_source.rs) [try_from_verus.rs](try_from_verus.rs) | MISMATCH | 43-52 | 149-164 |
 | `to_u32` [to_u32_verus.rs](to_u32_verus.rs) | EXTRA_IN_VERUS |  | 124-138 |
 | `try_from_u32` [try_from_u32_verus.rs](try_from_u32_verus.rs) | EXTRA_IN_VERUS |  | 90-112 |
 
@@ -23,6 +23,6 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `try_from` [try_from.diff](try_from.diff) | [try_from_source.rs](try_from_source.rs) | [try_from_verus.rs](try_from_verus.rs) | MISMATCH | ❌ |
+| `try_from` [try_from.diff](try_from.diff) [try_from_source.rs](try_from_source.rs) [try_from_verus.rs](try_from_verus.rs) | MISMATCH | ❌ |
 | `to_u32` [to_u32_verus.rs](to_u32_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `try_from_u32` [try_from_u32_verus.rs](try_from_u32_verus.rs) | EXTRA_IN_VERUS | ❌ |

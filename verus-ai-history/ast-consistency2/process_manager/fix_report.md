@@ -9,7 +9,7 @@
 ## Root Cause
 
 The verus `mod.rs` was an 8-line re-export hub declaring two submodules:
-- `process_manager` (containing abstract `ProcessManagerInner` [struct_ProcessManagerInner_source.rs](struct_ProcessManagerInner_source.rs) model)
+- `process_manager` (containing abstract `ProcessManagerInner` model)
 - `process_manager_unsafe` (containing abstract `ProcessManagerUnsafeState` model)
 
 All 53 functions and 2 structs existed in these submodules but were invisible
@@ -19,7 +19,7 @@ to the AST diff tool, which compared `mod.rs` to `mod.rs`.
 
 Restructured `mod.rs` to include submodule content via `include!()` macros,
 making all functions and structs visible in the `mod` scope. This matches the
-original source layout where both `ProcessManagerInner` [struct_ProcessManagerInner_source.rs](struct_ProcessManagerInner_source.rs) and `ProcessManager` [struct_ProcessManager_source.rs](struct_ProcessManager_source.rs)
+original source layout where both `ProcessManagerInner` and `ProcessManager`
 are defined in `mod.rs`.
 
 ### Files Modified
@@ -29,15 +29,15 @@ are defined in `mod.rs`.
 | `verus/split/kernel/pm/process/manager/mod.rs` | Replaced `pub mod` declarations with `include!()` directives |
 | `verus/split/kernel/pm/process/manager/mod.proof.rs` | Created placeholder (proofs live in included submodule proof files) |
 | `verus/split/kernel/pm/process/manager/process_manager.rs` | Converted `//!` inner doc comments to `//` (required for include) |
-| `verus/split/kernel/pm/process/manager/process_manager_unsafe.rs` | Converted `//!` to `//`; removed cross-module import of `ProcessManagerInner` [struct_ProcessManagerInner_source.rs](struct_ProcessManagerInner_source.rs) (now in same scope) |
+| `verus/split/kernel/pm/process/manager/process_manager_unsafe.rs` | Converted `//!` to `//`; removed cross-module import of `ProcessManagerInner` (now in same scope) |
 | `verus/split/kernel/pm/thread/state.rs` | Updated import path from `manager::process_manager::` to `manager::` |
 
 ## Changes
 
 | Function | Action | Justification |
 |----------|--------|---------------|
-| `ProcessManagerInner` [struct_ProcessManagerInner_source.rs](struct_ProcessManagerInner_source.rs) (struct) | Structural merge | Was in `process_manager.rs` submodule; now included in `mod.rs` via `include!()`. Abstract verification model uses i32 PIDs and queue counts instead of concrete kernel types — this is a justified verification abstraction (see process_manager.rs header documentation). |
-| `ProcessManager` [struct_ProcessManager_source.rs](struct_ProcessManager_source.rs) (struct) | Structural merge | Was in `process_manager_unsafe.rs` as `ProcessManagerUnsafeState`; now included in `mod.rs` via `include!()`. Models the `Rc<RefCell<ProcessManagerInner>>` wrapper + global atomics. |
+| `ProcessManagerInner` (struct) | Structural merge | Was in `process_manager.rs` submodule; now included in `mod.rs` via `include!()`. Abstract verification model uses i32 PIDs and queue counts instead of concrete kernel types — this is a justified verification abstraction (see process_manager.rs header documentation). |
+| `ProcessManager` (struct) | Structural merge | Was in `process_manager_unsafe.rs` as `ProcessManagerUnsafeState`; now included in `mod.rs` via `include!()`. Models the `Rc<RefCell<ProcessManagerInner>>` wrapper + global atomics. |
 | `new` [new_source.rs](new_source.rs) | Structural merge | Modeled as `ProcessManagerInner::new(interrupt_capable)` — signature divergence documented: original takes `(bool, ReadyThread, Vmem, ThreadManager)` but opaque HAL types are elided. |
 | `forge_user_context` [forge_user_context_source.rs](forge_user_context_source.rs) | Structural merge | Modeled as verified no-op stub preserving `wf()`. Operates on opaque HAL types (`KernelStack`, `ContextInformation`). |
 | `create_thread` [create_thread_source.rs](create_thread_source.rs) | Structural merge | Modeled via `create_thread_dispatch` + `inner_create_thread`. Split into verified sub-operations for proof decomposition. |
@@ -56,19 +56,19 @@ are defined in `mod.rs`.
 | `interrupt_reason` [interrupt_reason_source.rs](interrupt_reason_source.rs) | Structural merge | Modeled as `take_interrupt_reason` — verified no-op preserving `wf()`. |
 | `harvest_zombies` [harvest_zombies_source.rs](harvest_zombies_source.rs) | Structural merge | Modeled via `harvest_zombies_wrapper` + `harvest_zombie(pid)` — verified zombie queue removal. |
 | `try_join_thread` [try_join_thread_source.rs](try_join_thread_source.rs) | Structural merge | Modeled as `try_join_thread(pid)` — verified no-op preserving `wf()`. |
-| `get_mutex` [get_mutex_source.rs](get_mutex_source.rs) | Structural merge | Modeled as `get_mutex` [get_mutex_source.rs](get_mutex_source.rs) — verified no-op preserving `wf()`. Mutex logic verified in ProcessState. |
-| `get_cond` [get_cond_source.rs](get_cond_source.rs) | Structural merge | Modeled as `get_cond` [get_cond_source.rs](get_cond_source.rs) — verified no-op preserving `wf()`. |
-| `put_cond` [put_cond_source.rs](put_cond_source.rs) | Structural merge | Modeled as `put_cond` [put_cond_source.rs](put_cond_source.rs) — verified no-op preserving `wf()`. |
-| `put_mutex_guard` [put_mutex_guard_source.rs](put_mutex_guard_source.rs) | Structural merge | Modeled as `put_mutex_guard` [put_mutex_guard_source.rs](put_mutex_guard_source.rs) — verified no-op preserving `wf()`. |
-| `take_mutex_guard` [take_mutex_guard_source.rs](take_mutex_guard_source.rs) | Structural merge | Modeled as `take_mutex_guard` [take_mutex_guard_source.rs](take_mutex_guard_source.rs) — verified no-op preserving `wf()`. |
-| `take_earliest_ready` [take_earliest_ready_source.rs](take_earliest_ready_source.rs) | Structural merge | Modeled as `take_earliest_ready` [take_earliest_ready_source.rs](take_earliest_ready_source.rs) — verified no-op preserving `wf()`. Scheduler choice abstracted as `chosen_next` parameter (T1). |
-| `take_running` [take_running_source.rs](take_running_source.rs) | Structural merge | Modeled as `take_running` [take_running_source.rs](take_running_source.rs) — verified no-op preserving `wf()`. |
-| `get_running` [get_running_source.rs](get_running_source.rs) | Structural merge | Modeled as `get_running` [get_running_source.rs](get_running_source.rs) — verified no-op preserving `wf()`. |
-| `get_running_mut` [get_running_mut_source.rs](get_running_mut_source.rs) | Structural merge | Modeled as `get_running_mut` [get_running_mut_source.rs](get_running_mut_source.rs) — verified no-op preserving `wf()`. |
+| `get_mutex` [get_mutex_source.rs](get_mutex_source.rs) | Structural merge | Modeled as `get_mutex` — verified no-op preserving `wf()`. Mutex logic verified in ProcessState. |
+| `get_cond` [get_cond_source.rs](get_cond_source.rs) | Structural merge | Modeled as `get_cond` — verified no-op preserving `wf()`. |
+| `put_cond` [put_cond_source.rs](put_cond_source.rs) | Structural merge | Modeled as `put_cond` — verified no-op preserving `wf()`. |
+| `put_mutex_guard` [put_mutex_guard_source.rs](put_mutex_guard_source.rs) | Structural merge | Modeled as `put_mutex_guard` — verified no-op preserving `wf()`. |
+| `take_mutex_guard` [take_mutex_guard_source.rs](take_mutex_guard_source.rs) | Structural merge | Modeled as `take_mutex_guard` — verified no-op preserving `wf()`. |
+| `take_earliest_ready` [take_earliest_ready_source.rs](take_earliest_ready_source.rs) | Structural merge | Modeled as `take_earliest_ready` — verified no-op preserving `wf()`. Scheduler choice abstracted as `chosen_next` parameter (T1). |
+| `take_running` [take_running_source.rs](take_running_source.rs) | Structural merge | Modeled as `take_running` — verified no-op preserving `wf()`. |
+| `get_running` [get_running_source.rs](get_running_source.rs) | Structural merge | Modeled as `get_running` — verified no-op preserving `wf()`. |
+| `get_running_mut` [get_running_mut_source.rs](get_running_mut_source.rs) | Structural merge | Modeled as `get_running_mut` — verified no-op preserving `wf()`. |
 | `find_process` [find_process_source.rs](find_process_source.rs) | Structural merge | Modeled as `find_process(pid)` — verified no-op preserving `wf()`. |
 | `find_process_mut` [find_process_mut_source.rs](find_process_mut_source.rs) | Structural merge | Modeled as `find_process_mut(pid)` — verified no-op preserving `wf()`. |
-| `find_process_by_tid` [find_process_by_tid_source.rs](find_process_by_tid_source.rs) | Structural merge | Modeled as `find_process_by_tid` [find_process_by_tid_source.rs](find_process_by_tid_source.rs) — verified no-op preserving `wf()`. |
-| `find_thread_mut` [find_thread_mut_source.rs](find_thread_mut_source.rs) | Structural merge | Modeled as `find_thread_mut` [find_thread_mut_source.rs](find_thread_mut_source.rs) — verified no-op preserving `wf()`. |
+| `find_process_by_tid` [find_process_by_tid_source.rs](find_process_by_tid_source.rs) | Structural merge | Modeled as `find_process_by_tid` — verified no-op preserving `wf()`. |
+| `find_thread_mut` [find_thread_mut_source.rs](find_thread_mut_source.rs) | Structural merge | Modeled as `find_thread_mut` — verified no-op preserving `wf()`. |
 | `set_thread_data_area` [set_thread_data_area_source.rs](set_thread_data_area_source.rs) | Structural merge | Modeled as `set_thread_data_area(pid)` — verified no-op preserving `wf()`. |
 | `get_thread_data_area` [get_thread_data_area_source.rs](get_thread_data_area_source.rs) | Structural merge | Modeled as `get_thread_data_area(pid)` — verified no-op preserving `wf()`. |
 | `get_pid` [get_pid_source.rs](get_pid_source.rs) | Structural merge | Modeled in `ProcessManagerUnsafeState` — delegation to inner. |

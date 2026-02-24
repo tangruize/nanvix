@@ -15,7 +15,7 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `lock_mutex` [lock_mutex.diff](lock_mutex.diff) | [lock_mutex_source.rs](lock_mutex_source.rs) | [lock_mutex_verus.rs](lock_mutex_verus.rs) | MISSING_IN_VERUS | 63-95 |  |
+| `lock_mutex` [lock_mutex.diff](lock_mutex.diff) [lock_mutex_source.rs](lock_mutex_source.rs) [lock_mutex_verus.rs](lock_mutex_verus.rs) | MISSING_IN_VERUS | 63-95 |  |
 | `lock_mutex_model` [lock_mutex_model_verus.rs](lock_mutex_model_verus.rs) | EXTRA_IN_VERUS |  | 563-710 |
 | `parse_timeout` [parse_timeout_verus.rs](parse_timeout_verus.rs) | EXTRA_IN_VERUS |  | 498-534 |
 | `put_mutex_guard_model` [put_mutex_guard_model_verus.rs](put_mutex_guard_model_verus.rs) | EXTRA_IN_VERUS |  | 420-712 |
@@ -25,7 +25,7 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `lock_mutex` [lock_mutex.diff](lock_mutex.diff) | [lock_mutex_source.rs](lock_mutex_source.rs) | [lock_mutex_verus.rs](lock_mutex_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `lock_mutex` [lock_mutex.diff](lock_mutex.diff) [lock_mutex_source.rs](lock_mutex_source.rs) [lock_mutex_verus.rs](lock_mutex_verus.rs) | MISSING_IN_VERUS | ❌ |
 | `lock_mutex_model` [lock_mutex_model_verus.rs](lock_mutex_model_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `parse_timeout` [parse_timeout_verus.rs](parse_timeout_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `put_mutex_guard_model` [put_mutex_guard_model_verus.rs](put_mutex_guard_model_verus.rs) | EXTRA_IN_VERUS | ❌ |

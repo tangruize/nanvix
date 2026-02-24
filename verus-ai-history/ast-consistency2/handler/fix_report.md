@@ -7,7 +7,7 @@
 
 ## Context
 
-The original `kcall_handler` [kcall_handler.diff](kcall_handler.diff) | [kcall_handler_source.rs](kcall_handler_source.rs) | [kcall_handler_verus.rs](kcall_handler_verus.rs) is a monolithic 154-line function that uses OS types
+The original `kcall_handler` is a monolithic 154-line function that uses OS types
 (`Hal`, `VirtMemoryManager`, `ProcessManager`, `ExitStatus`), `unsafe` blocks,
 `panic!`, `unreachable!`, and `cfg_if!` macros. These constructs cannot be compiled
 by Verus. The Verus version uses a **shadow model** approach (documented in the
@@ -19,7 +19,7 @@ verified modules in the Nanvix project.
 
 | Function | Action | Justification |
 |----------|--------|---------------|
-| `kcall_handler` [kcall_handler.diff](kcall_handler.diff) | [kcall_handler_source.rs](kcall_handler_source.rs) | [kcall_handler_verus.rs](kcall_handler_verus.rs) | ADDED as `external_body` | Original parameters (`&mut Hal`, `&mut VirtMemoryManager`, `&mut ProcessManager`) and return type (`ExitStatus`) cannot be compiled by Verus. Added as external_body entry point with documentation of equivalence to `kcall_handler_loop` [kcall_handler_loop_verus.rs](kcall_handler_loop_verus.rs). |
+| `kcall_handler` [kcall_handler.diff](kcall_handler.diff) [kcall_handler_source.rs](kcall_handler_source.rs) [kcall_handler_verus.rs](kcall_handler_verus.rs) | ADDED as `external_body` | Original parameters (`&mut Hal`, `&mut VirtMemoryManager`, `&mut ProcessManager`) and return type (`ExitStatus`) cannot be compiled by Verus. Added as external_body entry point with documentation of equivalence to `kcall_handler_loop`. |
 | `signal_handled` [signal_handled_verus.rs](signal_handled_verus.rs) | KEPT (documented) | External body modeling `scoreboard.handled(ret)` (T1 boundary). |
 | `dispatch_to_subsystem` [dispatch_to_subsystem_verus.rs](dispatch_to_subsystem_verus.rs) | KEPT (documented) | External body modeling subsystem dispatch (T2 boundary). |
 | `poll_messages_raw` [poll_messages_raw_verus.rs](poll_messages_raw_verus.rs) | KEPT (documented) | External body modeling IKC message polling (T4 boundary). |

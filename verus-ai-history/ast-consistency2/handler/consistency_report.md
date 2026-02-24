@@ -15,7 +15,7 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `kcall_handler` [kcall_handler.diff](kcall_handler.diff) | [kcall_handler_source.rs](kcall_handler_source.rs) | [kcall_handler_verus.rs](kcall_handler_verus.rs) | MISSING_IN_VERUS | 47-200 |  |
+| `kcall_handler` [kcall_handler.diff](kcall_handler.diff) [kcall_handler_source.rs](kcall_handler_source.rs) [kcall_handler_verus.rs](kcall_handler_verus.rs) | MISSING_IN_VERUS | 47-200 |  |
 | `classify_and_check_invalid` [classify_and_check_invalid_verus.rs](classify_and_check_invalid_verus.rs) | EXTRA_IN_VERUS |  | 455-470 |
 | `dispatch_to_subsystem` [dispatch_to_subsystem_verus.rs](dispatch_to_subsystem_verus.rs) | EXTRA_IN_VERUS |  | 280-286 |
 | `drain_remaining_zombies` [drain_remaining_zombies_verus.rs](drain_remaining_zombies_verus.rs) | EXTRA_IN_VERUS |  | 709-713 |
@@ -43,7 +43,7 @@
 
 | Function | Status | Hash Match |
 |----------|--------|------------|
-| `kcall_handler` [kcall_handler.diff](kcall_handler.diff) | [kcall_handler_source.rs](kcall_handler_source.rs) | [kcall_handler_verus.rs](kcall_handler_verus.rs) | MISSING_IN_VERUS | ❌ |
+| `kcall_handler` [kcall_handler.diff](kcall_handler.diff) [kcall_handler_source.rs](kcall_handler_source.rs) [kcall_handler_verus.rs](kcall_handler_verus.rs) | MISSING_IN_VERUS | ❌ |
 | `classify_and_check_invalid` [classify_and_check_invalid_verus.rs](classify_and_check_invalid_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `dispatch_to_subsystem` [dispatch_to_subsystem_verus.rs](dispatch_to_subsystem_verus.rs) | EXTRA_IN_VERUS | ❌ |
 | `drain_remaining_zombies` [drain_remaining_zombies_verus.rs](drain_remaining_zombies_verus.rs) | EXTRA_IN_VERUS | ❌ |

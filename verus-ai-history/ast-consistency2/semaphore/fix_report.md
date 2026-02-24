@@ -9,11 +9,11 @@
 
 | Function | Action | Justification |
 |----------|--------|---------------|
-| `Semaphore` [struct_Semaphore.diff](struct_Semaphore.diff) | [struct_Semaphore_source.rs](struct_Semaphore_source.rs) | [struct_Semaphore_verus.rs](struct_Semaphore_verus.rs) (struct) | Documented equivalence | `AtomicUsize` → `usize`, `Condvar` omitted. Verus cannot model atomics or condvars; sequential model with spec-level sleep/wake transitions. See module "Verification Model" docs. |
-| `new` [new.diff](new.diff) | [new_source.rs](new_source.rs) | [new_verus.rs](new_verus.rs) | Documented equivalence | `AtomicUsize::new(value)` → `value`, `Condvar::new()` omitted. Follows from struct divergence; both initialize the resource count identically. |
-| `down` [down.diff](down.diff) | [down_source.rs](down_source.rs) | [down_verus.rs](down_verus.rs) | Added to Verus | Original loops with `fetch_update` + `Condvar::wait`. Sequential model uses `&mut self` with precondition `spec_is_available()` modeling the instant-success path. Blocking path modeled by `down_or_block()` and spec-level `spec_down_blocking()`/`spec_wake()`. |
-| `try_down` [try_down.diff](try_down.diff) | [try_down_source.rs](try_down_source.rs) | [try_down_verus.rs](try_down_verus.rs) | Documented equivalence | `&self` → `&mut self` (sequential mutation), `Result<(), Error>` → `bool` (`true` ≡ `Ok(())`, `false` ≡ `Err(TryAgain)`). Decision logic identical: `if value > 0 { value -= 1; success } else { fail }`. Formal mapping in `spec_try_down_result_maps_ok()`. |
-| `up` [up.diff](up.diff) | [up_source.rs](up_source.rs) | [up_verus.rs](up_verus.rs) | Documented equivalence | `&self` → `&mut self`, `fetch_add(1)` → `self.value += 1`, `notify_first()` modeled by spec `spec_wake()`. Returns `()` instead of `Result<(), Error>` (T5: notify success assumed). Core increment logic identical. |
+| `Semaphore` (struct) | Documented equivalence | `AtomicUsize` → `usize`, `Condvar` omitted. Verus cannot model atomics or condvars; sequential model with spec-level sleep/wake transitions. See module "Verification Model" docs. |
+| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | Documented equivalence | `AtomicUsize::new(value)` → `value`, `Condvar::new()` omitted. Follows from struct divergence; both initialize the resource count identically. |
+| `down` [down.diff](down.diff) [down_source.rs](down_source.rs) [down_verus.rs](down_verus.rs) | Added to Verus | Original loops with `fetch_update` + `Condvar::wait`. Sequential model uses `&mut self` with precondition `spec_is_available()` modeling the instant-success path. Blocking path modeled by `down_or_block()` and spec-level `spec_down_blocking()`/`spec_wake()`. |
+| `try_down` [try_down.diff](try_down.diff) [try_down_source.rs](try_down_source.rs) [try_down_verus.rs](try_down_verus.rs) | Documented equivalence | `&self` → `&mut self` (sequential mutation), `Result<(), Error>` → `bool` (`true` ≡ `Ok(())`, `false` ≡ `Err(TryAgain)`). Decision logic identical: `if value > 0 { value -= 1; success } else { fail }`. Formal mapping in `spec_try_down_result_maps_ok()`. |
+| `up` [up.diff](up.diff) [up_source.rs](up_source.rs) [up_verus.rs](up_verus.rs) | Documented equivalence | `&self` → `&mut self`, `fetch_add(1)` → `self.value += 1`, `notify_first()` modeled by spec `spec_wake()`. Returns `()` instead of `Result<(), Error>` (T5: notify success assumed). Core increment logic identical. |
 | `down_available` [down_available_verus.rs](down_available_verus.rs) | Justified extra | Verification helper extracting instant-success path of `down()` with stronger precondition guarantee. |
 | `down_or_block` [down_or_block_verus.rs](down_or_block_verus.rs) | Justified extra | Verification decomposition of `down()` modeling both acquired/would-block paths without loop/condvar. |
 | `get_value` [get_value_verus.rs](get_value_verus.rs) | Justified extra | Verification helper providing spec-connected exec access to value. |
@@ -22,5 +22,5 @@
 ## Verification: PASS
 
 - **Before fix:** 44 verified, 0 errors
-- **After fix:** 45 verified, 0 errors (+1 from new `down` [down.diff](down.diff) | [down_source.rs](down_source.rs) | [down_verus.rs](down_verus.rs) function)
+- **After fix:** 45 verified, 0 errors (+1 from new `down` function)
 - No `assume`, `admit`, or `external_body` added.
