@@ -1,0 +1,196 @@
+--- source:allocate
++++ verus:allocate
+@@ -1,9 +1,187 @@
+-    pub fn allocate(&mut self) -> Result<*mut u8, Error> {
+-        let block: usize = self.index.alloc()?;
+-        // Safety: the start and resulting addresses are valid.
+-        let block_addr: *mut u8 = unsafe {
+-            self.data_addr
+-                .add((block - self.num_index_blocks) * self.block_size)
++    pub fn allocate(&mut self) -> (result: Result<usize, Error>)
++        requires
++            old(self).inv(),
++        ensures
++            self.inv(),
++            result is Ok ==> {
++                let addr = result->Ok_0 as int;
++                let block_idx = old(self)@.addr_to_block_idx(addr);
++                &&& old(self)@.is_valid_addr(addr)
++                &&& 0 <= block_idx < self@.num_data_blocks
++                &&& !old(self)@.is_allocated(block_idx)
++                &&& self@.is_allocated(block_idx)
++                // Frame: static fields unchanged.
++                &&& self@.num_data_blocks == old(self)@.num_data_blocks
++                &&& self@.block_size == old(self)@.block_size
++                &&& self@.data_addr == old(self)@.data_addr
++                // Frame: allocated_blocks is old plus the new block (Set-based, no forall).
++                &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.insert(block_idx)
++                // Explicit postcondition that address is within buffer bounds.
++                &&& old(self)@.is_within_buffer(addr)
++                // Returned address is non-null (derivable from data_addr > 0 and is_valid_addr).
++                &&& addr > 0
++            },
++            // Error case: state unchanged and slab was full (no capacity).
++            result is Err ==> (self@ == old(self)@ && !old(self)@.can_allocate()),
++            // Liveness: if there's free capacity, allocation succeeds.
++            old(self)@.can_allocate() ==> result is Ok,
++    {
++        let alloc_result = self.index.alloc();
++
++        // Handle error case explicitly.
++        let block: usize = match alloc_result {
++            Ok(b) => b,
++            Err(e) => {
++                proof {
++                    // Liveness: if can_allocate(), this branch should be unreachable.
++                    // can_allocate() implies has_free_bit(), and alloc guarantees:
++                    // has_free_bit() ==> result is Ok. So if we're here, !can_allocate().
++                    if old(self)@.can_allocate() {
++                        old(self).lemma_can_allocate_implies_bitmap_has_free_bit();
++                        // old(self).index@.has_free_bit() is true.
++                        // But bitmap.alloc postcondition says: has_free_bit() ==> result is Ok.
++                        // So alloc_result should be Ok, not Err. Contradiction.
++                        // (The postcondition is vacuously true for this path.)
++                        assert(false);
++                    }
++                    // On error, bitmap is unchanged, so Slab::inv() still holds.
++                    assert(self.index.inv());
++                    assert(self.index@.set_bits =~= old(self).index@.set_bits);
++                    // All other fields are unchanged (they were never modified).
++                    assert(self.block_size == old(self).block_size);
++                    assert(self.num_data_blocks == old(self).num_data_blocks);
++                    assert(self.num_index_blocks == old(self).num_index_blocks);
++                    assert(self.data_addr == old(self).data_addr);
++                    assert(self.base_addr == old(self).base_addr);
++                    assert(self.total_len == old(self).total_len);
++                    // Bitmap size is unchanged.
++                    assert(self.index@.number_of_bits() == old(self).index@.number_of_bits());
++                    // Prove index blocks are still set (set_bits unchanged means is_bit_set unchanged).
++                    assert forall|i: int| 0 <= i < self.num_index_blocks as int
++                        implies self.index.is_bit_set(i) by {
++                        assert(old(self).index.is_bit_set(i));
++                        // set_bits unchanged implies is_bit_set unchanged.
++                        assert(self.index@.set_bits.contains(i) == old(self).index@.set_bits.contains(i));
++                    }
++                    // Now inv() should hold.
++                    assert(self.inv());
++                    // Prove view equality for self@ == old(self)@.
++                    // View fields: num_data_blocks, block_size, data_addr, allocated_blocks.
++                    // All scalar fields are unchanged.
++                    // allocated_blocks = { j | is_allocated(j) } = { j | is_bit_set(num_idx + j) }.
++                    // Since set_bits are unchanged, is_bit_set is unchanged for all indices.
++                    assert(self@.num_data_blocks == old(self)@.num_data_blocks);
++                    assert(self@.block_size == old(self)@.block_size);
++                    assert(self@.data_addr == old(self)@.data_addr);
++                    // Prove allocated_blocks equality.
++                    assert(self@.allocated_blocks =~= old(self)@.allocated_blocks) by {
++                        assert forall|j: int| 0 <= j < self.num_data_blocks as int implies
++                            (self@.allocated_blocks.contains(j) == old(self)@.allocated_blocks.contains(j)) by {
++                            let bitmap_idx = self.num_index_blocks as int + j;
++                            // set_bits unchanged implies is_bit_set unchanged.
++                            assert(self.index@.set_bits.contains(bitmap_idx) == old(self).index@.set_bits.contains(bitmap_idx));
++                            assert(self.index.is_bit_set(bitmap_idx) == old(self).index.is_bit_set(bitmap_idx));
++                        }
++                    }
++                    assert(self@ == old(self)@);
++                }
++                return Err(e);
++            }
+         };
++
++        proof {
++            let block_int: int = block as int;
++
++            // The bitmap alloc ensures the bit was previously unset.
++            assert(!old(self).index.is_bit_set(block_int));
++
++            // Using the invariant, any index block bit is set, so an unset bit cannot be within them.
++            assert(block_int >= self.num_index_blocks as int) by {
++                if block_int < self.num_index_blocks as int {
++                    assert(old(self).index.is_bit_set(block_int));
++                }
++            };
++
++            // Bounds: bitmap length equals index + data blocks.
++            assert(self.inv());
++            assert(old(self).inv());
++            assert(old(self).num_index_blocks + old(self).num_data_blocks == self.index@.number_of_bits());
++            assert(block_int < self.index@.number_of_bits());
++            assert(block_int < (self.num_index_blocks + self.num_data_blocks) as int);
++        }
++
++        let block_idx: usize = block - self.num_index_blocks;
++
++        // Prove bounds for safe multiplication.
++        proof {
++            assert(block_idx < self.num_data_blocks);
++            assert(self.block_size > 0);
++            // From invariant: num_data_blocks * block_size <= usize::MAX.
++            // Since block_idx < num_data_blocks, we have block_idx * block_size < num_data_blocks * block_size <= usize::MAX.
++            Self::lemma_mul_inequality(block_idx as int, self.num_data_blocks as int, self.block_size as int);
++            assert((block_idx as int) * (self.block_size as int) < (self.num_data_blocks as int) * (self.block_size as int));
++            assert((self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int);
++            assert((block_idx as int) * (self.block_size as int) <= usize::MAX as int);
++
++            // From invariant: data_addr + num_data_blocks * block_size <= usize::MAX.
++            // Since block_idx * block_size < num_data_blocks * block_size,
++            // data_addr + block_idx * block_size < data_addr + num_data_blocks * block_size <= usize::MAX.
++            assert((self.data_addr as int) + (block_idx as int) * (self.block_size as int)
++                < (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int));
++            assert((self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int);
++            assert((self.data_addr as int) + (block_idx as int) * (self.block_size as int) <= usize::MAX as int);
++        }
++
++        let product: usize = block_idx * self.block_size;
++        let block_addr: usize = self.data_addr + product;
++
++        proof {
++            let block_idx_int: int = block_idx as int;
++            let addr_int: int = block_addr as int;
++            let bs: int = self.block_size as int;
++            let ndb: int = self.num_data_blocks as int;
++
++            // Block index bounds.
++            assert(0 <= block_idx_int < ndb);
++
++            // Allocation flips only the chosen bit.
++            assert(self.index.is_bit_set(self.num_index_blocks as int + block_idx_int));
++            assert(!old(self).index.is_bit_set(self.num_index_blocks as int + block_idx_int));
++
++            // Other bits unchanged.
++            assert forall|i: int| 0 <= i < ndb && i != block_idx_int implies
++                #[trigger] self.index.is_bit_set(self.num_index_blocks as int + i)
++                    == #[trigger] old(self).index.is_bit_set(self.num_index_blocks as int + i)
++            by {
++                let global_idx = self.num_index_blocks as int + i;
++                if global_idx == block as int {
++                    assert(i == block_idx_int);
++                }
++            }
++
++            // Address validity proofs.
++            assert(addr_int == self.data_addr as int + block_idx_int * bs);
++            Self::lemma_mul_inequality(block_idx_int, ndb, bs);
++            assert(addr_int < self.data_addr as int + ndb * bs);
++            Self::lemma_mul_divisible(block_idx_int, bs);
++            assert((addr_int - self.data_addr as int) % bs == 0);
++            assert(old(self)@.is_valid_addr(addr_int));
++
++            // Block index computation.
++            Self::lemma_div_cancel(block_idx_int, bs);
++            assert(old(self)@.addr_to_block_idx(addr_int) == block_idx_int);
++
++            // Allocation status.
++            assert(!old(self)@.is_allocated(block_idx_int));
++            assert(self@.is_allocated(block_idx_int));
++
++            // Unchanged fields and other blocks.
++            assert forall|i: int| 0 <= i < ndb && i != block_idx_int
++                implies self@.is_allocated(i) == old(self)@.is_allocated(i) by {}
++
++            // Address within buffer.
++            assert(old(self)@.is_within_buffer(addr_int));
++        }
++
+         Ok(block_addr)
+     }

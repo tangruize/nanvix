@@ -1,0 +1,21 @@
+--- source:new
++++ verus:new
+@@ -1,5 +1,14 @@
+-    pub fn new(len: usize) -> Result<RawArray<T>, Error> {
+-        Ok(RawArray {
+-            storage: RawArrayStorage::new_managed(len)?,
+-        })
++    pub fn new(len: usize) -> (result: Result<RawArray<T>, Error>)
++        requires
++            len > 0,
++            len < i32::MAX as usize,
++        ensures
++            result is Ok ==> {
++                &&& result->Ok_0.inv()
++                &&& result->Ok_0@.len() == len
++                &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
++            },
++            result is Err ==> result->Err_0.code == ErrorCode::OutOfMemory,
++    {
++        Ok(RawArray { storage: RawArrayStorage::new_managed(len)? })
+     }

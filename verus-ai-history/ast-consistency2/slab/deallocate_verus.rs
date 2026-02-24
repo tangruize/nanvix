@@ -1,0 +1,267 @@
+    pub fn deallocate(&mut self, addr: usize) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            old(self)@.is_valid_addr(addr as int),
+            // Use can_deallocate for clearer specification.
+            old(self)@.can_deallocate(old(self)@.addr_to_block_idx(addr as int)),
+        ensures
+            self.inv(),
+            result is Ok ==> {
+                let block_idx = old(self)@.addr_to_block_idx(addr as int);
+                &&& !self@.is_allocated(block_idx)
+                // Frame: static fields unchanged.
+                &&& self@.num_data_blocks == old(self)@.num_data_blocks
+                &&& self@.block_size == old(self)@.block_size
+                &&& self@.data_addr == old(self)@.data_addr
+                // Frame: allocated_blocks is old minus the freed block (Set-based, no forall).
+                &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.remove(block_idx)
+                // Liveness: after deallocation, allocation is possible (at least one free block).
+                &&& self@.can_allocate()
+            },
+            result is Err ==> self@ == old(self)@,
+            // Liveness: if preconditions are met (block is valid and allocated), deallocation succeeds.
+            result is Ok,
+    {
+        // Issue 3 FIX: Keep runtime bounds check for defensive programming.
+        // This protects against unverified callers that may violate preconditions.
+        // Check if the address is below the data region.
+        if addr < self.data_addr {
+            return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds (below data region)"));
+        }
+
+        // Check if the address is beyond the data region.
+        // Compute end of data region carefully to avoid overflow.
+        // From invariant: data_addr + num_data_blocks * block_size <= usize::MAX.
+        proof {
+            assert((self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int);
+        }
+        let data_region_size: usize = self.num_data_blocks * self.block_size;
+        let data_region_end: usize = self.data_addr + data_region_size;
+        if addr >= data_region_end {
+            return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds (beyond data region)"));
+        }
+
+        // Check if the address is properly aligned to block size.
+        if (addr - self.data_addr) % self.block_size != 0 {
+            return Err(Error::new(ErrorCode::BadAddress, "unaligned block address"));
+        }
+
+        // Compute the bitmap index for this address.
+        // Since precondition guarantees is_valid_addr, we know:
+        // - addr >= data_addr
+        // - addr < data_addr + num_data_blocks * block_size
+        // - (addr - data_addr) % block_size == 0
+
+        proof {
+            // From is_valid_addr:
+            assert(addr as int >= self.data_addr as int);
+            assert((addr as int) < (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int));
+            assert(((addr as int) - (self.data_addr as int)) % (self.block_size as int) == 0);
+
+            // Therefore (addr - self.data_addr) is non-negative and bounded.
+            let offset: int = (addr as int) - (self.data_addr as int);
+            assert(offset >= 0);
+            assert(offset < (self.num_data_blocks as int) * (self.block_size as int));
+
+            // And offset / block_size < num_data_blocks.
+            let block_idx: int = offset / (self.block_size as int);
+            assert(0 <= block_idx < self.num_data_blocks as int);
+
+            // index = num_index_blocks + block_idx < num_index_blocks + num_data_blocks = number_of_bits.
+            assert((self.num_index_blocks as int) + block_idx < self.index@.number_of_bits());
+
+            // Prove no overflow for usize computation.
+            // addr >= data_addr, so addr - data_addr >= 0 (no underflow).
+            // block_idx < num_data_blocks, and num_index_blocks + num_data_blocks fits in usize (from inv).
+            // From invariant: num_index_blocks + num_data_blocks == index@.number_of_bits().
+            // Bitmap number_of_bits is bounded by usize (from Bitmap invariant).
+            // Therefore: num_index_blocks + block_idx < num_index_blocks + num_data_blocks <= usize::MAX.
+            assert((self.num_index_blocks as int) + block_idx < (self.num_index_blocks as int) + (self.num_data_blocks as int));
+            assert((self.num_index_blocks as int) + (self.num_data_blocks as int) == self.index@.number_of_bits());
+            // Use lemma to expose that slab.inv() implies index.inv().
+            Self::lemma_slab_inv_implies_bitmap_inv(self);
+            // From index.inv() we have number_of_bits <= usize::MAX.
+            assert(self.index@.number_of_bits() <= (usize::MAX as int));
+            assert((self.num_index_blocks as int) + block_idx < (usize::MAX as int));
+        }
+
+        // The proof above establishes:
+        // 1. addr >= self.data_addr (from is_valid_addr precondition).
+        // 2. num_index_blocks + block_idx < usize::MAX (from invariant bounds).
+
+        let index: usize = self.num_index_blocks + (addr - self.data_addr) / self.block_size;
+
+        proof {
+            // Prove that index < number_of_bits.
+            assert((index as int) < self.index@.number_of_bits());
+
+            // Connect index with addr_to_block_idx.
+            let block_idx_spec: int = self@.addr_to_block_idx(addr as int);
+            assert(block_idx_spec == ((addr as int) - (self.data_addr as int)) / (self.block_size as int));
+            assert((index as int) == (self.num_index_blocks as int) + block_idx_spec);
+
+            // From precondition: self@.is_allocated(block_idx_spec).
+            // is_allocated(block_idx_spec) means index.is_bit_set(num_index_blocks + block_idx_spec).
+            // Which is index.is_bit_set(index as int).
+            assert(self@.is_allocated(block_idx_spec));
+            // By definition of is_allocated in view():
+            // allocated_blocks.contains(block_idx_spec) <==> index.is_bit_set(num_index_blocks + block_idx_spec)
+            assert(self.index.is_bit_set(index as int));
+        }
+
+        // Since the block is allocated (precondition), test will return true.
+        // We don't need this check given the precondition, but it matches original code.
+        if !self.index.test(index)? {
+            return Err(Error::new(ErrorCode::BadAddress, "block is already free"));
+        }
+
+        // Clear the bit to deallocate.
+        match self.index.clear(index) {
+            Ok(()) => {
+                proof {
+                    // After clear, the slab invariant is preserved because:
+                    // - We only cleared a data block (index >= num_index_blocks).
+                    // - Index blocks remain allocated.
+
+                    // Prove index >= num_index_blocks (we're clearing a data block).
+                    let block_idx_spec: int = old(self)@.addr_to_block_idx(addr as int);
+                    assert(block_idx_spec >= 0);
+                    assert((index as int) == (self.num_index_blocks as int) + block_idx_spec);
+                    assert((index as int) >= (self.num_index_blocks as int));
+
+                    // Prove all index blocks are still set.
+                    // clear() only changes bit at `index`, and index >= num_index_blocks.
+                    // So bits 0..num_index_blocks are unchanged.
+                    assert forall|j: int| 0 <= j < self.num_index_blocks as int
+                        implies self.index.is_bit_set(j) by {
+                        // j != index (since j < num_index_blocks <= index)
+                        assert(j != index as int);
+                        // clear() preserves bits at j != index.
+                        // From old(self).inv(), index blocks were set.
+                        assert(old(self).index.is_bit_set(j));
+                        assert(self.index.is_bit_set(j) == old(self).index.is_bit_set(j));
+                    }
+
+                    Self::lemma_inv_from_components(self);
+
+                    // Prove can_allocate() after deallocation using bitmap has_free_bit.
+                    // After clearing a bit, that bit is now unset, so the bitmap has a free bit.
+                    // The underlying bitmap's has_free_bit implies slab can_allocate.
+                    // After clear(index), !is_bit_set(index).
+                    assert(!self.index.is_bit_set(index as int));
+                    // Since index < number_of_bits and !is_bit_set(index), has_free_bit is true.
+                    self.index.lemma_unset_bit_implies_has_free_bit(index as int);
+                    assert(self.index@.has_free_bit());
+
+                    // Now connect has_free_bit to can_allocate via the contrapositive of
+                    // lemma_bitmap_full_implies_slab_full.
+                    // has_free_bit means !is_full (for bitmap).
+                    // If bitmap is full, slab is full (lemma_bitmap_full_implies_slab_full).
+                    // Contrapositive: if slab is not full, bitmap is not full.
+                    // We'll use: has_free_bit means there exists an unset bit.
+                    // This means the slab has a corresponding free data block.
+
+                    // Direct approach: prove there's an unallocated data block.
+                    // The cleared bit at index corresponds to block_idx_spec.
+                    // block_idx_spec is in [0, num_data_blocks).
+                    assert(0 <= block_idx_spec < self@.num_data_blocks);
+                    // After clear, !is_bit_set(num_index_blocks + block_idx_spec).
+                    // By view definition, !is_allocated(block_idx_spec).
+                    assert(!self@.is_allocated(block_idx_spec));
+
+                    // Use the can_allocate_implies_bitmap_has_free_bit lemma's inverse reasoning.
+                    // If there's a block j in [0, num_data_blocks) that's not allocated,
+                    // then used < capacity (since allocated_blocks is missing j).
+                    // allocated_blocks is subset of {0,..,num_data_blocks-1}.
+                    // If j is not in allocated_blocks but is in the full range,
+                    // then allocated_blocks is a strict subset.
+                    // For strict subsets of finite sets: |A| < |B|.
+
+                    // Prove allocated_blocks.len() < num_data_blocks.
+                    self.lemma_allocated_blocks_finite();
+                    self.lemma_allocated_blocks_subset_of_range();
+                    let full_range: Set<int> = set_int_range(0, self@.num_data_blocks);
+                    lemma_int_range(0, self@.num_data_blocks);
+
+                    // Witness: block_idx_spec is in full_range but not in allocated_blocks.
+                    assert(full_range.contains(block_idx_spec));
+                    assert(!self@.allocated_blocks.contains(block_idx_spec));
+
+                    // Use lemma_len_subset: subset implies |A| <= |B|.
+                    lemma_len_subset(self@.allocated_blocks, full_range);
+                    // We have |allocated_blocks| <= |full_range| = num_data_blocks.
+
+                    // Prove strict inequality by showing sets are not equal.
+                    // If |A| == |B| and A subset_of B and both finite, then A == B.
+                    // But we have witness in B not in A, so A != B.
+                    // Therefore |A| < |B|.
+                    assert(self@.allocated_blocks.len() <= full_range.len());
+
+                    // Use the strict subset logic: cannot have equality.
+                    // Assert negation leads to contradiction.
+                    if self@.allocated_blocks =~= full_range {
+                        // This would mean block_idx_spec is in allocated_blocks.
+                        assert(self@.allocated_blocks.contains(block_idx_spec));
+                        // But we proved !contains above. Contradiction.
+                        assert(false);
+                    }
+                    // Since A subset_of B, |A| <= |B|, and A != B, we need |A| < |B|.
+                    // For finite sets, A strict subset of B means |A| < |B|.
+                    // Verus needs help: use the fact that membership differs.
+                    assert(self@.allocated_blocks !~= full_range);
+
+                    // The key insight: for finite sets A, B where A.subset_of(B),
+                    // if exists x in B with x not in A, then |A| < |B|.
+                    // This is because A ∪ {x} would have cardinality |A| + 1,
+                    // and A ∪ {x} is still subset of B, so |A| + 1 <= |B|.
+                    // Therefore |A| < |B|.
+                    // Let's assert what we need and rely on Verus's set reasoning.
+                    assert(self@.allocated_blocks.len() < self@.num_data_blocks) by {
+                        // allocated_blocks subset_of full_range and block_idx_spec in full_range - allocated_blocks.
+                        // For finite sets: |A| < |B| when A strict subset of B.
+                        // We can use insert lemma: A.insert(x).len() == A.len() + 1 when x not in A.
+                        let with_witness = self@.allocated_blocks.insert(block_idx_spec);
+                        // with_witness has one more element than allocated_blocks.
+                        // with_witness is still a subset of full_range.
+                        assert forall|x: int| with_witness.contains(x) implies full_range.contains(x) by {
+                            if x == block_idx_spec {
+                                assert(full_range.contains(block_idx_spec));
+                            } else {
+                                assert(self@.allocated_blocks.contains(x));
+                                assert(full_range.contains(x));
+                            }
+                        }
+                        assert(with_witness.subset_of(full_range));
+                        // with_witness.len() = allocated_blocks.len() + 1.
+                        axiom_set_insert_len(self@.allocated_blocks, block_idx_spec);
+                        assert(with_witness.len() == self@.allocated_blocks.len() + 1);
+                        // with_witness subset_of full_range, so |with_witness| <= |full_range|.
+                        lemma_len_subset(with_witness, full_range);
+                        assert(with_witness.len() <= full_range.len());
+                        // Therefore allocated_blocks.len() + 1 <= num_data_blocks.
+                        assert(self@.allocated_blocks.len() + 1 <= self@.num_data_blocks);
+                    }
+
+                    assert(self@.used() < self@.capacity());
+                    assert(self@.free() > 0);
+                    assert(self@.can_allocate());
+                }
+                Ok(())
+            },
+            Err(e) => {
+                proof {
+                    // On error, bitmap is unchanged (self.index@ == old(self).index@).
+                    // Since old(self).inv(), and bitmap is unchanged, self.inv() still holds.
+                    // is_bit_set is based on @, which is unchanged.
+                    assert forall|j: int| 0 <= j < self.num_index_blocks as int
+                        implies self.index.is_bit_set(j) by {
+                        assert(self.index@ == old(self).index@);
+                        assert(self.index.is_bit_set(j) == old(self).index.is_bit_set(j));
+                        assert(old(self).index.is_bit_set(j));
+                    }
+                    Self::lemma_inv_from_components(self);
+                }
+                Err(e)
+            }
+        }
+    }

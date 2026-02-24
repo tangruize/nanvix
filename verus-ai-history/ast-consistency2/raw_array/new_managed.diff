@@ -1,0 +1,30 @@
+--- source:new_managed
++++ verus:new_managed
+@@ -1,10 +1,7 @@
+     fn new_managed(len: usize) -> Result<RawArrayStorage<T>, Error> {
+-        // Check if the length is invalid.
+         if len == 0 || len >= i32::MAX as usize {
+             return Err(Error::new(ErrorCode::InvalidArgument, "invalid length"));
+         }
+-
+-        // Allocate underlying memory.
+         let layout: Layout = match Layout::array::<T>(len) {
+             Ok(layout) => layout,
+             Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid layout")),
+@@ -13,15 +10,9 @@
+             let ptr: *mut u8 = unsafe { alloc(layout) };
+             match ptr::NonNull::new(ptr as *mut T) {
+                 Some(p) => p,
+-                None => {
+-                    return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
+-                },
++                None => return Err(Error::new(ErrorCode::OutOfMemory, "out of memory")),
+             }
+         };
+-
+-        // Initialize the backing storage.
+-        // Safety: The memory region is valid and the length is valid.
+         unsafe { ptr::write_bytes(ptr.as_ptr(), 0, len) };
+-
+         Ok(RawArrayStorage::Managed { ptr, len })
+     }
