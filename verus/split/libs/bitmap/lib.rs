@@ -93,7 +93,7 @@ impl Bitmap {
                 array_len == number_of_bits as int / (u8::BITS as int),
                 i <= array@.len(),
                 forall|j: int| 0 <= j < i as int ==> array@[j] == 0u8,
-                forall|j: int| i as int <= j < array@.len() as int ==> is_zero(array@[j]),
+                forall|j: int| #![auto] i as int <= j < array@.len() as int ==> is_zero(array@[j]),
             decreases
                 array@.len() - i,
         {
