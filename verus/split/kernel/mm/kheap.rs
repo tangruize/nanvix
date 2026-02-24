@@ -656,11 +656,11 @@ impl Kheap {
             result is Err ==> self@ == old(self)@,
     {
         // Hide vstd arithmetic broadcast lemmas to prevent solver slowdown.
-        // hide(vstd::arithmetic::div_mod::lemma_fundamental_div_mod);
-        // hide(vstd::arithmetic::div_mod::lemma_mod_multiples_basic);
-        // hide(vstd::arithmetic::mul::lemma_mul_is_associative);
-        // hide(vstd::arithmetic::mul::lemma_mul_is_commutative);
-        // hide(vstd::arithmetic::mul::lemma_mul_is_distributive_add);
+        hide(vstd::arithmetic::div_mod::lemma_fundamental_div_mod);
+        hide(vstd::arithmetic::div_mod::lemma_mod_multiples_basic);
+        hide(vstd::arithmetic::mul::lemma_mul_is_associative);
+        hide(vstd::arithmetic::mul::lemma_mul_is_commutative);
+        hide(vstd::arithmetic::mul::lemma_mul_is_distributive_add);
 
         // Determine which slab to use.
         let slab_size: SlabSize = match layout_to_slab_size(size) {
@@ -673,38 +673,48 @@ impl Kheap {
             }
         };
 
-        // Allocate from the appropriate slab.
-        let alloc_result: Result<usize, Error> = match slab_size {
-            SlabSize::Slab8 => self.slab_8_bytes.allocate(),
-            SlabSize::Slab16 => self.slab_16_bytes.allocate(),
-            SlabSize::Slab32 => self.slab_32_bytes.allocate(),
-            SlabSize::Slab64 => self.slab_64_bytes.allocate(),
-            SlabSize::Slab128 => self.slab_128_bytes.allocate(),
-            SlabSize::Slab256 => self.slab_256_bytes.allocate(),
-            SlabSize::Slab512 => self.slab_512_bytes.allocate(),
-            SlabSize::Slab4096 => self.slab_4096_bytes.allocate(),
-        };
-
-        // Process the result.
-        match alloc_result {
-            Ok(addr_val) => {
-                proof {
-                    // The allocated address is valid in the selected slab.
-                    let addr: int = addr_val as int;
-                    match slab_size {
-                        SlabSize::Slab8 => assert(self.slab_8_bytes@.is_valid_addr(addr)),
-                        SlabSize::Slab16 => assert(self.slab_16_bytes@.is_valid_addr(addr)),
-                        SlabSize::Slab32 => assert(self.slab_32_bytes@.is_valid_addr(addr)),
-                        SlabSize::Slab64 => assert(self.slab_64_bytes@.is_valid_addr(addr)),
-                        SlabSize::Slab128 => assert(self.slab_128_bytes@.is_valid_addr(addr)),
-                        SlabSize::Slab256 => assert(self.slab_256_bytes@.is_valid_addr(addr)),
-                        SlabSize::Slab512 => assert(self.slab_512_bytes@.is_valid_addr(addr)),
-                        SlabSize::Slab4096 => assert(self.slab_4096_bytes@.is_valid_addr(addr)),
-                    }
-                }
-                Ok(addr_val)
-            }
-            Err(e) => Err(e),
+        // Allocate from the appropriate slab, with per-case proof.
+        match slab_size {
+            SlabSize::Slab8 => {
+                let result: Result<usize, Error> = self.slab_8_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab8); }
+                result
+            },
+            SlabSize::Slab16 => {
+                let result: Result<usize, Error> = self.slab_16_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab16); }
+                result
+            },
+            SlabSize::Slab32 => {
+                let result: Result<usize, Error> = self.slab_32_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab32); }
+                result
+            },
+            SlabSize::Slab64 => {
+                let result: Result<usize, Error> = self.slab_64_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab64); }
+                result
+            },
+            SlabSize::Slab128 => {
+                let result: Result<usize, Error> = self.slab_128_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab128); }
+                result
+            },
+            SlabSize::Slab256 => {
+                let result: Result<usize, Error> = self.slab_256_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab256); }
+                result
+            },
+            SlabSize::Slab512 => {
+                let result: Result<usize, Error> = self.slab_512_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab512); }
+                result
+            },
+            SlabSize::Slab4096 => {
+                let result: Result<usize, Error> = self.slab_4096_bytes.allocate();
+                proof { assert(slab_size == SlabSize::Slab4096); }
+                result
+            },
         }
     }
 
