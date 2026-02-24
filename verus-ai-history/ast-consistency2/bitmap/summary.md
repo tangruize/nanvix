@@ -1,6 +1,4 @@
-# Exec Diff: bitmap
-
-📄 [Consistency Report](consistency_report.md) | 🔧 [Fix Report](fix_report.md)
+# Exec Diff: lib
 
 **Source:** `src/libs/bitmap/src/lib.rs`
 **Verus:** `verus/split/libs/bitmap/lib.rs`

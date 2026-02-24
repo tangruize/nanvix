@@ -28,4 +28,6 @@
 
 ## Struct Issues
 
-- `Slab`: MISMATCH
+| Struct | Status | Files |
+|--------|--------|-------|
+| `Slab` | MISMATCH | struct_Slab_source.rs, struct_Slab_verus.rs, struct_Slab.diff |

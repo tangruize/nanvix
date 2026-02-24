@@ -20,5 +20,7 @@
 
 ## Struct Issues
 
-- `ExRawArrayStorage`: EXTRA_IN_VERUS
-- `RawArray`: MISMATCH
+| Struct | Status | Files |
+|--------|--------|-------|
+| `ExRawArrayStorage` | EXTRA_IN_VERUS | struct_ExRawArrayStorage_verus.rs (EXTRA) |
+| `RawArray` | MISMATCH | struct_RawArray_source.rs, struct_RawArray_verus.rs, struct_RawArray.diff |

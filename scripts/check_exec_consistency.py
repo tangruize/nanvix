@@ -227,9 +227,12 @@ def compare_modules(
     struct_match = 0
     struct_mismatch = 0
     for name in sorted(set(src_structs.keys()) | set(verus_structs.keys())):
+        entry: Dict[str, Any] = {"name": name, "src_lines": "", "verus_lines": ""}
         if name in src_structs and name in verus_structs:
-            _, src_h = src_structs[name]
-            _, verus_h = verus_structs[name]
+            src_node, src_h = src_structs[name]
+            verus_node, verus_h = verus_structs[name]
+            entry["src_lines"] = f"{src_node.start_point[0]+1}-{src_node.end_point[0]+1}"
+            entry["verus_lines"] = f"{verus_node.start_point[0]+1}-{verus_node.end_point[0]+1}"
             if src_h == verus_h or src_h == "" or verus_h == "":
                 status = "MATCH"
                 struct_match += 1
@@ -237,9 +240,13 @@ def compare_modules(
                 status = "MISMATCH"
                 struct_mismatch += 1
         elif name in src_structs:
+            src_node, _ = src_structs[name]
+            entry["src_lines"] = f"{src_node.start_point[0]+1}-{src_node.end_point[0]+1}"
             status = "MISSING_IN_VERUS"
             struct_mismatch += 1
         else:
+            verus_node, _ = verus_structs[name]
+            entry["verus_lines"] = f"{verus_node.start_point[0]+1}-{verus_node.end_point[0]+1}"
             # View types and ghost structs are expected extra.
             if name.endswith("View") or name.endswith("Ghost"):
                 status = "EXPECTED_EXTRA"
@@ -247,7 +254,8 @@ def compare_modules(
             else:
                 status = "EXTRA_IN_VERUS"
                 struct_mismatch += 1
-        report["structs"].append({"name": name, "status": status})
+        entry["status"] = status
+        report["structs"].append(entry)
 
     report["summary"] = {
         "functions": {
@@ -314,8 +322,10 @@ def format_markdown(report: Dict) -> str:
     if problem_structs:
         lines.append("## Inconsistent Structs")
         lines.append("")
+        lines.append("| Struct | Status | Source Lines | Verus Lines |")
+        lines.append("|--------|--------|-------------|-------------|")
         for s in problem_structs:
-            lines.append(f"- `{s['name']}`: {s['status']}")
+            lines.append(f"| `{s['name']}` | {s['status']} | {s.get('src_lines', '')} | {s.get('verus_lines', '')} |")
         lines.append("")
 
     return "\n".join(lines)
