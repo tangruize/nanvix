@@ -301,7 +301,7 @@ impl Bitmap {
             invariant
                 self.inv(),
                 old_self.inv(),
-                old_self == old(self),
+                old_self == *old(self),
                 size > 0,
                 size <= self.number_of_bits,
                 start <= self.number_of_bits,
@@ -353,7 +353,7 @@ impl Bitmap {
                 invariant
                     self.inv(),
                     old_self.inv(),
-                    old_self == old(self),
+                    old_self == *old(self),
                     0 < size <= self.number_of_bits,
                     offset <= size,
                     start_before_inner <= self.number_of_bits - size,  // from outer loop
@@ -496,7 +496,7 @@ impl Bitmap {
                         // Ghost state.
                         old_self.inv(),
                         pre_alloc_self.inv(),
-                        old_self == old(self),
+                        old_self == *old(self),
                         // Bounds.
                         0 < size <= self.number_of_bits,
                         start <= self.number_of_bits - size,
@@ -715,7 +715,7 @@ impl Bitmap {
                 &&& self@.set_bits =~= old(self)@.set_bits.insert(index as int)
                 &&& self@.usage() == old(self)@.usage() + 1
             },
-            result is Err ==> self == old(self),
+            result is Err ==> *self == *old(self),
             ((index as int) < old(self)@.number_of_bits() && !old(self).is_bit_set(index as int))
                 ==> result is Ok,
     {
@@ -797,7 +797,7 @@ impl Bitmap {
                 &&& self@.set_bits =~= old(self)@.set_bits.remove(index as int)
                 &&& self@.usage() == old(self)@.usage() - 1
             },
-            result is Err ==> self == old(self),
+            result is Err ==> *self == *old(self),
             ((index as int) < old(self)@.number_of_bits() && old(self).is_bit_set(index as int))
                 ==> result is Ok,
     {
@@ -894,7 +894,7 @@ impl Bitmap {
             invariant
                 self.inv(),
                 old_self.inv(),
-                old_self == old(self),
+                old_self == *old(self),
                 self.number_of_bits == old_self.number_of_bits,
                 0 < size <= self.number_of_bits,
                 start <= self.number_of_bits - size,
