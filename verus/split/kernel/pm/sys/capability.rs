@@ -35,6 +35,7 @@ use crate::libs::error::{
     ErrorCode,
 };
 use vstd::prelude::*;
+use vstd::std_specs::convert::TryFromSpecImpl;
 
 // Include specifications.
 include!("capability.spec.rs");

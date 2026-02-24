@@ -82,4 +82,22 @@ impl View for Capability {
     }
 }
 
+//==================================================================================================
+// TryFrom Spec Implementation
+//==================================================================================================
+
+impl TryFromSpecImpl<u32> for Capability {
+    open spec fn obeys_try_from_spec() -> bool {
+        true
+    }
+
+    open spec fn try_from_spec(value: u32) -> Result<Capability, Error> {
+        if Self::spec_is_valid_discriminant(value as int) {
+            Ok(Self::spec_from_discriminant(value as int))
+        } else {
+            Err(Error { code: ErrorCode::InvalidArgument, reason: Self::PARSE_ERROR_MESSAGE })
+        }
+    }
+}
+
 } // verus!
