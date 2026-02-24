@@ -53,7 +53,9 @@ verus! {
 pub struct Slab {
     /// An index that keeps track of free blocks.
     index: Bitmap,
-    /// Base address of data blocks (as usize for verus compatibility).
+    /// Base address of data blocks.
+    /// Verus equivalence: original uses `*mut u8`; changed to `usize` because Verus
+    /// does not support raw pointers. Stores the same numeric address value.
     data_addr: usize,
     /// Number of index blocks in the slab.
     num_index_blocks: usize,
@@ -62,6 +64,7 @@ pub struct Slab {
     /// Size of blocks in the slab.
     block_size: usize,
     // Issue 6 FIX: Store buffer base address and length for bounds checking.
+    // These fields are not in the original source; added for verification invariants.
     /// Base address of the entire slab buffer (including index region).
     base_addr: usize,
     /// Total length of the slab buffer in bytes.
@@ -135,6 +138,19 @@ impl Slab {
     ///
     /// This function is unsafe for the following reasons:
     /// - It assumes that the memory region starting at `addr` with `len` bytes is valid.
+    ///
+    /// # Verus Equivalence
+    ///
+    /// Compared to the original `src/libs/slab/src/lib.rs`:
+    /// - Parameter `addr: *mut u8` → `addr: usize` (Verus limitation: no raw pointers).
+    /// - Wrapping check replaced by precondition on address space bounds.
+    /// - `is_multiple_of()` → `% ... != 0` (Verus compatibility).
+    /// - Bitwise power-of-two check → `is_power_of_two()` verified helper.
+    /// - `RawArray::from_raw_parts` → `RawArray::from_raw_addr` (Verus-verified API).
+    /// - `for` loop → `while` loop (Verus limitation).
+    /// - Pointer arithmetic → integer arithmetic.
+    /// - Extra defensive checks added (do not change behavior for valid inputs).
+    /// - Extra fields `base_addr`, `total_len` stored for invariant proofs.
     ///
     pub unsafe fn from_raw_parts(
         addr: usize,
@@ -544,6 +560,13 @@ impl Slab {
     /// Upon success, the address of the allocated block is returned.
     /// Upon failure, an error is returned instead.
     ///
+    /// # Verus Equivalence
+    ///
+    /// Compared to the original: return type `*mut u8` → `usize` (no raw pointers in Verus).
+    /// `self.index.alloc()?` → explicit `match` (required for proof blocks on error path).
+    /// Pointer arithmetic `data_addr.add(...)` → integer arithmetic `data_addr + ...`.
+    /// Core logic is identical: alloc bitmap bit → compute block address → return.
+    ///
     pub fn allocate(&mut self) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
@@ -745,6 +768,13 @@ impl Slab {
     /// # Returns
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Verus Equivalence
+    ///
+    /// Compared to the original: parameter `ptr: *const u8` → `addr: usize` (no raw pointers).
+    /// `ptr.offset_from_unsigned(self.data_addr)` → `(addr - self.data_addr)` (integer subtraction).
+    /// `self.index.clear(index)?` → explicit `match` (required for proof blocks on both paths).
+    /// Bounds checks and free-check logic are identical in semantics.
     ///
     pub fn deallocate(&mut self, addr: usize) -> (result: Result<(), Error>)
         requires
