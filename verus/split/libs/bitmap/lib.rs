@@ -94,6 +94,8 @@ impl Bitmap {
                 i <= array@.len(),
                 forall|j: int| 0 <= j < i as int ==> array@[j] == 0u8,
                 forall|j: int| i as int <= j < array@.len() as int ==> is_zero(array@[j]),
+            decreases
+                array@.len() - i,
         {
             array.set(i, 0u8);
             i = i + 1;
@@ -156,6 +158,8 @@ impl Bitmap {
                 array_len * (u8::BITS as usize) < u32::MAX as usize,
                 i <= array@.len(),
                 forall|j: int| 0 <= j < i as int ==> array@[j] == 0u8,
+            decreases
+                array@.len() - i,
         {
             array.set(i, 0u8);
             i = i + 1;
