@@ -13,13 +13,6 @@
 
 use ::sysapi::errno::*;
 
-// Verus verification support.
-use ::verus_stub::*;
-
-// Include verification specifications when verifying with Verus.
-#[cfg(verus_keep_ghost)]
-include!("lib.verus.rs");
-
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -33,7 +26,6 @@ include!("lib.verus.rs");
 ///
 /// The values in this enumeration intentionally match the error codes defined in the Linux kernel.
 ///
-#[verus_verify]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(i32)]
 pub enum ErrorCode {
@@ -447,20 +439,13 @@ fn invalid_error_code(_value: i32) -> Error {
     }
 }
 
-#[verus_verify]
 #[derive(Debug)]
 pub struct Error {
     pub code: ErrorCode,
     pub reason: &'static str,
 }
 
-#[verus_verify]
 impl Error {
-    #[verus_spec(result =>
-        ensures
-            result.spec_code() == code,
-            result.spec_reason() == reason,
-    )]
     pub fn new(code: ErrorCode, reason: &'static str) -> Self {
         Self { code, reason }
     }

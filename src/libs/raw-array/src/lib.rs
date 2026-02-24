@@ -44,13 +44,6 @@ use ::sys::error::{
     ErrorCode,
 };
 
-// Verus verification support.
-use ::verus_stub::*;
-
-// Include verification specifications when verifying with Verus.
-#[cfg(verus_keep_ghost)]
-include!("lib.verus.rs");
-
 //==================================================================================================
 // Raw Array Storage
 //==================================================================================================
@@ -208,14 +201,11 @@ impl<T> RawArrayStorage<T> {
 /// A type that represent a fixed-size array.
 ///
 #[derive(Debug)]
-#[verus_verify]
-#[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(T))]
 pub struct RawArray<T> {
     /// The backing storage of the raw array.
     storage: RawArrayStorage<T>,
 }
 
-#[verus_verify(external)]
 impl<T> RawArray<T> {
     ///
     /// # Description
@@ -267,54 +257,6 @@ impl<T> RawArray<T> {
     }
 }
 
-/// Impl block for methods with Verus specs.
-#[verus_verify]
-impl<T> RawArray<T> {
-    ///
-    /// # Description
-    ///
-    /// Sets an element at the given index.
-    ///
-    /// # Parameters
-    ///
-    /// - `index`: Index of the element to set.
-    /// - `value`: Value to set.
-    ///
-    #[verus_verify(external_body)]
-    #[verus_spec(
-        requires
-            old(self).in_bounds(index as int),
-        ensures
-            self@.len() == old(self)@.len(),
-            self@[index as int] == value,
-            forall|i: int| 0 <= i < self@.len() && i != index as int
-                ==> self@[i] == old(self)@[i],
-    )]
-    pub fn set(&mut self, index: usize, value: T) {
-        let slice: &mut [T] = self.storage.get_mut();
-        slice[index] = value;
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the length of the array.
-    ///
-    /// # Returns
-    ///
-    /// The length of the array.
-    ///
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        ensures
-            result == self@.len(),
-    )]
-    pub fn raw_len(&self) -> usize {
-        self.storage.get().len()
-    }
-}
-
-#[verus_verify(external)]
 impl<T> Deref for RawArray<T> {
     type Target = [T];
 
@@ -323,16 +265,12 @@ impl<T> Deref for RawArray<T> {
     }
 }
 
-#[verus_verify(external)]
 impl<T> DerefMut for RawArray<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.get_mut()
     }
 }
 
-// Note: Drop implementation is marked external because Verus doesn't support
-// opens_invariants on Drop traits.
-#[verus_verify(external)]
 impl<T> Drop for RawArray<T> {
     fn drop(&mut self) {
         match &self.storage {
