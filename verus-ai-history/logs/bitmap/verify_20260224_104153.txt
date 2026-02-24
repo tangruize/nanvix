@@ -1,0 +1,29 @@
+=== Verus Verification ===
+Timestamp: Tue Feb 24 10:41:53 CST 2026
+Module: bitmap
+Command: verus --crate-type lib lib.rs --verify-module bitmap
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0425]: cannot find function `is_zero` in this scope
+  --> libs/bitmap/lib.rs:95:72
+   |
+95 |                 forall|j: int| i as int <= j < array@.len() as int ==> is_zero(array@[j]),
+   |                                                                        ^^^^^^^ not found in this scope
+   |
+help: consider importing this function
+   |
+10 + use crate::libs::raw_array::is_zero;
+   |
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0425`.
+
+Duration: 3s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for bitmap (verified:0, errors:0)
