@@ -66,21 +66,20 @@ impl Bitmap {
              number_of_bits >= u32::MAX as usize ||
              number_of_bits % (u8::BITS as usize) != 0) ==> result is Err,
     {
-        // Check if the number of bits is valid.
+        // Check if the length is invalid.
         if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
-            let reason: &str = "invalid number of bits";
+            let reason: &str = "invalid length";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        // Check if the number of bits is a multiple of 8.
+        // Check if the length is not a multiple of the number of the bitmap word.
         if number_of_bits % u8::BITS as usize != 0 {
-            let reason: &str = "bitmap length must be a multiple of 8";
+            let reason: &str = "length must be a multiple of 8";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
-        // Allocate the underlying array.
-        let num_bytes: usize = number_of_bits / u8::BITS as usize;
-        let array: RawArray<u8> = RawArray::new(num_bytes)?;
+        // Allocate the bitmap (already zero-initialized by RawArray::new).
+        let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
 
         let result = Self {
             number_of_bits,
@@ -935,16 +934,11 @@ impl Bitmap {
             result is Err ==> index as int >= self@.number_of_bits(),
             (index as int) < self@.number_of_bits() ==> result is Ok,
     {
-        // Check bounds.
-        if index >= self.number_of_bits {
-            let reason: &str = "index out of bounds";
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
+        let (word, bit): (usize, usize) = self.index(index)?;
+        let byte_val: u8 = self.bits[word];
+        let result_val: bool = (byte_val & (1 << bit)) != 0;
 
-        let (word, bit): (usize, usize) = self.index_unchecked(index);
-        let is_set: bool = (self.bits[word] & (1 << bit)) != 0;
-
-        Ok(is_set)
+        Ok(result_val)
     }
 
     //==================================================================================================
@@ -982,7 +976,8 @@ impl Bitmap {
             result is Err ==> bit_index >= self.number_of_bits,
             bit_index < self.number_of_bits ==> result is Ok,
     {
-        if bit_index >= self.number_of_bits {
+        // Check if the index is out of bounds.
+        if bit_index >= self.bits.len() * u8::BITS as usize {
             let reason: &str = "index out of bounds";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -1440,3 +1435,14 @@ fn test_bitmap_number_of_bits_constant_verified(number_of_bits: usize, index: us
 }
 
 } // verus!
+
+// Deref implementation for test support (external to verification).
+#[cfg(test)]
+#[verifier::external]
+impl ::core::ops::Deref for Bitmap {
+    type Target = RawArray<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.bits
+    }
+}
