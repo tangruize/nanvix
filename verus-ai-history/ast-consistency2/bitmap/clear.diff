@@ -1,0 +1,75 @@
+--- source:clear
++++ verus:clear
+@@ -1,11 +1,69 @@
+-    pub fn clear(&mut self, index: usize) -> Result<(), Error> {
++    pub fn clear(&mut self, index: usize) -> (result: Result<(), Error>)
++        requires
++            old(self).inv(),
++        ensures
++            self.inv(),
++            result is Ok ==> {
++                &&& (index as int) < self@.number_of_bits()
++                &&& !self.is_bit_set(index as int)
++                &&& old(self).is_bit_set(index as int)
++                &&& self@.number_of_bits() == old(self)@.number_of_bits()
++                // Frame.
++                &&& forall|i: int| 0 <= i < self@.number_of_bits() && i != (index as int) ==>
++                    self.is_bit_set(i) == old(self).is_bit_set(i)
++                // Set-based frame.
++                &&& self@.set_bits =~= old(self)@.set_bits.remove(index as int)
++                &&& self@.usage() == old(self)@.usage() - 1
++            },
++            result is Err ==> self == old(self),
++            ((index as int) < old(self)@.number_of_bits() && old(self).is_bit_set(index as int))
++                ==> result is Ok,
++    {
+         // Check if the bit is already cleared.
+         if !self.test(index)? {
+             let reason: &str = "bit is already cleared";
+             return Err(Error::new(ErrorCode::BadAddress, reason));
+         }
++
+         let (word, bit): (usize, usize) = self.index(index)?;
+-        self.bits[word] &= !(1 << bit);
+-        self.usage -= 1;
++        let ghost old_self = *self;
++
++        // At this point, we know:
++        // - old_self.inv() holds
++        // - old_self.is_bit_set(index as int) (the bit is set)
++        proof {
++            assert(old_self@.set_bits.contains(index as int));
++        }
++
++        self.bits.set(word, self.bits[word] & !(1 << bit));
++
++        proof {
++            old_self.lemma_byte_and_not_reflects_in_view(self, word as int, bit as int);
++            // Now: self@.set_bits =~= old_self@.set_bits.remove(index as int)
++            
++            // Prove finiteness using the new helper.
++            Self::lemma_remove_finite(old_self@.set_bits, index as int);
++            Self::lemma_ext_equal_finite(self@.set_bits, old_self@.set_bits.remove(index as int));
++            
++            // Prove cardinality decreases by 1.
++            Self::lemma_remove_len(old_self@.set_bits, index as int);
++            assert(self@.set_bits.len() == old_self@.set_bits.len() - 1);
++            
++            // Prove wf() holds: all elements in set_bits are in valid range.
++            assert(self@.wf()) by {
++                assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
++                    // i was in old_self@.set_bits (since we only removed), so by old wf(), it's in range
++                    assert(old_self@.set_bits.contains(i));
++                }
++            }
++        }
++
++        self.usage = self.usage - 1;
++
++        proof {
++            // Prove inv() holds.
++            assert(self.usage as int == self@.usage());
++        }
++
+         Ok(())
+     }
