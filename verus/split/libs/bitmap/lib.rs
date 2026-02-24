@@ -14,6 +14,7 @@ use crate::libs::{
     },
     raw_array::{
         axiom_u8_zero_is_0,
+        is_zero,
         RawArray,
     },
 };
