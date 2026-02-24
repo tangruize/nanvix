@@ -1,0 +1,41 @@
+--- source:handle_sleep_error
++++ verus:handle_sleep_error
+@@ -1,20 +1,22 @@
+-fn handle_sleep_error(sleep_error: SleepError) -> KcallResult {
+-    match sleep_error {
+-        SleepError::Generic(generic_error) => {
+-            error!("failed to sleep: {:?}", generic_error);
+-            KcallResult::Error(generic_error.code.into())
++pub fn handle_sleep_error(sleep_error: SleepError) -> (result: DispatchResult)
++    requires
++        sleep_error.wf(),
++        spec_sleep_error_returns(sleep_error.spec_kind()),
++    ensures
++        result@ == spec_handle_sleep_error(sleep_error.spec_kind(), sleep_error.spec_error_code()),
++        !result@.is_success,
++        result.wf(),
++{
++    match sleep_error.kind {
++        SleepErrorKind::Generic => {
++            DispatchResult::error(sleep_error.error_code as i32)
+         },
+-        SleepError::Interrupted(reason) => match reason {
+-            InterruptReason::Killed => {
+-                // SAFETY: the calling process is not the kernel.
+-                let error: Error =
+-                    unsafe { ProcessManager::exit(ErrorCode::Interrupted.into()).unwrap_err() };
+-                panic!("failed to exit() (error={:?})", error);
+-            },
+-            InterruptReason::TimedOut => {
+-                error!("failed to sleep: operation timed out");
+-                KcallResult::Error(ErrorCode::OperationTimedOut.into())
+-            },
++        SleepErrorKind::InterruptedTimedOut => {
++            DispatchResult::error(116i32)
++        },
++        SleepErrorKind::InterruptedKilled => {
++            // Unreachable: excluded by precondition spec_sleep_error_returns.
++            DispatchResult::error(-1i32)
+         },
+     }
+ }

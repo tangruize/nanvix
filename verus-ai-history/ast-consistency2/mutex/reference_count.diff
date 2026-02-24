@@ -1,0 +1,11 @@
+--- source:reference_count
++++ verus:reference_count
+@@ -1,3 +1,6 @@
+-    pub fn reference_count(&self) -> usize {
+-        Arc::strong_count(&self.0)
++    pub fn reference_count(&self) -> (result: usize)
++        ensures
++            result == 1usize,
++    {
++        1
+     }

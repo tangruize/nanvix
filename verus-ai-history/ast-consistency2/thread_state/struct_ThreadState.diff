@@ -1,0 +1,40 @@
+--- source:struct_ThreadState
++++ verus:struct_ThreadState
+@@ -1,20 +1,20 @@
+ pub struct ThreadState {
+-    /// Thread identifier.
+-    id: ThreadIdentifier,
+-    /// Kernel stack.
+-    kernel_stack: Option<KernelStack>,
+-    /// User stack.
+-    user_stack: Option<UserStack>,
+-    /// Condition variable for join.
+-    join_cond: Condvar,
+-    /// Execution context.
+-    context: Pin<Box<ContextInformation>>,
++    /// Thread identifier (verified dependency).
++    pub id: ThreadIdentifier,
++    /// Abstract kernel stack resource token (None = absent).
++    /// Models `Option<KernelStack>` with identity preservation.
++    pub kernel_stack: Option<int>,
++    /// Abstract user stack resource token (None = absent).
++    /// Models `Option<UserStack>` with identity preservation.
++    pub user_stack: Option<int>,
+     /// Optional base address for the user-space thread data area.
+-    user_tda: Option<VirtualAddress>,
+-    /// Lookup table of locked mutexes.
+-    locked_mutexes: BTreeMap<MutexAddress, MutexGuard>,
+-    /// Interrupt reason, if any.
+-    interrupt_reason: Option<InterruptReason>,
+-    /// FPU state.
+-    fpu_state: Pin<Box<FpuState>>,
++    pub user_tda: Option<int>,
++    /// Interrupt reason tag, if any.
++    pub interrupt_reason: Option<int>,
++    /// Number of locked mutexes held by this thread.
++    pub locked_mutex_count: usize,
++    /// Concrete set of locked mutex addresses, faithfully modeling the
++    /// original `BTreeMap<MutexAddress, MutexGuard>` per-key semantics.
++    /// Backed by `Vec<u64>`; the `View` maps to `Set<int>` via `seq_to_set`.
++    pub locked_mutex_set: Vec<u64>,
+ }

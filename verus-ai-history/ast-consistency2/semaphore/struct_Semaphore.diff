@@ -1,0 +1,10 @@
+--- source:struct_Semaphore
++++ verus:struct_Semaphore
+@@ -1,6 +1,4 @@
+ pub struct Semaphore {
+     /// Current count of available resources.
+-    value: AtomicUsize,
+-    /// Condition variable for threads waiting on the semaphore.
+-    sleeping: Condvar,
++    pub value: usize,
+ }

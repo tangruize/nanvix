@@ -1,0 +1,23 @@
+--- source:set_capability
++++ verus:set_capability
+@@ -1,3 +1,18 @@
+-    pub fn set_capability(&mut self, capability: Capability) {
+-        self.capabilities.set(capability)
++    pub fn set_capability(&mut self, capability: Capability)
++        requires
++            old(self).wf(),
++        ensures
++            self@.capabilities_granted.contains(capability),
++            self.spec_pid() == old(self).spec_pid(),
++            self.spec_mutex_count() == old(self).spec_mutex_count(),
++            self.spec_cond_count() == old(self).spec_cond_count(),
++            self.spec_pmio_ports() == old(self).spec_pmio_ports(),
++            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
++            forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a),
++            self.wf(),
++    {
++        self.capabilities.set(capability);
++        proof {
++            self.capabilities.lemma_view_bits();
++        }
+     }

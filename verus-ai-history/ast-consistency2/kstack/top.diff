@@ -1,0 +1,22 @@
+--- source:top
++++ verus:top
+@@ -1,9 +1,11 @@
+-    pub fn top(&self) -> PageAligned<VirtualAddress> {
+-        let base: usize = self.kpages[0].base().into_raw_value();
+-        let size: usize = config::kernel::KSTACK_SIZE;
+-        // SAFETY: The following call to unwrap is safe because the base address of the kernel stack
+-        // and the size of the kernel stack are both page aligned.
+-        debug_assert!(::sys::mm::is_aligned(base, PAGE_ALIGNMENT));
+-        debug_assert!(::sys::mm::is_aligned(size, PAGE_ALIGNMENT));
+-        PageAligned::from_raw_value(base + size).unwrap()
++    pub fn top(&self) -> (result: usize)
++        requires
++            self.inv(),
++        ensures
++            result as int == self.spec_top(),
++            spec_is_page_aligned(result as int),
++            // Strengthened: top is strictly greater than base.
++            result > self.spec_base(),
++    {
++        self.base_addr + self.num_pages * PAGE_SIZE
+     }

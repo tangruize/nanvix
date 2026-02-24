@@ -1,0 +1,37 @@
+--- source:struct_RunningProcess
++++ verus:struct_RunningProcess
+@@ -1,14 +1,22 @@
+ pub struct RunningProcess {
+-    /// Process state.
+-    state: Box<ProcessState>,
+-    /// Running thread.
+-    running: RunningThread,
+-    /// Ready threads.
+-    ready: Option<NonEmptyVecDeque<ReadyThread>>,
+-    /// Interrupted threads.
+-    interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
+-    /// Sleeping threads.
+-    sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
+-    /// Zombie threads.
+-    zombie: Option<NonEmptyVecDeque<ZombieThread>>,
++    /// Process identifier (from the inner ProcessState).
++    pub pid: u64,
++    /// Running thread ID.
++    pub running_thread_id: u64,
++    /// Concrete vector of ready thread IDs.
++    pub ready_thread_ids: Vec<u64>,
++    /// Concrete vector of interrupted thread IDs.
++    pub interrupted_thread_ids: Vec<u64>,
++    /// Concrete vector of sleeping thread IDs.
++    pub sleeping_thread_ids: Vec<u64>,
++    /// Concrete vector of zombie thread IDs.
++    pub zombie_thread_ids: Vec<u64>,
++    /// Exec-level count of ready threads.
++    pub ready_count: u64,
++    /// Exec-level count of interrupted threads.
++    pub interrupted_count: u64,
++    /// Exec-level count of sleeping threads.
++    pub sleeping_count: u64,
++    /// Exec-level count of zombie threads.
++    pub zombie_count: u64,
+ }

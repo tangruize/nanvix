@@ -1,0 +1,10 @@
+--- source:struct_Condvar
++++ verus:struct_Condvar
+@@ -1,3 +1,6 @@
+ pub struct Condvar {
+-    inner: Arc<CondvarInner>,
++    /// Concrete queue length.
++    pub len: usize,
++    /// Concrete FIFO queue of (pid_value, tid_value) pairs.
++    pub sleeping: Vec<(i32, i32)>,
+ }

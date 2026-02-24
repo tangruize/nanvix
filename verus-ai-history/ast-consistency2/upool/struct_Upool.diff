@@ -1,0 +1,9 @@
+--- source:struct_Upool
++++ verus:struct_Upool
+@@ -1,4 +1,4 @@
+ pub struct Upool {
+-    /// Inner data structure.
+-    inner: Rc<RefCell<UpoolInner>>,
++    /// Underlying frame allocator.
++    frame_allocator: FrameAllocator,
+ }

@@ -1,0 +1,8 @@
+--- source:struct_Capabilities
++++ verus:struct_Capabilities
+@@ -1 +1,4 @@
+-pub struct Capabilities(u8);
++pub struct Capabilities {
++    /// The raw bitfield value.
++    pub bits: u8,
++}

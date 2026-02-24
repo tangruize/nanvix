@@ -1,0 +1,19 @@
+--- source:new
++++ verus:new
+@@ -1,6 +1,11 @@
+-    pub fn new() -> Self {
+-        Self(Arc::new(MutexInner {
+-            locked: AtomicBool::new(false),
+-            sleeping: Condvar::new(),
+-        }))
++    pub fn new(id: usize) -> (result: Self)
++        ensures
++            !result@.locked,
++            result@.is_unlocked(),
++            result@ == MutexView::spec_new(id as nat),
++            result@.id == id as nat,
++            result.wf(),
++    {
++        proof { reveal(Mutex::wf); }
++        Mutex { locked: false, id: id, token_issued: false }
+     }

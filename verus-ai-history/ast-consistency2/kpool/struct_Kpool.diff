@@ -1,0 +1,10 @@
+--- source:struct_Kpool
++++ verus:struct_Kpool
+@@ -1,3 +1,6 @@
+ pub struct Kpool {
+-    inner: Rc<RefCell<KpoolInner>>,
++    /// Underlying frame allocator.
++    frame_allocator: FrameAllocator,
++    /// Pool identifier for provenance tracking.
++    pool_id: usize,
+ }

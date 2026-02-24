@@ -1,0 +1,83 @@
+--- source:take_mutex_guard
++++ verus:take_mutex_guard
+@@ -1,3 +1,78 @@
+-    pub(super) fn take_mutex_guard(&mut self, address: MutexAddress) -> Option<MutexGuard> {
+-        self.locked_mutexes.remove(&address)
++    pub fn take_mutex_guard(&mut self, address: u64)
++        requires
++            old(self).wf(),
++            old(self)@.has_mutex(address as int),
++        ensures
++            !self@.has_mutex(address as int),
++            forall|a: int| a != address as int ==>
++                self@.has_mutex(a) == old(self)@.has_mutex(a),
++            self@.locked_mutex_count == old(self)@.locked_mutex_count - 1,
++            self@.id == old(self)@.id,
++            self@.kernel_stack == old(self)@.kernel_stack,
++            self@.user_stack == old(self)@.user_stack,
++            self@.user_tda == old(self)@.user_tda,
++            self@.interrupt_reason == old(self)@.interrupt_reason,
++            self.wf(),
++    {
++        proof { reveal(ThreadState::wf); }
++        // Save old sequence for proof reasoning after mutation.
++        let ghost old_seq: Seq<u64> = self.locked_mutex_set@;
++
++        let mut i: usize = 0;
++        while i < self.locked_mutex_set.len()
++            invariant
++                i <= self.locked_mutex_set@.len(),
++                forall|j: int| 0 <= j < i as int ==> self.locked_mutex_set@[j] != address,
++                self.locked_mutex_set@.contains(address),
++                self.locked_mutex_set@ =~= old_seq,
++                old_seq =~= old(self).locked_mutex_set@,
++                old_seq.no_duplicates(),
++                old_seq.len() == old(self).locked_mutex_count as nat,
++                // Unchanged fields.
++                self.id == old(self).id,
++                self.kernel_stack == old(self).kernel_stack,
++                self.user_stack == old(self).user_stack,
++                self.user_tda == old(self).user_tda,
++                self.interrupt_reason == old(self).interrupt_reason,
++                self.locked_mutex_count == old(self).locked_mutex_count,
++            decreases self.locked_mutex_set@.len() - i,
++        {
++            if self.locked_mutex_set[i] == address {
++                // Found address at index i. Remove and return.
++                proof {
++                    assert(old_seq[i as int] == address);
++                    lemma_seq_to_set_remove(old_seq, i as int);
++                    // Count is > 0 because seq contains address.
++                    assert(old_seq.len() > 0);
++                    assert(self.locked_mutex_count > 0usize);
++                }
++                self.locked_mutex_set.remove(i);
++                self.locked_mutex_count = self.locked_mutex_count - 1;
++                proof {
++                    assert(self.locked_mutex_set@ =~= old_seq.remove(i as int));
++                    assert(seq_to_set(self.locked_mutex_set@)
++                        =~= seq_to_set(old_seq).remove(address as int));
++                    // wf: no_dups is preserved by remove, len matches count.
++                    assert(self.locked_mutex_set@.no_duplicates());
++                    assert(self.locked_mutex_set@.len()
++                        == self.locked_mutex_count as nat);
++                    // Frame: removing address preserves other memberships.
++                    assert forall|a: int| a != address as int implies
++                        self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
++                    by {
++                        assert(seq_to_set(old_seq).remove(address as int).contains(a)
++                            == seq_to_set(old_seq).contains(a));
++                    }
++                }
++                return;
++            }
++            i = i + 1;
++        }
++        // Unreachable: address is in the seq but not found at any index.
++        proof {
++            let witness: int = choose |k: int|
++                0 <= k < self.locked_mutex_set@.len()
++                && self.locked_mutex_set@[k] == address;
++            assert(false);
++        }
+     }

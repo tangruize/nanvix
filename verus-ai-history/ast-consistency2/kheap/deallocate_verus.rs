@@ -1,0 +1,64 @@
+    pub unsafe fn deallocate(&mut self, addr: usize, size: usize) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            addr > 0,
+            spec_layout_to_slab_size(size as int).is_some(),
+            ({
+                let slab_size = spec_layout_to_slab_size(size as int).unwrap();
+                let slab = old(self)@.get_slab(slab_size);
+                &&& slab.is_valid_addr(addr as int)
+                &&& slab.is_allocated(slab.addr_to_block_idx(addr as int))
+            }),
+        ensures
+            self.inv(),
+            result is Ok ==> {
+                let slab_size = spec_layout_to_slab_size(size as int).unwrap();
+                let old_slab = old(self)@.get_slab(slab_size);
+                let new_slab = self@.get_slab(slab_size);
+                let block_idx = old_slab.addr_to_block_idx(addr as int);
+                &&& !new_slab.is_allocated(block_idx)
+                // Frame: base_addr and total_size are unchanged.
+                &&& self@.base_addr == old(self)@.base_addr
+                &&& self@.total_size == old(self)@.total_size
+                // Frame: other slabs unchanged.
+                &&& (slab_size != SlabSize::Slab8 ==> self@.slab_8 == old(self)@.slab_8)
+                &&& (slab_size != SlabSize::Slab16 ==> self@.slab_16 == old(self)@.slab_16)
+                &&& (slab_size != SlabSize::Slab32 ==> self@.slab_32 == old(self)@.slab_32)
+                &&& (slab_size != SlabSize::Slab64 ==> self@.slab_64 == old(self)@.slab_64)
+                &&& (slab_size != SlabSize::Slab128 ==> self@.slab_128 == old(self)@.slab_128)
+                &&& (slab_size != SlabSize::Slab256 ==> self@.slab_256 == old(self)@.slab_256)
+                &&& (slab_size != SlabSize::Slab512 ==> self@.slab_512 == old(self)@.slab_512)
+                &&& (slab_size != SlabSize::Slab4096 ==> self@.slab_4096 == old(self)@.slab_4096)
+                // Liveness: after deallocation, the slab can allocate again.
+                &&& new_slab.can_allocate()
+            },
+            result is Err ==> self@ == old(self)@,
+            // Liveness: if preconditions are met (block is valid and allocated), deallocation succeeds.
+            result is Ok,
+    {
+        // Determine which slab to use.
+        let slab_size: SlabSize = match layout_to_slab_size(size) {
+            Ok(s) => s,
+            Err(e) => {
+                proof {
+                    // This branch is unreachable due to precondition, but we handle it.
+                    assert(false);
+                }
+                return Err(e);
+            }
+        };
+
+        // Deallocate from the appropriate slab.
+        let dealloc_result: Result<(), Error> = match slab_size {
+            SlabSize::Slab8 => self.slab_8_bytes.deallocate(addr),
+            SlabSize::Slab16 => self.slab_16_bytes.deallocate(addr),
+            SlabSize::Slab32 => self.slab_32_bytes.deallocate(addr),
+            SlabSize::Slab64 => self.slab_64_bytes.deallocate(addr),
+            SlabSize::Slab128 => self.slab_128_bytes.deallocate(addr),
+            SlabSize::Slab256 => self.slab_256_bytes.deallocate(addr),
+            SlabSize::Slab512 => self.slab_512_bytes.deallocate(addr),
+            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(addr),
+        };
+
+        dealloc_result
+    }

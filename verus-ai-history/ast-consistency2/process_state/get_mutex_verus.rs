@@ -1,0 +1,165 @@
+    pub fn get_mutex(&mut self, mutex_addr: u64, already_present: bool, idx: usize) -> (result: Result<u64, Error>)
+        requires
+            old(self).wf(),
+            already_present == old(self).spec_has_mutex(mutex_addr as int),
+            already_present ==> (
+                idx < old(self).mutex_addrs@.len()
+                && old(self).mutex_addrs@[idx as int] == mutex_addr
+                && old(self).mutex_ref_counts@[idx as int] < u64::MAX
+            ),
+        ensures
+            result is Ok ==> {
+                &&& self.spec_has_mutex(mutex_addr as int)
+                &&& already_present ==>
+                        self.spec_mutex_ref_count(mutex_addr as int)
+                            == old(self).spec_mutex_ref_count(mutex_addr as int) + 1
+                &&& !already_present ==> self.spec_mutex_ref_count(mutex_addr as int) == 2
+                &&& result->Ok_0 as nat == self.spec_mutex_ref_count(mutex_addr as int)
+                &&& self.spec_pid() == old(self).spec_pid()
+                &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
+                &&& self.spec_cond_count() == old(self).spec_cond_count()
+                &&& self.spec_pmio_ports() == old(self).spec_pmio_ports()
+                &&& forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a)
+                &&& forall|a: int| a != mutex_addr as int ==>
+                        self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
+                &&& self.wf()
+            },
+            result is Err ==> {
+                &&& result->Err_0.code == ErrorCode::OutOfMemory
+                &&& old(self).spec_mutexes_full()
+                &&& self.spec_pid() == old(self).spec_pid()
+                &&& self.spec_capabilities_bits() == old(self).spec_capabilities_bits()
+                &&& self.spec_mutex_count() == old(self).spec_mutex_count()
+                &&& self.spec_cond_count() == old(self).spec_cond_count()
+                &&& self.spec_pmio_ports() == old(self).spec_pmio_ports()
+                &&& forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a)
+                &&& forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a)
+                &&& self.wf()
+            },
+    {
+        if self.mutex_count >= Self::MUTEX_MAX_EXEC() {
+            let reason: &'static str = "maximum number of mutexes reached";
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
+        if already_present {
+            // Already present: increment reference count (modeling clone()).
+            let old_rc: u64 = self.mutex_ref_counts.remove(idx);
+            self.mutex_ref_counts.insert(idx, old_rc + 1);
+            proof {
+                // Vec state after remove+insert = update; addrs unchanged.
+                assert(self.mutex_ref_counts@ =~= old(self).mutex_ref_counts@.update(idx as int, (old_rc + 1) as u64));
+                assert(self.mutex_addrs@ =~= old(self).mutex_addrs@);
+
+                // Witness for spec_has_mutex(mutex_addr): idx is still valid.
+                assert(self.mutex_addrs@[idx as int] as int == mutex_addr as int);
+
+                // By uniqueness (from wf), idx is the only match → choose picks idx.
+                assert forall|i: int|
+                    0 <= i < self.mutex_addrs@.len() && self.mutex_addrs@[i] as int == mutex_addr as int
+                    implies i == idx as int by {}
+
+                // Ref count at idx is old_rc + 1.
+                let chosen: int = choose|i: int|
+                    0 <= i < self.mutex_addrs@.len() && self.mutex_addrs@[i] as int == mutex_addr as int;
+                assert(chosen == idx as int);
+                assert(self.mutex_ref_counts@[chosen] as nat == (old_rc + 1) as nat);
+
+                // Old spec_mutex_ref_count: choose also picks idx.
+                let old_chosen: int = choose|i: int|
+                    0 <= i < old(self).mutex_addrs@.len()
+                    && old(self).mutex_addrs@[i] as int == mutex_addr as int;
+                assert(old_chosen == idx as int);
+                assert(old(self).mutex_ref_counts@[old_chosen] as nat == old_rc as nat);
+
+                // Positive ref counts preserved (update only increases).
+                assert forall|i: int| #![auto]
+                    0 <= i < self.mutex_ref_counts@.len()
+                    implies self.mutex_ref_counts@[i] > 0u64 by {
+                    if i == idx as int {
+                        // old_rc > 0 from wf, so old_rc + 1 > 0.
+                    } else {
+                        // Unchanged from old.
+                    }
+                }
+            }
+            Ok(old_rc + 1)
+        } else {
+            // Insert new entry with ref_count = 2.
+            self.mutex_count = self.mutex_count + 1;
+            self.mutex_addrs.push(mutex_addr);
+            self.mutex_ref_counts.push(2);
+            proof {
+                assert(self.mutex_addrs@ =~= old(self).mutex_addrs@.push(mutex_addr));
+                assert(self.mutex_ref_counts@ =~= old(self).mutex_ref_counts@.push(2u64));
+
+                // Witness for spec_has_mutex: last index.
+                let new_idx: int = self.mutex_addrs@.len() - 1;
+                assert(self.mutex_addrs@[new_idx] as int == mutex_addr as int);
+
+                // No old index maps to mutex_addr (was not present).
+                assert forall|i: int| 0 <= i < old(self).mutex_addrs@.len()
+                    implies old(self).mutex_addrs@[i] as int != mutex_addr as int by {}
+
+                // Uniqueness: only new_idx maps to mutex_addr.
+                assert forall|i: int|
+                    0 <= i < self.mutex_addrs@.len() && self.mutex_addrs@[i] as int == mutex_addr as int
+                    implies i == new_idx by {
+                    if i < old(self).mutex_addrs@.len() as int {
+                        assert(self.mutex_addrs@[i] == old(self).mutex_addrs@[i]);
+                    }
+                }
+
+                // choose picks new_idx → ref count is 2.
+                let chosen: int = choose|i: int|
+                    0 <= i < self.mutex_addrs@.len() && self.mutex_addrs@[i] as int == mutex_addr as int;
+                assert(chosen == new_idx);
+                assert(self.mutex_ref_counts@[chosen] == 2u64);
+
+                // Frame: other addresses preserved.
+                assert forall|a: int| a != mutex_addr as int
+                    implies (self.spec_has_mutex(a) == old(self).spec_has_mutex(a)) by {
+                    assert forall|i: int|
+                        0 <= i < old(self).mutex_addrs@.len() && old(self).mutex_addrs@[i] as int == a
+                        implies (exists|j: int|
+                            0 <= j < self.mutex_addrs@.len() && self.mutex_addrs@[j] as int == a) by {
+                        assert(self.mutex_addrs@[i] == old(self).mutex_addrs@[i]);
+                    }
+                    assert forall|i: int|
+                        0 <= i < self.mutex_addrs@.len() && self.mutex_addrs@[i] as int == a
+                        implies (exists|j: int|
+                            0 <= j < old(self).mutex_addrs@.len() && old(self).mutex_addrs@[j] as int == a) by {
+                        if i < old(self).mutex_addrs@.len() as int {
+                            assert(old(self).mutex_addrs@[i] == self.mutex_addrs@[i]);
+                        } else {
+                            // i == new_idx, self.mutex_addrs@[i] == mutex_addr, but a != mutex_addr
+                        }
+                    }
+                }
+
+                // wf: uniqueness after push.
+                assert forall|i: int, j: int|
+                    0 <= i < self.mutex_addrs@.len() && 0 <= j < self.mutex_addrs@.len() && i != j
+                    implies self.mutex_addrs@[i] != self.mutex_addrs@[j] by {
+                    if i < old(self).mutex_addrs@.len() as int && j < old(self).mutex_addrs@.len() as int {
+                        assert(self.mutex_addrs@[i] == old(self).mutex_addrs@[i]);
+                        assert(self.mutex_addrs@[j] == old(self).mutex_addrs@[j]);
+                    } else if i == new_idx {
+                        assert(self.mutex_addrs@[j] == old(self).mutex_addrs@[j]);
+                    } else {
+                        assert(self.mutex_addrs@[i] == old(self).mutex_addrs@[i]);
+                    }
+                }
+
+                // wf: ref counts positive after push.
+                assert forall|i: int| #![auto]
+                    0 <= i < self.mutex_ref_counts@.len()
+                    implies self.mutex_ref_counts@[i] > 0u64 by {
+                    if i < old(self).mutex_ref_counts@.len() as int {
+                        assert(self.mutex_ref_counts@[i] == old(self).mutex_ref_counts@[i]);
+                    }
+                }
+            }
+            Ok(2)
+        }
+    }

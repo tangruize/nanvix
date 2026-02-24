@@ -1,0 +1,13 @@
+    pub fn new(kpool: Kpool, upool: Upool) -> (result: Self)
+        requires
+            kpool.inv(),
+            upool.inv(),
+        ensures
+            result.inv(),
+            result@.kpool_free_count == kpool@.num_free(),
+            result@.upool_free_count == upool@.num_free(),
+            result@.kpool_capacity == kpool@.capacity(),
+            result@.upool_capacity == upool@.capacity(),
+    {
+        VirtMemoryManager { kpool, upool }
+    }

@@ -1,0 +1,8 @@
+--- source:struct_ThreadManager
++++ verus:struct_ThreadManager
+@@ -1,4 +1,4 @@
+ pub struct ThreadManager {
+     /// Next thread identifier to be assigned.
+-    next_id: ThreadIdentifier,
++    pub next_id: ThreadIdentifier,
+ }

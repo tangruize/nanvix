@@ -1,0 +1,28 @@
+--- source:find_thread
++++ verus:find_thread
+@@ -1,17 +1,10 @@
+-    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>> {
+-        if let Some(thread) = self
+-            .sleeping_threads
+-            .iter()
+-            .find(|thread| thread.id() == tid)
+-        {
+-            return Some(ThreadRef::Sleeping(thread));
++    pub fn find_thread(&self, tid: u64) -> (result: Ghost<Option<int>>)
++        ensures
++            result@ == self@.spec_find_thread(tid as int),
++    {
++        proof {
++            // Bridge: exec-level spec_find_thread ↔ view-level spec_find_thread.
++            Self::lemma_find_thread_view_equiv(self, tid);
+         }
+-
+-        if let Some(zombie_threads) = &self.zombie_threads {
+-            if let Some(thread) = zombie_threads.iter().find(|thread| thread.id() == tid) {
+-                return Some(ThreadRef::Zombie(thread));
+-            }
+-        }
+-
+-        None
++        Ghost(self.spec_find_thread(tid))
+     }

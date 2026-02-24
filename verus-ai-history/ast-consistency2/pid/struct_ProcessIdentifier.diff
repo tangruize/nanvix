@@ -1,0 +1,8 @@
+--- source:struct_ProcessIdentifier
++++ verus:struct_ProcessIdentifier
+@@ -1 +1,4 @@
+-pub struct ProcessIdentifier(i32);
++pub struct ProcessIdentifier {
++    /// The raw i32 value.
++    pub value: i32,
++}

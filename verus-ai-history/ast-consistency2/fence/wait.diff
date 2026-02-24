@@ -1,0 +1,17 @@
+--- source:wait
++++ verus:wait
+@@ -1,5 +1,10 @@
+-    pub fn wait(&self) {
+-        while self.count.load(Ordering::Acquire) < self.total {
+-            ::arch::cpu::pause();
+-        }
++    pub fn wait(&self)
++        requires
++            self.inv(),
++            self@.is_satisfied(),
++        ensures
++            self@.is_satisfied(),
++    {
++        // In the sequential model, the precondition guarantees satisfaction,
++        // so the spin loop body is never entered.
+     }

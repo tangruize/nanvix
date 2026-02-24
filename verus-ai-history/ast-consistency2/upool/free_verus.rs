@@ -1,0 +1,22 @@
+    pub fn free(&mut self, uframe: UserFrame) -> (result: Result<(), Error>)
+        requires
+            old(self).inv(),
+            uframe.spec_is_aligned(),
+            uframe.spec_frame_number() < old(self)@.capacity(),
+            old(self)@.is_allocated(uframe.spec_frame_number()),
+        ensures
+            self.inv(),
+            // LIVENESS: free always succeeds when preconditions are met.
+            result is Ok,
+            self@.capacity() == old(self)@.capacity(),
+            // Frame is now free.
+            !self@.is_allocated(uframe.spec_frame_number()),
+            // All other frames unchanged.
+            forall|i: int| #![trigger self@.is_allocated(i)]
+                0 <= i < self@.capacity() && i != uframe.spec_frame_number() ==>
+                self@.is_allocated(i) == old(self)@.is_allocated(i),
+            // Count decreases by exactly 1.
+            self@.num_allocated() == old(self)@.num_allocated() - 1,
+    {
+        self.frame_allocator.free(uframe.address())
+    }

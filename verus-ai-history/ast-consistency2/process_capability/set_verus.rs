@@ -1,0 +1,21 @@
+    pub fn set(&mut self, capability: Capability)
+        requires
+            old(self).wf(),
+        ensures
+            self.wf(),
+            self@.granted =~= old(self)@.granted.insert(capability),
+    {
+        let mask: u8 = Self::to_mask(capability);
+        let ghost pre = *self;
+        self.bits = self.bits | mask;
+
+        proof {
+            Capabilities::lemma_set_preserves_wf(pre, capability);
+            Capabilities::lemma_set_insert_matches_bit_set(pre, capability);
+            assert forall |c: Capability| self.spec_as_set().contains(c) <==>
+                (pre.spec_as_set().contains(c) || c == capability) by {
+                self.lemma_has_iff_set_contains(c);
+                pre.lemma_has_iff_set_contains(c);
+            }
+        }
+    }

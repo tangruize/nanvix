@@ -1,0 +1,14 @@
+    pub fn signal(&mut self)
+        requires
+            old(self).inv(),
+            old(self)@.is_waiting(),
+        ensures
+            self@.count == old(self)@.count + 1,
+            self@.total == old(self)@.total,
+            self.inv(),
+            old(self)@.remaining() > 0 ==> self@.remaining() == old(self)@.remaining() - 1,
+            self@.remaining() == 0 ==> self@.is_satisfied(),
+    {
+        proof { reveal(Fence::inv); }
+        self.count = self.count + 1;
+    }

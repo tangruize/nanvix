@@ -1,0 +1,25 @@
+    pub fn new(start: PageAlignedPhysAddr, size: usize) -> (result: Result<TruncatedMemoryRegion, Error>)
+        requires
+            start.inv(),
+        ensures
+            result is Ok ==> {
+                let region = result->Ok_0;
+                &&& region.inv()
+                &&& region.spec_start() == start.spec_raw_value()
+                &&& region.spec_size() == size as int
+                &&& region.spec_start_frame() == start.spec_frame_number()
+                &&& region.spec_frame_count() == size as int / FRAME_SIZE as int
+                // Explicit guarantees for callers (since inv() is closed).
+                &&& region.spec_frame_count() > 0
+                &&& region.spec_size() > 0
+            },
+            result is Err ==> (size == 0 || size % FRAME_SIZE != 0),
+    {
+        if size == 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "size must be positive"));
+        }
+        if size % FRAME_SIZE != 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "size must be page-aligned"));
+        }
+        Ok(TruncatedMemoryRegion { start, size })
+    }

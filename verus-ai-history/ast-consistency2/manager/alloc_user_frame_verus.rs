@@ -1,0 +1,10 @@
+    pub fn alloc_user_frame(&mut self) -> (result: Result<UserFrame, Error>)
+        requires
+            old(self).inv(),
+            old(self)@.has_upool_capacity(),
+        ensures
+            self.inv(),
+            result.is_ok() ==> self@.upool_free_count == old(self)@.upool_free_count - 1,
+    {
+        self.upool.alloc()
+    }

@@ -1,0 +1,12 @@
+--- source:struct_Fence
++++ verus:struct_Fence
+@@ -1,6 +1,6 @@
+ pub struct Fence {
+-    /// Number of signals received.
+-    count: AtomicUsize,
++    /// Number of signals received so far.
++    pub count: usize,
+     /// Total number of signals to wait for.
+-    total: usize,
++    pub total: usize,
+ }

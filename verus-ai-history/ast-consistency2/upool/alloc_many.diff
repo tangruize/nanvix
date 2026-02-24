@@ -1,0 +1,169 @@
+--- source:alloc_many
++++ verus:alloc_many
+@@ -1,15 +1,156 @@
+-    pub fn alloc_many(&mut self, nframes: usize) -> Result<Vec<UserFrame>, Error> {
+-        trace!("nframes={nframes:?}");
++    pub fn alloc_many(&mut self, count: usize) -> (result: Ghost<Seq<int>>)
++        requires
++            old(self).inv(),
++            count > 0,
++            // Precondition: must have at least `count` free frames.
++            old(self)@.num_allocated() + count as int <= old(self)@.capacity(),
++        ensures
++            self.inv(),
++            // Capacity is preserved.
++            self@.capacity() == old(self)@.capacity(),
++            // Correct number of frames returned.
++            result@.len() == count as int,
++            // All frame indices are valid and newly allocated.
++            forall|i: int| #![trigger result@[i]]
++                0 <= i < result@.len() ==> {
++                    let frame_idx = result@[i];
++                    &&& 0 <= frame_idx < self@.capacity()
++                    &&& self@.is_allocated(frame_idx)
++                    &&& !old(self)@.is_allocated(frame_idx)
++                },
++            // All frame indices are distinct.
++            forall|i: int, j: int| #![trigger result@[i], result@[j]]
++                0 <= i < result@.len() && 0 <= j < result@.len() && i != j ==>
++                result@[i] != result@[j],
++            // DISJOINTNESS: All pairs of returned frames have disjoint memory.
++            forall|i: int, j: int| #![trigger result@[i], result@[j]]
++                0 <= i < result@.len() && 0 <= j < result@.len() && i != j ==>
++                self@.frames_are_disjoint(result@[i], result@[j]),
++            // EXPLICIT COUNT: exactly count more frames allocated.
++            self@.num_allocated() == old(self)@.num_allocated() + count as int,
++            // MONOTONICITY: Previously allocated frames remain allocated.
++            forall|i: int| #![trigger self@.is_allocated(i)]
++                0 <= i < self@.capacity() && old(self)@.is_allocated(i) ==>
++                self@.is_allocated(i),
++    {
++        let ghost original_self: Upool = *self;
++        let ghost original_capacity: int = self@.capacity();
++        let ghost original_num_allocated: int = self.spec_num_allocated();
+ 
+-        // Attempt to allocate pages.
+-        let mut uframes: Vec<FrameAddress> = self.inner.borrow_mut().alloc_many(nframes)?;
++        let ghost mut frame_indices: Seq<int> = Seq::empty();
++        let mut allocated_count: usize = 0;
+ 
+-        // Create a vector of user pages.
+-        let mut upages: Vec<UserFrame> = Vec::new();
+-        while let Some(page) = uframes.pop() {
+-            let upage: UserFrame = UserFrame::new(page);
+-            upages.push(upage);
++        while allocated_count < count
++            invariant
++                self.inv(),
++                original_self.inv(),
++                self@.capacity() == original_self@.capacity(),
++                self@.capacity() == original_capacity,
++                // Precondition: enough capacity for all remaining allocations.
++                original_num_allocated + count as int <= original_capacity,
++                // Loop bounds.
++                0 <= allocated_count <= count,
++                // Frame indices collected so far.
++                frame_indices.len() == allocated_count as int,
++                // Allocation count tracking.
++                self.spec_num_allocated() == original_num_allocated + allocated_count as int,
++                // Remaining room for more allocations.
++                self.spec_num_allocated() + (count - allocated_count) as int <= self@.capacity(),
++                // MONOTONICITY: frames allocated in original_self remain allocated.
++                forall|i: int| #![trigger self@.is_allocated(i)]
++                    0 <= i < self@.capacity() && original_self@.is_allocated(i) ==>
++                    self@.is_allocated(i),
++                // All collected frame indices are valid.
++                forall|i: int| #![trigger frame_indices[i]]
++                    0 <= i < frame_indices.len() ==> {
++                        let frame_idx = frame_indices[i];
++                        &&& 0 <= frame_idx < self@.capacity()
++                        &&& self@.is_allocated(frame_idx)
++                        &&& !original_self@.is_allocated(frame_idx)
++                    },
++                // All frame indices are distinct.
++                forall|i: int, j: int| #![trigger frame_indices[i], frame_indices[j]]
++                    0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j ==>
++                    frame_indices[i] != frame_indices[j],
++            decreases
++                count - allocated_count,
++        {
++            let ghost prev_self: Upool = *self;
++            let ghost prev_frame_indices: Seq<int> = frame_indices;
++            let ghost prev_len: int = prev_frame_indices.len() as int;
++
++            // Prove has_free_frame() for alloc to succeed.
++            proof {
++                assert(self.spec_num_allocated() < self@.capacity());
++                self.frame_allocator.lemma_can_allocate_implies_has_free_frame();
++            }
++
++            // Allocate a frame. By the lemma above, has_free_frame() is true,
++            // so alloc() is guaranteed to succeed.
++            let alloc_result: Result<UserFrame, Error> = self.alloc();
++
++            // Extract the frame. Use match with proof that Err is unreachable.
++            let uframe: UserFrame = match alloc_result {
++                Ok(f) => f,
++                Err(e) => {
++                    // Unreachable: we proved has_free_frame() so alloc succeeds.
++                    proof { assert(false); }
++                    return Ghost(Seq::empty());  // Never executed.
++                },
++            };
++
++            let ghost new_frame_idx: int = uframe.spec_frame_number();
++
++            proof {
++                // Contrapositive of monotonicity: !prev_self@.is_allocated(i) ==> !original_self@.is_allocated(i).
++                if original_self@.is_allocated(new_frame_idx) {
++                    assert(prev_self@.is_allocated(new_frame_idx));
++                    assert(false);
++                }
++
++                // The new frame is distinct from all previously collected frames.
++                assert forall|k: int| 0 <= k < prev_len
++                    implies prev_frame_indices[k] != new_frame_idx
++                by {
++                    assert(prev_self@.is_allocated(prev_frame_indices[k]));
++                    assert(!prev_self@.is_allocated(new_frame_idx));
++                }
++
++                // Update frame_indices.
++                frame_indices = prev_frame_indices.push(new_frame_idx);
++
++                // For old elements (i < prev_len):
++                assert forall|i: int| #![trigger frame_indices[i]]
++                    0 <= i < prev_len
++                    implies {
++                        let idx: int = frame_indices[i];
++                        &&& 0 <= idx < self@.capacity()
++                        &&& self@.is_allocated(idx)
++                        &&& !original_self@.is_allocated(idx)
++                    }
++                by {
++                    let idx: int = frame_indices[i];
++                    assert(idx == prev_frame_indices[i]);
++                    assert(prev_self@.is_allocated(idx));
++                    assert(idx != new_frame_idx);
++                }
++            }
++            allocated_count = allocated_count + 1;
+         }
+ 
+-        Ok(upages)
++        proof {
++            // Prove disjointness of all pairs.
++            assert forall|i: int, j: int|
++                #![trigger frame_indices[i], frame_indices[j]]
++                0 <= i < frame_indices.len() && 0 <= j < frame_indices.len() && i != j
++                implies self@.frames_are_disjoint(frame_indices[i], frame_indices[j])
++            by {
++                let idx_i: int = frame_indices[i];
++                let idx_j: int = frame_indices[j];
++                assert(idx_i != idx_j);
++                Self::lemma_frames_disjoint(idx_i, idx_j);
++            }
++        }
++
++        Ghost(frame_indices)
+     }

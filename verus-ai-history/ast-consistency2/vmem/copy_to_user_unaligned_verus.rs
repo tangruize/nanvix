@@ -1,0 +1,23 @@
+    pub fn copy_to_user_unaligned(
+        &self,
+        dst: usize,
+        src: usize,
+        size: usize,
+    ) -> (result: Result<(), Error>)
+        requires
+            self.inv(),
+            // Destination user pages must be mapped (original panics if not).
+            size > 0 ==> self@.spec_user_region_is_mapped(dst as int, size as int),
+        ensures
+            result.is_ok() ==> {
+                &&& size > 0
+                &&& spec_is_kernel_region(src as int, size as int)
+                &&& spec_is_user_region(dst as int, size as int)
+                &&& spec_is_physical_region(src as int, size as int)
+            },
+    {
+        // Perform a dry run first to check for errors (matches original control flow).
+        self.copy_to_user_unaligned_unchecked(dst, src, size, true)?;
+        // Perform the actual copy (this will panic on irrecoverable errors).
+        self.copy_to_user_unaligned_unchecked(dst, src, size, false)
+    }

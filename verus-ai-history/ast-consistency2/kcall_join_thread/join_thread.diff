@@ -1,0 +1,48 @@
+--- source:join_thread
++++ verus:join_thread
+@@ -1,22 +1,26 @@
+-pub unsafe fn join_thread(
+-    pid: ProcessIdentifier,
++pub fn join_thread(
++    pid: u32,
+     arg0: u32,
+     arg1: u32,
+-) -> Result<ExitStatus, SleepError> {
+-    // Unpack kernel call arguments.
+-    let tid: ThreadIdentifier = match ThreadIdentifier::try_from(arg0) {
+-        Ok(tid) => tid,
+-        Err(error) => {
+-            error!("{error:?}");
+-            return Err(SleepError::Generic(error));
+-        },
+-    };
+-    let retval: *mut ExitStatus = arg1 as *mut ExitStatus;
+-
+-    let status: ExitStatus = ProcessManager::join_thread(pid, tid)?;
+-
+-    pm::copy_to_user::<ExitStatus>(ProcessManager::get_mut(), pid, retval, &status)
+-        .map_err(SleepError::Generic)?;
+-
+-    Ok(ExitStatus::ok())
++) -> (result: JoinThreadKcallResultModel)
++    requires
++        spec_is_user_process(pid as nat),
++        spec_pm_initialized(),
++        spec_mm_initialized(),
++        spec_no_resources_held(),
++    ensures
++        // The result is always success or error.
++        spec_is_success(result.spec_view()) || spec_is_error(result.spec_view()),
++        // Success and error are mutually exclusive.
++        !(spec_is_success(result.spec_view()) && spec_is_error(result.spec_view())),
++        // Success implies ExitStatus::ok() (value 0).
++        spec_is_success(result.spec_view())
++            ==> result.spec_view() == (JoinThreadResultView::Success {
++                    exit_status: EXIT_STATUS_OK()
++                }),
++{
++    // Delegate to the fully verified model, discarding ghost witnesses.
++    let ret: (JoinThreadKcallResultModel, Ghost<TidParseOutcomeView>, Ghost<JoinThreadOutcomeView>, Ghost<CopyToUserOutcomeView>) =
++        join_thread_model(pid, arg0, arg1);
++    ret.0
+ }

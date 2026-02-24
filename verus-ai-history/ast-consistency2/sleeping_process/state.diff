@@ -1,0 +1,11 @@
+--- source:state
++++ verus:state
+@@ -1,3 +1,6 @@
+-    pub fn state(&self) -> &ProcessState {
+-        &self.state
++    pub fn state(&self) -> (result: u64)
++        ensures
++            result as int == self@.pid,
++    {
++        unimplemented!()
+     }

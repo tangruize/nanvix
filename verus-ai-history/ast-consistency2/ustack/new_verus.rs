@@ -1,0 +1,43 @@
+    pub fn new(base: PageAlignedAddr) -> (result: Self)
+        requires
+            base.inv(),
+            base.spec_addr() + (USER_STACK_SIZE as int) <= usize::MAX as int,
+        ensures
+            result.inv(),
+            result.spec_base() == base.spec_addr(),
+            result.spec_size() == USER_STACK_SIZE as int,
+            result.spec_top() == base.spec_addr() + (USER_STACK_SIZE as int),
+    {
+        let base_addr = base.into_raw();
+
+        // Prove that USER_STACK_SIZE is page-aligned.
+        proof {
+            assert(USER_STACK_SIZE as int == USER_STACK_PAGES as int * (PAGE_SIZE as int));
+            assert(spec_is_size_aligned(USER_STACK_SIZE as int));
+        }
+
+        let stack = UserStack { base_addr };
+
+        // Prove the invariant holds.
+        proof {
+            // Prove size alignment.
+            assert(spec_is_size_aligned(stack@.size())) by {
+                assert(stack@.size() == USER_STACK_SIZE as int);
+            }
+
+            // Prove top alignment.
+            assert(spec_is_page_aligned(stack@.top())) by {
+                assert(stack@.top() == base_addr as int + (USER_STACK_SIZE as int));
+            }
+
+            // Prove top > base.
+            assert(stack@.top_greater_than_base()) by {
+                assert(stack@.size() > 0);
+            }
+
+            // Prove pages are contiguous.
+            assert(stack@.pages_are_contiguous());
+        }
+
+        stack
+    }

@@ -1,0 +1,17 @@
+--- source:from_state
++++ verus:from_state
+@@ -1,3 +1,12 @@
+-    pub(super) fn from_state(state: Box<ThreadState>, status: ExitStatus) -> Self {
+-        Self { status, state }
++    pub fn from_state(state: ThreadState, status: int) -> (result: ZombieThread)
++        requires
++            state.wf(),
++        ensures
++            result@.state == state@,
++            result@.spec_id() == state@.id,
++            result@.spec_status() == status,
++            result.wf(),
++    {
++        proof { reveal(ZombieThread::wf); }
++        ZombieThread { status: status, state: state }
+     }

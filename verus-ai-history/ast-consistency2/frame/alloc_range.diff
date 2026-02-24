@@ -1,0 +1,73 @@
+--- source:alloc_range
++++ verus:alloc_range
+@@ -1,28 +1,46 @@
+-    pub fn alloc_range(
+-        &mut self,
+-        region: &TruncatedMemoryRegion<PhysicalAddress>,
+-    ) -> Result<(), Error> {
+-        let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
+-        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+-
+-        // Check if all frames in the range are free.
+-        for index in start_frame_number..=end_frame_number {
+-            match self.bitmap.test(index) {
+-                Ok(false) => continue,
+-                Ok(true) => {
+-                    return Err(Error::new(ErrorCode::OutOfMemory, "frame is already allocated"));
+-                },
+-                Err(err) => return Err(err),
+-            }
++    pub fn alloc_range(&mut self, region: &TruncatedMemoryRegion) -> (result: Result<(), Error>)
++        requires
++            old(self).inv(),
++            region.inv(),
++            // Region must be within allocator capacity.
++            region.spec_start_frame() >= 0,
++            region.spec_start_frame() + region.spec_frame_count() <= old(self)@.capacity,
++        ensures
++            self.inv(),
++            // Capacity is preserved.
++            self@.capacity == old(self)@.capacity,
++            // On success: all frames in region are now allocated.
++            result is Ok ==> {
++                let start = region.spec_start_frame();
++                let count = region.spec_frame_count();
++                // All frames in range are now allocated.
++                &&& forall|i: int| start <= i < start + count ==>
++                    self@.is_allocated(i)
++                // All frames outside range unchanged.
++                &&& forall|i: int| #![trigger self@.is_allocated(i)]
++                    (0 <= i < start || start + count <= i < self@.capacity) ==>
++                    self@.is_allocated(i) == old(self)@.is_allocated(i)
++                // COUNT: allocated count increases by frame_count.
++                &&& self.spec_num_allocated() == old(self).spec_num_allocated() + count
++            },
++            // On failure: state unchanged and some frame was already allocated.
++            result is Err ==> {
++                &&& self@ == old(self)@
++                &&& exists|i: int| region.spec_start_frame() <= i < region.spec_start_frame() + region.spec_frame_count()
++                    && old(self)@.is_allocated(i)
++            },
++            // Liveness: if all frames in range are free, allocation succeeds.
++            (forall|i: int| region.spec_start_frame() <= i < region.spec_start_frame() + region.spec_frame_count() ==>
++                !old(self)@.is_allocated(i)) ==> result is Ok,
++    {
++        // Use lemma to reveal that inv() implies frame_count > 0.
++        proof {
++            region.lemma_inv_implies_frame_count_positive();
+         }
+ 
+-        // Book all frames in the range.
+-        for index in start_frame_number..=end_frame_number {
+-            if let Err(error) = self.bitmap.set(index) {
+-                error!("{error:?} (region={region:?})");
+-                return Err(error);
+-            }
+-        }
++        let start_frame: usize = region.start().into_frame_number().into_raw_value();
++        let count: usize = region.frame_count();
+ 
+-        Ok(())
++        // Delegate to alloc_range_checked which implements the check-then-set logic.
++        self.alloc_range_checked(start_frame, count)
+     }

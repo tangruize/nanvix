@@ -1,0 +1,11 @@
+--- source:struct_InterruptedThread
++++ verus:struct_InterruptedThread
+@@ -1,4 +1,6 @@
+ pub struct InterruptedThread {
+-    state: Box<ThreadState>,
+-    reason: InterruptReason,
++    /// The underlying thread state.
++    pub state: ThreadState,
++    /// The interrupt reason tag (0 = Killed, 1 = TimedOut).
++    pub reason: int,
+ }

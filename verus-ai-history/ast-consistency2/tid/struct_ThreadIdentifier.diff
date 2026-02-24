@@ -1,0 +1,8 @@
+--- source:struct_ThreadIdentifier
++++ verus:struct_ThreadIdentifier
+@@ -1 +1,4 @@
+-pub struct ThreadIdentifier(i32);
++pub struct ThreadIdentifier {
++    /// The raw i32 value.
++    pub value: i32,
++}

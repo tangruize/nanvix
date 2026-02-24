@@ -1,0 +1,18 @@
+pub struct RunnableProcess {
+    /// Process identifier (from the inner ProcessState).
+    pub pid: ProcessIdentifier,
+    /// Concrete vector of ready thread IDs (non-empty).
+    pub ready_thread_ids: Vec<i64>,
+    /// Concrete vector of ready thread admission times (parallel to ready_thread_ids).
+    pub ready_admission_times: Vec<i64>,
+    /// Concrete vector of interrupted thread IDs.
+    pub interrupted_thread_ids: Vec<i64>,
+    /// Concrete vector of sleeping thread IDs.
+    pub sleeping_thread_ids: Vec<i64>,
+    /// Concrete vector of zombie thread IDs.
+    pub zombie_thread_ids: Vec<i64>,
+    /// Exec-level count of interrupted threads (mirrors interrupted_thread_ids@.len()).
+    pub interrupted_count: u64,
+    /// Exec-level count of sleeping threads (mirrors sleeping_thread_ids@.len()).
+    pub sleeping_count: u64,
+}

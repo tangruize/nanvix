@@ -1,0 +1,18 @@
+    pub fn clear_capability(&mut self, capability: Capability)
+        requires
+            old(self).wf(),
+        ensures
+            !self@.capabilities_granted.contains(capability),
+            self.spec_pid() == old(self).spec_pid(),
+            self.spec_mutex_count() == old(self).spec_mutex_count(),
+            self.spec_cond_count() == old(self).spec_cond_count(),
+            self.spec_pmio_ports() == old(self).spec_pmio_ports(),
+            forall|a: int| self.spec_has_mutex(a) == old(self).spec_has_mutex(a),
+            forall|a: int| self.spec_has_cond(a) == old(self).spec_has_cond(a),
+            self.wf(),
+    {
+        self.capabilities.clear(capability);
+        proof {
+            self.capabilities.lemma_view_bits();
+        }
+    }

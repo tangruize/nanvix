@@ -1,0 +1,10 @@
+pub struct Spinlock {
+    /// Lock state: `true` means locked, `false` means unlocked.
+    pub locked: bool,
+    /// Identity for distinguishing lock instances.
+    /// Callers must provide a unique `id` per instance at construction time.
+    pub id: usize,
+    /// Tracking of whether a `LockToken` is currently outstanding.
+    /// Set to `true` on lock acquisition, `false` on unlock.
+    pub token_issued: bool,
+}

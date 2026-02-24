@@ -1,0 +1,13 @@
+--- source:struct_SleepingThread
++++ verus:struct_SleepingThread
+@@ -1,6 +1,6 @@
+ pub struct SleepingThread {
+-    /// Thread state.
+-    state: Box<ThreadState>,
+-    /// Optional alarm time for waking up the thread.
+-    alarm: Option<SystemTime>,
++    /// The underlying thread state.
++    pub state: ThreadState,
++    /// Optional alarm time for waking up the thread (abstract timestamp).
++    pub alarm: Option<int>,
+ }

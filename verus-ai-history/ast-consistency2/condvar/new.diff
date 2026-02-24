@@ -1,0 +1,17 @@
+--- source:new
++++ verus:new
+@@ -1,7 +1,8 @@
+-    pub fn new() -> Self {
+-        Self {
+-            inner: Arc::new(CondvarInner {
+-                sleeping: RefCell::new(LinkedList::new()),
+-            }),
+-        }
++    pub fn new() -> (result: Self)
++        ensures
++            result@.spec_is_empty(),
++            result@ == CondvarView::spec_new(),
++            result.wf(),
++    {
++        Condvar { len: 0, sleeping: Vec::new() }
+     }

@@ -1,0 +1,11 @@
+--- source:is_user_addr
++++ verus:is_user_addr
+@@ -1,3 +1,6 @@
+-    pub fn is_user_addr(virt_addr: VirtualAddress) -> bool {
+-        virt_addr >= config::memory_layout::USER_BASE && virt_addr < config::memory_layout::USER_END
++    pub fn is_user_addr(vaddr: usize) -> (result: bool)
++        ensures
++            result == spec_is_user_addr(vaddr as int),
++    {
++        vaddr >= USER_BASE && vaddr < USER_END
+     }

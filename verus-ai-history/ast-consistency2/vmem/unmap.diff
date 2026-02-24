@@ -1,0 +1,165 @@
+--- source:unmap
++++ verus:unmap
+@@ -1,73 +1,94 @@
+-    pub fn unmap(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<UserFrame, Error> {
+-        // Check if the provided address lies outside the user space.
+-        if !Self::is_user_addr(vaddr.into_inner()) {
+-            let reason: &str = "address is not in user space";
+-            error!("{reason}");
+-            return Err(Error::new(ErrorCode::BadAddress, reason));
++    pub fn unmap(&mut self, vaddr: usize) -> (result: Result<usize, Error>)
++        requires
++            old(self).inv(),
++            old(self)@.has_mappings(),
++        ensures
++            self.inv(),
++            result.is_ok() ==> {
++                &&& spec_is_user_addr(vaddr as int)
++                &&& vaddr as int % PAGE_SIZE as int == 0
++                &&& self@.mapping_count == old(self)@.mapping_count - 1
++                // The returned value was a previously-mapped frame address.
++                &&& old(self)@.spec_is_mapped(vaddr as int)
++                // The returned frame address is frame-aligned.
++                &&& result.unwrap() as int % FRAME_SIZE as int == 0
++                // The returned frame address equals the one that was mapped.
++                &&& result.unwrap() as int == old(self)@.spec_get_frame_addr(vaddr as int)
++            },
++            result.is_err() ==> {
++                &&& self@.mapping_count == old(self)@.mapping_count
++            },
++    {
++        // Check if address is in user space.
++        if !Self::is_user_addr(vaddr) {
++            return Err(Error::new(ErrorCode::BadAddress, "address is not in user space"));
+         }
+ 
+-        // Find the corresponding frame address.
+-        let frame_address: FrameAddress = self.find_user_frame(vaddr)?;
+-
+-        let (pgtable_vaddr, unmap_pgtable): (PageTableAddress, bool) = {
+-            // Get corresponding page table.
+-            let (pgtable_vaddr, page_table): (PageTableAddress, &mut PageTable<PageTableStorage>) = {
+-                let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
+-                    ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
+-                )?;
+-                let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
+-                // Get the corresponding page directory entry.
+-                let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
+-                    Some(pde) => pde,
+-                    None => {
+-                        let reason: &str = "failed to read page directory entry";
+-                        error!("{reason}");
+-                        return Err(Error::new(ErrorCode::TryAgain, reason));
+-                    },
+-                };
+-
+-                // Get corresponding page table.
+-                // Check if corresponding page table does not exist.
+-                if !pde.is_present() {
+-                    let reason: &str = "page table not present";
+-                    error!("{reason}");
+-                    return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+-                };
+-
+-                (pgtable_vaddr, self.lookup_page_table(&pde)?)
+-            };
+-
+-            let page_address: PageAddress = PageAddress::new(vaddr);
+-
+-            // Check if frame address matches what we expect.
+-            if page_table.lookup(page_address)? != frame_address {
+-                // The following statement should not be reachable because after mapping user frame we
+-                // must have added it to the list of user pages.
+-                unreachable!("frame address must match what we expect");
+-            }
+-
+-            // Unmap the page from the target virtual address space.
+-            page_table.unmap(page_address)?;
+-
+-            (pgtable_vaddr, page_table.nmapped() == 0)
+-        };
+-
+-        //====================================================================================
+-        // NOTE: if we fail beyond this point and we want to recover we should remap the page.
+-        //====================================================================================
+-
+-        if unmap_pgtable {
+-            // Remove page table from the list of user page tables.
+-            let at = self
+-                .user_page_tables
+-                .iter()
+-                .position(|(addr, _)| addr == &pgtable_vaddr)
+-                .expect("page table must be in the list of user page tables");
+-
+-            let (_pgtable_addr, _page_table) = self.user_page_tables.remove(at);
+-
+-            self.pgdir.unmap(pgtable_vaddr)?;
++        // Check if address is page-aligned.
++        if vaddr % PAGE_SIZE != 0 {
++            return Err(Error::new(ErrorCode::BadAddress, "address is not page-aligned"));
+         }
+ 
+-        Ok(UserFrame::new(frame_address))
++        // Capture old self for proving postcondition about spec_get_frame_addr.
++        let ghost entry_self: Vmem = *self;
++
++        // Find the mapping.
++        let mut found_idx: usize = MAX_USER_PAGES;
++        let mut frame_addr: usize = 0;
++        let mut i: usize = 0;
++        while i < self.mapping_count
++            invariant
++                0 <= i <= self.mapping_count,
++                self.mapping_count <= MAX_USER_PAGES,
++                self.inv(),
++                // Entry state is unchanged during search.
++                self.mapping_count == entry_self.mapping_count,
++                forall|j: int| #![auto] 0 <= j < self.mapping_count as int ==>
++                    self.mappings[j as int] == entry_self.mappings[j as int],
++                found_idx == MAX_USER_PAGES || found_idx < self.mapping_count,
++                found_idx < MAX_USER_PAGES ==> {
++                    &&& self.mappings[found_idx as int].valid
++                    &&& self.mappings[found_idx as int].vaddr == vaddr
++                    &&& frame_addr as int % FRAME_SIZE as int == 0
++                    &&& frame_addr as int == self.mappings[found_idx as int].frame_addr as int
++                },
++            decreases self.mapping_count - i,
++        {
++            if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
++                found_idx = i;
++                frame_addr = self.mappings[i].frame_addr;
++                break;
++            }
++            i = i + 1;
++        }
++
++        if found_idx == MAX_USER_PAGES {
++            return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
++        }
++
++        proof {
++            // entry_self has the same mappings as old(self) at function entry.
++            // Connect to view-based specs for postcondition.
++            assert(entry_self@.mappings[found_idx as int].spec_is_for_vaddr(vaddr as int));
++            assert(entry_self@.spec_is_mapped(vaddr as int));
++            assert(frame_addr as int == entry_self@.mappings[found_idx as int].frame_addr);
++        }
++
++        // Remove the mapping by swapping with the last entry.
++        // Note: The original uses linked-list removal which preserves insertion order.
++        // Swap-with-last changes ordering but is correct because the spec uses existential
++        // quantifiers over the array — ordering is irrelevant for all invariants and
++        // postconditions (uniqueness, mapping existence, count).
++        let last_idx: usize = self.mapping_count - 1;
++        if found_idx != last_idx {
++            self.mappings[found_idx] = self.mappings[last_idx];
++        }
++        self.mappings[last_idx] = PageMapping {
++            vaddr: 0,
++            frame_addr: 0,
++            valid: false,
++        };
++        self.mapping_count = self.mapping_count - 1;
++
++        Ok(frame_addr)
+     }

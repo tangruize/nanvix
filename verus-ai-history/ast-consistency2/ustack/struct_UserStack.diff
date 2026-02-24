@@ -1,0 +1,9 @@
+--- source:struct_UserStack
++++ verus:struct_UserStack
+@@ -1,4 +1,4 @@
+ pub struct UserStack {
+-    /// Base address.
+-    base: PageAligned<VirtualAddress>,
++    /// Base virtual address of the stack.
++    base_addr: usize,
+ }

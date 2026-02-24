@@ -1,0 +1,9 @@
+--- source:struct_UserFrame
++++ verus:struct_UserFrame
+@@ -1,4 +1,4 @@
+ pub struct UserFrame {
+-    /// Frame address.
+-    addr: FrameAddress,
++    /// Frame address (page-aligned).
++    pub addr: FrameAddress,
+ }

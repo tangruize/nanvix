@@ -1,0 +1,117 @@
+--- source:terminate
++++ verus:terminate
+@@ -1,33 +1,87 @@
+-    pub fn terminate(mut self) -> Result<InterruptedProcess, ZombieProcess> {
+-        // Terminate all ready threads.
+-        let mut more_zombie_threads: NonEmptyVecDeque<ZombieThread> =
+-            NonEmptyVecDeque::map(self.ready_threads, ReadyThread::terminate);
++    pub fn terminate(self) -> (result: TerminateResult)
++        requires
++            self.wf(),
++        ensures
++            match result {
++                TerminateResult::Interrupted(ip) => {
++                    // PID preserved.
++                    ip@.pid == self@.pid
++                    // Interrupted threads are exactly original interrupted + sleeping->interrupted.
++                    && ip@.interrupted_thread_ids.len() ==
++                        self@.interrupted_thread_ids.len() + self@.sleeping_thread_ids.len()
++                    && ip@.interrupted_thread_ids ==
++                        self@.interrupted_thread_ids.add(self@.sleeping_thread_ids)
++                    // Zombie threads include all original ready + original zombie.
++                    && ip@.zombie_thread_ids.len() ==
++                        self@.ready_thread_ids.len() + self@.zombie_thread_ids.len()
++                    && ip@.zombie_thread_ids ==
++                        self@.ready_thread_ids.add(self@.zombie_thread_ids)
++                    && ip.wf()
++                    // Branch taken iff there were interrupted or sleeping threads.
++                    && (self@.interrupted_thread_ids.len() > 0
++                        || self@.sleeping_thread_ids.len() > 0)
++                },
++                TerminateResult::Zombie(zp) => {
++                    // PID preserved.
++                    zp@.pid == self@.pid
++                    // No interrupted or sleeping threads existed.
++                    && self@.interrupted_thread_ids.len() == 0
++                    && self@.sleeping_thread_ids.len() == 0
++                    // Zombie threads include all original ready + original zombie.
++                    && zp@.zombie_thread_ids.len() ==
++                        self@.ready_thread_ids.len() + self@.zombie_thread_ids.len()
++                    && zp@.zombie_thread_ids ==
++                        self@.ready_thread_ids.add(self@.zombie_thread_ids)
++                    && zp@.status == EXIT_STATUS_INTERRUPTED()
++                    && zp.wf()
++                },
++            },
++    {
++        proof {
++            reveal(RunnableProcess::wf);
++            reveal(InterruptedProcess::wf);
++            reveal(ZombieProcess::wf);
++        }
++        // Build new zombie list: ready + existing zombie.
++        let new_zombie_ids: Vec<i64> = vec_concat(
++            &self.ready_thread_ids, &self.zombie_thread_ids);
+ 
+-        // Collect zombie threads.
+-        let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie_threads.take() {
+-            Some(zombie_threads) => {
+-                more_zombie_threads.append(zombie_threads);
+-                more_zombie_threads
+-            },
+-            None => more_zombie_threads,
+-        };
++        // Build new interrupted list: original interrupted + sleeping->interrupted.
++        let new_interrupted_ids: Vec<i64> = vec_concat(
++            &self.interrupted_thread_ids, &self.sleeping_thread_ids);
+ 
+-        // Collect interrupted threads.
+-        let mut interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
+-            self.interrupted_threads.take();
+-
+-        // Terminate all sleeping threads.
+-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+-            let more_interrupted_threads = NonEmptyVecDeque::map(sleeping_threads, interrupt);
+-            match interrupted_threads.as_mut() {
+-                None => interrupted_threads = Some(more_interrupted_threads),
+-                Some(interrupted_threads) => interrupted_threads.append(more_interrupted_threads),
++        if self.interrupted_count > 0 || self.sleeping_count > 0 {
++            proof {
++                assert(new_interrupted_ids@.len() ==
++                    self.interrupted_thread_ids@.len() + self.sleeping_thread_ids@.len());
++                assert(new_interrupted_ids@.len() >= 1);
++                // Bridge: spec_i64_seq_as_int distributes over add.
++                assert(spec_i64_seq_as_int(new_interrupted_ids@)
++                    =~= spec_i64_seq_as_int(self.interrupted_thread_ids@).add(
++                        spec_i64_seq_as_int(self.sleeping_thread_ids@)));
++                assert(spec_i64_seq_as_int(new_zombie_ids@)
++                    =~= spec_i64_seq_as_int(self.ready_thread_ids@).add(
++                        spec_i64_seq_as_int(self.zombie_thread_ids@)));
+             }
+-        }
+-
+-        if let Some(interrupted_threads) = interrupted_threads {
+-            Ok(InterruptedProcess::new(self.state, interrupted_threads, Some(zombie_threads)))
++            TerminateResult::Interrupted(InterruptedProcess {
++                pid: self.pid,
++                interrupted_thread_ids: new_interrupted_ids,
++                zombie_thread_ids: new_zombie_ids,
++            })
+         } else {
+-            Err(ZombieProcess::new(self.state, zombie_threads, ErrorCode::Interrupted.into()))
++            proof {
++                assert(self.interrupted_thread_ids@.len() == 0);
++                assert(self.sleeping_thread_ids@.len() == 0);
++                assert(new_zombie_ids@.len() >= 1);
++                // Bridge: spec_i64_seq_as_int distributes over add.
++                assert(spec_i64_seq_as_int(new_zombie_ids@)
++                    =~= spec_i64_seq_as_int(self.ready_thread_ids@).add(
++                        spec_i64_seq_as_int(self.zombie_thread_ids@)));
++            }
++            TerminateResult::Zombie(ZombieProcess {
++                pid: self.pid,
++                zombie_thread_ids: new_zombie_ids,
++                status: EXIT_STATUS_INTERRUPTED_I64(),
++            })
+         }
+     }

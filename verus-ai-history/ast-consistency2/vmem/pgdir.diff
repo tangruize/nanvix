@@ -1,0 +1,11 @@
+--- source:pgdir
++++ verus:pgdir
+@@ -1,3 +1,6 @@
+-    pub fn pgdir(&self) -> &PageDirectory {
+-        &self.pgdir
++    pub fn pgdir(&self) -> (result: usize)
++        requires
++            self.inv(),
++    {
++        unimplemented!()
+     }

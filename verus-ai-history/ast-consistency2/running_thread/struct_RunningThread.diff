@@ -1,0 +1,9 @@
+--- source:struct_RunningThread
++++ verus:struct_RunningThread
+@@ -1,4 +1,4 @@
+ pub struct RunningThread {
+-    /// Thread state.
+-    state: Box<ThreadState>,
++    /// The underlying thread state.
++    pub state: ThreadState,
+ }

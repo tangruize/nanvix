@@ -1,0 +1,17 @@
+--- source:struct_InterruptedProcess
++++ verus:struct_InterruptedProcess
+@@ -1,6 +1,10 @@
+ pub struct InterruptedProcess {
+-    state: Box<ProcessState>,
+-    sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
+-    interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
+-    zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
++    /// Process identifier (from the inner ProcessState).
++    pub pid: u64,
++    /// Sleeping thread IDs (may be empty).
++    pub sleeping_thread_ids: Vec<u64>,
++    /// Interrupted thread IDs (non-empty).
++    pub interrupted_thread_ids: Vec<u64>,
++    /// Zombie thread IDs (may be empty).
++    pub zombie_thread_ids: Vec<u64>,
+ }

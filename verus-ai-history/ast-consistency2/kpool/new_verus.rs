@@ -1,0 +1,18 @@
+    pub fn new(frame_allocator: FrameAllocator, pool_id: usize) -> (result: Kpool)
+        requires
+            frame_allocator.inv(),
+        ensures
+            result.inv(),
+            result@.capacity() == frame_allocator@.capacity,
+            result@.id() == pool_id as int,
+            // Allocated set is preserved.
+            forall|i: int| 0 <= i < result@.capacity() ==>
+                result@.is_allocated(i) == frame_allocator@.is_allocated(i),
+            // Allocation count is preserved from the frame allocator.
+            result@.num_allocated() == frame_allocator.spec_num_allocated(),
+            // Fresh initialization is preserved when count is also zero.
+            (frame_allocator@.is_freshly_initialized() && frame_allocator.spec_num_allocated() == 0) ==>
+                result@.is_freshly_initialized(),
+    {
+        Kpool { frame_allocator, pool_id }
+    }

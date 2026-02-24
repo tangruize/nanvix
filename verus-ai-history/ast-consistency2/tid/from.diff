@@ -1,0 +1,8 @@
+--- source:from
++++ verus:from
+@@ -1,3 +1,3 @@
+-    fn from(raw_tid: i32) -> ThreadIdentifier {
+-        ThreadIdentifier(raw_tid)
++    fn from(tid: ThreadIdentifier) -> i64 {
++        tid.into_i64()
+     }

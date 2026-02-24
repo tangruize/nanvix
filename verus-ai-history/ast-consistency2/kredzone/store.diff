@@ -1,0 +1,34 @@
+--- source:store
++++ verus:store
+@@ -1,18 +1,16 @@
+-pub fn store(index: usize, value: usize) -> Result<(), Error> {
+-    // Check if the index is out of bounds.
+-    if index >= KREDZONE_SIZE / mem::size_of::<usize>() {
+-        let reason: &str = "index out of bounds";
+-        error!("index={:?}, value={:?}, (error={})", index, value, reason);
+-        return Err(Error::new(ErrorCode::InvalidArgument, reason));
++pub fn store(index: usize, value: usize) -> (result: Result<(), Error>)
++    ensures
++        // Success case: index was valid.
++        result.is_ok() ==> spec_is_valid_index(index as int),
++        // Failure case: index was out of bounds.
++        result.is_err() ==> !spec_is_valid_index(index as int),
++{
++    // Verified bounds check.
++    if index >= NUM_ENTRIES {
++        return Err(Error::new(ErrorCode::InvalidArgument, "index out of bounds"));
+     }
+-
+-    // Store the value in the kernel red zone.
+-    // Safety: the kernel red zone is a global static variable and index is valid.
+-    unsafe {
+-        let ptr: *mut usize = core::ptr::addr_of_mut!(kredzone);
+-        let ptr: *mut usize = ptr.add(index);
+-        ptr.write_volatile(value);
+-    }
+-
++    
++    // Trusted raw memory access.
++    raw_store(index, value);
+     Ok(())
+ }

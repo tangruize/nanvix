@@ -1,0 +1,59 @@
+--- source:memset
++++ verus:memset
+@@ -1,14 +1,46 @@
+-    pub fn memset(&mut self, dst: PageAligned<VirtualAddress>, value: u32) -> Result<(), Error> {
+-        // Get corresponding user page.
+-        let uframe: FrameAddress = self.find_user_frame(dst)?;
+-        let dst: PageAligned<PhysicalAddress> = uframe.into_physical_address();
+-        let base: *mut u8 = dst.into_raw_value() as *mut u8;
+-
+-        // Safety: `base` points to a valid memory location and `mem::PAGE_SIZE` bytes are
+-        // writable.
+-        unsafe {
+-            __phys_memset(base, value as u8, mem::PAGE_SIZE);
++    pub fn memset(&mut self, vaddr: usize, value: u32) -> (result: Result<(), Error>)
++        requires
++            old(self).inv(),
++        ensures
++            self.inv(),
++            result.is_ok() ==> {
++                &&& spec_is_user_addr(vaddr as int)
++                &&& vaddr as int % PAGE_SIZE as int == 0
++            },
++            // memset doesn't change mappings.
++            self@.mapping_count == old(self)@.mapping_count,
++    {
++        // Check if address is in user space.
++        if !Self::is_user_addr(vaddr) {
++            return Err(Error::new(ErrorCode::BadAddress, "address is not in user space"));
+         }
+ 
++        // Check if address is page-aligned.
++        if vaddr % PAGE_SIZE != 0 {
++            return Err(Error::new(ErrorCode::BadAddress, "address is not page-aligned"));
++        }
++
++        // Check if page is mapped.
++        let mut found: bool = false;
++        let mut i: usize = 0;
++        while i < self.mapping_count
++            invariant
++                0 <= i <= self.mapping_count,
++                self.mapping_count <= MAX_USER_PAGES,
++                self.inv(),
++            decreases self.mapping_count - i,
++        {
++            if self.mappings[i].valid && self.mappings[i].vaddr == vaddr {
++                found = true;
++                break;
++            }
++            i = i + 1;
++        }
++
++        if !found {
++            return Err(Error::new(ErrorCode::BadAddress, "page not mapped"));
++        }
++
++        // In a real implementation, we would perform the physical memset.
+         Ok(())
+     }

@@ -1,0 +1,166 @@
+--- source:wakeup
++++ verus:wakeup
+@@ -1,21 +1,145 @@
+-    pub fn wakeup(mut self, tid: ThreadIdentifier) -> Result<RunnableProcess, SleepingProcess> {
+-        let sleeping_threads: NonEmptyVecDeque<SleepingThread> = self.sleeping_threads;
++    pub fn wakeup(
++        self,
++        tid: u64,
++        found: bool,
++    ) -> (result: Result<RunnableProcess, SleepingProcess>)
++        requires
++            self.wf(),
++            found == SleepingProcessView::spec_seq_contains(
++                self@.sleeping_thread_ids, tid as int),
++        ensures
++            match result {
++                Ok(rp) => {
++                    found
++                    && rp@.pid == self@.pid
++                    && rp.wf()
++                    // Exactly one ready thread: the woken thread.
++                    && rp@.ready_thread_ids.len() == 1
++                    && rp@.ready_thread_ids[0] == tid as int
++                    // No interrupted threads.
++                    && rp@.interrupted_thread_ids.len() == 0
++                    // Sleeping list has the found thread removed.
++                    && (exists|idx: int| 0 <= idx < self@.sleeping_thread_ids.len()
++                        && self@.sleeping_thread_ids[idx] == tid as int
++                        && rp@.sleeping_thread_ids =~=
++                            SleepingProcessView::spec_remove_at_seq(
++                                self@.sleeping_thread_ids, idx))
++                    && rp@.sleeping_thread_ids.len()
++                        == self@.sleeping_thread_ids.len() - 1
++                    // The woken thread is no longer in the sleeping list.
++                    && !SleepingProcessView::spec_seq_contains(
++                        rp@.sleeping_thread_ids, tid as int)
++                    // Zombie threads preserved.
++                    && rp@.zombie_thread_ids =~= self@.zombie_thread_ids
++                },
++                Err(sp) => {
++                    !found
++                    && sp@.pid == self@.pid
++                    && sp.wf()
++                    && sp@.sleeping_thread_ids =~= self@.sleeping_thread_ids
++                    && sp@.zombie_thread_ids =~= self@.zombie_thread_ids
++                },
++            },
++    {
++        proof {
++            reveal(SleepingProcess::wf);
++            reveal(RunnableProcess::wf);
++        }
++        if !found {
++            return Err(self);
++        }
+ 
+-        // Search for the sleeping thread.
+-        match sleeping_threads.remove_if(|thread| thread.id() == tid) {
+-            Ok((sleeping_threads, sleeping_thread)) => {
+-                let ready_thread: ReadyThread = sleeping_thread.wakeup();
+-                Ok(RunnableProcess::from_state(
+-                    self.state,
+-                    NonEmptyVecDeque::new(ready_thread),
+-                    None,
+-                    NonEmptyVecDeque::from(sleeping_threads),
+-                    self.zombie_threads.take(),
+-                ))
+-            },
+-            Err(sleeping_threads) => {
+-                self.sleeping_threads = sleeping_threads;
+-                Err(self)
+-            },
++        // Destructure self to work with individual fields.
++        let pid: u64 = self.pid;
++        let mut sleeping: Vec<u64> = self.sleeping_thread_ids;
++        let zombie: Vec<u64> = self.zombie_thread_ids;
++        let ghost old_sleeping: Seq<u64> = sleeping@;
++
++        // Bridge: view-level spec_seq_contains implies concrete containment.
++        proof {
++            assert(SleepingProcessView::spec_seq_contains(
++                spec_u64_seq_as_int(old_sleeping), tid as int));
++            let wi: int = choose|i: int| 0 <= i < spec_u64_seq_as_int(old_sleeping).len()
++                && spec_u64_seq_as_int(old_sleeping)[i] == tid as int;
++            assert(old_sleeping[wi] == tid);
+         }
++
++        // Concrete linear search for tid.
++        let mut idx: usize = 0;
++        let mut found_it: bool = false;
++        while idx < sleeping.len() && !found_it
++            invariant
++                idx <= sleeping@.len(),
++                sleeping@ == old_sleeping,
++                found_it ==> (idx < sleeping@.len() && sleeping@[idx as int] == tid),
++                !found_it ==> (forall|j: int| #![auto] 0 <= j < idx as int
++                    ==> sleeping@[j] != tid),
++            decreases (sleeping@.len() - idx) + (if !found_it { 1nat } else { 0nat }),
++        {
++            if sleeping[idx] == tid {
++                found_it = true;
++            } else {
++                idx = idx + 1;
++            }
++        }
++
++        proof {
++            // The search must succeed because found == true implies
++            // spec_seq_contains(old_sleeping, tid).
++            if !found_it {
++                assert(forall|j: int| #![auto] 0 <= j < sleeping@.len() as int
++                    ==> sleeping@[j] != tid);
++                assert(!Self::spec_seq_contains(sleeping@, tid));
++                assert(false);
++            }
++        }
++
++        let ghost found_idx: int = idx as int;
++        let _removed: u64 = sleeping.remove(idx);
++
++        proof {
++            // Vec::remove ensures: sleeping@ == old_sleeping.remove(found_idx).
++            // Seq::remove is defined identically to spec_remove_at.
++            assert(sleeping@ == old_sleeping.remove(found_idx));
++            assert(old_sleeping.remove(found_idx) =~=
++                Self::spec_remove_at(old_sleeping, found_idx));
++
++            // The woken thread is no longer in the sleeping list.
++            Self::lemma_remove_at_removes_element(old_sleeping, found_idx);
++
++            // Prove single-element ready list properties.
++            let ready: Seq<u64> = Seq::<u64>::empty().push(tid);
++            assert(ready.len() == 1);
++            assert(ready[0] == tid);
++
++            // Bridge: concrete remove_at to view-level remove_at_seq.
++            assert(spec_u64_seq_as_int(sleeping@) =~=
++                SleepingProcessView::spec_remove_at_seq(
++                    spec_u64_seq_as_int(old_sleeping), found_idx));
++
++            // Bridge: view-level existential for the found index.
++            assert(spec_u64_seq_as_int(old_sleeping)[found_idx] == tid as int);
++
++            // Bridge: woken thread not in view-level sleeping list.
++            if SleepingProcessView::spec_seq_contains(
++                    spec_u64_seq_as_int(sleeping@), tid as int) {
++                let k: int = choose|k: int|
++                    0 <= k < spec_u64_seq_as_int(sleeping@).len()
++                    && spec_u64_seq_as_int(sleeping@)[k] == tid as int;
++                assert(sleeping@[k] == tid);
++                assert(Self::spec_seq_contains(sleeping@, tid));
++                assert(false);
++            }
++        }
++
++        let mut ready: Vec<u64> = Vec::new();
++        ready.push(tid);
++
++        Ok(RunnableProcess {
++            pid,
++            ready_thread_ids: ready,
++            interrupted_thread_ids: Vec::new(),
++            sleeping_thread_ids: sleeping,
++            zombie_thread_ids: zombie,
++        })
+     }

@@ -1,0 +1,36 @@
+--- source:run
++++ verus:run
+@@ -1,9 +1,26 @@
+-    pub fn run(
+-        mut self,
+-    ) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
++    pub fn run(self) -> (result: RunResult)
++        requires
++            self.wf(),
++        ensures
++            result.running.spec_id() == self.spec_id(),
++            !result.running.spec_is_interrupted(),
++            result.interrupt_reason == self.spec_interrupt_reason(),
++            result.user_tda == self.spec_user_tda(),
++            result.running.wf(),
++            result.running.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
++            forall|a: int| #![auto] result.running.spec_has_mutex(a) == self.spec_has_mutex(a),
++            result.running.spec_drop_safe() == self.spec_drop_safe(),
+     {
+-        let ctx: *mut ContextInformation = self.state.context_mut();
+-        let interrupt_reason: Option<InterruptReason> = self.state.take_interrupt_reason();
+-        let user_tda: Option<VirtualAddress> = self.state.get_thread_data_area();
+-        (RunningThread::from_state(self.state), interrupt_reason, ctx, user_tda)
++        proof {
++            reveal(ReadyThread::wf);
++            reveal(RunningThread::wf);
++        }
++        let mut state: ThreadState = self.state;
++        let interrupt_reason: Option<int> = state.take_interrupt_reason();
++        let user_tda: Option<int> = state.get_thread_data_area();
++        RunResult {
++            running: RunningThread::from_state(state),
++            interrupt_reason: interrupt_reason,
++            user_tda: user_tda,
++        }
+     }

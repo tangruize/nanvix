@@ -1,0 +1,30 @@
+--- source:notify_first
++++ verus:notify_first
+@@ -1,11 +1,18 @@
+-    pub unsafe fn notify_first(&self) -> Result<u32, Error> {
+-        let mut awakened: u32 = 0;
+-
+-        // Attempt to wake up the first thread in the sleeping queue.
+-        if let Some((_pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+-            ProcessManager::wakeup(tid)?;
+-            awakened += 1;
++    pub fn notify_first(&mut self) -> (awakened: u32)
++        requires
++            old(self).wf(),
++        ensures
++            self.wf(),
++            awakened <= 1,
++            old(self)@.spec_is_empty() ==> (awakened == 0 && self@ == old(self)@),
++            !old(self)@.spec_is_empty() ==> (
++                awakened == 1
++                && self@.spec_len() == old(self)@.spec_len() - 1
++            ),
++    {
++        if self.dequeue_first() {
++            1u32
++        } else {
++            0u32
+         }
+-
+-        Ok(awakened)
+     }

@@ -1,0 +1,61 @@
+--- source:new
++++ verus:new
+@@ -1,11 +1,49 @@
+-    pub(super) fn new(
+-        process: Box<ProcessState>,
+-        sleeping_threads: NonEmptyVecDeque<SleepingThread>,
+-        zombie_threads: Option<NonEmptyVecDeque<ZombieThread>>,
+-    ) -> Self {
+-        Self {
+-            state: process,
+-            sleeping_threads,
+-            zombie_threads,
++    pub fn new(
++        pid: u64,
++        sleeping_ids: Vec<u64>,
++        zombie_ids: Vec<u64>,
++    ) -> (result: SleepingProcess)
++        requires
++            sleeping_ids@.len() >= 1,
++            SleepingProcessView::spec_no_duplicates(spec_u64_seq_as_int(sleeping_ids@)),
++            SleepingProcessView::spec_no_duplicates(spec_u64_seq_as_int(zombie_ids@)),
++            SleepingProcessView::spec_seqs_disjoint(
++                spec_u64_seq_as_int(sleeping_ids@),
++                spec_u64_seq_as_int(zombie_ids@)),
++        ensures
++            result@.pid == pid as int,
++            result@.sleeping_thread_ids =~= spec_u64_seq_as_int(sleeping_ids@),
++            result@.zombie_thread_ids =~= spec_u64_seq_as_int(zombie_ids@),
++            result.wf(),
++    {
++        proof {
++            reveal(SleepingProcess::wf);
++            // Bridge view-level no_duplicates to exec-level no_duplicates.
++            assert forall|i: int, j: int|
++                0 <= i < j < sleeping_ids@.len()
++                implies sleeping_ids@[i] != sleeping_ids@[j]
++            by {
++                assert(spec_u64_seq_as_int(sleeping_ids@)[i]
++                    != spec_u64_seq_as_int(sleeping_ids@)[j]);
++            };
++            assert forall|i: int, j: int|
++                0 <= i < j < zombie_ids@.len()
++                implies zombie_ids@[i] != zombie_ids@[j]
++            by {
++                assert(spec_u64_seq_as_int(zombie_ids@)[i]
++                    != spec_u64_seq_as_int(zombie_ids@)[j]);
++            };
++            assert forall|i: int, j: int|
++                0 <= i < sleeping_ids@.len() && 0 <= j < zombie_ids@.len()
++                implies sleeping_ids@[i] != zombie_ids@[j]
++            by {
++                assert(spec_u64_seq_as_int(sleeping_ids@)[i]
++                    != spec_u64_seq_as_int(zombie_ids@)[j]);
++            };
++        }
++        SleepingProcess {
++            pid,
++            sleeping_thread_ids: sleeping_ids,
++            zombie_thread_ids: zombie_ids,
+         }
+     }

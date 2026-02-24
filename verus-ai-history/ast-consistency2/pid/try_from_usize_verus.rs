@@ -1,0 +1,19 @@
+    pub fn try_from_usize(raw: usize) -> (result: Result<ProcessIdentifier, Error>)
+        ensures
+            result is Ok ==> {
+                &&& ProcessIdentifierView::in_non_negative_i32_range(raw as int)
+                &&& result->Ok_0@.value == raw as int
+                &&& result->Ok_0@.is_non_negative()
+                &&& result->Ok_0.inv()
+            },
+            result is Err ==> {
+                &&& !ProcessIdentifierView::in_non_negative_i32_range(raw as int)
+                &&& result->Err_0.code == ErrorCode::InvalidArgument
+                &&& result->Err_0.reason == Self::PARSE_ERROR_MESSAGE
+            },
+    {
+        if raw > i32::MAX as usize {
+            return Err(Error::new(ErrorCode::InvalidArgument, Self::PARSE_ERROR_MESSAGE));
+        }
+        Ok(ProcessIdentifier { value: raw as i32 })
+    }

@@ -1,0 +1,19 @@
+--- source:new
++++ verus:new
+@@ -1,6 +1,11 @@
+-    pub fn new(value: usize) -> Self {
+-        Self {
+-            value: AtomicUsize::new(value),
+-            sleeping: Condvar::new(),
+-        }
++    pub fn new(value: usize) -> (result: Self)
++        ensures
++            result@ == Semaphore::spec_new_view(value as nat),
++            result@.value == value as nat,
++            result@.waiters == 0,
++            result.wf(),
++            result.spec_drop_safe(),
++    {
++        proof { reveal(Semaphore::wf); }
++        Semaphore { value: value }
+     }

@@ -1,0 +1,58 @@
+--- source:new
++++ verus:new
+@@ -1,17 +1,40 @@
+-    pub(super) fn new(
+-        state: Box<ProcessState>,
+-        running: RunningThread,
+-        ready: Option<NonEmptyVecDeque<ReadyThread>>,
+-        interrupted: Option<NonEmptyVecDeque<InterruptedThread>>,
+-        sleeping: Option<NonEmptyVecDeque<SleepingThread>>,
+-        zombie: Option<NonEmptyVecDeque<ZombieThread>>,
+-    ) -> Self {
+-        Self {
+-            state,
+-            running,
+-            ready,
+-            interrupted_threads: interrupted,
+-            sleeping_threads: sleeping,
+-            zombie,
++    pub fn new(
++        pid: u64,
++        running_tid: u64,
++        ready_ids: Vec<u64>,
++        interrupted_ids: Vec<u64>,
++        sleeping_ids: Vec<u64>,
++        zombie_ids: Vec<u64>,
++        ready_count: u64,
++        interrupted_count: u64,
++        sleeping_count: u64,
++        zombie_count: u64,
++    ) -> (result: RunningProcess)
++        requires
++            ready_count as nat == ready_ids@.len(),
++            interrupted_count as nat == interrupted_ids@.len(),
++            sleeping_count as nat == sleeping_ids@.len(),
++            zombie_count as nat == zombie_ids@.len(),
++        ensures
++            result@.pid == pid as int,
++            result@.running_thread_id == running_tid as int,
++            result@.ready_thread_ids.len() == ready_ids@.len(),
++            result@.interrupted_thread_ids.len() == interrupted_ids@.len(),
++            result@.sleeping_thread_ids.len() == sleeping_ids@.len(),
++            result@.zombie_thread_ids.len() == zombie_ids@.len(),
++            result.inv(),
++    {
++        proof { reveal(RunningProcess::inv); }
++        RunningProcess {
++            pid,
++            running_thread_id: running_tid,
++            ready_thread_ids: ready_ids,
++            interrupted_thread_ids: interrupted_ids,
++            sleeping_thread_ids: sleeping_ids,
++            zombie_thread_ids: zombie_ids,
++            ready_count,
++            interrupted_count,
++            sleeping_count,
++            zombie_count,
+         }
+     }

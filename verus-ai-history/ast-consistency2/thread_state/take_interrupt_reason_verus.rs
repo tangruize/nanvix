@@ -1,0 +1,20 @@
+    pub fn take_interrupt_reason(&mut self) -> (result: Option<int>)
+        requires
+            old(self).wf(),
+        ensures
+            result == old(self)@.interrupt_reason,
+            !self@.is_interrupted(),
+            self@.interrupt_reason == None::<int>,
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_stack == old(self)@.user_stack,
+            self@.user_tda == old(self)@.user_tda,
+            self@.locked_mutex_count == old(self)@.locked_mutex_count,
+            forall|a: int| self@.has_mutex(a) == old(self)@.has_mutex(a),
+            self.wf(),
+    {
+        proof { reveal(ThreadState::wf); }
+        let reason: Option<int> = self.interrupt_reason;
+        self.interrupt_reason = None;
+        reason
+    }

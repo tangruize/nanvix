@@ -1,0 +1,23 @@
+    pub unsafe fn notify_all(&self) -> Result<u32, Error> {
+        let mut awakened: u32 = 0; // Number of awakened threads.
+        let mut first_error: Option<Error> = None; // First error encountered (if any).
+
+        // Traverse the sleeping queue, waking up all threads.
+        while let Some((pid, tid)) = self.inner.sleeping.borrow_mut().pop_front() {
+            // Attempt to wake up thread and check for errors.
+            if let Err(error) = ProcessManager::wakeup(tid) {
+                // Failed to wake up thread, log a warning, store the first error, and continue.
+                warn!("{error:?} (pid={pid:?}, tid={tid:?})");
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            } else {
+                // Only count successful wake-ups.
+                awakened += 1;
+            }
+        }
+        match first_error {
+            Some(error) if awakened == 0 => Err(error),
+            None | Some(_) => Ok(awakened),
+        }
+    }

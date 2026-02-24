@@ -1,0 +1,16 @@
+    pub fn store_thread_data_area(&mut self, user_tda: Option<int>)
+        requires
+            old(self).wf(),
+        ensures
+            self@.user_tda == user_tda,
+            self@.id == old(self)@.id,
+            self@.kernel_stack == old(self)@.kernel_stack,
+            self@.user_stack == old(self)@.user_stack,
+            self@.interrupt_reason == old(self)@.interrupt_reason,
+            self@.locked_mutex_count == old(self)@.locked_mutex_count,
+            forall|a: int| self@.has_mutex(a) == old(self)@.has_mutex(a),
+            self.wf(),
+    {
+        proof { reveal(ThreadState::wf); }
+        self.user_tda = user_tda;
+    }

@@ -1,0 +1,17 @@
+    pub fn terminate(self) -> (result: ZombieThread)
+        requires
+            self.wf(),
+        ensures
+            result.spec_id() == self.spec_id(),
+            result.spec_status() == EXIT_STATUS_INTERRUPTED(),
+            result.wf(),
+            result.spec_drop_safe() == self.spec_drop_safe(),
+            result.spec_locked_mutex_count() == self.spec_locked_mutex_count(),
+    {
+        proof {
+            reveal(ReadyThread::wf);
+            reveal(ZombieThread::wf);
+        }
+        let status: int = exit_status_interrupted_value();
+        ZombieThread::from_state(self.state, status)
+    }

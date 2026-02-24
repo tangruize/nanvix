@@ -1,0 +1,11 @@
+--- source:try_from
++++ verus:try_from
+@@ -1,6 +1,3 @@
+-    fn try_from(raw_tid: u64) -> Result<Self, Self::Error> {
+-        raw_tid
+-            .try_into()
+-            .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid thread identifier"))
+-            .map(ThreadIdentifier)
++    fn try_from(tid: ThreadIdentifier) -> Result<Self, Self::Error> {
++        tid.try_into_u64()
+     }

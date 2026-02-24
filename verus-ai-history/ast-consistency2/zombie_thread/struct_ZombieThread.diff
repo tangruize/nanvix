@@ -1,0 +1,13 @@
+--- source:struct_ZombieThread
++++ verus:struct_ZombieThread
+@@ -1,6 +1,6 @@
+ pub struct ZombieThread {
+-    /// Exit status of the terminated thread.
+-    status: ExitStatus,
+-    /// Thread state.
+-    state: Box<ThreadState>,
++    /// The exit status of the terminated thread (abstract int tag).
++    pub status: int,
++    /// The underlying thread state.
++    pub state: ThreadState,
+ }

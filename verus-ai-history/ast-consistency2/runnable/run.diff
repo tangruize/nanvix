@@ -1,0 +1,147 @@
+--- source:run
++++ verus:run
+@@ -1,42 +1,107 @@
+-    pub fn run(
+-        mut self,
+-    ) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
++    pub fn run(self) -> (result: RunningProcess)
++        requires
++            self.wf(),
++        ensures
++            result@.pid == self@.pid,
++            // The selected thread has the earliest admission time.
++            ({
++                let sel: int = self@.spec_earliest_ready_index();
++                result@.running_thread_id == self@.ready_thread_ids[sel]
++                && result@.ready_thread_ids ==
++                    RunnableProcessView::spec_remove_at(self@.ready_thread_ids, sel)
++                && result@.ready_thread_ids.len() == self@.ready_thread_ids.len() - 1
++            }),
++            // Other lists are preserved exactly.
++            result@.interrupted_thread_ids == self@.interrupted_thread_ids,
++            result@.sleeping_thread_ids == self@.sleeping_thread_ids,
++            result@.zombie_thread_ids == self@.zombie_thread_ids,
+     {
+-        let mut ready_threads: VecDeque<ReadyThread> = self.ready_threads.into();
++        proof { reveal(RunnableProcess::wf); }
++        // Find the index of the thread with earliest admission time via concrete loop.
++        let mut min_idx: usize = 0;
++        let mut i: usize = 1;
++        while i < self.ready_admission_times.len()
++            invariant
++                1 <= i <= self.ready_admission_times@.len(),
++                0 <= min_idx < i,
++                min_idx < self.ready_admission_times@.len(),
++                forall|j: int| 0 <= j < i as int
++                    ==> self.ready_admission_times@[min_idx as int]
++                        <= self.ready_admission_times@[j],
++                // Track correspondence with spec_min_index_rec.
++                min_idx as int == Self::spec_min_index_rec(
++                    self.ready_admission_times@, i as int),
++                self.wf(),
++            decreases self.ready_admission_times@.len() - i,
++        {
++            if self.ready_admission_times[i] < self.ready_admission_times[min_idx] {
++                min_idx = i;
++            }
++            i = i + 1;
++        }
+ 
+-        // Select thread with the earliest admission time.
+-        let mut index_selected_thread: usize = 0;
+-        for (i, thread) in ready_threads.iter().enumerate() {
+-            if thread.admission_time() < ready_threads[index_selected_thread].admission_time() {
+-                index_selected_thread = i;
++        // After loop: min_idx == spec_min_index_rec(s, len) == spec_earliest_ready_index().
++        proof {
++            assert(min_idx as int == self.spec_earliest_ready_index());
++        }
++
++        let selected_tid: i64 = self.ready_thread_ids[min_idx];
++
++        // Build remaining ready lists by removing min_idx.
++        let new_ready_ids: Vec<i64> = vec_remove_at(&self.ready_thread_ids, min_idx);
++        let new_ready_times: Vec<i64> = vec_remove_at(&self.ready_admission_times, min_idx);
++
++        // Discard ready_admission_times (not needed in RunningProcess).
++        proof {
++            // Bridge exec-level Seq<i64> to view-level Seq<int>.
++            Self::lemma_view_min_index_eq(
++                self.ready_admission_times@,
++                self.ready_admission_times@.len() as int,
++            );
++            Self::lemma_min_index_rec_bounds(
++                &self.ready_admission_times@,
++                self.ready_admission_times@.len() as int,
++            );
++            assert(min_idx as int == self@.spec_earliest_ready_index());
++            let sel: int = min_idx as int;
++            assert(0 <= sel < self.ready_thread_ids@.len());
++            // Break down spec_remove_at distribution over spec_i64_seq_as_int.
++            let s: Seq<i64> = self.ready_thread_ids@;
++            let s_int: Seq<int> = self@.ready_thread_ids;
++            assert forall|i: int| 0 <= i < sel
++                implies (#[trigger] spec_i64_seq_as_int(s.subrange(0, sel))[i])
++                    == s_int.subrange(0, sel)[i]
++            by {
++                assert(s.subrange(0, sel)[i] == s[i]);
++                assert(s_int.subrange(0, sel)[i] == s_int[i]);
++                assert(s_int[i] == s[i] as int);
+             }
++            assert(spec_i64_seq_as_int(s.subrange(0, sel))
++                =~= s_int.subrange(0, sel));
++            assert forall|i: int| 0 <= i < (s.len() as int - (sel + 1))
++                implies (#[trigger] spec_i64_seq_as_int(
++                    s.subrange(sel + 1, s.len() as int))[i])
++                    == s_int.subrange(sel + 1, s_int.len() as int)[i]
++            by {
++                assert(s.subrange(sel + 1, s.len() as int)[i] == s[sel + 1 + i]);
++                assert(s_int.subrange(sel + 1, s_int.len() as int)[i]
++                    == s_int[sel + 1 + i]);
++                assert(s_int[sel + 1 + i] == s[sel + 1 + i] as int);
++            }
++            assert(spec_i64_seq_as_int(s.subrange(sel + 1, s.len() as int))
++                =~= s_int.subrange(sel + 1, s_int.len() as int));
++            let left: Seq<i64> = s.subrange(0, sel);
++            let right: Seq<i64> = s.subrange(sel + 1, s.len() as int);
++            assert(spec_i64_seq_as_int(left.add(right))
++                =~= spec_i64_seq_as_int(left).add(spec_i64_seq_as_int(right)));
+         }
+-        let next_thread: ReadyThread = match ready_threads.remove(index_selected_thread) {
+-            Some(thread) => thread,
+-            None => {
+-                // SAFETY: the following statement is unreachable because there should always be at
+-                // least one ready thread in a runnable process.
+-                unreachable!("no ready threads in runnable process");
+-            },
+-        };
+-
+-        let (running_thread, interrupt_reason, next_context, user_tda): (
+-            RunningThread,
+-            Option<InterruptReason>,
+-            *mut ContextInformation,
+-            Option<VirtualAddress>,
+-        ) = next_thread.run();
+-        (
+-            RunningProcess::new(
+-                self.state,
+-                running_thread,
+-                NonEmptyVecDeque::from(ready_threads),
+-                self.interrupted_threads.take(),
+-                self.sleeping_threads.take(),
+-                self.zombie_threads.take(),
+-            ),
+-            interrupt_reason,
+-            next_context,
+-            user_tda,
+-        )
++        RunningProcess {
++            pid: self.pid,
++            running_thread_id: selected_tid,
++            ready_thread_ids: new_ready_ids,
++            interrupted_thread_ids: self.interrupted_thread_ids,
++            sleeping_thread_ids: self.sleeping_thread_ids,
++            zombie_thread_ids: self.zombie_thread_ids,
++            interrupt_reason: 0i64,
++        }
+     }

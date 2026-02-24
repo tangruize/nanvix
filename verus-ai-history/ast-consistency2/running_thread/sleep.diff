@@ -1,0 +1,21 @@
+--- source:sleep
++++ verus:sleep
+@@ -1,4 +1,15 @@
+-    pub fn sleep(mut self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation) {
+-        let ctx: *mut ContextInformation = self.state.context_mut();
+-        (SleepingThread::from_state(self.state, alarm), ctx)
++    pub fn sleep(self, alarm: Option<int>) -> (result: SleepingThread)
++        requires
++            self.wf(),
++        ensures
++            result@.state == self@.state,
++            result@.spec_id() == self@.spec_id(),
++            result@.spec_alarm() == alarm,
++            result@.spec_locked_mutex_count() == self@.spec_locked_mutex_count(),
++            forall|a: int| result@.spec_has_mutex(a) == self@.spec_has_mutex(a),
++            result@.spec_drop_safe() == self@.spec_drop_safe(),
++            result.wf(),
++    {
++        proof { reveal(RunningThread::wf); }
++        SleepingThread::from_state(self.state, alarm)
+     }

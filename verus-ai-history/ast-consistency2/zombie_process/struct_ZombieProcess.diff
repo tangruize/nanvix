@@ -1,0 +1,16 @@
+--- source:struct_ZombieProcess
++++ verus:struct_ZombieProcess
+@@ -1,5 +1,10 @@
+ pub struct ZombieProcess {
+-    zombie_threads: NonEmptyVecDeque<ZombieThread>,
+-    process: Box<ProcessState>,
+-    status: ExitStatus,
++    /// Process identifier (from the inner ProcessState).
++    pub pid: u64,
++    /// Concrete sequence of zombie thread IDs (non-empty).
++    pub zombie_thread_ids: Vec<u64>,
++    /// Exit status.
++    pub status: i64,
++    /// Exec-level count of zombie threads.
++    pub zombie_count: u64,
+ }

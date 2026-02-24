@@ -1,0 +1,12 @@
+--- source:struct_ReadyThread
++++ verus:struct_ReadyThread
+@@ -1,6 +1,6 @@
+ pub struct ReadyThread {
+-    /// Thread state.
+-    state: Box<ThreadState>,
++    /// The underlying thread state.
++    pub state: ThreadState,
+     /// Time when the thread was admitted to the ready queue.
+-    admission_time: SystemTime,
++    pub admission_time: int,
+ }

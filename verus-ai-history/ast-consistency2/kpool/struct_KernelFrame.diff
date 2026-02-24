@@ -1,0 +1,12 @@
+--- source:struct_KernelFrame
++++ verus:struct_KernelFrame
+@@ -1,4 +1,7 @@
+ pub struct KernelFrame {
+-    kpool: Rc<RefCell<KpoolInner>>,
+-    base: FrameAddress,
++    /// Frame address (page-aligned). Named `base` in the original.
++    addr: FrameAddress,
++    /// Pool identifier for provenance tracking.
++    /// Replaces `Rc<RefCell<KpoolInner>>` from the original for pool association.
++    pool_id: usize,
+ }

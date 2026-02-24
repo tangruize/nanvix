@@ -1,0 +1,59 @@
+--- source:lock_mutex
++++ verus:lock_mutex
+@@ -1,33 +1,24 @@
+-pub unsafe fn lock_mutex(
+-    pid: ProcessIdentifier,
+-    tid: ThreadIdentifier,
+-    mutex_addr: usize,
+-    timeout_s: usize,
+-    timeout_ns: usize,
+-) -> Result<(), SleepError> {
+-    trace!(
+-        "lock_mutex(): pid={pid:?}, tid={tid:?},  mutex_addr={mutex_addr:x?}, \
+-         timeout_s={timeout_s:?}, timeout_ns={timeout_ns:?}"
+-    );
+-    // Unpack kernel call arguments.
+-    let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
+-    let timeout: Option<SystemTime> = if timeout_s == usize::MAX && timeout_ns == usize::MAX {
+-        None
+-    } else {
+-        match SystemTime::new(timeout_s as u64, timeout_ns as u32) {
+-            Some(timeout) => Some(timeout),
+-            None => {
+-                let reason: &str = "invalid timeout";
+-                error!(
+-                    "lock_mutex(): {} (mutex_addr={:x?}, timeout_s={:?}, timeout_ns={:?})",
+-                    reason, mutex_addr, timeout_s, timeout_ns
+-                );
+-                return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
+-            },
+-        }
+-    };
+-
+-    let mutex: Mutex = ProcessManager::get_mutex(mutex_addr).map_err(SleepError::Generic)?;
+-    let guard: MutexGuard = mutex.lock(timeout)?;
+-    ProcessManager::put_mutex_guard(mutex_addr, guard).map_err(SleepError::Generic)
++pub fn lock_mutex(pid: u32, tid: u32, mutex_addr: u32, timeout_s: u32, timeout_ns: u32) -> (result: LockMutexResultModel)
++    requires
++        // ABI constraint: inputs originate from 32-bit usize on x86-32.
++        timeout_s as nat <= USIZE_MAX_X86_32(),
++        timeout_ns as nat <= USIZE_MAX_X86_32(),
++    ensures
++        // Invalid timeout always produces InvalidTimeoutError.
++        !spec_timeout_parsed_ok(timeout_s as nat, timeout_ns as nat) ==>
++            spec_is_timeout_error(result.spec_view()),
++        // TimedOut impossible with infinite timeout.
++        !spec_is_finite_timeout(timeout_s as nat, timeout_ns as nat) ==>
++            !matches!(result, LockMutexResultModel::LockTimedOut),
++{
++    // pid and tid are intentionally unused — they affect only trace logging
++    // in the original function. See lemma_result_independent_of_pid_tid.
++    let ret: (
++        LockMutexResultModel,
++        Ghost<GetMutexOutcomeView>,
++        Ghost<LockOutcomeView>,
++        Ghost<PutGuardOutcomeView>,
++        Ghost<Option<TimeoutView>>,
++    ) = lock_mutex_model(mutex_addr, timeout_s, timeout_ns);
++    ret.0
+ }

@@ -1,0 +1,16 @@
+--- source:fmt
++++ verus:fmt
+@@ -1,9 +1,9 @@
+-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
++    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+         write!(
+             f,
+             "UserStack {{ base: {:?}, top: {:?}, size={:?} }}",
+-            self.base,
+-            self.top(),
+-            self.size()
++            self.base_addr,
++            self.base_addr + USER_STACK_SIZE,
++            USER_STACK_SIZE
+         )
+     }

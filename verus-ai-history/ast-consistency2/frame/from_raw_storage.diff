@@ -1,0 +1,23 @@
+--- source:from_raw_storage
++++ verus:from_raw_storage
+@@ -1,3 +1,19 @@
+-    pub fn from_raw_storage(storage: RawArray<u8>) -> Result<Self, Error> {
++    pub fn from_raw_storage(storage: RawArray<u8>) -> (result: Result<FrameAllocator, Error>)
++        requires
++            storage@.len() > 0,
++            storage@.len() <= usize::MAX / (u8::BITS as usize),
++            storage@.len() * (u8::BITS as usize) <= MAX_FRAME_NUMBER as usize + 1,
++            storage@.len() * (u8::BITS as usize) < u32::MAX as usize,
++            forall|i: int| 0 <= i < storage@.len() ==> storage@[i] == 0,
++        ensures
++            // LIVENESS: Always succeeds when preconditions are met.
++            result is Ok,
++            // Unconditional guarantees (success is guaranteed by liveness above).
++            result->Ok_0.inv(),
++            result->Ok_0@.capacity == storage@.len() * (u8::BITS as int),
++            result->Ok_0@.is_empty(),
++            result->Ok_0@.is_freshly_initialized(),
++    {
++        // Restored original exec logic: Ok(Self::new(Bitmap::from_raw_array(storage))).
+         Ok(Self::new(Bitmap::from_raw_array(storage)))
+     }
