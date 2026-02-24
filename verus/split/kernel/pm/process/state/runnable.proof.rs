@@ -498,6 +498,8 @@ impl RunnableProcess {
                         assert(s[n - 1] <= s[j]);
                     }
                 }
+                // Witness the existential for the postcondition.
+                assert(0 <= (n - 1) < n);
             } else {
                 // Previous min is still min.
                 assert forall|j: int| 0 <= j < n implies (#[trigger] s[prev_min_idx]) <= (#[trigger] s[j])
@@ -508,6 +510,8 @@ impl RunnableProcess {
                         assert(s[prev_min_idx] <= s[n - 1]);
                     }
                 }
+                // Witness the existential for the postcondition.
+                assert(0 <= prev_min_idx < n);
             }
         }
     }
