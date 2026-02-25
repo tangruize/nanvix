@@ -71,6 +71,11 @@ if [ -n "$MODULE" ] && [[ ! "$MODULE" == *"::"* ]]; then
         # e.g., virt -> */virt/mod.rs
         FOUND_PATH=$(find "$VERUS_DIR" -path "*/${MODULE}/mod.rs" -type f 2>/dev/null | head -1)
     fi
+    if [ -z "$FOUND_PATH" ]; then
+        # Fallback: search for lib.rs inside a directory matching the full module name.
+        # e.g., error -> */error/lib.rs
+        FOUND_PATH=$(find "$VERUS_DIR" -path "*/${MODULE}/lib.rs" ! -name "*.spec.rs" ! -name "*.proof.rs" -type f 2>/dev/null | head -1)
+    fi
     if [ -n "$FOUND_PATH" ]; then
         # Convert file path to module path.
         # e.g., /path/verus/split/kernel/pm/sys/pid.rs -> kernel::pm::sys::pid
@@ -80,6 +85,8 @@ if [ -n "$MODULE" ] && [[ ! "$MODULE" == *"::"* ]]; then
         FULL_MODULE=$(echo "$REL_PATH" | sed 's|/|::|g')
         # Strip trailing ::mod for mod.rs files.
         FULL_MODULE="${FULL_MODULE%::mod}"
+        # Strip trailing ::lib for lib.rs files.
+        FULL_MODULE="${FULL_MODULE%::lib}"
         echo "Resolved module: $MODULE -> $FULL_MODULE"
         MODULE="$FULL_MODULE"
     fi
