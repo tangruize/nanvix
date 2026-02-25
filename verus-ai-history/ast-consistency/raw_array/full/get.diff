@@ -1,0 +1,20 @@
+--- source:get
++++ verus:get
+@@ -1,10 +1,8 @@
+-    fn get(&self) -> &[T] {
+-        match self {
+-            RawArrayStorage::Managed { ptr, len } => unsafe {
+-                slice::from_raw_parts(ptr.as_ptr(), *len)
+-            },
+-            RawArrayStorage::Unmanaged { ptr, len } => unsafe {
+-                slice::from_raw_parts(ptr.as_ptr(), *len)
+-            },
+-        }
++    pub fn get(&self, index: usize) -> (result: &T)
++        requires
++            self.in_bounds(index as int),
++        ensures
++            *result == self@[index as int],
++    {
++        &self.storage.get()[index]
+     }

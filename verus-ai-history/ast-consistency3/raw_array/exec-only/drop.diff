@@ -1,0 +1,18 @@
+--- source:drop
++++ verus:drop
+@@ -1,12 +1,8 @@
+     fn drop(&mut self) {
+-        match &self.storage {
++        match self {
+             RawArrayStorage::Managed { ptr, len } => {
+-                let layout: Layout = match Layout::array::<T>(*len) {
+-                    Ok(layout) => layout,
+-                    Err(_) => return,
+-                };
+-                unsafe {
+-                    dealloc(ptr.as_ptr() as *mut u8, layout);
++                if let Ok(layout) = Layout::array::<T>(*len) {
++                    unsafe { dealloc(ptr.as_ptr() as *mut u8, layout); }
+                 }
+             },
+             RawArrayStorage::Unmanaged { .. } => (),

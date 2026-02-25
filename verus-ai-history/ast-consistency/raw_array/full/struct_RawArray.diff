@@ -1,0 +1,7 @@
+--- source:struct_RawArray
++++ verus:struct_RawArray
+@@ -1,4 +1,3 @@
+ pub struct RawArray<T> {
+-    /// The backing storage of the raw array.
+     storage: RawArrayStorage<T>,
+ }

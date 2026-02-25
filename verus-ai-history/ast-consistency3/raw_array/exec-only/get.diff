@@ -1,0 +1,16 @@
+--- source:get
++++ verus:get
+@@ -1,10 +1,4 @@
+-    fn get(&self) -> &[T] {
+-        match self {
+-            RawArrayStorage::Managed { ptr, len } => unsafe {
+-                slice::from_raw_parts(ptr.as_ptr(), *len)
+-            },
+-            RawArrayStorage::Unmanaged { ptr, len } => unsafe {
+-                slice::from_raw_parts(ptr.as_ptr(), *len)
+-            },
+-        }
++    pub fn get(&self, index: usize) -> &T
++    {
++        &self.storage.get()[index]
+     }
