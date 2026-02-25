@@ -268,6 +268,15 @@ impl Bitmap {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
 
+        // Note: debug_assert_eq! is not supported by Verus, so we guard it
+        // with cfg. The invariant self.inv() already proves this property.
+        #[cfg(not(verus_keep_ghost))]
+        debug_assert_eq!(
+            self.bits.len() * u8::BITS as usize,
+            self.number_of_bits,
+            "bitmap length must match the number of bits"
+        );
+
         let mut start: usize = 0;
 
         // Search for a contiguous free range.
