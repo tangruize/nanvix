@@ -24,15 +24,36 @@ include!("lib.spec.rs");
 include!("lib.proof.rs");
 
 //==================================================================================================
-// RawArrayStorage - Implementation Detail (outside verus!)
+// Raw Array Storage
 //==================================================================================================
 
+///
+/// # Description
+///
+/// A type that represents the backing storage of a [`RawArray`].
+///
 enum RawArrayStorage<T> {
+    /// A storage area that is managed by [alloc::GlobalAlloc].
     Managed { ptr: ptr::NonNull<T>, len: usize },
+    /// A storage area that is not managed by [alloc::GlobalAlloc].
     Unmanaged { ptr: ptr::NonNull<T>, len: usize },
 }
 
 impl<T> RawArrayStorage<T> {
+    ///
+    /// # Description
+    ///
+    /// Constructs backing storage for a raw array.
+    ///
+    /// # Parameters
+    ///
+    /// - `len`: Length of the backing storage.
+    ///
+    /// # Returns
+    ///
+    /// On success, the backing storage is returned, with all bits set to zero.
+    /// On failure, an error is returned instead.
+    ///
     fn new_managed(len: usize) -> Result<RawArrayStorage<T>, Error> {
         // Check if the length is invalid.
         if len == 0 || len >= i32::MAX as usize {
@@ -61,6 +82,29 @@ impl<T> RawArrayStorage<T> {
         Ok(RawArrayStorage::Managed { ptr, len })
     }
 
+    ///
+    /// # Description
+    ///
+    /// Constructs an unmanaged backing storage for a raw array.
+    ///
+    /// # Parameters
+    ///
+    /// - `ptr`: Pointer to the backing storage.
+    /// - `len`: Length of the backing storage.
+    ///
+    /// # Returns
+    ///
+    /// On success, the backing storage is returned, with all bits set to zero.
+    /// On failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if any of the following conditions are violated:
+    ///
+    /// - `ptr` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
+    /// - `ptr` must be properly aligned.
+    /// - `ptr` must point to len consecutive properly initialized values of type `T``.
+    ///
     unsafe fn new_unmanaged(ptr: *mut T, len: usize) -> Result<RawArrayStorage<T>, Error> {
         // Check if the length is invalid.
         if len == 0 || len >= i32::MAX as usize {
@@ -84,6 +128,15 @@ impl<T> RawArrayStorage<T> {
         Ok(RawArrayStorage::Unmanaged { ptr, len })
     }
 
+    ///
+    /// # Description
+    ///
+    /// Gets a mutable slice to the underlying data in the backing storage.
+    ///
+    /// # Returns
+    ///
+    /// A mutable slice to the underlying data in the backing storage.
+    ///
     fn get_mut(&mut self) -> &mut [T] {
         match self {
             RawArrayStorage::Managed { ptr, len } => unsafe {
@@ -95,6 +148,15 @@ impl<T> RawArrayStorage<T> {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Gets a slice to the underlying data in the backing storage.
+    ///
+    /// # Returns
+    ///
+    /// A slice to the underlying data in the backing storage.
+    ///
     fn get(&self) -> &[T] {
         match self {
             RawArrayStorage::Managed { ptr, len } => unsafe {
@@ -129,7 +191,7 @@ impl<T> Drop for RawArrayStorage<T> {
 }
 
 //==================================================================================================
-// RawArray - Main Type
+// Raw Array
 //==================================================================================================
 
 verus! {
@@ -140,7 +202,11 @@ verus! {
 #[verifier::external_body]
 pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
 
-/// A fixed-size array backed by raw memory.
+///
+/// # Description
+///
+/// A type that represent a fixed-size array.
+///
 #[verifier::reject_recursive_types(T)]
 pub struct RawArray<T> {
     /// The backing storage of the raw array.
@@ -152,7 +218,20 @@ pub struct RawArray<T> {
 //==================================================================================================
 
 impl<T> RawArray<T> {
-    /// Constructs a new managed array with all elements zero-initialized.
+    ///
+    /// # Description
+    ///
+    /// Constructs a new managed array.
+    ///
+    /// # Parameters
+    ///
+    /// - `len`: Length of the array.
+    ///
+    /// # Returns
+    ///
+    /// On success, the new managed array is returned, with all bits set to zero.
+    /// On failure, an error is returned instead.
+    ///
     #[verifier::external_body]
     pub fn new(len: usize) -> (result: Result<RawArray<T>, Error>)
         requires
@@ -169,7 +248,29 @@ impl<T> RawArray<T> {
         Ok(RawArray { storage: RawArrayStorage::new_managed(len)? })
     }
 
-    /// Constructs a new unmanaged array from raw memory.
+    ///
+    /// # Description
+    ///
+    /// Constructs a new unmanaged array.
+    ///
+    /// # Parameters
+    ///
+    /// - `ptr`: Pointer to the backing storage.
+    /// - `len`: Length of the backing storage.
+    ///
+    /// # Returns
+    ///
+    /// On success, the new unmanaged array is returned, with all bits set to zero.
+    /// On failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if any of the following conditions are violated:
+    ///
+    /// - `ptr` must be valid for both reads and writes for `len * mem::size_of::<T>()` many bytes.
+    /// - `ptr` must be properly aligned.
+    /// - `ptr` must point to len consecutive properly initialized values of type `T``.
+    ///
     #[verifier::external_body]
     pub unsafe fn from_raw_parts(ptr: *mut T, len: usize) -> (result: Result<RawArray<T>, Error>)
         requires
