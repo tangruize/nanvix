@@ -856,22 +856,29 @@ are stripped). Then read the full diffs for context on why changes were made.
 
 == YOUR TASK ==
 
+Your PRIMARY goal is to FIX inconsistencies, not to justify them.
+Only document an equivalence as a LAST RESORT when you have genuinely tried
+multiple approaches and confirmed that Verus cannot support the original code.
+
 For each inconsistency:
 
 1. **MISMATCH functions**: Read both exec-only/<func>.diff and full/<func>.diff.
-   - If the verus version changed executable logic: RESTORE the original logic
-     and update specs/proofs to verify the original code.
-   - If the change is purely structural but semantically equivalent (e.g.,
-     for->while, variable renaming, compound assignment syntax): document
-     WHY it is equivalent and which Verus limitation necessitated it.
-   - If the change was necessary for verification (Verus limitation): document
-     the limitation and prove the equivalence informally.
+   - FIRST: Try to RESTORE the original logic exactly as in the source.
+     Try placing code outside `verus!` block if Verus rejects it inside.
+     Try alternative Verus idioms (e.g., method on different type, wrapper function).
+   - ONLY IF restoration truly fails after multiple attempts: document the
+     specific Verus error message, what you tried, and why it is impossible.
+     Acceptable Verus limitations: `for` loops, mutable indexing (`arr[i] |= x`),
+     compound assignment on struct fields (`self.x += 1`).
+   - Do NOT accept previous comments claiming something "cannot be done" without
+     verifying yourself. Previous AI may have been wrong.
 
 2. **MISSING_IN_VERUS functions**: Add the missing function to the verus exec
-   file with proper verification (requires/ensures).
+   file. Try placing it outside `verus!` if it involves trait impls or unsafe code
+   that Verus cannot verify directly.
 
-3. **EXTRA_IN_VERUS exec functions**: Remove unless justified (helper functions
-   extracted for verification are acceptable if documented).
+3. **EXTRA_IN_VERUS exec functions**: Remove unless the function is actually
+   called by verified code AND cannot be replaced by a source-equivalent approach.
 
 == CONSTRAINTS ==
 - Do NOT add assume, admit, or unjustified external_body.
@@ -919,9 +926,14 @@ Verified code directory: {output_dir}/
 Consistency report: {report_file}
 
 Review criteria:
-1. Were all MISMATCH functions properly restored or equivalence documented?
-2. Were MISSING functions added with proper verification?
-3. Are equivalence justifications sound?
+1. Were MISMATCH/MISSING functions actually FIXED, not just justified?
+   - Grade down heavily if the prover only documented equivalences without
+     attempting to restore original code.
+   - Check: did the prover try placing code outside `verus!` block?
+   - Check: did the prover verify previous claims of "impossible" independently?
+2. Were EXTRA functions removed if they have zero callers or can be replaced?
+3. Are remaining justifications genuinely necessary (not lazy)?
+   Only acceptable: `for` loops, mutable indexing, compound assignment on struct fields.
 4. Does the exec code now faithfully represent the original source?
 5. Does verification still pass?
 
