@@ -72,6 +72,7 @@ def _generate_diffs_for_dir(
 
     for fn in functions:
         name = fn["name"]
+        fname = name.replace("::", "__")  # Safe filename.
         status = fn["status"]
 
         if status == "MATCH":
@@ -88,12 +89,12 @@ def _generate_diffs_for_dir(
             verus_suffix = "_verus_stripped.rs" if strip_fn else "_verus.rs"
 
             # Write source version.
-            src_file = out / f"{name}_source.rs"
+            src_file = out / f"{fname}_source.rs"
             src_file.write_text(src_code)
             files_generated.append(src_file.name)
 
             # Write verus version.
-            verus_file = out / f"{name}{verus_suffix}"
+            verus_file = out / f"{fname}{verus_suffix}"
             verus_file.write_text(verus_display)
             files_generated.append(verus_file.name)
 
@@ -107,21 +108,21 @@ def _generate_diffs_for_dir(
             ))
             diff_text = "\n".join(diff)
             if diff_text:
-                diff_file = out / f"{name}.diff"
+                diff_file = out / f"{fname}.diff"
                 diff_file.write_text(diff_text + "\n")
                 files_generated.append(diff_file.name)
 
         elif status == "MISSING_IN_VERUS":
             src_code = extract_lines(source_path, fn.get("src_lines", ""))
             if src_code:
-                src_file = out / f"{name}_source.rs"
+                src_file = out / f"{fname}_source.rs"
                 src_file.write_text(src_code)
                 files_generated.append(f"{src_file.name} (MISSING in verus)")
 
         elif status == "EXTRA_IN_VERUS":
             verus_code = extract_lines(verus_path, fn.get("verus_lines", ""))
             if verus_code:
-                verus_file = out / f"{name}_verus.rs"
+                verus_file = out / f"{fname}_verus.rs"
                 verus_file.write_text(verus_code)
                 files_generated.append(f"{verus_file.name} (EXTRA)")
 

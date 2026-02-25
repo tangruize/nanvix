@@ -161,16 +161,51 @@ def _classify_verus_function(node, verus_ranges: List[Tuple[int, int]]) -> str:
     in_verus = any(s <= line <= e for s, e in verus_ranges)
     if not in_verus:
         return "UNVERIFIED"
+    # Check for external_body attribute (may be a preceding sibling).
     text = node_text(node)[:500]
     if "external_body" in text:
+        return "EXTERNAL_BODY"
+    prev = node.prev_sibling
+    if prev and "external_body" in node_text(prev):
         return "EXTERNAL_BODY"
     return "VERIFIED"
 
 
-def extract_exec_functions(root, content: str = "") -> List[Tuple[str, Any, str, str]]:
-    """Extract exec (non-spec, non-proof) functions with names, hashes, and verification status.
+def _find_parent_type(node) -> str:
+    """Find the parent impl type name for a function (e.g., 'Bitmap' from 'impl Bitmap')."""
+    p = node.parent
+    while p:
+        if p.type == "impl_item":
+            # Find the type being implemented.
+            type_node = p.child_by_field_name("type")
+            if type_node:
+                return node_text(type_node).split("<")[0].strip()
+            # Fallback: for trait impls like `impl Drop for X`, find the type after 'for'.
+            children = list(p.children)
+            for i, child in enumerate(children):
+                if node_text(child) == "for" and i + 1 < len(children):
+                    return node_text(children[i + 1]).split("<")[0].strip()
+        p = p.parent
+    return ""
 
-    Returns list of (name, node, hash, verification_status).
+
+def _qualified_fn_name(node) -> str:
+    """Get qualified function name like 'Bitmap::set' or 'set' (if no parent impl)."""
+    name_node = node.child_by_field_name("name")
+    if not name_node:
+        return ""
+    name = node_text(name_node)
+    parent_type = _find_parent_type(node)
+    if parent_type:
+        return f"{parent_type}::{name}"
+    return name
+
+
+def extract_exec_functions(root, content: str = "") -> List[Tuple[str, Any, str, str]]:
+    """Extract exec (non-spec, non-proof) functions with qualified names, hashes, and status.
+
+    Returns list of (qualified_name, node, hash, verification_status).
+    qualified_name is 'TypeName::fn_name' when inside an impl block, or just 'fn_name'.
     verification_status is one of: VERIFIED, EXTERNAL_BODY, UNVERIFIED.
     """
     verus_ranges = _find_verus_ranges(content) if content else []
@@ -182,14 +217,13 @@ def extract_exec_functions(root, content: str = "") -> List[Tuple[str, Any, str,
         modifiers = extract_function_modifiers(node)
         if "spec" in modifiers or "proof" in modifiers:
             continue
-        name_node = node.child_by_field_name("name")
-        if not name_node:
+        qname = _qualified_fn_name(node)
+        if not qname:
             continue
-        name = node_text(name_node)
         # Hash the function body, ignoring ghost constructs.
         fn_hash = get_tree_hash(node)
         vstatus = _classify_verus_function(node, verus_ranges) if verus_ranges else ""
-        results.append((name, node, fn_hash, vstatus))
+        results.append((qname, node, fn_hash, vstatus))
     return results
 
 
@@ -471,17 +505,18 @@ def format_markdown(report: Dict) -> str:
         lines.append("|----------|--------|-------------|-------------|")
         for f in problem_fns:
             name = f['name']
+            fname = name.replace("::", "__")  # Safe filename.
             status = f['status']
             # Add links to diff/source/verus files.
             links = []
             if status == "MISMATCH":
-                links.append(f"[{name}.diff]({name}.diff)")
-                links.append(f"[{name}_source.rs]({name}_source.rs)")
-                links.append(f"[{name}_verus.rs]({name}_verus.rs)")
+                links.append(f"[{fname}.diff]({fname}.diff)")
+                links.append(f"[{fname}_source.rs]({fname}_source.rs)")
+                links.append(f"[{fname}_verus.rs]({fname}_verus.rs)")
             elif status == "EXTRA_IN_VERUS":
-                links.append(f"[{name}_verus.rs]({name}_verus.rs)")
+                links.append(f"[{fname}_verus.rs]({fname}_verus.rs)")
             elif status == "MISSING_IN_VERUS":
-                links.append(f"[{name}_source.rs]({name}_source.rs)")
+                links.append(f"[{fname}_source.rs]({fname}_source.rs)")
             link_str = " ".join(links)
             name_cell = f"`{name}` {link_str}" if links else f"`{name}`"
             lines.append(f"| {name_cell} | {status} | {f['src_lines']} | {f['verus_lines']} |")
@@ -494,6 +529,7 @@ def format_markdown(report: Dict) -> str:
     lines.append("|----------|--------|------------|--------------|")
     for f in report["functions"]:
         name = f['name']
+        fname = name.replace("::", "__")  # Safe filename.
         status = f['status']
         vstatus = f.get('verification', '')
         match_str = "✅" if status == "MATCH" else "❌"
@@ -506,7 +542,7 @@ def format_markdown(report: Dict) -> str:
         else:
             verify_str = ""
         if status == "EXTRA_IN_VERUS":
-            name_cell = f"`{name}` [{name}_verus.rs]({name}_verus.rs)"
+            name_cell = f"`{name}` [{fname}_verus.rs]({fname}_verus.rs)"
         else:
             name_cell = f"`{name}`"
         lines.append(f"| {name_cell} | {status} | {match_str} | {verify_str} |")
