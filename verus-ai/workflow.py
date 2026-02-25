@@ -1253,12 +1253,14 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
     verus_exec_path = str(PROJECT_ROOT / module.output_dir() / f"{module.file_stem}.rs")
     source_abs = str(PROJECT_ROOT / source_path)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    consistency_report_path = str(HISTORY_DIR / "ast-consistency" / f"{module_name}_{timestamp}.md")
-    Path(consistency_report_path).parent.mkdir(parents=True, exist_ok=True)
+    diff_output_dir = str(HISTORY_DIR / "ast-consistency" / module_name)
+    consistency_report_path = str(Path(diff_output_dir) / "consistency_report.md")
+    Path(diff_output_dir).mkdir(parents=True, exist_ok=True)
 
     # Also generate a fix report path for the AI.
     fix_report_path = str(HISTORY_DIR / "ast-consistency" / f"{module_name}_{timestamp}_fix.md")
 
+    # Run AST consistency check and generate report.
     check_cmd = [
         str(TREE_SITTER_PYTHON), str(PROJECT_ROOT / "scripts" / "check_exec_consistency.py"),
         source_abs, verus_exec_path, "--output", consistency_report_path,
@@ -1266,6 +1268,15 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
     print(f"[ANALYSIS] Running tree-sitter AST consistency check...")
     result = subprocess.run(check_cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
     print(result.stderr.strip() if result.stderr else "")
+
+    # Generate per-function diffs (full/ and exec-only/ subdirectories).
+    extract_cmd = [
+        str(TREE_SITTER_PYTHON), str(PROJECT_ROOT / "scripts" / "extract_exec_diffs.py"),
+        source_abs, verus_exec_path, "-o", diff_output_dir,
+    ]
+    print(f"[ANALYSIS] Extracting per-function diffs...")
+    extract_result = subprocess.run(extract_cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+    print(extract_result.stdout.strip() if extract_result.stdout else "")
 
     # Read the consistency report.
     consistency_report = ""
@@ -1275,6 +1286,19 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
         print("[ANALYSIS] Could not generate consistency report.")
         return False
 
+    # Read exec-only diffs for mismatched functions to give the LLM detailed info.
+    exec_only_diffs = ""
+    exec_only_dir = Path(diff_output_dir) / "exec-only"
+    if exec_only_dir.exists():
+        diff_files = sorted(exec_only_dir.glob("*.diff"))
+        if diff_files:
+            parts = []
+            for df in diff_files:
+                parts.append(f"### {df.stem}")
+                parts.append(f"```diff\n{df.read_text().strip()}\n```")
+                parts.append("")
+            exec_only_diffs = "\n".join(parts)
+
     if "All exec functions consistent" in (result.stderr or ""):
         print("[ANALYSIS] All exec functions consistent. Skipping.")
         return True
@@ -1282,6 +1306,8 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
     prompt = EXEC_CONSISTENCY_PROMPT.format(
         **fmt,
         consistency_report=consistency_report,
+        exec_only_diffs=exec_only_diffs,
+        diff_output_dir=diff_output_dir,
         report_file=fix_report_path,
     )
 

@@ -830,6 +830,10 @@ Verified code directory: {output_dir}/
   - {file_stem}.spec.rs (spec)
   - {file_stem}.proof.rs (proof)
 
+Diff output directory: {diff_output_dir}/
+  - full/       : per-function diffs (source vs full Verus code with spec/proof)
+  - exec-only/  : per-function diffs (source vs Verus code with ghost/proof stripped)
+
 == TREE-SITTER AST DIFF REPORT ==
 
 The following inconsistencies were detected by comparing AST hashes of exec
@@ -838,15 +842,27 @@ annotations are stripped before comparison):
 
 {consistency_report}
 
+== EXEC-ONLY DIFFS (ghost/proof stripped) ==
+
+These diffs show only the executable code differences. All Verus annotations
+(requires/ensures, proof blocks, ghost variables, invariants, named returns)
+have been stripped. Use these to identify real exec logic changes vs purely
+verification-related additions:
+
+{exec_only_diffs}
+
 == YOUR TASK ==
 
 For each inconsistency:
 
 1. **MISMATCH functions**: Compare the source and verus versions side by side.
+   - Read both the full diff (full/<func>.diff) and exec-only diff
+     (exec-only/<func>.diff) to understand what changed.
    - If the verus version changed executable logic: RESTORE the original logic
      and update specs/proofs to verify the original code.
    - If the change is purely structural but semantically equivalent (e.g.,
-     variable renaming, reordering): document WHY it is equivalent.
+     for->while, variable renaming, compound assignment syntax): document
+     WHY it is equivalent and which Verus limitation necessitated it.
    - If the change was necessary for verification (Verus limitation): document
      the limitation and prove the equivalence informally.
 
