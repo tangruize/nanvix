@@ -1,0 +1,23 @@
+--- source:from_raw_array
++++ verus:from_raw_array
+@@ -1,14 +1,9 @@
+-    pub fn from_raw_array(array: RawArray<u8>) -> Result<Self, Error> {
+-        let number_of_bits: usize =
+-            array.len().checked_mul(u8::BITS as usize).ok_or_else(|| {
+-                Error::new(ErrorCode::InvalidArgument, "bitmap size overflow: array too large")
+-            })?;
+-
+-        // Note: RawArray guarantees zero-initialization of the backing storage.
+-
+-        Ok(Self {
+-            number_of_bits,
++    pub fn from_raw_array(array: RawArray<u8>) -> Self
++    {
++        let result = Self {
++            number_of_bits: array.len() * u8::BITS as usize,
+             bits: array,
+             usage: 0,
+-        })
++        };
++        result
+     }

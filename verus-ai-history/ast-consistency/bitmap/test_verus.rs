@@ -1,0 +1,17 @@
+    pub fn test(&self, index: usize) -> (result: Result<bool, Error>)
+        requires
+            self.inv(),
+        ensures
+            result is Ok ==> {
+                &&& (index as int) < self@.number_of_bits()
+                &&& result->Ok_0 == self.is_bit_set(index as int)
+            },
+            result is Err ==> index as int >= self@.number_of_bits(),
+            (index as int) < self@.number_of_bits() ==> result is Ok,
+    {
+        let (word, bit): (usize, usize) = self.index(index)?;
+        let byte_val: u8 = self.bits[word];
+        let result_val: bool = (byte_val & (1 << bit)) != 0;
+
+        Ok(result_val)
+    }
