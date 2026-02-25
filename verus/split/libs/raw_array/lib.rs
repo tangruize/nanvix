@@ -245,7 +245,10 @@ impl<T> RawArray<T> {
         ensures
             result == self@.len(),
     {
-        self.storage.storage_len()
+        match &self.storage {
+            RawArrayStorage::Managed { len, .. } => *len,
+            RawArrayStorage::Unmanaged { len, .. } => *len,
+        }
     }
 
     /// Gets a reference to the element at index.

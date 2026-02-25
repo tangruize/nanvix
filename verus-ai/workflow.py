@@ -1088,6 +1088,10 @@ def _find_module_config(module_name: str, source_path: str) -> ModuleConfig:
         except ValueError:
             pass
 
+    # Normalize hyphens to underscores (e.g., raw-array -> raw_array).
+    output_subdir = output_subdir.replace("-", "_")
+    file_stem = file_stem.replace("-", "_")
+
     return ModuleConfig(
         name=module_name,
         source_path=path,

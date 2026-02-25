@@ -15,8 +15,8 @@ mod test;
 // Imports
 //==================================================================================================
 
-use raw_array::RawArray;
-use sys::error::{
+use ::raw_array::RawArray;
+use ::sys::error::{
     Error,
     ErrorCode,
 };

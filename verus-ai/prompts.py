@@ -98,6 +98,11 @@ verus! {{{{
 3. Add requires/ensures contracts for all functions (public and private impl fn)
 4. NO `assume` or `external_body` for core module functions
    (OK for low-level dependencies like raw memory operations or HAL)
+5. NO `#[verifier::exec_allows_no_decreases_clause]`. All loops MUST have `decreases` clauses.
+6. Do NOT modify original doc comments from the source. Keep them verbatim.
+7. Do NOT add exec functions that don't exist in the original source unless strictly
+   necessary for verification. Document any additions.
+8. Proof blocks >5 lines should be lemmas in {file_stem}.proof.rs, not inline in exec code.
 
 == NOTE ON DEPENDENCIES ==
 Dependencies already verified: {dependencies}
@@ -314,6 +319,9 @@ Reference: {source_path}
 2. Remove redundant postconditions implied by others in the same function
 3. Condense verbose inline proofs into reusable lemmas in the proof file
 4. Remove debug artifacts (unnecessary asserts, TODO comments, dead code)
+5. Remove EXTRA exec functions that don't exist in the original source AND have
+   zero callers. These are dead code added by the AI that should be deleted.
+   Check each function: if it's not in the source and no one calls it, remove it.
 
 == CRITICAL: WHAT IS "REDUNDANT"? ==
 A lemma is redundant ONLY if another lemma proves the EXACT same thing:
@@ -867,6 +875,12 @@ For each inconsistency:
 
 == CONSTRAINTS ==
 - Do NOT add assume, admit, or unjustified external_body.
+- Do NOT add #[verifier::exec_allows_no_decreases_clause]. All loops must have decreases clauses.
+- Do NOT modify original doc comments. Keep them exactly as in the source file.
+  Only add Verus-specific comments (e.g., "Verus note:") as separate lines.
+- Do NOT add exec functions that don't exist in the original source unless strictly
+  necessary for verification (e.g., helper extracted from a loop body). Document why.
+- Proof blocks >5 lines should go in {file_stem}.proof.rs as lemmas, not inline.
 - Verification must pass after fixes.
 - For each change, write a brief justification comment.
 
