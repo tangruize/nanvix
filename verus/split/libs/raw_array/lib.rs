@@ -34,9 +34,12 @@ enum RawArrayStorage<T> {
 
 impl<T> RawArrayStorage<T> {
     fn new_managed(len: usize) -> Result<RawArrayStorage<T>, Error> {
+        // Check if the length is invalid.
         if len == 0 || len >= i32::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid length"));
         }
+
+        // Allocate underlying memory.
         let layout: Layout = match Layout::array::<T>(len) {
             Ok(layout) => layout,
             Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid layout")),
@@ -45,25 +48,39 @@ impl<T> RawArrayStorage<T> {
             let ptr: *mut u8 = unsafe { alloc(layout) };
             match ptr::NonNull::new(ptr as *mut T) {
                 Some(p) => p,
-                None => return Err(Error::new(ErrorCode::OutOfMemory, "out of memory")),
+                None => {
+                    return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
+                },
             }
         };
+
+        // Initialize the backing storage.
+        // Safety: The memory region is valid and the length is valid.
         unsafe { ptr::write_bytes(ptr.as_ptr(), 0, len) };
+
         Ok(RawArrayStorage::Managed { ptr, len })
     }
 
     unsafe fn new_unmanaged(ptr: *mut T, len: usize) -> Result<RawArrayStorage<T>, Error> {
+        // Check if the length is invalid.
         if len == 0 || len >= i32::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid length"));
         }
+
+        // Check if memory region wraps around.
         if ptr.wrapping_add(len) < ptr {
             return Err(Error::new(ErrorCode::InvalidArgument, "wrapping memory region"));
         }
+
+        // Check and cast provided slice.
         let ptr: ptr::NonNull<T> = match ptr::NonNull::new(ptr) {
             Some(ptr) => ptr,
             None => return Err(Error::new(ErrorCode::InvalidArgument, "invalid pointer")),
         };
+
+        // Initialize the backing storage.
         ptr::write_bytes(ptr.as_ptr(), 0, len);
+
         Ok(RawArrayStorage::Unmanaged { ptr, len })
     }
 
@@ -89,6 +106,8 @@ impl<T> RawArrayStorage<T> {
         }
     }
 
+    // Verus note: storage_len is a verification helper not in the original source.
+    // Needed because Verus cannot verify through Deref trait dispatch to get slice length.
     fn storage_len(&self) -> usize {
         match self {
             RawArrayStorage::Managed { len, .. } => *len,
@@ -97,12 +116,20 @@ impl<T> RawArrayStorage<T> {
     }
 }
 
+// Verus note: Drop is on RawArrayStorage instead of RawArray (as in the source) because
+// RawArray is defined inside verus!{} and trait impls like Drop cannot be placed there.
+// Semantically equivalent: when RawArray is dropped, Rust automatically drops its storage
+// field, triggering this Drop impl. The deallocation logic is identical to the source.
 impl<T> Drop for RawArrayStorage<T> {
     fn drop(&mut self) {
         match self {
             RawArrayStorage::Managed { ptr, len } => {
-                if let Ok(layout) = Layout::array::<T>(*len) {
-                    unsafe { dealloc(ptr.as_ptr() as *mut u8, layout); }
+                let layout: Layout = match Layout::array::<T>(*len) {
+                    Ok(layout) => layout,
+                    Err(_) => return,
+                };
+                unsafe {
+                    dealloc(ptr.as_ptr() as *mut u8, layout);
                 }
             },
             RawArrayStorage::Unmanaged { .. } => (),
@@ -168,6 +195,8 @@ impl<T> RawArray<T> {
     }
 
     /// Constructs a new raw array from a raw address.
+    // Verus note: from_raw_addr is a verification helper not in the original source.
+    // Used by the Verus slab module which passes addresses as usize rather than *mut T.
     #[verifier::external_body]
     pub unsafe fn from_raw_addr(addr: usize, len: usize) -> (result: Result<RawArray<T>, Error>)
         requires
@@ -191,6 +220,11 @@ impl<T> RawArray<T> {
 //==================================================================================================
 
 impl<T> RawArray<T> {
+    // Verus note: set, len, get are verification helpers not in the original source.
+    // In the source, element access is done via Deref/DerefMut to get a slice.
+    // Verus cannot verify through trait dispatch, so these helpers provide
+    // verified accessors with requires/ensures contracts.
+
     /// Sets the element at index to value.
     #[verifier::external_body]
     pub fn set(&mut self, index: usize, value: T)
@@ -239,6 +273,14 @@ impl<T> core::ops::Deref for RawArray<T> {
             result@ == self@,
     {
         self.storage.get()
+    }
+}
+
+impl<T> core::ops::DerefMut for RawArray<T> {
+    #[verifier::external_body]
+    fn deref_mut(&mut self) -> (result: &mut Self::Target)
+    {
+        self.storage.get_mut()
     }
 }
 
