@@ -5,21 +5,19 @@
 
 ## Summary
 
-- Functions matched: 8/9
+- Functions matched: 9/9
 - Functions mismatched: 0
-- Missing in Verus: 1
-- Extra in Verus: 4
-- **Consistent: NO**
+- Missing in Verus: 0
+- Extra in Verus: 3
+- **Consistent: YES**
 
 ## Inconsistent Functions
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `RawArray::drop` [RawArray__drop_source.rs](RawArray__drop_source.rs) | MISSING_IN_VERUS | 275-288 |  |
-| `RawArray::get` [RawArray__get_verus.rs](RawArray__get_verus.rs) | EXTRA_IN_VERUS |  | 227-234 |
-| `RawArray::len` [RawArray__len_verus.rs](RawArray__len_verus.rs) | EXTRA_IN_VERUS |  | 215-223 |
-| `RawArray::set` [RawArray__set_verus.rs](RawArray__set_verus.rs) | EXTRA_IN_VERUS |  | 201-211 |
-| `RawArrayStorage::drop` [RawArrayStorage__drop_verus.rs](RawArrayStorage__drop_verus.rs) | EXTRA_IN_VERUS |  | 115-128 |
+| `RawArray::get` [RawArray__get_verus.rs](RawArray__get_verus.rs) | EXTRA_IN_VERUS |  | 308-315 |
+| `RawArray::len` [RawArray__len_verus.rs](RawArray__len_verus.rs) | EXTRA_IN_VERUS |  | 296-304 |
+| `RawArray::set` [RawArray__set_verus.rs](RawArray__set_verus.rs) | EXTRA_IN_VERUS |  | 282-292 |
 
 ## All Functions
 
@@ -27,7 +25,7 @@
 |----------|--------|------------|--------------|
 | `RawArray::deref` | MATCH | ✅ | 🔒 external_body |
 | `RawArray::deref_mut` | MATCH | ✅ | ⚠️ UNVERIFIED |
-| `RawArray::drop` | MISSING_IN_VERUS | ❌ |  |
+| `RawArray::drop` | MATCH | ✅ | ⚠️ UNVERIFIED |
 | `RawArray::from_raw_parts` | MATCH | ✅ | 🔒 external_body |
 | `RawArray::new` | MATCH | ✅ | 🔒 external_body |
 | `RawArrayStorage::get` | MATCH | ✅ | ⚠️ UNVERIFIED |
@@ -37,30 +35,29 @@
 | `RawArray::get` [RawArray__get_verus.rs](RawArray__get_verus.rs) | EXTRA_IN_VERUS | ❌ | 🔒 external_body |
 | `RawArray::len` [RawArray__len_verus.rs](RawArray__len_verus.rs) | EXTRA_IN_VERUS | ❌ | 🔒 external_body |
 | `RawArray::set` [RawArray__set_verus.rs](RawArray__set_verus.rs) | EXTRA_IN_VERUS | ❌ | 🔒 external_body |
-| `RawArrayStorage::drop` [RawArrayStorage__drop_verus.rs](RawArrayStorage__drop_verus.rs) | EXTRA_IN_VERUS | ❌ | ⚠️ UNVERIFIED |
 
 ## Verification Coverage
 
 **⚠️ 6 function(s) are UNVERIFIED** (outside `verus!` block):
 
-- `RawArray::deref_mut` (lines 258-260)
-- `RawArrayStorage::get` (lines 98-107)
-- `RawArrayStorage::get_mut` (lines 87-96)
-- `RawArrayStorage::new_managed` (lines 36-62)
-- `RawArrayStorage::new_unmanaged` (lines 64-85)
-- `RawArrayStorage::drop` (lines 115-128)
+- `RawArray::deref_mut` (lines 339-341)
+- `RawArray::drop` (lines 345-358)
+- `RawArrayStorage::get` (lines 160-169)
+- `RawArrayStorage::get_mut` (lines 140-149)
+- `RawArrayStorage::new_managed` (lines 57-83)
+- `RawArrayStorage::new_unmanaged` (lines 108-129)
 
 These functions are not checked by Verus at all. Justify why each
 cannot be verified, or move them inside `verus!` with proper contracts.
 
 **🔒 6 function(s) use `external_body`** (body not verified):
 
-- `RawArray::deref` (lines 245-250)
-- `RawArray::from_raw_parts` (lines 173-186)
-- `RawArray::new` (lines 156-169)
-- `RawArray::get` (lines 227-234)
-- `RawArray::len` (lines 215-223)
-- `RawArray::set` (lines 201-211)
+- `RawArray::deref` (lines 326-331)
+- `RawArray::from_raw_parts` (lines 254-267)
+- `RawArray::new` (lines 215-228)
+- `RawArray::get` (lines 308-315)
+- `RawArray::len` (lines 296-304)
+- `RawArray::set` (lines 282-292)
 
 These functions have requires/ensures contracts but the body is trusted.
 Justify why `external_body` is necessary for each.
@@ -69,5 +66,4 @@ Justify why `external_body` is necessary for each.
 
 | Struct | Status | Source Lines | Verus Lines |
 |--------|--------|-------------|-------------|
-| `ExRawArrayStorage` | EXTRA_IN_VERUS |  | 141-141 |
-| `RawArray` | MISMATCH | 204-207 | 145-147 |
+| `ExRawArrayStorage` | EXTRA_IN_VERUS |  | 182-182 |

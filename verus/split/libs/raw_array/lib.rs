@@ -272,10 +272,9 @@ impl<T> RawArray<T> {
 //==================================================================================================
 
 impl<T> RawArray<T> {
-    // Verus note: set, len, get are verification helpers not in the original source.
-    // In the source, element access is done via Deref/DerefMut to get a slice.
-    // Verus cannot verify through trait dispatch, so these helpers provide
-    // verified accessors with requires/ensures contracts.
+    // Verus note: set is a verification helper not in the original source.
+    // Verus does not support mutable indexing (arr[i] = val), so this method
+    // provides a verified mutator with requires/ensures contracts.
 
     /// Sets the element at index to value.
     #[verifier::external_body]
@@ -289,29 +288,6 @@ impl<T> RawArray<T> {
                 ==> self@[i] == old(self)@[i],
     {
         self.storage.get_mut()[index] = value;
-    }
-
-    /// Returns the length of the array.
-    #[verifier::external_body]
-    pub fn len(&self) -> (result: usize)
-        ensures
-            result == self@.len(),
-    {
-        match &self.storage {
-            RawArrayStorage::Managed { len, .. } => *len,
-            RawArrayStorage::Unmanaged { len, .. } => *len,
-        }
-    }
-
-    /// Gets a reference to the element at index.
-    #[verifier::external_body]
-    pub fn get(&self, index: usize) -> (result: &T)
-        requires
-            self.in_bounds(index as int),
-        ensures
-            *result == self@[index as int],
-    {
-        &self.storage.get()[index]
     }
 }
 
