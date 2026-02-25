@@ -51,15 +51,50 @@ def parse_file(path: str) -> Any:
     return _parser.parse(bytes(content, "utf-8")), content
 
 
-def get_tree_hash(node) -> str:
+def _is_return_name_binding(node, parent) -> bool:
+    """Check if a node is part of a Verus named return binding (e.g., `(result: T)`).
+
+    Verus uses `-> (name: Type)` for named returns; standard Rust uses `-> Type`.
+    This is always different but semantically equivalent, so we skip it in hashing.
+    """
+    if parent is None or parent.type != "function_item":
+        return False
+    # Find the '->' token in siblings; named return parts come after it.
+    children = parent.children
+    after_arrow = False
+    block_reached = False
+    for child in children:
+        if child.type == "block":
+            block_reached = True
+        if after_arrow and not block_reached:
+            # These are return-type related tokens.
+            # In named return: ( identifier : Type )
+            # The identifier and surrounding parens/colon are extra.
+            if child.id == node.id:
+                text = node_text(node)
+                # Skip the parentheses and the name:colon pair.
+                if node.type == "identifier" and text != parent.child_by_field_name("name").text.decode("utf-8"):
+                    return True
+                if text == "(" or text == ")" or text == ":":
+                    return True
+        if node_text(child) == "->":
+            after_arrow = True
+    return False
+
+
+def get_tree_hash(node, parent=None) -> str:
     """
     Compute a structural hash of an AST node, ignoring ghost/proof annotations.
 
     Based on Tianyu's get_tree_hash from verus_parser_example.py.
     """
     try:
+        # Skip Verus named return binding tokens (e.g., `(result:` and `)` in `-> (result: T)`).
+        if _is_return_name_binding(node, parent):
+            return ""
+
         children_hash_list = [
-            get_tree_hash(child)
+            get_tree_hash(child, parent=node)
             for child in node.children
             if len(node_text(child)) > 1
         ]
@@ -77,6 +112,12 @@ def get_tree_hash(node) -> str:
         if node.type == "use_declaration":
             node_hash = ""
         if node.type in ("attribute_item", "inner_attribute_item"):
+            node_hash = ""
+        # Ignore Verus requires/ensures/invariant specifications.
+        if node.type == "function_specifications":
+            node_hash = ""
+        # Ignore proof blocks (proof { ... }).
+        if node.type == "proof_block":
             node_hash = ""
         if node.type == "let_declaration":
             if any(node_text(child) == "ghost" for child in node.children):
@@ -140,15 +181,105 @@ def strip_verus_annotations(content: str) -> str:
     Strip Verus-specific annotations from exec code for text-level diff.
 
     Removes requires/ensures/invariant blocks, proof blocks, ghost vars, etc.
-    This is a coarse text-level fallback; tree-sitter hash is preferred.
     """
-    # Remove proof blocks: proof { ... }
-    content = re.sub(r"\bproof\s*\{[^}]*\}", "", content, flags=re.DOTALL)
+    # Remove proof blocks: proof { ... } (handles nested braces).
+    content = _strip_balanced_block(content, r"\bproof\s*")
     # Remove ghost let bindings.
     content = re.sub(r"\blet\s+ghost\b[^;]*;", "", content)
-    # Remove assert/assume/admit calls.
+    # Remove assert/assume/admit statements with by-blocks.
+    content = _strip_balanced_block(content, r"\bassert\s+")
     content = re.sub(r"\b(assert|assume|admit)\s*\([^)]*\)\s*;", "", content)
+    # Remove requires/ensures/invariant spec blocks (line-based).
+    content = _strip_spec_lines(content)
+    # Remove Verus named return: -> (name: Type) => -> Type.
+    content = re.sub(r"->\s*\(\s*\w+\s*:\s*", "-> ", content)
+    content = re.sub(r"(->.*\S)\s*\)\s*$", r"\1", content, flags=re.MULTILINE)
+    # Remove #[trigger], #![trigger ...], #![auto], #[verifier::...].
+    content = re.sub(r"#\[trigger\]", "", content)
+    content = re.sub(r"#!\[trigger[^\]]*\]", "", content)
+    content = re.sub(r"#!\[auto\]", "", content)
+    content = re.sub(r"#\[verifier::[^\]]*\]\s*", "", content)
+    content = re.sub(r"#\[cfg\(not\(verus_keep_ghost\)\)\]\s*", "", content)
+    # Collapse multiple blank lines.
+    content = re.sub(r"\n{3,}", "\n\n", content)
     return content
+
+
+def _strip_spec_lines(content: str) -> str:
+    """Remove requires/ensures/recommends/invariant/decreases blocks line-by-line.
+
+    Spec blocks start with a keyword and end at a line containing only '{' or '}'
+    (the function/loop body delimiter), or at the next spec keyword.
+    """
+    lines = content.split("\n")
+    result = []
+    in_spec = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Detect start of spec block.
+        if not in_spec and re.match(
+            r"^\s*(requires|ensures|recommends|invariant_except_break|invariant|decreases)\b",
+            stripped,
+        ):
+            in_spec = True
+            continue
+
+        if in_spec:
+            # Spec block ends at a line that is just '{' (body start).
+            if stripped == "{":
+                in_spec = False
+                result.append(line)
+                continue
+            # Another spec keyword continues stripping.
+            if re.match(
+                r"^\s*(requires|ensures|recommends|invariant_except_break|invariant|decreases)\b",
+                stripped,
+            ):
+                continue
+            # Skip spec content lines.
+            continue
+
+        result.append(line)
+
+    return "\n".join(result)
+
+
+def _strip_balanced_block(content: str, prefix_pattern: str) -> str:
+    """Strip blocks matching prefix_pattern { ... } with balanced brace matching."""
+    result = []
+    i = 0
+    pat = re.compile(prefix_pattern + r"\{")
+    while i < len(content):
+        m = pat.search(content, i)
+        if not m:
+            result.append(content[i:])
+            break
+        result.append(content[i:m.start()])
+        # Find matching closing brace.
+        depth = 1
+        j = m.end()
+        while j < len(content) and depth > 0:
+            if content[j] == '{':
+                depth += 1
+            elif content[j] == '}':
+                depth -= 1
+            j += 1
+        # Skip trailing semicolons/newlines.
+        while j < len(content) and content[j] in ' \t\n;':
+            j += 1
+        i = j
+    return "".join(result)
+
+
+def strip_ghost_from_function(fn_text: str) -> str:
+    """
+    Strip all Verus ghost/proof/spec annotations from a function body.
+
+    Returns the exec-only version of the function for comparison with source.
+    """
+    return strip_verus_annotations(fn_text)
 
 
 def compare_modules(
@@ -304,7 +435,21 @@ def format_markdown(report: Dict) -> str:
         lines.append("| Function | Status | Source Lines | Verus Lines |")
         lines.append("|----------|--------|-------------|-------------|")
         for f in problem_fns:
-            lines.append(f"| `{f['name']}` | {f['status']} | {f['src_lines']} | {f['verus_lines']} |")
+            name = f['name']
+            status = f['status']
+            # Add links to diff/source/verus files.
+            links = []
+            if status == "MISMATCH":
+                links.append(f"[{name}.diff]({name}.diff)")
+                links.append(f"[{name}_source.rs]({name}_source.rs)")
+                links.append(f"[{name}_verus.rs]({name}_verus.rs)")
+            elif status == "EXTRA_IN_VERUS":
+                links.append(f"[{name}_verus.rs]({name}_verus.rs)")
+            elif status == "MISSING_IN_VERUS":
+                links.append(f"[{name}_source.rs]({name}_source.rs)")
+            link_str = " ".join(links)
+            name_cell = f"`{name}` {link_str}" if links else f"`{name}`"
+            lines.append(f"| {name_cell} | {status} | {f['src_lines']} | {f['verus_lines']} |")
         lines.append("")
 
     # All functions.
@@ -313,8 +458,14 @@ def format_markdown(report: Dict) -> str:
     lines.append("| Function | Status | Hash Match |")
     lines.append("|----------|--------|------------|")
     for f in report["functions"]:
-        match_str = "✅" if f["status"] == "MATCH" else "❌"
-        lines.append(f"| `{f['name']}` | {f['status']} | {match_str} |")
+        name = f['name']
+        status = f['status']
+        match_str = "✅" if status == "MATCH" else "❌"
+        if status == "EXTRA_IN_VERUS":
+            name_cell = f"`{name}` [{name}_verus.rs]({name}_verus.rs)"
+        else:
+            name_cell = f"`{name}`"
+        lines.append(f"| {name_cell} | {status} | {match_str} |")
     lines.append("")
 
     # Struct comparison.
