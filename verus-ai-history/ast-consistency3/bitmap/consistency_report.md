@@ -15,27 +15,36 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `alloc_range` [alloc_range.diff](alloc_range.diff) [alloc_range_source.rs](alloc_range_source.rs) [alloc_range_verus.rs](alloc_range_verus.rs) | MISMATCH | 161-221 | 197-565 |
-| `clear` [clear.diff](clear.diff) [clear_source.rs](clear_source.rs) [clear_verus.rs](clear_verus.rs) | MISMATCH | 261-271 | 650-718 |
-| `from_raw_array` [from_raw_array.diff](from_raw_array.diff) [from_raw_array_source.rs](from_raw_array_source.rs) [from_raw_array_verus.rs](from_raw_array_verus.rs) | MISMATCH | 105-118 | 115-151 |
-| `index` [index.diff](index.diff) [index_source.rs](index_source.rs) [index_verus.rs](index_verus.rs) | MISMATCH | 306-314 | 759-779 |
-| `index_unchecked` [index_unchecked.diff](index_unchecked.diff) [index_unchecked_source.rs](index_unchecked_source.rs) [index_unchecked_verus.rs](index_unchecked_verus.rs) | MISMATCH | 329-333 | 744-756 |
-| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | MISMATCH | 63-85 | 57-103 |
-| `set` [set.diff](set.diff) [set_source.rs](set_source.rs) [set_verus.rs](set_verus.rs) | MISMATCH | 236-246 | 568-647 |
-| `test` [test.diff](test.diff) [test_source.rs](test_source.rs) [test_verus.rs](test_verus.rs) | MISMATCH | 287-290 | 721-737 |
+| `Bitmap::alloc_range` [Bitmap__alloc_range.diff](Bitmap__alloc_range.diff) [Bitmap__alloc_range_source.rs](Bitmap__alloc_range_source.rs) [Bitmap__alloc_range_verus.rs](Bitmap__alloc_range_verus.rs) | MISMATCH | 161-221 | 245-471 |
+| `Bitmap::clear` [Bitmap__clear.diff](Bitmap__clear.diff) [Bitmap__clear_source.rs](Bitmap__clear_source.rs) [Bitmap__clear_verus.rs](Bitmap__clear_verus.rs) | MISMATCH | 261-271 | 551-601 |
+| `Bitmap::from_raw_array` [Bitmap__from_raw_array.diff](Bitmap__from_raw_array.diff) [Bitmap__from_raw_array_source.rs](Bitmap__from_raw_array_source.rs) [Bitmap__from_raw_array_verus.rs](Bitmap__from_raw_array_verus.rs) | MISMATCH | 105-118 | 133-169 |
+| `Bitmap::index` [Bitmap__index.diff](Bitmap__index.diff) [Bitmap__index_source.rs](Bitmap__index_source.rs) [Bitmap__index_verus.rs](Bitmap__index_verus.rs) | MISMATCH | 306-314 | 680-700 |
+| `Bitmap::index_unchecked` [Bitmap__index_unchecked.diff](Bitmap__index_unchecked.diff) [Bitmap__index_unchecked_source.rs](Bitmap__index_unchecked_source.rs) [Bitmap__index_unchecked_verus.rs](Bitmap__index_unchecked_verus.rs) | MISMATCH | 329-333 | 652-664 |
+| `Bitmap::new` [Bitmap__new.diff](Bitmap__new.diff) [Bitmap__new_source.rs](Bitmap__new_source.rs) [Bitmap__new_verus.rs](Bitmap__new_verus.rs) | MISMATCH | 63-85 | 73-113 |
+| `Bitmap::set` [Bitmap__set.diff](Bitmap__set.diff) [Bitmap__set_source.rs](Bitmap__set_source.rs) [Bitmap__set_verus.rs](Bitmap__set_verus.rs) | MISMATCH | 236-246 | 486-536 |
+| `Bitmap::test` [Bitmap__test.diff](Bitmap__test.diff) [Bitmap__test_source.rs](Bitmap__test_source.rs) [Bitmap__test_verus.rs](Bitmap__test_verus.rs) | MISMATCH | 287-290 | 617-633 |
 
 ## All Functions
 
-| Function | Status | Hash Match |
-|----------|--------|------------|
-| `alloc` | MATCH | ✅ |
-| `alloc_range` | MISMATCH | ❌ |
-| `clear` | MISMATCH | ❌ |
-| `deref` | MATCH | ✅ |
-| `from_raw_array` | MISMATCH | ❌ |
-| `index` | MISMATCH | ❌ |
-| `index_unchecked` | MISMATCH | ❌ |
-| `new` | MISMATCH | ❌ |
-| `number_of_bits` | MATCH | ✅ |
-| `set` | MISMATCH | ❌ |
-| `test` | MISMATCH | ❌ |
+| Function | Status | Hash Match | Verification |
+|----------|--------|------------|--------------|
+| `Bitmap::alloc` | MATCH | ✅ | ✅ verified |
+| `Bitmap::alloc_range` | MISMATCH | ❌ | ✅ verified |
+| `Bitmap::clear` | MISMATCH | ❌ | ✅ verified |
+| `Bitmap::deref` | MATCH | ✅ | ⚠️ UNVERIFIED |
+| `Bitmap::from_raw_array` | MISMATCH | ❌ | ✅ verified |
+| `Bitmap::index` | MISMATCH | ❌ | ✅ verified |
+| `Bitmap::index_unchecked` | MISMATCH | ❌ | ✅ verified |
+| `Bitmap::new` | MISMATCH | ❌ | ✅ verified |
+| `Bitmap::number_of_bits` | MATCH | ✅ | ✅ verified |
+| `Bitmap::set` | MISMATCH | ❌ | ✅ verified |
+| `Bitmap::test` | MISMATCH | ❌ | ✅ verified |
+
+## Verification Coverage
+
+**⚠️ 1 function(s) are UNVERIFIED** (outside `verus!` block):
+
+- `Bitmap::deref` (lines 714-716)
+
+These functions are not checked by Verus at all. Justify why each
+cannot be verified, or move them inside `verus!` with proper contracts.

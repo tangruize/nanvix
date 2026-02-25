@@ -1,0 +1,16 @@
+--- source:Bitmap::index
++++ verus:Bitmap::index
+@@ -1,9 +1,9 @@
+-    fn index(&self, index: usize) -> Result<(usize, usize), Error> {
++    fn index(&self, bit_index: usize) -> Result<(usize, usize), Error>
++    {
+         // Check if the index is out of bounds.
+-        if index >= self.bits.len() * u8::BITS as usize {
++        if bit_index >= self.bits.len() * u8::BITS as usize {
+             let reason: &str = "index out of bounds";
+             return Err(Error::new(ErrorCode::InvalidArgument, reason));
+         }
+-
+-        Ok(self.index_unchecked(index))
++        Ok(self.index_unchecked(bit_index))
+     }

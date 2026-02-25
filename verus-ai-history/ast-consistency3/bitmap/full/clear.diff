@@ -1,6 +1,6 @@
 --- source:clear
 +++ verus:clear
-@@ -1,11 +1,69 @@
+@@ -1,11 +1,51 @@
 -    pub fn clear(&mut self, index: usize) -> Result<(), Error> {
 +    pub fn clear(&mut self, index: usize) -> (result: Result<(), Error>)
 +        requires
@@ -44,30 +44,12 @@
 +        self.bits.set(word, self.bits[word] & !(1 << bit));
 +
 +        proof {
-+            old_self.lemma_byte_and_not_reflects_in_view(self, word as int, bit as int);
-+            // Now: self@.set_bits =~= old_self@.set_bits.remove(index as int)
-+            
-+            // Prove finiteness using the new helper.
-+            Self::lemma_remove_finite(old_self@.set_bits, index as int);
-+            Self::lemma_ext_equal_finite(self@.set_bits, old_self@.set_bits.remove(index as int));
-+            
-+            // Prove cardinality decreases by 1.
-+            Self::lemma_remove_len(old_self@.set_bits, index as int);
-+            assert(self@.set_bits.len() == old_self@.set_bits.len() - 1);
-+            
-+            // Prove wf() holds: all elements in set_bits are in valid range.
-+            assert(self@.wf()) by {
-+                assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
-+                    // i was in old_self@.set_bits (since we only removed), so by old wf(), it's in range
-+                    assert(old_self@.set_bits.contains(i));
-+                }
-+            }
++            old_self.lemma_clear_bit_preserves_inv(self, word as int, bit as int, index as int);
 +        }
 +
 +        self.usage = self.usage - 1;
 +
 +        proof {
-+            // Prove inv() holds.
 +            assert(self.usage as int == self@.usage());
 +        }
 +

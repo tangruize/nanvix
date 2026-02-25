@@ -18,7 +18,7 @@
          // Check if the length is invalid.
          if number_of_bits == 0 || number_of_bits >= u32::MAX as usize {
              let reason: &str = "invalid length";
-@@ -15,9 +27,21 @@
+@@ -15,9 +27,15 @@
          // Note: RawArray::new() guarantees zero-initialization of the backing storage.
          let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
  
@@ -31,13 +31,7 @@
 +        };
 +
 +        proof {
-+            // RawArray::new ensures is_zero(array@[i]) for all i.
-+            // Convert is_zero to == 0 via axiom.
-+            assert forall|i: int| 0 <= i < result.bits@.len() implies (result.bits@[i] == 0) by {
-+                axiom_u8_zero_is_0(result.bits@[i]);
-+            };
-+            result.lemma_zero_bytes_means_empty_set();
-+            Self::lemma_empty_set_finite();
++            Self::lemma_new_bitmap_inv(&result);
 +        }
 +
 +        Ok(result)

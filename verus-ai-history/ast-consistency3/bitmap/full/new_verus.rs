@@ -34,13 +34,7 @@
         };
 
         proof {
-            // RawArray::new ensures is_zero(array@[i]) for all i.
-            // Convert is_zero to == 0 via axiom.
-            assert forall|i: int| 0 <= i < result.bits@.len() implies (result.bits@[i] == 0) by {
-                axiom_u8_zero_is_0(result.bits@[i]);
-            };
-            result.lemma_zero_bytes_means_empty_set();
-            Self::lemma_empty_set_finite();
+            Self::lemma_new_bitmap_inv(&result);
         }
 
         Ok(result)
