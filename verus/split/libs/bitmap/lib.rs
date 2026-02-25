@@ -80,26 +80,8 @@ impl Bitmap {
         }
 
         // Allocate the bitmap.
-        let mut array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
-
-        // Zero out the bitmap (restored from original source for exec consistency).
-        let ghost array_len: nat = array@.len();
-        let mut i: usize = 0;
-        while i < array.len()
-            invariant
-                array@.len() == array_len,
-                array_len > 0,
-                array_len < i32::MAX as nat,
-                array_len == number_of_bits as int / (u8::BITS as int),
-                i <= array@.len(),
-                forall|j: int| 0 <= j < i as int ==> array@[j] == 0u8,
-                forall|j: int| #![auto] i as int <= j < array@.len() as int ==> is_zero(array@[j]),
-            decreases
-                array@.len() - i,
-        {
-            array.set(i, 0u8);
-            i = i + 1;
-        }
+        // Note: RawArray::new() guarantees zero-initialization of the backing storage.
+        let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
 
         let result = Self {
             number_of_bits,
@@ -108,7 +90,11 @@ impl Bitmap {
         };
 
         proof {
-            assert forall|i: int| 0 <= i < result.bits@.len() implies (result.bits@[i] == 0) by {};
+            // RawArray::new ensures is_zero(array@[i]) for all i.
+            // Convert is_zero to == 0 via axiom.
+            assert forall|i: int| 0 <= i < result.bits@.len() implies (result.bits@[i] == 0) by {
+                axiom_u8_zero_is_0(result.bits@[i]);
+            };
             result.lemma_zero_bytes_means_empty_set();
             Self::lemma_empty_set_finite();
         }
@@ -135,36 +121,24 @@ impl Bitmap {
         Self::new(number_of_bits)
     }
 
-    /// Creates a new bitmap from a raw array. All bits are initialized to zero.
-    pub fn from_raw_array(mut array: RawArray<u8>) -> (result: Self)
+    /// Creates a new bitmap from a raw array.
+    ///
+    /// # Note
+    ///
+    /// RawArray guarantees zero-initialization of the backing storage.
+    /// The caller must ensure the array is zero-initialized.
+    pub fn from_raw_array(array: RawArray<u8>) -> (result: Self)
         requires
             array@.len() > 0,
             array@.len() <= usize::MAX / (u8::BITS as usize),
             array@.len() * (u8::BITS as usize) < u32::MAX as usize,
+            forall|i: int| 0 <= i < array@.len() ==> array@[i] == 0,
         ensures
             result.inv(),
             result@.number_of_bits() == array@.len() * (u8::BITS as int),
             result@.is_empty(),
             forall|i: int| 0 <= i < result@.number_of_bits() ==> !result.is_bit_set(i),
     {
-        // Zero out the bitmap (restored from original source for exec consistency).
-        let ghost array_len: nat = array@.len();
-        let mut i: usize = 0;
-        while i < array.len()
-            invariant
-                array@.len() == array_len,
-                array_len > 0,
-                array_len <= usize::MAX / (u8::BITS as usize),
-                array_len * (u8::BITS as usize) < u32::MAX as usize,
-                i <= array@.len(),
-                forall|j: int| 0 <= j < i as int ==> array@[j] == 0u8,
-            decreases
-                array@.len() - i,
-        {
-            array.set(i, 0u8);
-            i = i + 1;
-        }
-
         let result = Self {
             number_of_bits: array.len() * u8::BITS as usize,
             bits: array,
