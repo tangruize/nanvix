@@ -169,27 +169,6 @@ impl<T> RawArrayStorage<T> {
     }
 }
 
-// Verus note: Drop is on RawArrayStorage instead of RawArray (as in the source) because
-// RawArray is defined inside verus!{} and trait impls like Drop cannot be placed there.
-// Semantically equivalent: when RawArray is dropped, Rust automatically drops its storage
-// field, triggering this Drop impl. The deallocation logic is identical to the source.
-impl<T> Drop for RawArrayStorage<T> {
-    fn drop(&mut self) {
-        match self {
-            RawArrayStorage::Managed { ptr, len } => {
-                let layout: Layout = match Layout::array::<T>(*len) {
-                    Ok(layout) => layout,
-                    Err(_) => return,
-                };
-                unsafe {
-                    dealloc(ptr.as_ptr() as *mut u8, layout);
-                }
-            },
-            RawArrayStorage::Unmanaged { .. } => (),
-        }
-    }
-}
-
 //==================================================================================================
 // Raw Array
 //==================================================================================================
@@ -359,5 +338,22 @@ impl<T> core::ops::Deref for RawArray<T> {
 impl<T> core::ops::DerefMut for RawArray<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.get_mut()
+    }
+}
+
+impl<T> Drop for RawArray<T> {
+    fn drop(&mut self) {
+        match &self.storage {
+            RawArrayStorage::Managed { ptr, len } => {
+                let layout: Layout = match Layout::array::<T>(*len) {
+                    Ok(layout) => layout,
+                    Err(_) => return,
+                };
+                unsafe {
+                    dealloc(ptr.as_ptr() as *mut u8, layout);
+                }
+            },
+            RawArrayStorage::Unmanaged { .. } => (),
+        }
     }
 }
