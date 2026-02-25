@@ -198,9 +198,6 @@ def main() -> int:
             exec_only_dir, functions, source_path, verus_path, strip_fn=strip_fn,
         )
 
-    # Also generate top-level files for backward compatibility.
-    _generate_diffs_for_dir(out, functions, source_path, verus_path, strip_fn=None)
-
     # Write summary.
     summary_lines = [
         f"# Exec Diff: {Path(source_path).stem}",
