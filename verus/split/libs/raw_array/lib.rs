@@ -105,15 +105,6 @@ impl<T> RawArrayStorage<T> {
             },
         }
     }
-
-    // Verus note: storage_len is a verification helper not in the original source.
-    // Needed because Verus cannot verify through Deref trait dispatch to get slice length.
-    fn storage_len(&self) -> usize {
-        match self {
-            RawArrayStorage::Managed { len, .. } => *len,
-            RawArrayStorage::Unmanaged { len, .. } => *len,
-        }
-    }
 }
 
 // Verus note: Drop is on RawArrayStorage instead of RawArray (as in the source) because
@@ -192,26 +183,6 @@ impl<T> RawArray<T> {
             result is Err ==> result->Err_0.code == ErrorCode::InvalidArgument,
     {
         Ok(RawArray { storage: RawArrayStorage::new_unmanaged(ptr, len)? })
-    }
-
-    /// Constructs a new raw array from a raw address.
-    // Verus note: from_raw_addr is a verification helper not in the original source.
-    // Used by the Verus slab module which passes addresses as usize rather than *mut T.
-    #[verifier::external_body]
-    pub unsafe fn from_raw_addr(addr: usize, len: usize) -> (result: Result<RawArray<T>, Error>)
-        requires
-            len > 0,
-            len < i32::MAX as usize,
-            addr > 0,
-        ensures
-            result is Ok ==> {
-                &&& result->Ok_0.inv()
-                &&& result->Ok_0@.len() == len
-                &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
-            },
-            result is Err ==> result->Err_0.code == ErrorCode::InvalidArgument,
-    {
-        Self::from_raw_parts(addr as *mut T, len)
     }
 }
 

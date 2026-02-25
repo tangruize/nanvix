@@ -13,6 +13,7 @@ use crate::libs::{
     },
     raw_array::{
         axiom_u8_zero_is_0,
+        is_zero,
         RawArray,
     },
 };
@@ -34,6 +35,29 @@ include!("lib.spec.rs");
 include!("lib.proof.rs");
 
 verus! {
+
+/// Constructs a `RawArray<u8>` from a raw address.
+///
+/// # Note
+///
+/// Verus does not support `usize` to `*mut T` casts. This `external_body` wrapper
+/// performs the cast and delegates to `RawArray::from_raw_parts`.
+#[verifier::external_body]
+unsafe fn raw_array_from_addr(addr: usize, len: usize) -> (result: Result<RawArray<u8>, Error>)
+    requires
+        len > 0,
+        len < i32::MAX as usize,
+        addr > 0,
+    ensures
+        result is Ok ==> {
+            &&& result->Ok_0.inv()
+            &&& result->Ok_0@.len() == len
+            &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
+        },
+        result is Err ==> result->Err_0.code == ErrorCode::InvalidArgument,
+{
+    RawArray::from_raw_parts(addr as *mut u8, len)
+}
 
 
 ///
@@ -146,7 +170,7 @@ impl Slab {
     /// - Wrapping check replaced by precondition on address space bounds.
     /// - `is_multiple_of()` → `% ... != 0` (Verus compatibility).
     /// - Bitwise power-of-two check → `is_power_of_two()` verified helper.
-    /// - `RawArray::from_raw_parts` → `RawArray::from_raw_addr` (Verus-verified API).
+    /// - `RawArray::from_raw_parts` → `raw_array_from_addr` (Verus cannot cast usize to *mut T).
     /// - `for` loop → `while` loop (Verus limitation).
     /// - Pointer arithmetic → integer arithmetic.
     /// - Extra defensive checks added (do not change behavior for valid inputs).
@@ -177,7 +201,7 @@ impl Slab {
             // Ensure we have enough blocks for a valid slab (at least 8).
             len / block_size >= 8,
             // Issue 1 FIX: Zero-initialization of the bitmap backing storage.
-            // `RawArray::from_raw_addr` zeroes the region before returning and its
+            // `raw_array_from_addr` zeroes the region before returning and its
             // postcondition exposes `is_zero` for every byte, which we rely on when
             // constructing the bitmap. No caller-side zeroing precondition is required.
         ensures
@@ -288,11 +312,11 @@ impl Slab {
         }
 
         // Instantiate index.
-        let storage: RawArray<u8> = RawArray::from_raw_addr(addr, index_len)?;
+        let storage: RawArray<u8> = raw_array_from_addr(addr, index_len)?;
 
         // Prove that all bytes in storage are zero (required by Bitmap::from_raw_array).
         proof {
-            // from_raw_addr ensures is_zero for each element.
+            // raw_array_from_addr ensures is_zero for each element.
             // axiom_u8_zero_is_0 converts is_zero(t) to t == 0.
             assert forall|i: int| 0 <= i < storage@.len() implies storage@[i] == 0u8 by {
                 axiom_u8_zero_is_0(storage@[i]);
