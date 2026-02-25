@@ -15,14 +15,14 @@
 
 | Function | Status | Source Lines | Verus Lines |
 |----------|--------|-------------|-------------|
-| `alloc_range` [alloc_range.diff](alloc_range.diff) [alloc_range_source.rs](alloc_range_source.rs) [alloc_range_verus.rs](alloc_range_verus.rs) | MISMATCH | 159-219 | 210-566 |
-| `clear` [clear.diff](clear.diff) [clear_source.rs](clear_source.rs) [clear_verus.rs](clear_verus.rs) | MISMATCH | 259-269 | 651-719 |
-| `from_raw_array` [from_raw_array.diff](from_raw_array.diff) [from_raw_array_source.rs](from_raw_array_source.rs) [from_raw_array_verus.rs](from_raw_array_verus.rs) | MISMATCH | 103-116 | 130-152 |
-| `index` [index.diff](index.diff) [index_source.rs](index_source.rs) [index_verus.rs](index_verus.rs) | MISMATCH | 304-312 | 867-887 |
-| `index_unchecked` [index_unchecked.diff](index_unchecked.diff) [index_unchecked_source.rs](index_unchecked_source.rs) [index_unchecked_verus.rs](index_unchecked_verus.rs) | MISMATCH | 327-331 | 852-864 |
-| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | MISMATCH | 61-87 | 57-103 |
-| `set` [set.diff](set.diff) [set_source.rs](set_source.rs) [set_verus.rs](set_verus.rs) | MISMATCH | 234-244 | 569-648 |
-| `test` [test.diff](test.diff) [test_source.rs](test_source.rs) [test_verus.rs](test_verus.rs) | MISMATCH | 285-288 | 829-845 |
+| `alloc_range` [alloc_range.diff](alloc_range.diff) [alloc_range_source.rs](alloc_range_source.rs) [alloc_range_verus.rs](alloc_range_verus.rs) | MISMATCH | 161-221 | 210-566 |
+| `clear` [clear.diff](clear.diff) [clear_source.rs](clear_source.rs) [clear_verus.rs](clear_verus.rs) | MISMATCH | 261-271 | 651-719 |
+| `from_raw_array` [from_raw_array.diff](from_raw_array.diff) [from_raw_array_source.rs](from_raw_array_source.rs) [from_raw_array_verus.rs](from_raw_array_verus.rs) | MISMATCH | 105-118 | 130-152 |
+| `index` [index.diff](index.diff) [index_source.rs](index_source.rs) [index_verus.rs](index_verus.rs) | MISMATCH | 306-314 | 867-887 |
+| `index_unchecked` [index_unchecked.diff](index_unchecked.diff) [index_unchecked_source.rs](index_unchecked_source.rs) [index_unchecked_verus.rs](index_unchecked_verus.rs) | MISMATCH | 329-333 | 852-864 |
+| `new` [new.diff](new.diff) [new_source.rs](new_source.rs) [new_verus.rs](new_verus.rs) | MISMATCH | 63-85 | 57-103 |
+| `set` [set.diff](set.diff) [set_source.rs](set_source.rs) [set_verus.rs](set_verus.rs) | MISMATCH | 236-246 | 569-648 |
+| `test` [test.diff](test.diff) [test_source.rs](test_source.rs) [test_verus.rs](test_verus.rs) | MISMATCH | 287-290 | 829-845 |
 | `clear_range` [clear_range_verus.rs](clear_range_verus.rs) | EXTRA_IN_VERUS |  | 723-826 |
 | `new_managed` [new_managed_verus.rs](new_managed_verus.rs) | EXTRA_IN_VERUS |  | 106-122 |
 | `test_alloc_and_clear_all_bits_verified` [test_alloc_and_clear_all_bits_verified_verus.rs](test_alloc_and_clear_all_bits_verified_verus.rs) | EXTRA_IN_VERUS |  | 1063-1119 |

@@ -12,12 +12,8 @@
         }
 
         // Allocate the bitmap.
-        let mut array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
-
-        // Zero out the bitmap.
-        for byte in array.iter_mut() {
-            *byte = 0;
-        }
+        // Note: RawArray::new() guarantees zero-initialization of the backing storage.
+        let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
 
         Ok(Self {
             number_of_bits,
