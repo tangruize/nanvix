@@ -276,12 +276,12 @@ impl<T> core::ops::Deref for RawArray<T> {
     }
 }
 
+} // verus!
+
+// Verus note: DerefMut is outside verus!{} because Verus does not support &mut types.
+// Semantically identical to the source impl<T> DerefMut for RawArray<T>.
 impl<T> core::ops::DerefMut for RawArray<T> {
-    #[verifier::external_body]
-    fn deref_mut(&mut self) -> (result: &mut Self::Target)
-    {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.get_mut()
     }
 }
-
-} // verus!

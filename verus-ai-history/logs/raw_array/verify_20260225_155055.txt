@@ -1,0 +1,6 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 25 15:50:55 CST 2026
+Module: raw_array
+Command: verus --crate-type lib lib.rs --verify-module raw_array
+Working dir: /home/ubuntu/nanvix/verus/split
+
