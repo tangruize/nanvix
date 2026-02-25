@@ -57,6 +57,7 @@ CHEATING_PATTERNS = {
     "external_body": r"#\s*\[\s*verifier\s*::\s*external_body\s*\]",
     "admit": r"\badmit\s*\(",
     "trusted": r"#\s*\[\s*verifier\s*::\s*trusted\s*\]",
+    "no_decreases": r"#\s*\[\s*verifier\s*::\s*exec_allows_no_decreases_clause\s*\]",
 }
 
 

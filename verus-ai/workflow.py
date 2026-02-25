@@ -71,6 +71,9 @@ from prompts import (
     SPEC_METHODOLOGY_PROMPT,
     SPEC_METHODOLOGY_REVIEW_PROMPT,
     STRENGTHEN_SPECS_PROMPT,
+    EXTRACT_PROOF_BLOCKS_FIX_PROMPT,
+    EXTRACT_PROOF_BLOCKS_PROMPT,
+    EXTRACT_PROOF_BLOCKS_REVIEW_PROMPT,
 )
 
 
@@ -1308,6 +1311,70 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
     )
 
 
+def run_extract_proof_blocks(module_name: str, source_path: Optional[str] = None) -> bool:
+    """
+    Extract large proof blocks from exec code into lemmas.
+
+    Runs check_proof_blocks.py to find proof blocks over threshold,
+    then has AI extract them into lemmas in .proof.rs.
+    Followed by one round of review + fix.
+    """
+    if source_path is None:
+        source_path = find_source_path(module_name)
+        if source_path is None:
+            print(f"ERROR: Could not find source for {module_name}")
+            return False
+
+    module = _find_module_config(module_name, source_path)
+    fmt = _module_fmt(module)
+
+    print(f"\n{'#'*60}")
+    print(f"EXTRACT PROOF BLOCKS: {module_name}")
+    print(f"Output: {module.output_dir()}/")
+    print(f"{'#'*60}")
+
+    # Step 0: Run proof block audit.
+    import subprocess
+    verus_exec_path = str(PROJECT_ROOT / module.output_dir() / f"{module.file_stem}.rs")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    fix_report_path = str(HISTORY_DIR / "proof-extraction" / f"{module_name}_{timestamp}_fix.md")
+    Path(fix_report_path).parent.mkdir(parents=True, exist_ok=True)
+
+    audit_cmd = [
+        str(TREE_SITTER_PYTHON), str(PROJECT_ROOT / "scripts" / "check_proof_blocks.py"),
+        verus_exec_path, "--all",
+    ]
+    print(f"[ANALYSIS] Running proof block audit...")
+    result = subprocess.run(audit_cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+    proof_block_report = result.stdout.strip() if result.stdout else ""
+    print(proof_block_report)
+
+    if not proof_block_report:
+        print("[ANALYSIS] Could not generate proof block report.")
+        return False
+
+    # Check if there are any blocks to extract.
+    if "All proof blocks" in proof_block_report and "≤" in proof_block_report:
+        print("[ANALYSIS] All proof blocks are within threshold. Nothing to extract.")
+        return True
+
+    prompt = EXTRACT_PROOF_BLOCKS_PROMPT.format(
+        **fmt,
+        proof_block_report=proof_block_report,
+        report_file=fix_report_path,
+    )
+
+    return _run_single_step_with_review(
+        module_name=module_name,
+        source_path=source_path,
+        step_name="extract-proof-blocks",
+        prover_prompt=prompt,
+        review_prompt_template=EXTRACT_PROOF_BLOCKS_REVIEW_PROMPT,
+        fix_prompt_template=EXTRACT_PROOF_BLOCKS_FIX_PROMPT,
+        report_file=fix_report_path,
+    )
+
+
 def run_polish(module_name: str, source_path: Optional[str] = None) -> bool:
     if source_path is None:
         source_path = find_source_path(module_name)
@@ -1439,6 +1506,10 @@ Post-processing commands:
     ast_consistency_parser.add_argument("module", help="Module name to check")
     ast_consistency_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
 
+    extract_proof_parser = subparsers.add_parser("extract-proof-blocks", help="Extract large proof blocks into lemmas")
+    extract_proof_parser.add_argument("module", help="Module name to process")
+    extract_proof_parser.add_argument("--source", help="Path to original source file (auto-detected if not specified)")
+
     args = parser.parse_args()
 
     if args.command == "verify":
@@ -1553,6 +1624,10 @@ Post-processing commands:
 
     elif args.command == "exec-consistency":
         success = run_exec_consistency(args.module, getattr(args, 'source', None))
+        return 0 if success else 1
+
+    elif args.command == "extract-proof-blocks":
+        success = run_extract_proof_blocks(args.module, getattr(args, 'source', None))
         return 0 if success else 1
 
     else:

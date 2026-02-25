@@ -944,3 +944,116 @@ Module files:
 Address each issue. After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
 Iterate until verification passes (0 errors).
 """.strip()
+
+
+EXTRACT_PROOF_BLOCKS_PROMPT = """
+Extract large proof blocks from exec code into lemmas for {module_name}.
+
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
+
+== PROOF BLOCK AUDIT ==
+
+The following proof blocks were found in the exec file by tree-sitter analysis:
+
+{proof_block_report}
+
+== RULES ==
+
+1. **>5 lines**: MUST be extracted into a lemma in {file_stem}.proof.rs.
+   - Create a `proof fn lemma_<descriptive_name>` with appropriate requires/ensures.
+   - Replace the inline proof block with a 1-3 line call to the new lemma.
+   - The lemma's ensures must be strong enough that the calling site verifies.
+
+2. **4-5 lines**: Consider extracting if the logic is generic/reusable.
+   Keep inline if it is tightly coupled to the specific exec context.
+
+3. **1-3 lines**: Keep inline. Do not extract.
+
+== NAMING CONVENTION ==
+
+Lemma names should describe what they prove, e.g.:
+  - `lemma_set_bit_preserves_inv` (not `lemma_proof_block_1`)
+  - `lemma_alloc_range_establishes_inv` (not `lemma_helper`)
+
+== CONSTRAINTS ==
+
+- Do NOT change any exec logic.
+- Do NOT change spec functions or their signatures.
+- Verification must pass after extraction.
+- Each new lemma must have doc comments.
+
+== VERIFICATION ==
+Run: ./verus-ai/scripts/verify.sh {module_name}
+
+== OUTPUT ==
+Write report to {report_file}:
+
+```markdown
+# Proof Block Extraction: {module_name}
+
+## Summary
+- Blocks extracted: N
+- Blocks kept inline: M (with justification)
+
+## Extracted Lemmas
+| Original Location | New Lemma | Lines Before | Lines After |
+|-------------------|-----------|-------------|-------------|
+
+## Verification: PASS/FAIL
+```
+""".strip()
+
+
+EXTRACT_PROOF_BLOCKS_REVIEW_PROMPT = """
+Review proof block extraction for {module_name}.
+
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
+
+Report: {report_file}
+
+Review criteria:
+1. Were all >5 line proof blocks properly extracted into lemmas?
+2. Are the new lemma names descriptive and follow naming conventions?
+3. Are the lemma requires/ensures tight (not too weak, not too strong)?
+4. Does the exec code read cleanly with the proof blocks replaced by lemma calls?
+5. Does verification still pass?
+
+Run: ./verus-ai/scripts/verify.sh {module_name}
+
+Write review to {review_file}.
+
+Output format:
+```markdown
+# Review: {module_name} Proof Extraction ({model_name})
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+""".strip()
+
+
+EXTRACT_PROOF_BLOCKS_FIX_PROMPT = """
+A reviewer has identified issues in your proof block extraction for {module_name}.
+
+Review file: {review_file}
+Report: {report_file}
+Module files:
+  - {output_dir}/{file_stem}.rs (exec)
+  - {output_dir}/{file_stem}.spec.rs (spec)
+  - {output_dir}/{file_stem}.proof.rs (proof)
+
+Address each issue. After fixing, run: ./verus-ai/scripts/verify.sh {module_name}
+Iterate until verification passes (0 errors).
+""".strip()
