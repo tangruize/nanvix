@@ -32,7 +32,11 @@ verus! {
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
 /// A bitmap.
+///
 #[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 #[verifier::ext_equal]
 pub struct Bitmap {
@@ -53,7 +57,19 @@ impl Bitmap {
     // Public Methods
     //==================================================================================================
 
-    /// Creates a new bitmap with a given length. All bits are initialized to zero.
+    ///
+    /// # Description
+    ///
+    /// Creates a new bitmap with a given length. The bitmap is initialized with all bits set to zero.
+    ///
+    /// # Parameters
+    ///
+    /// - `number_of_bits`: Length of the bitmap in bits.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a new bitmap is returned. Upon failure, an error is returned instead.
+    ///
     pub fn new(number_of_bits: usize) -> (result: Result<Self, Error>)
         ensures
             result is Ok ==> {
@@ -102,16 +118,24 @@ impl Bitmap {
         Ok(result)
     }
 
-    /// Creates a new bitmap from a raw array.
     ///
-    /// # Note
+    /// # Description
     ///
-    /// RawArray guarantees zero-initialization of the backing storage.
-    /// The caller must ensure the array is zero-initialized.
+    /// Creates a new bitmap from a raw array. The bitmap is initialized with
+    /// all bits set to zero.
+    ///
+    /// # Parameters
+    ///
+    /// - `array`: Raw array to create the bitmap from.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a new bitmap is returned. Upon failure, an error is returned instead.
     ///
     /// # Errors
     ///
     /// - `InvalidArgument` if the array length multiplied by 8 overflows `usize`.
+    ///
     pub fn from_raw_array(array: RawArray<u8>) -> (result: Result<Self, Error>)
         requires
             array@.len() > 0,
@@ -150,7 +174,15 @@ impl Bitmap {
         Ok(result)
     }
 
+    ///
+    /// # Description
+    ///
     /// Returns the number of bits in the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// The number of bits in the bitmap.
+    ///
     pub fn number_of_bits(&self) -> (result: usize)
         requires
             self.inv(),
@@ -162,7 +194,16 @@ impl Bitmap {
         self.number_of_bits
     }
 
-    /// Allocates a single bit in the bitmap.
+    ///
+    /// # Description
+    ///
+    /// Allocates a bit in the bitmap.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the index of the allocated bit is returned. Upon failure, an error is returned
+    /// instead.
+    ///
     pub fn alloc(&mut self) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
@@ -193,7 +234,20 @@ impl Bitmap {
         self.alloc_range(1)
     }
 
-    /// Allocates a contiguous range of bits in the bitmap.
+    ///
+    /// # Description
+    ///
+    /// Allocates a range of bits in the bitmap.
+    ///
+    /// # Parameters
+    ///
+    /// - `size`: Size of the range to allocate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the index of the allocated range is returned. Upon failure, an error is returned
+    /// instead.
+    ///
     pub fn alloc_range(&mut self, size: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
@@ -564,7 +618,19 @@ impl Bitmap {
         Err(Error::new(ErrorCode::OutOfMemory, reason))
     }
 
+    ///
+    /// # Description
+    ///
     /// Sets a bit at a given index in the bitmap.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit to set.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
     pub fn set(&mut self, index: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
@@ -646,7 +712,19 @@ impl Bitmap {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
     /// Clears a bit at a given index in the bitmap.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit to clear.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+    ///
     pub fn clear(&mut self, index: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
@@ -717,7 +795,20 @@ impl Bitmap {
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
     /// Tests a bit at a given index in the bitmap.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit to test.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `Ok(true)` is returned if the bit is set, `Ok(false)` is returned otherwise.
+    /// Upon failure, an error is returned instead.
+    ///
     pub fn test(&self, index: usize) -> (result: Result<bool, Error>)
         requires
             self.inv(),
@@ -740,7 +831,19 @@ impl Bitmap {
     // Private Methods
     //==================================================================================================
 
-    /// Converts a bit index to (word_index, bit_position) without bounds checking.
+    ///
+    /// # Description
+    ///
+    /// Returns the `(word, bit)` pair of a index without checking bounds.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit.
+    ///
+    /// # Returns
+    ///
+    /// The `(word, bit)` pair of the index.
+    ///
     fn index_unchecked(&self, bit_index: usize) -> (result: (usize, usize))
         requires
             bit_index < self.bits@.len() * u8::BITS as usize,
@@ -755,7 +858,20 @@ impl Bitmap {
         (word, bit)
     }
 
-    /// Converts a bit index to (word_index, bit_position) with bounds checking.
+    ///
+    /// # Description
+    ///
+    /// Returns the `(word, bit)` pair of a index.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the `(word, bit)` pair of the index is returned. Upon
+    /// failure, an error is returned instead.
+    ///
     fn index(&self, bit_index: usize) -> (result: Result<(usize, usize), Error>)
         requires
             self.inv(),

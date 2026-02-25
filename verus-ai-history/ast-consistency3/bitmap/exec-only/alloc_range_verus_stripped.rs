@@ -78,7 +78,8 @@
 
                 return Ok(start);
             }
-        }
+            // !free: start was advanced past the blocked position.
+            }
 
         // No free range found.
         let reason: &str = "bitmap is full";

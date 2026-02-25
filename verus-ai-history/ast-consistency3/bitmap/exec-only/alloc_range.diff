@@ -18,7 +18,7 @@
          debug_assert_eq!(
              self.bits.len() * u8::BITS as usize,
              self.number_of_bits,
-@@ -19,43 +24,63 @@
+@@ -19,43 +24,64 @@
  
          let mut start: usize = 0;
  
@@ -89,7 +89,9 @@
 +
                  return Ok(start);
              }
-         }
+-        }
++            // !free: start was advanced past the blocked position.
++            }
  
 +        // No free range found.
          let reason: &str = "bitmap is full";

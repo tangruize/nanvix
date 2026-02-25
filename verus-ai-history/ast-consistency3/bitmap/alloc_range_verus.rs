@@ -86,6 +86,8 @@
                 // All positions before start don't have a free range.
                 forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
                     0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
+            decreases
+                self.number_of_bits - start as int,
         {
             // Fast skip: if the starting word is full, skip 8 bits.
             let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
@@ -124,6 +126,7 @@
             while offset < size
                 invariant_except_break
                     start == start_before_inner,  // start doesn't change until break
+                    free,  // free remains true unless we break
                 invariant
                     self.inv(),
                     old_self.inv(),
@@ -142,8 +145,11 @@
                     free ==> start == start_before_inner && start <= self.number_of_bits - size &&
                         forall|i: int| 0 <= i < size ==>
                             !#[trigger] self.is_bit_set((start + i) as int),
+                    !free ==> start > start_before_inner,
                     !free ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
                         0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
+                decreases
+                    size - offset,
             {
                 let idx: usize = start + offset;
                 let (w, b): (usize, usize) = self.index_unchecked(idx);
@@ -246,6 +252,8 @@
                         self@.set_bits.finite(),
                         // The range [start, start+size) was free in old_self.
                         old_self.all_bits_unset_in_range(start as int, start as int + (size as int)),
+                    decreases
+                        size - alloc_offset,
                 {
                     let idx: usize = start + alloc_offset;
                     let (w, b): (usize, usize) = self.index_unchecked(idx);
@@ -334,6 +342,10 @@
                 }
 
                 return Ok(start);
+            }
+            // !free: start was advanced past the blocked position.
+            proof {
+                assert(start > start_before_inner);
             }
         }
 
