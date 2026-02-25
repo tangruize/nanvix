@@ -106,13 +106,7 @@ impl Bitmap {
         };
 
         proof {
-            // RawArray::new ensures is_zero(array@[i]) for all i.
-            // Convert is_zero to == 0 via axiom.
-            assert forall|i: int| 0 <= i < result.bits@.len() implies (result.bits@[i] == 0) by {
-                axiom_u8_zero_is_0(result.bits@[i]);
-            };
-            result.lemma_zero_bytes_means_empty_set();
-            Self::lemma_empty_set_finite();
+            Self::lemma_new_bitmap_inv(&result);
         }
 
         Ok(result)
@@ -278,12 +272,7 @@ impl Bitmap {
         if size == 0 || size > self.number_of_bits {
             proof {
                 if size > self.number_of_bits {
-                    assert forall|start: int| #![trigger old_self.has_free_range_at(start, size as int)]
-                        0 <= start implies !old_self.has_free_range_at(start, size as int)
-                    by {
-                        assert(start + (size as int) > self@.number_of_bits());
-                    }
-                    assert(!old_self.exists_contiguous_free_range(size as int));
+                    old_self.lemma_no_free_range_when_size_exceeds(size as int);
                 }
             }
             let reason: &str = "invalid size";
@@ -293,17 +282,7 @@ impl Bitmap {
         // Check if allocation exceeds the bitmap capacity.
         if self.usage > self.number_of_bits - size {
             proof {
-                assert(self@.usage() > self@.number_of_bits() - (size as int));
-                // If usage > number_of_bits - size, then there are fewer than `size` free bits.
-                // Use lemma to prove no contiguous free range exists.
-                assert forall|p: int| #![trigger old_self.has_free_range_at(p, size as int)]
-                    0 <= p <= old_self@.number_of_bits() - (size as int) implies !old_self.has_free_range_at(p, size as int)
-                by {
-                    if old_self.has_free_range_at(p, size as int) {
-                        old_self.lemma_free_range_implies_usage_bound(p, size as int);
-                    }
-                }
-                assert(!old_self.exists_contiguous_free_range(size as int));
+                old_self.lemma_no_free_range_when_usage_exceeds(size as int);
             }
             let reason: &str = "allocation exceeds bitmap capacity";
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
@@ -345,22 +324,7 @@ impl Bitmap {
                 let word: usize = start / u8::BITS as usize;
                 if self.bits[word] == u8::MAX {
                     proof {
-                        // When a byte is 0xFF, all 8 bits are set.
-                        assert forall|i: int| start as int <= i < start as int + 8 implies
-                            self.is_bit_set(i)
-                        by {
-                            let bit_pos: int = i % 8;
-                            let bit_pos_u8: u8 = bit_pos as u8;
-                            assert((0xFFu8 & (1u8 << bit_pos_u8)) != 0) by (bit_vector)
-                                requires 0 <= bit_pos_u8 < 8;
-                        }
-
-                        // No contiguous free range starts in [start, start+8).
-                        assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
-                            start as int <= p < (start + 8) as int implies !self.has_free_range_at(p, size as int)
-                        by {
-                            assert(self.is_bit_set(p));
-                        }
+                        self.lemma_full_byte_no_free_range(start as int, size as int);
                     }
 
                     start = start + u8::BITS as usize;
@@ -407,20 +371,8 @@ impl Bitmap {
                     free = false;
                     start += offset + 1;
                     proof {
-                        // Bit at idx is set, so no free range can include idx.
-                        assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
-                            start_before_inner as int <= p <= idx as int implies !self.has_free_range_at(p, size as int)
-                        by {
-                            if self.has_free_range_at(p, size as int) {
-                                assert(p <= idx as int);
-                                assert((idx as int) - p <= (offset as int));
-                                assert((offset as int) < (size as int));
-                                assert((idx as int) < p + (size as int));
-                                assert(self.is_bit_set(idx as int));
-                                assert(self.all_bits_unset_in_range(p, p + (size as int)));
-                                assert(!self.is_bit_set(idx as int));
-                            }
-                        }
+                        self.lemma_set_bit_blocks_free_range(
+                            start_before_inner as int, idx as int, offset as int, size as int);
                     }
                     break;
                 }
@@ -430,33 +382,7 @@ impl Bitmap {
             if free {
                 // Found a free range at [start, start + size).
                 proof {
-                    // From inner loop ensures:
-                    // forall|j: int| 0 <= j < size ==> !self.is_bit_set((start + j) as int)
-                    // This means all bits in [start, start+size) are unset.
-                    // From outer loop invariant: self@.set_bits =~= old(self)@.set_bits
-                    // And old_self == old(self).
-                    // Therefore, bits unset in self are also unset in old_self = old(self).
-                    
-                    // Convert from j-indexed to i-indexed form.
-                    assert forall|i: int| start as int <= i < start as int + (size as int) implies !#[trigger] old_self.is_bit_set(i)
-                    by {
-                        let j: int = i - (start as int);
-                        // j = i - start, so i = start + j.
-                        // 0 <= j < size follows from start <= i < start + size.
-                        assert(0 <= j && j < size);
-                        // From inner loop: !self.is_bit_set((start + j) as int) = !self.is_bit_set(i).
-                        assert(!self.is_bit_set((start as int + j) as int));
-                        // Since self@.set_bits =~= old(self)@.set_bits and old_self == old(self):
-                        // !self@.set_bits.contains(i) <==> !old_self@.set_bits.contains(i).
-                    };
-                    
-                    // old_self == old(self), so old_self.is_bit_set(i) == old(self).is_bit_set(i).
-                    assert forall|i: int| start as int <= i < start as int + (size as int) implies !#[trigger] old(self).is_bit_set(i)
-                    by {
-                        assert(!old_self.is_bit_set(i));
-                    };
-                    
-                    // This is the definition of all_bits_unset_in_range.
+                    self.lemma_free_range_was_unset_in_old(&old_self, start as int, size as int);
                     assert(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
                 }
 
@@ -513,20 +439,8 @@ impl Bitmap {
 
                     proof {
                         loop_old_self.lemma_byte_or_reflects_in_view(self, w as int, b as int);
-
-                        // Prove set_bits invariant update.
-                        assert forall|i: int| self@.set_bits.contains(i) ==
-                            old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (alloc_offset as int + 1))).contains(i)
-                        by {}
-
-                        // Prove wf() preserved.
-                        assert(self@.wf()) by {
-                            assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
-                                if loop_old_self@.set_bits.contains(i) {}
-                            }
-                        }
-                        Self::lemma_insert_finite(loop_old_self@.set_bits, idx as int);
-                        assert(self@.set_bits.finite());
+                        Self::lemma_alloc_loop_step_inv(
+                            &old_self, &loop_old_self, self, start as int, alloc_offset as int, idx as int);
                     }
 
                     alloc_offset += 1;
@@ -536,59 +450,7 @@ impl Bitmap {
                 self.usage = self.usage + size;
 
                 proof {
-                    // Prove range_set is finite.
-                    Self::lemma_range_set_finite(start as int, start as int + (size as int));
-
-                    // Prove union is finite.
-                    Self::lemma_union_finite(old_self@.set_bits, BitmapView::range_set(start as int, start as int + (size as int)));
-
-                    // Transfer finiteness through extensional equality.
-                    Self::lemma_ext_equal_finite(
-                        self@.set_bits,
-                        old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (size as int)))
-                    );
-
-                    // Prove wf() holds.
-                    assert(self@.wf()) by {
-                        assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
-                            if BitmapView::range_set(start as int, start as int + (size as int)).contains(i) {
-                            } else {
-                                assert(old_self@.set_bits.contains(i));
-                            }
-                        }
-                    }
-
-                    // Prove the sets are disjoint: old_self.set_bits ∩ range_set = ∅.
-                    let range: Set<int> = BitmapView::range_set(start as int, start as int + (size as int));
-                    assert(old_self@.set_bits.disjoint(range)) by {
-                        assert forall|i: int| #![auto] !(old_self@.set_bits.contains(i) && range.contains(i)) by {
-                            if range.contains(i) {
-                                assert(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
-                                assert(!old(self).is_bit_set(i));
-                                assert(!old_self.is_bit_set(i));
-                                assert(!old_self@.set_bits.contains(i));
-                            }
-                        }
-                    }
-
-                    // Use disjoint union cardinality lemma.
-                    Self::lemma_disjoint_union_len(old_self@.set_bits, range);
-                    Self::lemma_range_set_len(start as int, start as int + (size as int));
-                    assert(self@.set_bits.len() == old_self@.set_bits.len() + (size as int));
-
-                    // Prove usage matches set_bits.len().
-                    assert(self.usage as int == self@.set_bits.len());
-                    assert(self@.usage() == old(self)@.usage() + (size as int));
-
-                    // Prove usage bound.
-                    let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
-                    vstd::set_lib::lemma_int_range(0, self@.num_bits);
-                    assert(self@.set_bits.subset_of(full_range)) by {
-                        assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
-                    }
-                    vstd::set_lib::lemma_len_subset(self@.set_bits, full_range);
-
-                    assert(self.inv());
+                    old_self.lemma_alloc_range_establishes_inv(self, start as int, size as int);
                 }
 
                 return Ok(start);
@@ -601,17 +463,7 @@ impl Bitmap {
 
         // No free range found.
         proof {
-            // From outer loop invariant:
-            // - self@.set_bits =~= old(self)@.set_bits
-            // - self.number_of_bits == old_self.number_of_bits (and old_self == old(self))
-            // So self@.num_bits == self.number_of_bits as int == old(self).number_of_bits as int == old(self)@.num_bits.
-            assert(self@.num_bits == old(self)@.num_bits);
-            // And self@.set_bits =~= old(self)@.set_bits.
-            // BitmapView is a struct with two fields, so equality follows.
-            assert(self@ =~= old(self)@);
-            
-            assert(!self.exists_contiguous_free_range(size as int));
-            self.lemma_set_bits_equal_exists_free_range_equal(&old_self, size as int);
+            self.lemma_no_range_found_frame(&old_self, size as int);
             assert(!old(self).exists_contiguous_free_range(size as int));
         }
         let reason: &str = "bitmap is full";
@@ -671,41 +523,12 @@ impl Bitmap {
         self.bits.set(word, self.bits[word] | (1 << bit));
 
         proof {
-            old_self.lemma_byte_or_reflects_in_view(self, word as int, bit as int);
-            // Now: self@.set_bits =~= old_self@.set_bits.insert(index as int)
-            
-            // Prove finiteness using the new helper.
-            Self::lemma_insert_finite(old_self@.set_bits, index as int);
-            Self::lemma_ext_equal_finite(self@.set_bits, old_self@.set_bits.insert(index as int));
-            
-            // Prove cardinality increases by 1.
-            Self::lemma_insert_len(old_self@.set_bits, index as int);
-            assert(self@.set_bits.len() == old_self@.set_bits.len() + 1);
-            
-            // Prove wf() holds: all elements in set_bits are in valid range.
-            assert(self@.wf()) by {
-                assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
-                    if i == index as int {
-                        // index is valid, checked by index()
-                    } else {
-                        // i was in old_self@.set_bits, so by old wf(), it's in range
-                        assert(old_self@.set_bits.contains(i));
-                    }
-                }
-            }
-            
-            // Prove usage bound: usage() <= number_of_bits().
-            // Use lemma: since !old_self@.set_bits.contains(index), inserting preserves bound.
-            old_self.lemma_insert_preserves_usage_bound(index as int);
-            // Now: old_self@.set_bits.insert(index).len() <= old_self@.number_of_bits().
-            // Since self@.set_bits =~= old_self@.set_bits.insert(index), they have same len.
-            assert(self@.usage() <= self@.number_of_bits());
+            old_self.lemma_set_bit_preserves_inv(self, word as int, bit as int, index as int);
         }
 
         self.usage = self.usage + 1;
 
         proof {
-            // Prove inv() holds.
             assert(self.usage as int == self@.usage());
         }
 
@@ -765,30 +588,12 @@ impl Bitmap {
         self.bits.set(word, self.bits[word] & !(1 << bit));
 
         proof {
-            old_self.lemma_byte_and_not_reflects_in_view(self, word as int, bit as int);
-            // Now: self@.set_bits =~= old_self@.set_bits.remove(index as int)
-            
-            // Prove finiteness using the new helper.
-            Self::lemma_remove_finite(old_self@.set_bits, index as int);
-            Self::lemma_ext_equal_finite(self@.set_bits, old_self@.set_bits.remove(index as int));
-            
-            // Prove cardinality decreases by 1.
-            Self::lemma_remove_len(old_self@.set_bits, index as int);
-            assert(self@.set_bits.len() == old_self@.set_bits.len() - 1);
-            
-            // Prove wf() holds: all elements in set_bits are in valid range.
-            assert(self@.wf()) by {
-                assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
-                    // i was in old_self@.set_bits (since we only removed), so by old wf(), it's in range
-                    assert(old_self@.set_bits.contains(i));
-                }
-            }
+            old_self.lemma_clear_bit_preserves_inv(self, word as int, bit as int, index as int);
         }
 
         self.usage = self.usage - 1;
 
         proof {
-            // Prove inv() holds.
             assert(self.usage as int == self@.usage());
         }
 

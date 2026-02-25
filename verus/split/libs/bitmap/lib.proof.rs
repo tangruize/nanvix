@@ -736,6 +736,334 @@ impl Bitmap {
         // From inv(): number_of_bits < u32::MAX, and u32::MAX <= usize::MAX.
     }
 
+    //==========================================================================================
+    // Composite lemmas (extracted from exec proof blocks for readability).
+    //==========================================================================================
+
+    /// Proves that a newly constructed bitmap (with zero-initialized bytes) satisfies inv().
+    proof fn lemma_new_bitmap_inv(bmp: &Self)
+        requires
+            bmp@.number_of_bits() == bmp.bits@.len() * (u8::BITS as int),
+            bmp@.number_of_bits() > 0,
+            bmp@.number_of_bits() < u32::MAX as int,
+            bmp.usage == 0,
+            bmp.number_of_bits as int == bmp@.number_of_bits(),
+            forall|i: int| 0 <= i < bmp.bits@.len() ==> is_zero(#[trigger] bmp.bits@[i]),
+        ensures
+            bmp.inv(),
+            bmp@.is_empty(),
+            forall|i: int| 0 <= i < bmp@.number_of_bits() ==> !bmp.is_bit_set(i),
+    {
+        assert forall|i: int| 0 <= i < bmp.bits@.len() implies (bmp.bits@[i] == 0) by {
+            axiom_u8_zero_is_0(bmp.bits@[i]);
+        };
+        bmp.lemma_zero_bytes_means_empty_set();
+        Self::lemma_empty_set_finite();
+    }
+
+    /// Proves inv() is preserved after setting a bit via byte OR.
+    proof fn lemma_set_bit_preserves_inv(&self, new_self: &Self, word: int, bit: int, index: int)
+        requires
+            self.inv(),
+            0 <= word < self.bits@.len(),
+            0 <= bit < (u8::BITS as int),
+            index == word * (u8::BITS as int) + bit,
+            0 <= index < self@.number_of_bits(),
+            !self@.set_bits.contains(index),
+            new_self.bits@.len() == self.bits@.len(),
+            new_self.bits@[word] == (self.bits@[word] | (1u8 << bit)),
+            forall|i: int| 0 <= i < self.bits@.len() && i != word ==>
+                self.bits@[i] == new_self.bits@[i],
+            self.number_of_bits == new_self.number_of_bits,
+            new_self.usage == self.usage,
+        ensures
+            new_self@.set_bits =~= self@.set_bits.insert(index),
+            new_self@.set_bits.finite(),
+            new_self@.set_bits.len() == self@.set_bits.len() + 1,
+            new_self@.wf(),
+            self@.set_bits.len() + 1 <= self@.number_of_bits(),
+    {
+        self.lemma_byte_or_reflects_in_view(new_self, word, bit);
+        Self::lemma_insert_finite(self@.set_bits, index);
+        Self::lemma_ext_equal_finite(new_self@.set_bits, self@.set_bits.insert(index));
+        Self::lemma_insert_len(self@.set_bits, index);
+        assert(new_self@.wf()) by {
+            assert forall|i: int| new_self@.set_bits.contains(i) implies (0 <= i < new_self@.num_bits) by {
+                if i != index {
+                    assert(self@.set_bits.contains(i));
+                }
+            }
+        }
+        self.lemma_insert_preserves_usage_bound(index);
+    }
+
+    /// Proves inv() is preserved after clearing a bit via byte AND NOT.
+    proof fn lemma_clear_bit_preserves_inv(&self, new_self: &Self, word: int, bit: int, index: int)
+        requires
+            self.inv(),
+            0 <= word < self.bits@.len(),
+            0 <= bit < (u8::BITS as int),
+            index == word * (u8::BITS as int) + bit,
+            0 <= index < self@.number_of_bits(),
+            self@.set_bits.contains(index),
+            new_self.bits@.len() == self.bits@.len(),
+            new_self.bits@[word] == (self.bits@[word] & !(1u8 << bit)),
+            forall|i: int| 0 <= i < self.bits@.len() && i != word ==>
+                self.bits@[i] == new_self.bits@[i],
+            self.number_of_bits == new_self.number_of_bits,
+            new_self.usage == self.usage,
+        ensures
+            new_self@.set_bits =~= self@.set_bits.remove(index),
+            new_self@.set_bits.finite(),
+            new_self@.set_bits.len() == self@.set_bits.len() - 1,
+            new_self@.wf(),
+    {
+        self.lemma_byte_and_not_reflects_in_view(new_self, word, bit);
+        Self::lemma_remove_finite(self@.set_bits, index);
+        Self::lemma_ext_equal_finite(new_self@.set_bits, self@.set_bits.remove(index));
+        Self::lemma_remove_len(self@.set_bits, index);
+        assert(new_self@.wf()) by {
+            assert forall|i: int| new_self@.set_bits.contains(i) implies (0 <= i < new_self@.num_bits) by {
+                assert(self@.set_bits.contains(i));
+            }
+        }
+    }
+
+    /// Proves no free range exists when size exceeds number_of_bits.
+    proof fn lemma_no_free_range_when_size_exceeds(&self, size: int)
+        requires
+            self.inv(),
+            size > self@.number_of_bits(),
+        ensures
+            !self.exists_contiguous_free_range(size),
+    {
+        assert forall|start: int| #![trigger self.has_free_range_at(start, size)]
+            0 <= start implies !self.has_free_range_at(start, size)
+        by {
+            assert(start + size > self@.number_of_bits());
+        }
+    }
+
+    /// Proves no free range exists when usage exceeds capacity for given size.
+    proof fn lemma_no_free_range_when_usage_exceeds(&self, size: int)
+        requires
+            self.inv(),
+            size > 0,
+            size <= self@.number_of_bits(),
+            self@.usage() > self@.number_of_bits() - size,
+        ensures
+            !self.exists_contiguous_free_range(size),
+    {
+        assert forall|p: int| #![trigger self.has_free_range_at(p, size)]
+            0 <= p <= self@.number_of_bits() - size implies !self.has_free_range_at(p, size)
+        by {
+            if self.has_free_range_at(p, size) {
+                self.lemma_free_range_implies_usage_bound(p, size);
+            }
+        }
+    }
+
+    /// Proves that when a byte is 0xFF, all 8 bits are set and no free range starts there.
+    proof fn lemma_full_byte_no_free_range(&self, start: int, size: int)
+        requires
+            self.inv(),
+            size > 0,
+            start >= 0,
+            start + 8 <= self@.number_of_bits(),
+            start % 8 == 0,
+            ({
+                let word: int = start / 8;
+                0 <= word < self.bits@.len() && self.bits@[word] == 0xFFu8
+            }),
+        ensures
+            forall|i: int| start <= i < start + 8 ==> self.is_bit_set(i),
+            forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                start <= p < start + 8 ==> !self.has_free_range_at(p, size),
+    {
+        assert forall|i: int| start <= i < start + 8 implies self.is_bit_set(i)
+        by {
+            let bit_pos: int = i % 8;
+            let bit_pos_u8: u8 = bit_pos as u8;
+            assert((0xFFu8 & (1u8 << bit_pos_u8)) != 0) by (bit_vector)
+                requires 0 <= bit_pos_u8 < 8;
+        }
+        assert forall|p: int| #![trigger self.has_free_range_at(p, size)]
+            start <= p < start + 8 implies !self.has_free_range_at(p, size)
+        by {
+            assert(self.is_bit_set(p));
+        }
+    }
+
+    /// Proves that a set bit blocks any free range containing it.
+    proof fn lemma_set_bit_blocks_free_range(
+        &self, start_before: int, idx: int, offset: int, size: int,
+    )
+        requires
+            self.inv(),
+            0 <= start_before,
+            0 <= offset < size,
+            idx == start_before + offset,
+            0 <= idx < self@.number_of_bits(),
+            self.is_bit_set(idx),
+        ensures
+            forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                start_before <= p <= idx ==> !self.has_free_range_at(p, size),
+    {
+        assert forall|p: int| #![trigger self.has_free_range_at(p, size)]
+            start_before <= p <= idx implies !self.has_free_range_at(p, size)
+        by {
+            if self.has_free_range_at(p, size) {
+                assert(p <= idx);
+                assert(idx - p <= offset);
+                assert(offset < size);
+                assert(idx < p + size);
+                assert(self.is_bit_set(idx));
+                assert(self.all_bits_unset_in_range(p, p + size));
+                assert(!self.is_bit_set(idx));
+            }
+        }
+    }
+
+    /// Proves that a found free range was also free in old_self.
+    proof fn lemma_free_range_was_unset_in_old(
+        &self, old_self: &Self, start: int, size: int,
+    )
+        requires
+            self.inv(),
+            old_self.inv(),
+            self@.set_bits =~= old_self@.set_bits,
+            0 <= start,
+            size > 0,
+            start + size <= self@.number_of_bits(),
+            forall|j: int| 0 <= j < size ==> !#[trigger] self.is_bit_set(start + j),
+        ensures
+            old_self.all_bits_unset_in_range(start, start + size),
+    {
+        assert forall|i: int| start <= i < start + size implies !#[trigger] old_self.is_bit_set(i)
+        by {
+            let j: int = i - start;
+            assert(0 <= j && j < size);
+            assert(!self.is_bit_set(start + j));
+        };
+    }
+
+    /// Proves inv() after allocating a full range [start, start+size).
+    proof fn lemma_alloc_range_establishes_inv(
+        &self, new_self: &Self, start: int, size: int,
+    )
+        requires
+            self.inv(),
+            size > 0,
+            0 <= start,
+            start + size <= self@.number_of_bits(),
+            self.all_bits_unset_in_range(start, start + size),
+            new_self@.set_bits =~= self@.set_bits.union(
+                BitmapView::range_set(start, start + size)),
+            new_self@.set_bits.finite(),
+            new_self.number_of_bits == self.number_of_bits,
+            new_self.number_of_bits as int == new_self@.number_of_bits(),
+            new_self@.number_of_bits() == new_self.bits@.len() * (u8::BITS as int),
+            new_self.usage == self.usage + size,
+        ensures
+            new_self.inv(),
+            new_self@.usage() == self@.usage() + size,
+    {
+        // Prove range_set is finite.
+        Self::lemma_range_set_finite(start, start + size);
+        // Prove union is finite.
+        Self::lemma_union_finite(self@.set_bits, BitmapView::range_set(start, start + size));
+        // Transfer finiteness through extensional equality.
+        Self::lemma_ext_equal_finite(
+            new_self@.set_bits,
+            self@.set_bits.union(BitmapView::range_set(start, start + size)),
+        );
+        // Prove wf().
+        assert(new_self@.wf()) by {
+            assert forall|i: int| new_self@.set_bits.contains(i) implies (0 <= i < new_self@.num_bits) by {
+                if BitmapView::range_set(start, start + size).contains(i) {
+                } else {
+                    assert(self@.set_bits.contains(i));
+                }
+            }
+        }
+        // Prove disjointness.
+        let range: Set<int> = BitmapView::range_set(start, start + size);
+        assert(self@.set_bits.disjoint(range)) by {
+            assert forall|i: int| #![auto] !(self@.set_bits.contains(i) && range.contains(i)) by {
+                if range.contains(i) {
+                    assert(!self.is_bit_set(i));
+                    assert(!self@.set_bits.contains(i));
+                }
+            }
+        }
+        // Cardinality.
+        Self::lemma_disjoint_union_len(self@.set_bits, range);
+        Self::lemma_range_set_len(start, start + size);
+        assert(new_self@.set_bits.len() == self@.set_bits.len() + size);
+        assert(new_self.usage as int == new_self@.set_bits.len());
+        // Usage bound.
+        let full_range: Set<int> = vstd::set_lib::set_int_range(0, new_self@.num_bits);
+        vstd::set_lib::lemma_int_range(0, new_self@.num_bits);
+        assert(new_self@.set_bits.subset_of(full_range)) by {
+            assert forall|i: int| #![auto] new_self@.set_bits.contains(i) implies full_range.contains(i) by {}
+        }
+        vstd::set_lib::lemma_len_subset(new_self@.set_bits, full_range);
+    }
+
+    /// Proves frame condition when no free range was found.
+    proof fn lemma_no_range_found_frame(&self, old_self: &Self, size: int)
+        requires
+            self.inv(),
+            old_self.inv(),
+            self@.set_bits =~= old_self@.set_bits,
+            self.number_of_bits == old_self.number_of_bits,
+            size > 0,
+            forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                0 <= p < self@.number_of_bits() ==> !self.has_free_range_at(p, size),
+        ensures
+            self@ =~= old_self@,
+            !old_self.exists_contiguous_free_range(size),
+    {
+        assert(self@.num_bits == old_self@.num_bits);
+        assert(self@ =~= old_self@);
+        assert(!self.exists_contiguous_free_range(size));
+        self.lemma_set_bits_equal_exists_free_range_equal(old_self, size);
+    }
+
+    /// Proves loop invariant update for a single alloc_range bit-set step.
+    proof fn lemma_alloc_loop_step_inv(
+        old_self: &Self, loop_old_self: &Self, new_self: &Self,
+        start: int, alloc_offset: int, idx: int,
+    )
+        requires
+            old_self.inv(),
+            loop_old_self@.set_bits =~= old_self@.set_bits.union(
+                BitmapView::range_set(start, start + alloc_offset)),
+            loop_old_self@.set_bits.finite(),
+            new_self@.set_bits =~= loop_old_self@.set_bits.insert(idx),
+            idx == start + alloc_offset,
+            0 <= start,
+            alloc_offset >= 0,
+            idx < old_self@.number_of_bits(),
+            new_self@.number_of_bits() == old_self@.number_of_bits(),
+            new_self.number_of_bits as int == new_self@.number_of_bits(),
+        ensures
+            new_self@.set_bits =~= old_self@.set_bits.union(
+                BitmapView::range_set(start, start + alloc_offset + 1)),
+            new_self@.wf(),
+            new_self@.set_bits.finite(),
+    {
+        assert forall|i: int| new_self@.set_bits.contains(i) ==
+            old_self@.set_bits.union(BitmapView::range_set(start, start + alloc_offset + 1)).contains(i)
+        by {}
+        assert(new_self@.wf()) by {
+            assert forall|i: int| new_self@.set_bits.contains(i) implies (0 <= i < new_self@.num_bits) by {
+                if loop_old_self@.set_bits.contains(i) {}
+            }
+        }
+        Self::lemma_insert_finite(loop_old_self@.set_bits, idx);
+    }
+
 } // impl Bitmap
 
 //==================================================================================================
