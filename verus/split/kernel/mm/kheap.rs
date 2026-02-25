@@ -674,45 +674,79 @@ impl Kheap {
         };
 
         // Allocate from the appropriate slab, with per-case proof.
+        // Each arm explicitly asserts block_size preservation and invariant to
+        // reduce solver search space (prevents rlimit exhaustion with large enums).
         match slab_size {
             SlabSize::Slab8 => {
                 let result: Result<usize, Error> = self.slab_8_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab8); }
+                proof {
+                    assert(slab_size == SlabSize::Slab8);
+                    assert(self.slab_8_bytes@.block_size == 8);
+                    assert(self.inv());
+                }
                 result
             },
             SlabSize::Slab16 => {
                 let result: Result<usize, Error> = self.slab_16_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab16); }
+                proof {
+                    assert(slab_size == SlabSize::Slab16);
+                    assert(self.slab_16_bytes@.block_size == 16);
+                    assert(self.inv());
+                }
                 result
             },
             SlabSize::Slab32 => {
                 let result: Result<usize, Error> = self.slab_32_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab32); }
+                proof {
+                    assert(slab_size == SlabSize::Slab32);
+                    assert(self.slab_32_bytes@.block_size == 32);
+                    assert(self.inv());
+                }
                 result
             },
             SlabSize::Slab64 => {
                 let result: Result<usize, Error> = self.slab_64_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab64); }
+                proof {
+                    assert(slab_size == SlabSize::Slab64);
+                    assert(self.slab_64_bytes@.block_size == 64);
+                    assert(self.inv());
+                }
                 result
             },
             SlabSize::Slab128 => {
                 let result: Result<usize, Error> = self.slab_128_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab128); }
+                proof {
+                    assert(slab_size == SlabSize::Slab128);
+                    assert(self.slab_128_bytes@.block_size == 128);
+                    assert(self.inv());
+                }
                 result
             },
             SlabSize::Slab256 => {
                 let result: Result<usize, Error> = self.slab_256_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab256); }
+                proof {
+                    assert(slab_size == SlabSize::Slab256);
+                    assert(self.slab_256_bytes@.block_size == 256);
+                    assert(self.inv());
+                }
                 result
             },
             SlabSize::Slab512 => {
                 let result: Result<usize, Error> = self.slab_512_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab512); }
+                proof {
+                    assert(slab_size == SlabSize::Slab512);
+                    assert(self.slab_512_bytes@.block_size == 512);
+                    assert(self.inv());
+                }
                 result
             },
             SlabSize::Slab4096 => {
                 let result: Result<usize, Error> = self.slab_4096_bytes.allocate();
-                proof { assert(slab_size == SlabSize::Slab4096); }
+                proof {
+                    assert(slab_size == SlabSize::Slab4096);
+                    assert(self.slab_4096_bytes@.block_size == 4096);
+                    assert(self.inv());
+                }
                 result
             },
         }
