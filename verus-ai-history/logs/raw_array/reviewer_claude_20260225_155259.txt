@@ -1,0 +1,65 @@
+=== Copilot Session ===
+Timestamp: 2026-02-25T15:52:59.110993
+Model: claude-opus-4.6
+Session: new
+Command: copilot --allow-all-tools --allow-all-paths --model claude-opus-4.6...
+
+=== Prompt ===
+Review exec consistency fixes for raw_array.
+
+Original source: src/libs/raw-array/src/lib.rs
+Verified code directory: verus/split/libs/raw_array/
+  - lib.rs (exec)
+  - lib.spec.rs (spec)
+  - lib.proof.rs (proof)
+
+Consistency report: /home/ubuntu/nanvix/verus-ai-history/ast-consistency/raw_array_20260225_155125_fix.md
+
+Review criteria:
+1. Were all MISMATCH functions properly restored or equivalence documented?
+2. Were MISSING functions added with proper verification?
+3. Are equivalence justifications sound?
+4. Does the exec code now faithfully represent the original source?
+5. Does verification still pass?
+
+Verification command: ./verus-ai/scripts/verify.sh raw_array
+
+Write review to /home/ubuntu/nanvix/verus-ai-history/reviews/raw_array/exec-consistency_20260225_155125.md.
+
+Output format:
+```markdown
+# Review: raw_array Exec Consistency (claude-opus-4.6)
+
+## Grade: [A+ / A / A- / B+ / B / B- / C / D / F]
+
+## Issues Found
+### Critical
+- ...
+
+## Summary
+[Overall assessment]
+```
+
+=== Output (streaming) ===
+
+
+
+
+● List directory verus/split/libs/raw_array
+  └ 3 files found
+
+● Read src/libs/raw-array/src/lib.rs
+  └ 289 lines read
+
+● Read verus-ai-history/ast-consistency/raw_array_20260225_155125_fix.md
+  └ 41 lines read
+
+● Read verus/split/libs/raw_array/lib.rs
+  └ 287 lines read
+
+● Read verus/split/libs/raw_array/lib.proof.rs
+  └ 276 lines read
+
+● Read verus/split/libs/raw_array/lib.spec.rs
+  └ 107 lines read
+
