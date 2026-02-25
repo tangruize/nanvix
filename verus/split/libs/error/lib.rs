@@ -13,11 +13,142 @@ include!("lib.spec.rs");
 // Include proofs (lemmas).
 include!("lib.proof.rs");
 
-verus! {
+//==================================================================================================
+// Errno Constants
+//==================================================================================================
+
+// Verus note: these constants are defined in sysapi::errno in the source.
+// Since sysapi is not available in the Verus verification crate, we inline
+// the values here. They are identical to src/libs/sysapi/src/errno.rs.
+type CInt = i32;
+const EPERM: CInt = 1;
+const ENOENT: CInt = 2;
+const ESRCH: CInt = 3;
+const EINTR: CInt = 4;
+const EIO: CInt = 5;
+const ENXIO: CInt = 6;
+const E2BIG: CInt = 7;
+const ENOEXEC: CInt = 8;
+const EBADF: CInt = 9;
+const ECHILD: CInt = 10;
+const EAGAIN: CInt = 11;
+const ENOMEM: CInt = 12;
+const EACCES: CInt = 13;
+const EFAULT: CInt = 14;
+const ENOTBLK: CInt = 15;
+const EBUSY: CInt = 16;
+const EEXIST: CInt = 17;
+const EXDEV: CInt = 18;
+const ENODEV: CInt = 19;
+const ENOTDIR: CInt = 20;
+const EISDIR: CInt = 21;
+const EINVAL: CInt = 22;
+const ENFILE: CInt = 23;
+const EMFILE: CInt = 24;
+const ENOTTY: CInt = 25;
+const ETXTBSY: CInt = 26;
+const EFBIG: CInt = 27;
+const ENOSPC: CInt = 28;
+const ESPIPE: CInt = 29;
+const EROFS: CInt = 30;
+const EMLINK: CInt = 31;
+const EPIPE: CInt = 32;
+const EDOM: CInt = 33;
+const ERANGE: CInt = 34;
+const ENOMSG: CInt = 35;
+const EIDRM: CInt = 36;
+const ECHRNG: CInt = 37;
+const EL2NSYNC: CInt = 38;
+const EL3HLT: CInt = 39;
+const EL3RST: CInt = 40;
+const ELNRNG: CInt = 41;
+const EUNATCH: CInt = 42;
+const ENOCSI: CInt = 43;
+const EL2HLT: CInt = 44;
+const EDEADLK: CInt = 45;
+const ENOLCK: CInt = 46;
+const EBADE: CInt = 50;
+const EBADR: CInt = 51;
+const EXFULL: CInt = 52;
+const ENOANO: CInt = 53;
+const EBADRQC: CInt = 54;
+const EBADSLT: CInt = 55;
+const EDEADLOCK: CInt = 56;
+const EBFONT: CInt = 57;
+const ENOSTR: CInt = 60;
+const ENODATA: CInt = 61;
+const ETIME: CInt = 62;
+const ENOSR: CInt = 63;
+const ENONET: CInt = 64;
+const ENOPKG: CInt = 65;
+const EREMOTE: CInt = 66;
+const ENOLINK: CInt = 67;
+const EADV: CInt = 68;
+const ESRMNT: CInt = 69;
+const ECOMM: CInt = 70;
+const EPROTO: CInt = 71;
+const EMULTIHOP: CInt = 74;
+const ELBIN: CInt = 75;
+const EDOTDOT: CInt = 76;
+const EBADMSG: CInt = 77;
+const EFTYPE: CInt = 79;
+const ENOTUNIQ: CInt = 80;
+const EBADFD: CInt = 81;
+const EREMCHG: CInt = 82;
+const ELIBACC: CInt = 83;
+const ELIBBAD: CInt = 84;
+const ELIBSCN: CInt = 85;
+const ELIBMAX: CInt = 86;
+const ELIBEXEC: CInt = 87;
+const ENOSYS: CInt = 88;
+const ENOTEMPTY: CInt = 90;
+const ENAMETOOLONG: CInt = 91;
+const ELOOP: CInt = 92;
+const EOPNOTSUPP: CInt = 95;
+const EPFNOSUPPORT: CInt = 96;
+const ECONNRESET: CInt = 104;
+const ENOBUFS: CInt = 105;
+const EAFNOSUPPORT: CInt = 106;
+const EPROTOTYPE: CInt = 107;
+const ENOTSOCK: CInt = 108;
+const ENOPROTOOPT: CInt = 109;
+const ESHUTDOWN: CInt = 110;
+const ECONNREFUSED: CInt = 111;
+const EADDRINUSE: CInt = 112;
+const ECONNABORTED: CInt = 113;
+const ENETUNREACH: CInt = 114;
+const ENETDOWN: CInt = 115;
+const ETIMEDOUT: CInt = 116;
+const EHOSTDOWN: CInt = 117;
+const EHOSTUNREACH: CInt = 118;
+const EINPROGRESS: CInt = 119;
+const EALREADY: CInt = 120;
+const EDESTADDRREQ: CInt = 121;
+const EMSGSIZE: CInt = 122;
+const EPROTONOSUPPORT: CInt = 123;
+const ESOCKTNOSUPPORT: CInt = 124;
+const EADDRNOTAVAIL: CInt = 125;
+const ENETRESET: CInt = 126;
+const EISCONN: CInt = 127;
+const ENOTCONN: CInt = 128;
+const ETOOMANYREFS: CInt = 129;
+const EUSERS: CInt = 131;
+const EDQUOT: CInt = 132;
+const ESTALE: CInt = 133;
+const ENOTSUP: CInt = 134;
+const ENOMEDIUM: CInt = 135;
+const EILSEQ: CInt = 138;
+const EOVERFLOW: CInt = 139;
+const ECANCELED: CInt = 140;
+const ENOTRECOVERABLE: CInt = 141;
+const EOWNERDEAD: CInt = 142;
+const ESTRPIPE: CInt = 143;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+verus! {
 
 ///
 /// # Description
@@ -32,260 +163,252 @@ verus! {
 #[repr(i32)]
 pub enum ErrorCode {
     /// Operation not permitted.
-    OperationNotPermitted = 1,
+    OperationNotPermitted = EPERM,
     /// No such file or directory.
-    NoSuchEntry = 2,
+    NoSuchEntry = ENOENT,
     /// No such process.
-    NoSuchProcess = 3,
+    NoSuchProcess = ESRCH,
     /// Interrupted system call.
-    Interrupted = 4,
+    Interrupted = EINTR,
     /// I/O error.
-    IoErr = 5,
+    IoErr = EIO,
     /// No such device or address.
-    NoSuchDeviceOrAddress = 6,
+    NoSuchDeviceOrAddress = ENXIO,
     /// Argument list too long.
-    TooBig = 7,
+    TooBig = E2BIG,
     /// Exec format error.
-    InvalidExecutableFormat = 8,
+    InvalidExecutableFormat = ENOEXEC,
     /// Bad file number.
-    BadFile = 9,
+    BadFile = EBADF,
     /// No child processes.
-    NoChildProcess = 10,
+    NoChildProcess = ECHILD,
     /// Try again.
-    TryAgain = 11,
+    TryAgain = EAGAIN,
     /// Out of memory.
-    OutOfMemory = 12,
+    OutOfMemory = ENOMEM,
     /// Permission denied.
-    PermissionDenied = 13,
+    PermissionDenied = EACCES,
     /// Bad address.
-    BadAddress = 14,
+    BadAddress = EFAULT,
     /// Block device required.
-    NotBlockDevice = 15,
+    NotBlockDevice = ENOTBLK,
     /// Device or resource busy.
-    ResourceBusy = 16,
+    ResourceBusy = EBUSY,
     /// File exists.
-    EntryExists = 17,
+    EntryExists = EEXIST,
     /// Cross-device link.
-    CrossDeviceLink = 18,
+    CrossDeviceLink = EXDEV,
     /// No such device.
-    NoSuchDevice = 19,
+    NoSuchDevice = ENODEV,
     /// Not a directory.
-    InvalidDirectory = 20,
+    InvalidDirectory = ENOTDIR,
     /// Is a directory.
-    IsDirectory = 21,
+    IsDirectory = EISDIR,
     /// Invalid argument.
-    InvalidArgument = 22,
+    InvalidArgument = EINVAL,
     /// File table overflow.
-    FileTableOVerflow = 23,
+    FileTableOVerflow = ENFILE,
     /// Too many open files.
-    TooManyOpenFiles = 24,
+    TooManyOpenFiles = EMFILE,
     /// Not a typewriter.
-    NotTerminal = 25,
+    NotTerminal = ENOTTY,
     /// Text file busy.
-    TextFileBusy = 26,
+    TextFileBusy = ETXTBSY,
     /// File too large.
-    FileTooLarge = 27,
+    FileTooLarge = EFBIG,
     /// No space left on device.
-    NoSpaceOnDevice = 28,
+    NoSpaceOnDevice = ENOSPC,
     /// Illegal seek.
-    IllegalSeek = 29,
+    IllegalSeek = ESPIPE,
     /// Read-only file system.
-    ReadOnlyFileSystem = 30,
+    ReadOnlyFileSystem = EROFS,
     /// Too many links.
-    TooManyLinks = 31,
+    TooManyLinks = EMLINK,
     /// Broken pipe.
-    BrokenPipe = 32,
+    BrokenPipe = EPIPE,
     /// Math argument out of domain of function.
-    MathArgDomainErr = 33,
+    MathArgDomainErr = EDOM,
     /// Math result not representable.
-    ValueOutOfRange = 34,
+    ValueOutOfRange = ERANGE,
     /// No message of desired type.
-    NoMessageAvailable = 35,
+    NoMessageAvailable = ENOMSG,
     /// Identifier removed.
-    IdentifierRemoved = 36,
+    IdentifierRemoved = EIDRM,
     /// Channel number out of range.
-    OutOfRangeChannel = 37,
+    OutOfRangeChannel = ECHRNG,
     /// Level 2 not synchronized.
-    Level2NotSynchronized = 38,
+    Level2NotSynchronized = EL2NSYNC,
     /// Level 3 halted.
-    Level3Halted = 39,
+    Level3Halted = EL3HLT,
     /// Level 3 reset.
-    Level3Reset = 40,
+    Level3Reset = EL3RST,
     /// Link number out of range.
-    InvalidLinkNumber = 41,
+    InvalidLinkNumber = ELNRNG,
     /// Protocol driver not attached.
-    InvalidProtocolDriver = 42,
+    InvalidProtocolDriver = EUNATCH,
     /// No CSI structure available.
-    NoStructAvailable = 43,
+    NoStructAvailable = ENOCSI,
     /// Level 2 halted.
-    Level2Halted = 44,
+    Level2Halted = EL2HLT,
     /// Resource deadlock would occur.
-    Deadlock = 45,
+    Deadlock = EDEADLK,
     /// No record locks available.
-    LockNotAvailable = 46,
+    LockNotAvailable = ENOLCK,
     /// Invalid exchange.
-    InvalidExchange = 50,
+    InvalidExchange = EBADE,
     /// Invalid request descriptor.
-    InvalidRequestDescriptor = 51,
+    InvalidRequestDescriptor = EBADR,
     /// Exchange full.
-    ExchangeFull = 52,
+    ExchangeFull = EXFULL,
     /// No anode.
-    InvalidAnode = 53,
+    InvalidAnode = ENOANO,
     /// Invalid request code.
-    InvalidRequestCode = 54,
+    InvalidRequestCode = EBADRQC,
     /// Invalid slot.
-    InvalidSlot = 55,
+    InvalidSlot = EBADSLT,
     /// File locking deadlock error.
-    DeadlockWouldOccur = 56,
+    DeadlockWouldOccur = EDEADLOCK,
     /// Bad font file format.
-    BadFontFormat = 57,
+    BadFontFormat = EBFONT,
     /// Device not a stream.
-    NoStreamDeviceAvailable = 60,
+    NoStreamDeviceAvailable = ENOSTR,
     /// No data available.
-    NoDataAvailable = 61,
+    NoDataAvailable = ENODATA,
     /// Timer expired.
-    TimerExpired = 62,
+    TimerExpired = ETIME,
     /// Out of streams resources.
-    NoStreamResources = 63,
+    NoStreamResources = ENOSR,
     /// Machine is not on the network.
-    NoNetwork = 64,
+    NoNetwork = ENONET,
     /// Package not installed.
-    MissingPackage = 65,
+    MissingPackage = ENOPKG,
     /// Object is remote.
-    RemoteObject = 66,
+    RemoteObject = EREMOTE,
     /// Link has been severed.
-    NoLink = 67,
+    NoLink = ENOLINK,
     /// Advertise error.
-    AdvertiseErr = 68,
+    AdvertiseErr = EADV,
     /// Srmount error.
-    MountErr = 69,
+    MountErr = ESRMNT,
     /// Communication error on send.
-    CommunicationErr = 70,
+    CommunicationErr = ECOMM,
     /// Protocol error.
-    ProtocolErr = 71,
+    ProtocolErr = EPROTO,
     /// Multihop attempted.
-    MultipleHopAttemped = 74,
+    MultipleHopAttemped = EMULTIHOP,
     /// Remote inode.
-    InodeRemote = 75,
+    InodeRemote = ELBIN,
     /// RFS specific error.
-    RfsErr = 76,
+    RfsErr = EDOTDOT,
     /// Not a data message.
-    InvalidMessage = 77,
+    InvalidMessage = EBADMSG,
     /// Inappropriate file type or format.
-    InvalidFileType = 79,
+    InvalidFileType = EFTYPE,
     /// Name not unique on network.
-    NonUniqueName = 80,
+    NonUniqueName = ENOTUNIQ,
     /// File descriptor in bad state.
-    InvalidFileDescriptor = 81,
+    InvalidFileDescriptor = EBADFD,
     /// Remote address changed.
-    RemoteAddressChanged = 82,
+    RemoteAddressChanged = EREMCHG,
     /// Can not access a needed shared library.
-    LibraryAccessErr = 83,
+    LibraryAccessErr = ELIBACC,
     /// Accessing a corrupted shared library.
-    InvalidLibraryAccess = 84,
+    InvalidLibraryAccess = ELIBBAD,
     /// .lib section in a.out corrupted.
-    CorruptedLibSection = 85,
+    CorruptedLibSection = ELIBSCN,
     /// Attempting to link in too many shared libraries.
-    ExcessiveLibraryLinkCount = 86,
+    ExcessiveLibraryLinkCount = ELIBMAX,
     /// Cannot exec a shared library directly.
-    InvalidExecSharedLibrary = 87,
+    InvalidExecSharedLibrary = ELIBEXEC,
     /// Function not implemented.
-    InvalidSysCall = 88,
+    InvalidSysCall = ENOSYS,
     /// Directory not empty.
-    DirectoryNotEmpty = 90,
+    DirectoryNotEmpty = ENOTEMPTY,
     /// File name too long.
-    NameTooLong = 91,
+    NameTooLong = ENAMETOOLONG,
     /// Too many symbolic links encountered.
-    SymbolicLinkLoop = 92,
+    SymbolicLinkLoop = ELOOP,
     /// Operation not supported on socket.
-    OperationNotSupportedOnSocket = 95,
+    OperationNotSupportedOnSocket = EOPNOTSUPP,
     /// Protocol family not supported.
-    ProtocolFamilyNotSupported = 96,
+    ProtocolFamilyNotSupported = EPFNOSUPPORT,
     /// Connection reset by peer.
-    ConnectionReset = 104,
+    ConnectionReset = ECONNRESET,
     /// No buffer space available.
-    NoBufferSpace = 105,
+    NoBufferSpace = ENOBUFS,
     /// Address family not supported by protocol.
-    AddressFamilyNotSupported = 106,
+    AddressFamilyNotSupported = EAFNOSUPPORT,
     /// Protocol wrong type for socket.
-    BadProtocolType = 107,
+    BadProtocolType = EPROTOTYPE,
     /// Socket operation on non-socket.
-    NotSocketFile = 108,
+    NotSocketFile = ENOTSOCK,
     /// Protocol not available.
-    ProtocolOptionNotAvailable = 109,
+    ProtocolOptionNotAvailable = ENOPROTOOPT,
     /// Cannot send after transport endpoint shutdown.
-    TransportEndpointShutdown = 110,
+    TransportEndpointShutdown = ESHUTDOWN,
     /// Connection refused.
-    ConnectionRefused = 111,
+    ConnectionRefused = ECONNREFUSED,
     /// Address already in use.
-    AddressInUse = 112,
+    AddressInUse = EADDRINUSE,
     /// Software caused connection abort.
-    ConnectionAborted = 113,
+    ConnectionAborted = ECONNABORTED,
     /// Network is unreachable.
-    NetworkUnreachable = 114,
+    NetworkUnreachable = ENETUNREACH,
     /// Network is down.
-    NetworkDown = 115,
+    NetworkDown = ENETDOWN,
     /// Connection timed out.
-    OperationTimedOut = 116,
+    OperationTimedOut = ETIMEDOUT,
     /// Host is down.
-    HostDown = 117,
+    HostDown = EHOSTDOWN,
     /// No route to host.
-    HostUnreachable = 118,
+    HostUnreachable = EHOSTUNREACH,
     /// Operation now in progress.
-    OperationInProgress = 119,
+    OperationInProgress = EINPROGRESS,
     /// Operation already in progress.
-    OperationAlreadyInProgress = 120,
+    OperationAlreadyInProgress = EALREADY,
     /// Destination address required.
-    DestinationAddressRequired = 121,
+    DestinationAddressRequired = EDESTADDRREQ,
     /// Message too long.
-    MessageTooLong = 122,
+    MessageTooLong = EMSGSIZE,
     /// Protocol not supported.
-    ProtocolNotSupported = 123,
+    ProtocolNotSupported = EPROTONOSUPPORT,
     /// Socket type not supported.
-    SocketTypeNotSupported = 124,
+    SocketTypeNotSupported = ESOCKTNOSUPPORT,
     /// Cannot assign requested address.
-    AddressNotAvailable = 125,
+    AddressNotAvailable = EADDRNOTAVAIL,
     /// Network dropped connection on reset.
-    NetworkReset = 126,
+    NetworkReset = ENETRESET,
     /// Transport endpoint is already connected.
-    TransportEndpointConnected = 127,
+    TransportEndpointConnected = EISCONN,
     /// Transport endpoint is not connected.
-    TransportEndpointNotConnected = 128,
+    TransportEndpointNotConnected = ENOTCONN,
     /// Too many references: cannot splice.
-    TooManyReferences = 129,
+    TooManyReferences = ETOOMANYREFS,
     /// Too many users.
-    TooManyUsers = 131,
+    TooManyUsers = EUSERS,
     /// Disk quota exceeded.
-    QuotaExceeded = 132,
+    QuotaExceeded = EDQUOT,
     /// Stale file handle.
-    StaleHandle = 133,
+    StaleHandle = ESTALE,
     /// Operation not supported.
-    OperationNotSupported = 134,
+    OperationNotSupported = ENOTSUP,
     /// No medium found.
-    MediumNotFound = 135,
+    MediumNotFound = ENOMEDIUM,
     /// Illegal byte sequence.
-    IllegalByteSequence = 138,
+    IllegalByteSequence = EILSEQ,
     /// Value too large for defined data type.
-    ValueOverflow = 139,
+    ValueOverflow = EOVERFLOW,
     /// Operation canceled.
-    OperationCanceled = 140,
+    OperationCanceled = ECANCELED,
     /// State not recoverable.
-    UnrecoverableState = 141,
+    UnrecoverableState = ENOTRECOVERABLE,
     /// Owner died.
-    DeadOwner = 142,
+    DeadOwner = EOWNERDEAD,
     /// Streams pipe error.
-    StreamPipeErr = 143,
+    StreamPipeErr = ESTRPIPE,
 }
 
-#[derive(Debug)]
-pub struct Error {
-    pub code: ErrorCode,
-    pub reason: &'static str,
-}
-
-//==================================================================================================
-// Implementation
-//==================================================================================================
+} // verus!
 
 impl ErrorCode {
     ///
@@ -298,19 +421,143 @@ impl ErrorCode {
     }
 }
 
-impl Error {
-    pub fn new(code: ErrorCode, reason: &'static str) -> (result: Self)
-        ensures
-            result.code == code,
-            result.reason == reason,
-    {
-        Self { code, reason }
-    }
+impl TryFrom<i32> for ErrorCode {
+    type Error = Error;
 
-    // Verus note: kept because it is called by other verified modules (e.g., frame.rs).
-    // Not present in the original source but required for Verus codebase compilation.
-    #[verifier::external_body]
-    pub fn log(&self) {
+    fn try_from(value: i32) -> Result<Self, Error> {
+        let value: i32 = if value < 0 {
+            match value.checked_abs() {
+                Some(abs) => abs,
+                None => value,
+            }
+        } else {
+            value
+        };
+        match value {
+            EPERM => Ok(ErrorCode::OperationNotPermitted),
+            ENOENT => Ok(ErrorCode::NoSuchEntry),
+            ESRCH => Ok(ErrorCode::NoSuchProcess),
+            EINTR => Ok(ErrorCode::Interrupted),
+            EIO => Ok(ErrorCode::IoErr),
+            ENXIO => Ok(ErrorCode::NoSuchDeviceOrAddress),
+            E2BIG => Ok(ErrorCode::TooBig),
+            ENOEXEC => Ok(ErrorCode::InvalidExecutableFormat),
+            EBADF => Ok(ErrorCode::BadFile),
+            ECHILD => Ok(ErrorCode::NoChildProcess),
+            EAGAIN => Ok(ErrorCode::TryAgain),
+            ENOMEM => Ok(ErrorCode::OutOfMemory),
+            EACCES => Ok(ErrorCode::PermissionDenied),
+            EFAULT => Ok(ErrorCode::BadAddress),
+            ENOTBLK => Ok(ErrorCode::NotBlockDevice),
+            EBUSY => Ok(ErrorCode::ResourceBusy),
+            EEXIST => Ok(ErrorCode::EntryExists),
+            EXDEV => Ok(ErrorCode::CrossDeviceLink),
+            ENODEV => Ok(ErrorCode::NoSuchDevice),
+            ENOTDIR => Ok(ErrorCode::InvalidDirectory),
+            EISDIR => Ok(ErrorCode::IsDirectory),
+            EINVAL => Ok(ErrorCode::InvalidArgument),
+            ENFILE => Ok(ErrorCode::FileTableOVerflow),
+            EMFILE => Ok(ErrorCode::TooManyOpenFiles),
+            ENOTTY => Ok(ErrorCode::NotTerminal),
+            ETXTBSY => Ok(ErrorCode::TextFileBusy),
+            EFBIG => Ok(ErrorCode::FileTooLarge),
+            ENOSPC => Ok(ErrorCode::NoSpaceOnDevice),
+            ESPIPE => Ok(ErrorCode::IllegalSeek),
+            EROFS => Ok(ErrorCode::ReadOnlyFileSystem),
+            EMLINK => Ok(ErrorCode::TooManyLinks),
+            EPIPE => Ok(ErrorCode::BrokenPipe),
+            EDOM => Ok(ErrorCode::MathArgDomainErr),
+            ERANGE => Ok(ErrorCode::ValueOutOfRange),
+            ENOMSG => Ok(ErrorCode::NoMessageAvailable),
+            EIDRM => Ok(ErrorCode::IdentifierRemoved),
+            ECHRNG => Ok(ErrorCode::OutOfRangeChannel),
+            EL2NSYNC => Ok(ErrorCode::Level2NotSynchronized),
+            EL3HLT => Ok(ErrorCode::Level3Halted),
+            EL3RST => Ok(ErrorCode::Level3Reset),
+            ELNRNG => Ok(ErrorCode::InvalidLinkNumber),
+            EUNATCH => Ok(ErrorCode::InvalidProtocolDriver),
+            ENOCSI => Ok(ErrorCode::NoStructAvailable),
+            EL2HLT => Ok(ErrorCode::Level2Halted),
+            EDEADLK => Ok(ErrorCode::Deadlock),
+            ENOLCK => Ok(ErrorCode::LockNotAvailable),
+            EBADE => Ok(ErrorCode::InvalidExchange),
+            EBADR => Ok(ErrorCode::InvalidRequestDescriptor),
+            EXFULL => Ok(ErrorCode::ExchangeFull),
+            ENOANO => Ok(ErrorCode::InvalidAnode),
+            EBADRQC => Ok(ErrorCode::InvalidRequestCode),
+            EBADSLT => Ok(ErrorCode::InvalidSlot),
+            EDEADLOCK => Ok(ErrorCode::DeadlockWouldOccur),
+            EBFONT => Ok(ErrorCode::BadFontFormat),
+            ENOSTR => Ok(ErrorCode::NoStreamDeviceAvailable),
+            ENODATA => Ok(ErrorCode::NoDataAvailable),
+            ETIME => Ok(ErrorCode::TimerExpired),
+            ENOSR => Ok(ErrorCode::NoStreamResources),
+            ENONET => Ok(ErrorCode::NoNetwork),
+            ENOPKG => Ok(ErrorCode::MissingPackage),
+            EREMOTE => Ok(ErrorCode::RemoteObject),
+            ENOLINK => Ok(ErrorCode::NoLink),
+            EADV => Ok(ErrorCode::AdvertiseErr),
+            ESRMNT => Ok(ErrorCode::MountErr),
+            ECOMM => Ok(ErrorCode::CommunicationErr),
+            EPROTO => Ok(ErrorCode::ProtocolErr),
+            EMULTIHOP => Ok(ErrorCode::MultipleHopAttemped),
+            ELBIN => Ok(ErrorCode::InodeRemote),
+            EDOTDOT => Ok(ErrorCode::RfsErr),
+            EBADMSG => Ok(ErrorCode::InvalidMessage),
+            EFTYPE => Ok(ErrorCode::InvalidFileType),
+            ENOTUNIQ => Ok(ErrorCode::NonUniqueName),
+            EBADFD => Ok(ErrorCode::InvalidFileDescriptor),
+            EREMCHG => Ok(ErrorCode::RemoteAddressChanged),
+            ELIBACC => Ok(ErrorCode::LibraryAccessErr),
+            ELIBBAD => Ok(ErrorCode::InvalidLibraryAccess),
+            ELIBSCN => Ok(ErrorCode::CorruptedLibSection),
+            ELIBMAX => Ok(ErrorCode::ExcessiveLibraryLinkCount),
+            ELIBEXEC => Ok(ErrorCode::InvalidExecSharedLibrary),
+            ENOSYS => Ok(ErrorCode::InvalidSysCall),
+            ENOTEMPTY => Ok(ErrorCode::DirectoryNotEmpty),
+            ENAMETOOLONG => Ok(ErrorCode::NameTooLong),
+            ELOOP => Ok(ErrorCode::SymbolicLinkLoop),
+            EOPNOTSUPP => Ok(ErrorCode::OperationNotSupportedOnSocket),
+            EPFNOSUPPORT => Ok(ErrorCode::ProtocolFamilyNotSupported),
+            ECONNRESET => Ok(ErrorCode::ConnectionReset),
+            ENOBUFS => Ok(ErrorCode::NoBufferSpace),
+            EAFNOSUPPORT => Ok(ErrorCode::AddressFamilyNotSupported),
+            EPROTOTYPE => Ok(ErrorCode::BadProtocolType),
+            ENOTSOCK => Ok(ErrorCode::NotSocketFile),
+            ENOPROTOOPT => Ok(ErrorCode::ProtocolOptionNotAvailable),
+            ESHUTDOWN => Ok(ErrorCode::TransportEndpointShutdown),
+            ECONNREFUSED => Ok(ErrorCode::ConnectionRefused),
+            EADDRINUSE => Ok(ErrorCode::AddressInUse),
+            ECONNABORTED => Ok(ErrorCode::ConnectionAborted),
+            ENETUNREACH => Ok(ErrorCode::NetworkUnreachable),
+            ENETDOWN => Ok(ErrorCode::NetworkDown),
+            ETIMEDOUT => Ok(ErrorCode::OperationTimedOut),
+            EHOSTDOWN => Ok(ErrorCode::HostDown),
+            EHOSTUNREACH => Ok(ErrorCode::HostUnreachable),
+            EINPROGRESS => Ok(ErrorCode::OperationInProgress),
+            EALREADY => Ok(ErrorCode::OperationAlreadyInProgress),
+            EDESTADDRREQ => Ok(ErrorCode::DestinationAddressRequired),
+            EMSGSIZE => Ok(ErrorCode::MessageTooLong),
+            EPROTONOSUPPORT => Ok(ErrorCode::ProtocolNotSupported),
+            ESOCKTNOSUPPORT => Ok(ErrorCode::SocketTypeNotSupported),
+            EADDRNOTAVAIL => Ok(ErrorCode::AddressNotAvailable),
+            ENETRESET => Ok(ErrorCode::NetworkReset),
+            EISCONN => Ok(ErrorCode::TransportEndpointConnected),
+            ENOTCONN => Ok(ErrorCode::TransportEndpointNotConnected),
+            ETOOMANYREFS => Ok(ErrorCode::TooManyReferences),
+            EUSERS => Ok(ErrorCode::TooManyUsers),
+            EDQUOT => Ok(ErrorCode::QuotaExceeded),
+            ESTALE => Ok(ErrorCode::StaleHandle),
+            ENOTSUP => Ok(ErrorCode::OperationNotSupported),
+            ENOMEDIUM => Ok(ErrorCode::MediumNotFound),
+            EILSEQ => Ok(ErrorCode::IllegalByteSequence),
+            EOVERFLOW => Ok(ErrorCode::ValueOverflow),
+            ECANCELED => Ok(ErrorCode::OperationCanceled),
+            ENOTRECOVERABLE => Ok(ErrorCode::UnrecoverableState),
+            EOWNERDEAD => Ok(ErrorCode::DeadOwner),
+            ESTRPIPE => Ok(ErrorCode::StreamPipeErr),
+            _ => Err(invalid_error_code(value)),
+        }
     }
 }
 
@@ -327,223 +574,98 @@ impl Error {
 ///
 /// Default error.
 ///
-fn invalid_error_code(_value: i32) -> (result: Error)
-    ensures
-        result.code == ErrorCode::InvalidArgument,
-        result.reason == "invalid error code",
-{
+fn invalid_error_code(_value: i32) -> Error {
     Error {
         code: ErrorCode::InvalidArgument,
         reason: "invalid error code",
     }
 }
 
+//==================================================================================================
+// Verified Structures and Functions
+//==================================================================================================
+
+verus! {
+
+#[derive(Debug)]
+pub struct Error {
+    pub code: ErrorCode,
+    pub reason: &'static str,
+}
+
+impl Error {
+    #[verifier::external_body]
+    pub fn new(code: ErrorCode, reason: &'static str) -> (result: Error)
+        ensures
+            result.code == code,
+            result.reason == reason,
+    {
+        Error { code, reason }
+    }
+
+    /// Logs an error message.
+    ///
+    /// # Note
+    ///
+    /// Verus does not support the `error!` macro. This method is used by
+    /// verified callers (e.g., frame allocator) as a replacement.
+    #[verifier::external_body]
+    pub fn log(&self) {
+        eprintln!("error: {:?}: {}", self.code, self.reason);
+    }
+}
+
 } // verus!
 
 //==================================================================================================
-// Trait Implementations (outside verus! — Verus cannot verify trait impls directly)
+// Trait Implementations
 //==================================================================================================
 
-#[verifier::external]
 impl core::error::Error for ErrorCode {}
 
-#[verifier::external]
 impl core::fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "error={self:?}")
     }
 }
 
-#[verifier::external]
 impl From<ErrorCode> for u32 {
     fn from(errno: ErrorCode) -> Self {
         errno as u32
     }
 }
 
-#[verifier::external]
 impl From<ErrorCode> for i32 {
     fn from(errno: ErrorCode) -> Self {
         errno as i32
     }
 }
 
-#[verifier::external]
 impl From<ErrorCode> for i64 {
     fn from(errno: ErrorCode) -> Self {
         errno as i64
     }
 }
 
-#[verifier::external]
 impl From<ErrorCode> for i16 {
     fn from(errno: ErrorCode) -> Self {
         errno as i16
     }
 }
 
-#[verifier::external]
 impl From<ErrorCode> for u16 {
     fn from(errno: ErrorCode) -> Self {
         errno as u16
     }
 }
 
-// Verus note: TryFrom<i32> placed outside verus! because trait impls are not supported inside.
-// Uses hardcoded i32 values instead of sysapi::errno constants (not available in Verus crate).
-#[verifier::external]
-impl TryFrom<i32> for ErrorCode {
-    type Error = Error;
-
-    fn try_from(value: i32) -> Result<Self, Error> {
-        // Normalize to a positive errno value when possible, avoiding overflow on i32::MIN.
-        let value: i32 = if value < 0 {
-            match value.checked_abs() {
-                Some(abs) => abs,
-                None => value,
-            }
-        } else {
-            value
-        };
-        match value {
-            1 => Ok(ErrorCode::OperationNotPermitted),
-            2 => Ok(ErrorCode::NoSuchEntry),
-            3 => Ok(ErrorCode::NoSuchProcess),
-            4 => Ok(ErrorCode::Interrupted),
-            5 => Ok(ErrorCode::IoErr),
-            6 => Ok(ErrorCode::NoSuchDeviceOrAddress),
-            7 => Ok(ErrorCode::TooBig),
-            8 => Ok(ErrorCode::InvalidExecutableFormat),
-            9 => Ok(ErrorCode::BadFile),
-            10 => Ok(ErrorCode::NoChildProcess),
-            11 => Ok(ErrorCode::TryAgain),
-            12 => Ok(ErrorCode::OutOfMemory),
-            13 => Ok(ErrorCode::PermissionDenied),
-            14 => Ok(ErrorCode::BadAddress),
-            15 => Ok(ErrorCode::NotBlockDevice),
-            16 => Ok(ErrorCode::ResourceBusy),
-            17 => Ok(ErrorCode::EntryExists),
-            18 => Ok(ErrorCode::CrossDeviceLink),
-            19 => Ok(ErrorCode::NoSuchDevice),
-            20 => Ok(ErrorCode::InvalidDirectory),
-            21 => Ok(ErrorCode::IsDirectory),
-            22 => Ok(ErrorCode::InvalidArgument),
-            23 => Ok(ErrorCode::FileTableOVerflow),
-            24 => Ok(ErrorCode::TooManyOpenFiles),
-            25 => Ok(ErrorCode::NotTerminal),
-            26 => Ok(ErrorCode::TextFileBusy),
-            27 => Ok(ErrorCode::FileTooLarge),
-            28 => Ok(ErrorCode::NoSpaceOnDevice),
-            29 => Ok(ErrorCode::IllegalSeek),
-            30 => Ok(ErrorCode::ReadOnlyFileSystem),
-            31 => Ok(ErrorCode::TooManyLinks),
-            32 => Ok(ErrorCode::BrokenPipe),
-            33 => Ok(ErrorCode::MathArgDomainErr),
-            34 => Ok(ErrorCode::ValueOutOfRange),
-            35 => Ok(ErrorCode::NoMessageAvailable),
-            36 => Ok(ErrorCode::IdentifierRemoved),
-            37 => Ok(ErrorCode::OutOfRangeChannel),
-            38 => Ok(ErrorCode::Level2NotSynchronized),
-            39 => Ok(ErrorCode::Level3Halted),
-            40 => Ok(ErrorCode::Level3Reset),
-            41 => Ok(ErrorCode::InvalidLinkNumber),
-            42 => Ok(ErrorCode::InvalidProtocolDriver),
-            43 => Ok(ErrorCode::NoStructAvailable),
-            44 => Ok(ErrorCode::Level2Halted),
-            45 => Ok(ErrorCode::Deadlock),
-            46 => Ok(ErrorCode::LockNotAvailable),
-            50 => Ok(ErrorCode::InvalidExchange),
-            51 => Ok(ErrorCode::InvalidRequestDescriptor),
-            52 => Ok(ErrorCode::ExchangeFull),
-            53 => Ok(ErrorCode::InvalidAnode),
-            54 => Ok(ErrorCode::InvalidRequestCode),
-            55 => Ok(ErrorCode::InvalidSlot),
-            56 => Ok(ErrorCode::DeadlockWouldOccur),
-            57 => Ok(ErrorCode::BadFontFormat),
-            60 => Ok(ErrorCode::NoStreamDeviceAvailable),
-            61 => Ok(ErrorCode::NoDataAvailable),
-            62 => Ok(ErrorCode::TimerExpired),
-            63 => Ok(ErrorCode::NoStreamResources),
-            64 => Ok(ErrorCode::NoNetwork),
-            65 => Ok(ErrorCode::MissingPackage),
-            66 => Ok(ErrorCode::RemoteObject),
-            67 => Ok(ErrorCode::NoLink),
-            68 => Ok(ErrorCode::AdvertiseErr),
-            69 => Ok(ErrorCode::MountErr),
-            70 => Ok(ErrorCode::CommunicationErr),
-            71 => Ok(ErrorCode::ProtocolErr),
-            74 => Ok(ErrorCode::MultipleHopAttemped),
-            75 => Ok(ErrorCode::InodeRemote),
-            76 => Ok(ErrorCode::RfsErr),
-            77 => Ok(ErrorCode::InvalidMessage),
-            79 => Ok(ErrorCode::InvalidFileType),
-            80 => Ok(ErrorCode::NonUniqueName),
-            81 => Ok(ErrorCode::InvalidFileDescriptor),
-            82 => Ok(ErrorCode::RemoteAddressChanged),
-            83 => Ok(ErrorCode::LibraryAccessErr),
-            84 => Ok(ErrorCode::InvalidLibraryAccess),
-            85 => Ok(ErrorCode::CorruptedLibSection),
-            86 => Ok(ErrorCode::ExcessiveLibraryLinkCount),
-            87 => Ok(ErrorCode::InvalidExecSharedLibrary),
-            88 => Ok(ErrorCode::InvalidSysCall),
-            90 => Ok(ErrorCode::DirectoryNotEmpty),
-            91 => Ok(ErrorCode::NameTooLong),
-            92 => Ok(ErrorCode::SymbolicLinkLoop),
-            95 => Ok(ErrorCode::OperationNotSupportedOnSocket),
-            96 => Ok(ErrorCode::ProtocolFamilyNotSupported),
-            104 => Ok(ErrorCode::ConnectionReset),
-            105 => Ok(ErrorCode::NoBufferSpace),
-            106 => Ok(ErrorCode::AddressFamilyNotSupported),
-            107 => Ok(ErrorCode::BadProtocolType),
-            108 => Ok(ErrorCode::NotSocketFile),
-            109 => Ok(ErrorCode::ProtocolOptionNotAvailable),
-            110 => Ok(ErrorCode::TransportEndpointShutdown),
-            111 => Ok(ErrorCode::ConnectionRefused),
-            112 => Ok(ErrorCode::AddressInUse),
-            113 => Ok(ErrorCode::ConnectionAborted),
-            114 => Ok(ErrorCode::NetworkUnreachable),
-            115 => Ok(ErrorCode::NetworkDown),
-            116 => Ok(ErrorCode::OperationTimedOut),
-            117 => Ok(ErrorCode::HostDown),
-            118 => Ok(ErrorCode::HostUnreachable),
-            119 => Ok(ErrorCode::OperationInProgress),
-            120 => Ok(ErrorCode::OperationAlreadyInProgress),
-            121 => Ok(ErrorCode::DestinationAddressRequired),
-            122 => Ok(ErrorCode::MessageTooLong),
-            123 => Ok(ErrorCode::ProtocolNotSupported),
-            124 => Ok(ErrorCode::SocketTypeNotSupported),
-            125 => Ok(ErrorCode::AddressNotAvailable),
-            126 => Ok(ErrorCode::NetworkReset),
-            127 => Ok(ErrorCode::TransportEndpointConnected),
-            128 => Ok(ErrorCode::TransportEndpointNotConnected),
-            129 => Ok(ErrorCode::TooManyReferences),
-            131 => Ok(ErrorCode::TooManyUsers),
-            132 => Ok(ErrorCode::QuotaExceeded),
-            133 => Ok(ErrorCode::StaleHandle),
-            134 => Ok(ErrorCode::OperationNotSupported),
-            135 => Ok(ErrorCode::MediumNotFound),
-            138 => Ok(ErrorCode::IllegalByteSequence),
-            139 => Ok(ErrorCode::ValueOverflow),
-            140 => Ok(ErrorCode::OperationCanceled),
-            141 => Ok(ErrorCode::UnrecoverableState),
-            142 => Ok(ErrorCode::DeadOwner),
-            143 => Ok(ErrorCode::StreamPipeErr),
-            _ => Err(invalid_error_code(value)),
-        }
-    }
-}
-
-#[verifier::external]
 impl TryFrom<i64> for ErrorCode {
     type Error = Error;
 
     fn try_from(value: i64) -> Result<Self, Self::Error> {
-        // Attempt to convert i64 to i32.
         let value: i32 = value
             .try_into()
             .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid error code"))?;
-
-        // Attempt to convert i32 to ErrorCode.
         ErrorCode::try_from(value)
             .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid error code"))
     }
