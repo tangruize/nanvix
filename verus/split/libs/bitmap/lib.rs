@@ -162,17 +162,6 @@ impl Bitmap {
         self.number_of_bits
     }
 
-    /// Returns the number of bits set (usage count) in the bitmap.
-    pub fn usage(&self) -> (result: usize)
-        requires
-            self.inv(),
-        ensures
-            result as int == self@.usage(),
-            result as int <= self@.number_of_bits(),
-    {
-        self.usage
-    }
-
     /// Allocates a single bit in the bitmap.
     pub fn alloc(&mut self) -> (result: Result<usize, Error>)
         requires
