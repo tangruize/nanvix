@@ -143,6 +143,7 @@ pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
 /// A fixed-size array backed by raw memory.
 #[verifier::reject_recursive_types(T)]
 pub struct RawArray<T> {
+    /// The backing storage of the raw array.
     storage: RawArrayStorage<T>,
 }
 
