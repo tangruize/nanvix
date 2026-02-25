@@ -142,8 +142,39 @@ def extract_function_modifiers(node) -> List[str]:
     return [node_text(child) for child in mod_node.children]
 
 
-def extract_exec_functions(root) -> List[Tuple[str, Any, str]]:
-    """Extract exec (non-spec, non-proof) functions with names and hashes."""
+def _find_verus_ranges(content: str) -> List[Tuple[int, int]]:
+    """Find line ranges (0-indexed) of verus! { ... } blocks by text search."""
+    lines = content.split("\n")
+    ranges = []
+    for i, line in enumerate(lines):
+        if re.match(r"^verus!\s*\{", line.strip()):
+            for j in range(i + 1, len(lines)):
+                if re.match(r"^}\s*//\s*verus!", lines[j].strip()):
+                    ranges.append((i, j))
+                    break
+    return ranges
+
+
+def _classify_verus_function(node, verus_ranges: List[Tuple[int, int]]) -> str:
+    """Classify a function as VERIFIED, EXTERNAL_BODY, or UNVERIFIED."""
+    line = node.start_point[0]
+    in_verus = any(s <= line <= e for s, e in verus_ranges)
+    if not in_verus:
+        return "UNVERIFIED"
+    text = node_text(node)[:500]
+    if "external_body" in text:
+        return "EXTERNAL_BODY"
+    return "VERIFIED"
+
+
+def extract_exec_functions(root, content: str = "") -> List[Tuple[str, Any, str, str]]:
+    """Extract exec (non-spec, non-proof) functions with names, hashes, and verification status.
+
+    Returns list of (name, node, hash, verification_status).
+    verification_status is one of: VERIFIED, EXTERNAL_BODY, UNVERIFIED.
+    """
+    verus_ranges = _find_verus_ranges(content) if content else []
+
     query = _language.query("(function_item) @fn")
     captures = query.captures(root)
     results = []
@@ -157,7 +188,8 @@ def extract_exec_functions(root) -> List[Tuple[str, Any, str]]:
         name = node_text(name_node)
         # Hash the function body, ignoring ghost constructs.
         fn_hash = get_tree_hash(node)
-        results.append((name, node, fn_hash))
+        vstatus = _classify_verus_function(node, verus_ranges) if verus_ranges else ""
+        results.append((name, node, fn_hash, vstatus))
     return results
 
 
@@ -299,8 +331,8 @@ def compare_modules(
     verus_tree, verus_content = parse_file(verus_path)
 
     # Compare exec functions.
-    src_fns = {name: (node, h) for name, node, h in extract_exec_functions(src_tree.root_node)}
-    verus_fns = {name: (node, h) for name, node, h in extract_exec_functions(verus_tree.root_node)}
+    src_fns = {name: (node, h, vs) for name, node, h, vs in extract_exec_functions(src_tree.root_node)}
+    verus_fns = {name: (node, h, vs) for name, node, h, vs in extract_exec_functions(verus_tree.root_node, verus_content)}
 
     matched = 0
     mismatched = 0
@@ -309,9 +341,9 @@ def compare_modules(
 
     # Check source functions.
     for name in sorted(src_fns.keys()):
-        src_node, src_hash = src_fns[name]
+        src_node, src_hash, _ = src_fns[name]
         if name in verus_fns:
-            verus_node, verus_hash = verus_fns[name]
+            verus_node, verus_hash, vstatus = verus_fns[name]
             if src_hash == verus_hash or src_hash == "" or verus_hash == "":
                 status = "MATCH"
                 matched += 1
@@ -325,6 +357,7 @@ def compare_modules(
                 "verus_hash": verus_hash,
                 "src_lines": f"{src_node.start_point[0]+1}-{src_node.end_point[0]+1}",
                 "verus_lines": f"{verus_node.start_point[0]+1}-{verus_node.end_point[0]+1}",
+                "verification": vstatus,
             })
         else:
             missing_in_verus += 1
@@ -335,12 +368,13 @@ def compare_modules(
                 "verus_hash": "",
                 "src_lines": f"{src_node.start_point[0]+1}-{src_node.end_point[0]+1}",
                 "verus_lines": "",
+                "verification": "",
             })
 
     # Check for extra functions in Verus.
     for name in sorted(verus_fns.keys()):
         if name not in src_fns:
-            verus_node, verus_hash = verus_fns[name]
+            verus_node, verus_hash, vstatus = verus_fns[name]
             extra_in_verus += 1
             report["functions"].append({
                 "name": name,
@@ -349,6 +383,7 @@ def compare_modules(
                 "verus_hash": verus_hash,
                 "src_lines": "",
                 "verus_lines": f"{verus_node.start_point[0]+1}-{verus_node.end_point[0]+1}",
+                "verification": vstatus,
             })
 
     # Compare struct definitions.
@@ -455,18 +490,52 @@ def format_markdown(report: Dict) -> str:
     # All functions.
     lines.append("## All Functions")
     lines.append("")
-    lines.append("| Function | Status | Hash Match |")
-    lines.append("|----------|--------|------------|")
+    lines.append("| Function | Status | Hash Match | Verification |")
+    lines.append("|----------|--------|------------|--------------|")
     for f in report["functions"]:
         name = f['name']
         status = f['status']
+        vstatus = f.get('verification', '')
         match_str = "✅" if status == "MATCH" else "❌"
+        if vstatus == "UNVERIFIED":
+            verify_str = "⚠️ UNVERIFIED"
+        elif vstatus == "EXTERNAL_BODY":
+            verify_str = "🔒 external_body"
+        elif vstatus == "VERIFIED":
+            verify_str = "✅ verified"
+        else:
+            verify_str = ""
         if status == "EXTRA_IN_VERUS":
             name_cell = f"`{name}` [{name}_verus.rs]({name}_verus.rs)"
         else:
             name_cell = f"`{name}`"
-        lines.append(f"| {name_cell} | {status} | {match_str} |")
+        lines.append(f"| {name_cell} | {status} | {match_str} | {verify_str} |")
     lines.append("")
+
+    # Unverified functions warning.
+    unverified = [f for f in report["functions"] if f.get("verification") == "UNVERIFIED"]
+    external_body = [f for f in report["functions"] if f.get("verification") == "EXTERNAL_BODY"]
+    if unverified or external_body:
+        lines.append("## Verification Coverage")
+        lines.append("")
+        if unverified:
+            lines.append(f"**⚠️ {len(unverified)} function(s) are UNVERIFIED** (outside `verus!` block):")
+            lines.append("")
+            for f in unverified:
+                lines.append(f"- `{f['name']}` (lines {f.get('verus_lines', f.get('src_lines', '?'))})")
+            lines.append("")
+            lines.append("These functions are not checked by Verus at all. Justify why each")
+            lines.append("cannot be verified, or move them inside `verus!` with proper contracts.")
+            lines.append("")
+        if external_body:
+            lines.append(f"**🔒 {len(external_body)} function(s) use `external_body`** (body not verified):")
+            lines.append("")
+            for f in external_body:
+                lines.append(f"- `{f['name']}` (lines {f.get('verus_lines', '?')})")
+            lines.append("")
+            lines.append("These functions have requires/ensures contracts but the body is trusted.")
+            lines.append("Justify why `external_body` is necessary for each.")
+            lines.append("")
 
     # Struct comparison.
     problem_structs = [s for s in report["structs"] if s["status"] not in ("MATCH", "EXPECTED_EXTRA")]
