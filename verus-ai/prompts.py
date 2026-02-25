@@ -830,34 +830,27 @@ Verified code directory: {output_dir}/
   - {file_stem}.spec.rs (spec)
   - {file_stem}.proof.rs (proof)
 
-Diff output directory: {diff_output_dir}/
-  - full/       : per-function diffs (source vs full Verus code with spec/proof)
-  - exec-only/  : per-function diffs (source vs Verus code with ghost/proof stripped)
+== DIFF FILES ==
+
+Per-function diffs are available in: {diff_output_dir}/
+  - full/<func>.diff          : source vs full Verus code (with spec/proof)
+  - exec-only/<func>.diff     : source vs Verus with ghost/proof stripped (exec logic only)
+  - full/<func>_source.rs     : source version of the function
+  - full/<func>_verus.rs      : Verus version of the function
+
+Read the exec-only diffs first to identify real exec logic changes (all Verus
+annotations like requires/ensures, proof blocks, ghost variables, and invariants
+are stripped). Then read the full diffs for context on why changes were made.
 
 == TREE-SITTER AST DIFF REPORT ==
 
-The following inconsistencies were detected by comparing AST hashes of exec
-functions between the original source and the verified version (ghost/proof
-annotations are stripped before comparison):
-
 {consistency_report}
-
-== EXEC-ONLY DIFFS (ghost/proof stripped) ==
-
-These diffs show only the executable code differences. All Verus annotations
-(requires/ensures, proof blocks, ghost variables, invariants, named returns)
-have been stripped. Use these to identify real exec logic changes vs purely
-verification-related additions:
-
-{exec_only_diffs}
 
 == YOUR TASK ==
 
 For each inconsistency:
 
-1. **MISMATCH functions**: Compare the source and verus versions side by side.
-   - Read both the full diff (full/<func>.diff) and exec-only diff
-     (exec-only/<func>.diff) to understand what changed.
+1. **MISMATCH functions**: Read both exec-only/<func>.diff and full/<func>.diff.
    - If the verus version changed executable logic: RESTORE the original logic
      and update specs/proofs to verify the original code.
    - If the change is purely structural but semantically equivalent (e.g.,

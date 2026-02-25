@@ -1286,19 +1286,6 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
         print("[ANALYSIS] Could not generate consistency report.")
         return False
 
-    # Read exec-only diffs for mismatched functions to give the LLM detailed info.
-    exec_only_diffs = ""
-    exec_only_dir = Path(diff_output_dir) / "exec-only"
-    if exec_only_dir.exists():
-        diff_files = sorted(exec_only_dir.glob("*.diff"))
-        if diff_files:
-            parts = []
-            for df in diff_files:
-                parts.append(f"### {df.stem}")
-                parts.append(f"```diff\n{df.read_text().strip()}\n```")
-                parts.append("")
-            exec_only_diffs = "\n".join(parts)
-
     if "All exec functions consistent" in (result.stderr or ""):
         print("[ANALYSIS] All exec functions consistent. Skipping.")
         return True
@@ -1306,7 +1293,6 @@ def run_exec_consistency(module_name: str, source_path: Optional[str] = None) ->
     prompt = EXEC_CONSISTENCY_PROMPT.format(
         **fmt,
         consistency_report=consistency_report,
-        exec_only_diffs=exec_only_diffs,
         diff_output_dir=diff_output_dir,
         report_file=fix_report_path,
     )
