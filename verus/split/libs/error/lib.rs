@@ -2,8 +2,16 @@
 // Licensed under the MIT License.
 
 //! # Error Handling - Implementation
+//!
+//! Specification functions are in `lib.spec.rs` and proofs are in `lib.proof.rs`.
 
 use vstd::prelude::*;
+
+// Include specifications.
+include!("lib.spec.rs");
+
+// Include proofs (lemmas).
+include!("lib.proof.rs");
 
 verus! {
 
