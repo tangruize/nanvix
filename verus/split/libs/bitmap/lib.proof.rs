@@ -632,7 +632,9 @@ impl Bitmap {
     /// Lemma: setting a byte bit reflects in set_bits
     proof fn lemma_byte_or_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
-            self.inv(),
+            self@.number_of_bits() > 0,
+            self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
+            self.number_of_bits as int == self@.number_of_bits(),
             0 <= word < self.bits@.len(),
             0 <= bit < (u8::BITS as int),
             new_self.bits@.len() == self.bits@.len(),

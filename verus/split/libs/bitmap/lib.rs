@@ -325,7 +325,7 @@ impl Bitmap {
                 }
             }
 
-            // Check if we have a free range starting at `start`.
+            // Check if all bits in the range are free.
             let ghost start_before_inner: usize = start;
             let mut offset: usize = 0;
             let mut free: bool = true;
@@ -355,69 +355,29 @@ impl Bitmap {
                         0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
             {
                 let idx: usize = start + offset;
-
-                // Check bounds.
-                if idx >= self.number_of_bits {
+                let (w, b): (usize, usize) = self.index_unchecked(idx);
+                if (self.bits[w] & (1u8 << b)) != 0 {
                     free = false;
-                    start = self.number_of_bits;
-                    proof {
-                        // Prove: for all p in [start_before_inner, self.number_of_bits),
-                        // p + size > number_of_bits, so no free range.
-                        assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
-                            0 <= p < start as int implies !self.has_free_range_at(p, size as int)
-                        by {
-                            if p >= start_before_inner as int {
-                                // We have: idx = start_before_inner + offset >= number_of_bits.
-                                // And: offset < size.
-                                // For p >= start_before_inner:
-                                // p + size >= start_before_inner + size > start_before_inner + offset = idx >= number_of_bits.
-                                // So p + size > number_of_bits.
-                                assert(idx as int == (start_before_inner + offset) as int);
-                                assert(idx as int >= self@.number_of_bits());
-                                assert((offset as int) < (size as int));
-                                assert(p >= start_before_inner as int);
-                                // p + size >= start_before_inner + size > start_before_inner + offset >= number_of_bits.
-                                assert(p + (size as int) > self@.number_of_bits());
-                            }
-                        }
-                    }
-                    break;
-                }
-
-                // Check if bit is set.
-                let is_set: bool = self.test_unchecked(idx);
-                if is_set {
-                    free = false;
-                    start = idx + 1;
+                    start += offset + 1;
                     proof {
                         // Bit at idx is set, so no free range can include idx.
                         assert forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
                             start_before_inner as int <= p <= idx as int implies !self.has_free_range_at(p, size as int)
                         by {
                             if self.has_free_range_at(p, size as int) {
-                                // Free range at p means all bits in [p, p+size) are unset.
-                                // We have: start_before_inner <= p <= idx.
-                                // And: idx = start_before_inner + offset, offset < size.
-                                // So: idx - p <= idx - start_before_inner = offset < size.
-                                // Therefore: p <= idx < p + size, meaning idx is in [p, p+size).
                                 assert(p <= idx as int);
                                 assert((idx as int) - p <= (offset as int));
                                 assert((offset as int) < (size as int));
                                 assert((idx as int) < p + (size as int));
-                                // So idx is in the range [p, p+size).
-                                // has_free_range_at(p, size) means all bits in [p, p+size) are unset.
-                                // But idx is set (self.is_bit_set(idx)).
                                 assert(self.is_bit_set(idx as int));
                                 assert(self.all_bits_unset_in_range(p, p + (size as int)));
-                                // This is a contradiction: idx in range, idx set, but range all unset.
                                 assert(!self.is_bit_set(idx as int));
                             }
                         }
                     }
                     break;
                 }
-
-                offset = offset + 1;
+                offset += 1;
             }
 
             if free {
@@ -458,24 +418,23 @@ impl Bitmap {
                 let mut alloc_offset: usize = 0;
 
                 proof {
-                    // At this point, self.inv() holds from the outer loop invariant.
-                    // From outer loop invariant: self.number_of_bits == old_self.number_of_bits.
-                    // self@.number_of_bits() = self.number_of_bits as int (from self.inv()).
-                    // old_self@.number_of_bits() = old_self.number_of_bits as int (from old_self.inv()).
-                    // Therefore self@.number_of_bits() == old_self@.number_of_bits().
                     assert(self@.number_of_bits() == old_self@.number_of_bits());
                     assert(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
                 }
 
+                // Verus note: `for offset in 0..size` is not supported;
+                // `self.bits[w] |= 1 << b` is not supported for mutable index.
                 while alloc_offset < size
                     invariant
                         // Basic structure preservation.
                         self.bits@.len() == pre_alloc_self.bits@.len(),
                         self.bits@.len() == old_self.bits@.len(),
+                        self@.number_of_bits() > 0,
                         self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
                         self.number_of_bits == pre_alloc_self.number_of_bits,
-                        // Usage tracked incrementally.
-                        self.usage == pre_alloc_self.usage + alloc_offset,
+                        self.number_of_bits as int == self@.number_of_bits(),
+                        // Usage unchanged during this loop (updated after).
+                        self.usage == pre_alloc_self.usage,
                         // Ghost state.
                         old_self.inv(),
                         pre_alloc_self.inv(),
@@ -493,26 +452,15 @@ impl Bitmap {
                             #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i),
                         // Set-based invariant.
                         self@.set_bits =~= old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (alloc_offset as int))),
-                        // Full invariant maintained (usage updated incrementally).
-                        self.inv(),
-                        // Usage tracks allocation progress.
-                        self.usage == old_self.usage + alloc_offset,
+                        self@.set_bits.finite(),
                         // The range [start, start+size) was free in old_self.
                         old_self.all_bits_unset_in_range(start as int, start as int + (size as int)),
                 {
                     let idx: usize = start + alloc_offset;
-                    
-                    proof {
-                        // Prove idx is valid for index_unchecked.
-                        assert(idx < self.number_of_bits);
-                        assert(self.bits@.len() > 0);
-                    }
-                    
                     let (w, b): (usize, usize) = self.index_unchecked(idx);
                     let ghost loop_old_self = *self;
-                    
-                    self.bits.set(w, self.bits[w] | (1 << b));
-                    self.usage = self.usage + 1;
+
+                    self.bits.set(w, self.bits[w] | (1u8 << b));
 
                     proof {
                         loop_old_self.lemma_byte_or_reflects_in_view(self, w as int, b as int);
@@ -520,140 +468,77 @@ impl Bitmap {
                         // Prove set_bits invariant update.
                         assert forall|i: int| self@.set_bits.contains(i) ==
                             old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (alloc_offset as int + 1))).contains(i)
-                        by {
-                            // i in new set_bits iff i in loop_old_self.insert(idx)
-                            // iff i = idx or i in loop_old_self
-                            // iff i = idx or (i in old_self or i in range_set(start, start+alloc_offset))
-                            // iff i in old_self or i in range_set(start, start+alloc_offset+1)
-                        }
-                        
+                        by {}
+
                         // Prove wf() preserved.
                         assert(self@.wf()) by {
                             assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
-                                if loop_old_self@.set_bits.contains(i) {
-                                    // From loop_old_self.inv().
-                                }
+                                if loop_old_self@.set_bits.contains(i) {}
                             }
                         }
                         Self::lemma_insert_finite(loop_old_self@.set_bits, idx as int);
                         assert(self@.set_bits.finite());
-                        
-                        // Prove usage == set_bits.len().
-                        // loop_old_self.usage == loop_old_self@.set_bits.len() by inv().
-                        // self.usage == loop_old_self.usage + 1.
-                        // self@.set_bits =~= loop_old_self@.set_bits.insert(idx).
-                        // idx was not in loop_old_self@.set_bits (it was unset).
-                        assert(!loop_old_self@.set_bits.contains(idx as int)) by {
-                            // old_self.all_bits_unset_in_range(start, start+size) was established before the loop.
-                            // This means !old_self.is_bit_set(j) for all j in [start, start+size).
-                            // idx = start + alloc_offset is in [start, start+size).
-                            assert(!old_self.is_bit_set(idx as int));
-                            // idx is not in old_self@.set_bits.
-                            assert(!old_self@.set_bits.contains(idx as int));
-                            // idx is in range [start, start+size).
-                            // But in loop_old_self, only [start, start+alloc_offset) has been added.
-                            // idx = start + alloc_offset, so it's not in the range_set yet.
-                            assert(!BitmapView::range_set(start as int, start as int + (alloc_offset as int)).contains(idx as int));
-                        }
-                        vstd::set::axiom_set_insert_len(loop_old_self@.set_bits, idx as int);
-                        // self@.set_bits.len() == loop_old_self@.set_bits.len() + 1.
-                        Self::lemma_ext_equal_len(self@.set_bits, loop_old_self@.set_bits.insert(idx as int));
-                        assert(self@.set_bits.len() == loop_old_self@.set_bits.len() + 1);
-                        assert(self.usage as int == self@.set_bits.len());
-                        
-                        // Prove usage bound.
-                        let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
-                        vstd::set_lib::lemma_int_range(0, self@.num_bits);
-                        assert(self@.set_bits.subset_of(full_range)) by {
-                            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
-                        }
-                        vstd::set_lib::lemma_len_subset(self@.set_bits, full_range);
                     }
 
-                    alloc_offset = alloc_offset + 1;
+                    alloc_offset += 1;
                 }
+                // Verus note: compound assignment on struct fields not supported.
+                // Equivalent to source's `self.usage += size`.
+                self.usage = self.usage + size;
 
                 proof {
                     // Prove range_set is finite.
                     Self::lemma_range_set_finite(start as int, start as int + (size as int));
-                    
+
                     // Prove union is finite.
                     Self::lemma_union_finite(old_self@.set_bits, BitmapView::range_set(start as int, start as int + (size as int)));
-                    
+
                     // Transfer finiteness through extensional equality.
                     Self::lemma_ext_equal_finite(
                         self@.set_bits,
                         old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (size as int)))
                     );
-                    
+
                     // Prove wf() holds.
                     assert(self@.wf()) by {
                         assert forall|i: int| self@.set_bits.contains(i) implies (0 <= i < self@.num_bits) by {
                             if BitmapView::range_set(start as int, start as int + (size as int)).contains(i) {
-                                // i is in the allocated range [start, start+size)
                             } else {
-                                // i was in old_self@.set_bits
                                 assert(old_self@.set_bits.contains(i));
                             }
                         }
                     }
-                    
-                    // Prove the sets are disjoint: old_self.set_bits ∩ range_set(start, start+size) = ∅.
-                    // This is because we verified all bits in [start, start+size) were unset.
+
+                    // Prove the sets are disjoint: old_self.set_bits ∩ range_set = ∅.
                     let range: Set<int> = BitmapView::range_set(start as int, start as int + (size as int));
                     assert(old_self@.set_bits.disjoint(range)) by {
                         assert forall|i: int| #![auto] !(old_self@.set_bits.contains(i) && range.contains(i)) by {
                             if range.contains(i) {
-                                // i is in [start, start+size).
-                                assert(start as int <= i && i < start as int + (size as int));
-                                // From earlier proof: old(self).all_bits_unset_in_range(start, start+size).
-                                // This means forall|j| start <= j < start+size ==> !old(self).is_bit_set(j).
-                                // In particular, !old(self).is_bit_set(i).
                                 assert(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
                                 assert(!old(self).is_bit_set(i));
-                                // old_self == old(self), so !old_self.is_bit_set(i).
                                 assert(!old_self.is_bit_set(i));
-                                // is_bit_set(i) for i in [0, num_bits) is set_bits.contains(i).
-                                // Since i is in [start, start+size) ⊆ [0, num_bits), !is_bit_set(i) means !set_bits.contains(i).
                                 assert(!old_self@.set_bits.contains(i));
                             }
                         }
                     }
-                    
+
                     // Use disjoint union cardinality lemma.
                     Self::lemma_disjoint_union_len(old_self@.set_bits, range);
                     Self::lemma_range_set_len(start as int, start as int + (size as int));
-                    // old_self@.set_bits.union(range).len() == old_self@.set_bits.len() + range.len()
-                    //                                       == old_self@.set_bits.len() + size.
-                    
-                    // self@.set_bits =~= old_self@.set_bits.union(range).
-                    // So self@.set_bits.len() == old_self@.set_bits.len() + size.
                     assert(self@.set_bits.len() == old_self@.set_bits.len() + (size as int));
-                    
-                    // From inv(): old_self.usage as int == old_self@.usage() == old_self@.set_bits.len().
-                    // And we updated: self.usage = pre_alloc_self.usage + size = old_self.usage + size.
-                    // So self.usage as int == old_self.usage as int + size == old_self@.set_bits.len() + size == self@.set_bits.len().
+
+                    // Prove usage matches set_bits.len().
                     assert(self.usage as int == self@.set_bits.len());
-                    
-                    // usage() = set_bits.len() as int, so self@.usage() == self@.set_bits.len() as int.
-                    assert(self@.usage() == self@.set_bits.len() as int);
-                    
-                    // Prove usage delta.
                     assert(self@.usage() == old(self)@.usage() + (size as int));
-                    
+
                     // Prove usage bound.
-                    // self@.set_bits ⊆ [0, num_bits) by wf().
-                    // |self@.set_bits| <= num_bits by subset cardinality.
                     let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
                     vstd::set_lib::lemma_int_range(0, self@.num_bits);
                     assert(self@.set_bits.subset_of(full_range)) by {
                         assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
                     }
                     vstd::set_lib::lemma_len_subset(self@.set_bits, full_range);
-                    assert(self@.usage() <= self@.number_of_bits());
-                    
-                    // Prove inv() holds.
-                    // All components verified above.
+
                     assert(self.inv());
                 }
 
@@ -966,8 +851,7 @@ impl Bitmap {
     /// Converts a bit index to (word_index, bit_position) without bounds checking.
     fn index_unchecked(&self, bit_index: usize) -> (result: (usize, usize))
         requires
-            self.inv(),
-            bit_index < self.number_of_bits,
+            bit_index < self.bits@.len() * u8::BITS as usize,
         ensures
             result.0 < self.bits@.len(),
             result.1 < u8::BITS as usize,
