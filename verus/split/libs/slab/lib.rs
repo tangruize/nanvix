@@ -299,7 +299,7 @@ impl Slab {
             }
         }
 
-        let mut index: Bitmap = Bitmap::from_raw_array(storage);
+        let mut index: Bitmap = Bitmap::from_raw_array(storage)?;
 
         // Prove key invariants before the loop.
         proof {

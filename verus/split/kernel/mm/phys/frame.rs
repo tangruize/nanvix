@@ -133,8 +133,10 @@ impl FrameAllocator {
             result->Ok_0@.is_empty(),
             result->Ok_0@.is_freshly_initialized(),
     {
-        // Restored original exec logic: Ok(Self::new(Bitmap::from_raw_array(storage))).
-        Ok(Self::new(Bitmap::from_raw_array(storage)))
+        // Restored original exec logic: Ok(Self::new(Bitmap::from_raw_array(storage)?)).
+        // Verus note: checked_mul/closures not supported; from_raw_array uses
+        // manual overflow check. Preconditions guarantee success.
+        Ok(Self::new(Bitmap::from_raw_array(storage)?))
     }
 
 
