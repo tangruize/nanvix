@@ -74,7 +74,7 @@ impl Bitmap {
         }
 
         // Check if the length is not a multiple of the number of the bitmap word.
-        if number_of_bits % u8::BITS as usize != 0 {
+        if !number_of_bits.is_multiple_of(u8::BITS as usize) {
             let reason: &str = "length must be a multiple of 8";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -288,7 +288,7 @@ impl Bitmap {
                     0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
         {
             // Fast skip: if the starting word is full, skip 8 bits.
-            let is_aligned: bool = start % (u8::BITS as usize) == 0;
+            let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
             if is_aligned {
                 let word: usize = start / u8::BITS as usize;
                 if self.bits[word] == u8::MAX {
