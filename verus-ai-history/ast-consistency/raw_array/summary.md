@@ -9,12 +9,11 @@ Directory: `full/`
 
 | Function | Status | Files |
 |----------|--------|-------|
-| `drop` | MISMATCH | drop_source.rs, drop_verus.rs, drop.diff |
-| `get` | MISMATCH | get_source.rs, get_verus.rs, get.diff |
-| `from_raw_addr` | EXTRA_IN_VERUS | from_raw_addr_verus.rs (EXTRA) |
-| `len` | EXTRA_IN_VERUS | len_verus.rs (EXTRA) |
-| `set` | EXTRA_IN_VERUS | set_verus.rs (EXTRA) |
-| `storage_len` | EXTRA_IN_VERUS | storage_len_verus.rs (EXTRA) |
+| `RawArray::drop` | MISSING_IN_VERUS | RawArray__drop_source.rs (MISSING in verus) |
+| `RawArray::get` | EXTRA_IN_VERUS | RawArray__get_verus.rs (EXTRA) |
+| `RawArray::len` | EXTRA_IN_VERUS | RawArray__len_verus.rs (EXTRA) |
+| `RawArray::set` | EXTRA_IN_VERUS | RawArray__set_verus.rs (EXTRA) |
+| `RawArrayStorage::drop` | EXTRA_IN_VERUS | RawArrayStorage__drop_verus.rs (EXTRA) |
 
 ## Exec-Only Diffs (source vs Verus stripped of ghost/proof)
 
@@ -26,12 +25,11 @@ removed. This makes it easier to spot real exec logic changes.
 
 | Function | Status | Files |
 |----------|--------|-------|
-| `drop` | MISMATCH | drop_source.rs, drop_verus_stripped.rs, drop.diff |
-| `get` | MISMATCH | get_source.rs, get_verus_stripped.rs, get.diff |
-| `from_raw_addr` | EXTRA_IN_VERUS | from_raw_addr_verus.rs (EXTRA) |
-| `len` | EXTRA_IN_VERUS | len_verus.rs (EXTRA) |
-| `set` | EXTRA_IN_VERUS | set_verus.rs (EXTRA) |
-| `storage_len` | EXTRA_IN_VERUS | storage_len_verus.rs (EXTRA) |
+| `RawArray::drop` | MISSING_IN_VERUS | RawArray__drop_source.rs (MISSING in verus) |
+| `RawArray::get` | EXTRA_IN_VERUS | RawArray__get_verus.rs (EXTRA) |
+| `RawArray::len` | EXTRA_IN_VERUS | RawArray__len_verus.rs (EXTRA) |
+| `RawArray::set` | EXTRA_IN_VERUS | RawArray__set_verus.rs (EXTRA) |
+| `RawArrayStorage::drop` | EXTRA_IN_VERUS | RawArrayStorage__drop_verus.rs (EXTRA) |
 
 ## Struct Issues
 
