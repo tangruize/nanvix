@@ -1,0 +1,62 @@
+=== Verus Verification ===
+Timestamp: Wed Feb 25 19:51:30 CST 2026
+Module: error
+Command: verus --crate-type lib lib.rs --verify-module error
+Working dir: /home/ubuntu/nanvix/verus/split
+
+error[E0599]: no method named `log` found for struct `libs::error::Error` in the current scope
+   --> kernel/mm/phys/frame.rs:208:23
+    |
+208 |                 error.log();
+    |                       ^^^ method not found in `libs::error::Error`
+    |
+   ::: libs/error/lib.rs:273:1
+    |
+273 | pub struct Error {
+    | ---------------- method `log` not found for this struct
+
+error[E0599]: no method named `log` found for struct `libs::error::Error` in the current scope
+   --> kernel/mm/phys/frame.rs:289:23
+    |
+289 |                 error.log();
+    |                       ^^^ method not found in `libs::error::Error`
+    |
+   ::: libs/error/lib.rs:273:1
+    |
+273 | pub struct Error {
+    | ---------------- method `log` not found for this struct
+
+error[E0599]: no method named `log` found for struct `libs::error::Error` in the current scope
+   --> kernel/mm/phys/frame.rs:348:23
+    |
+348 |                 error.log();
+    |                       ^^^ method not found in `libs::error::Error`
+    |
+   ::: libs/error/lib.rs:273:1
+    |
+273 | pub struct Error {
+    | ---------------- method `log` not found for this struct
+
+error[E0599]: no method named `log` found for struct `libs::error::Error` in the current scope
+   --> kernel/mm/phys/frame.rs:409:23
+    |
+409 |                 error.log();
+    |                       ^^^ method not found in `libs::error::Error`
+    |
+   ::: libs/error/lib.rs:273:1
+    |
+273 | pub struct Error {
+    | ---------------- method `log` not found for this struct
+
+error: aborting due to 4 previous errors
+
+For more information about this error, try `rustc --explain E0599`.
+
+Duration: 4s
+Exit code: 1
+
+=== Summary ===
+Verified: 0
+Errors: 0
+Status: FAILED
+Committed: [verus] Verification failed for error (verified:0, errors:0)
