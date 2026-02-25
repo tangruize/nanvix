@@ -298,6 +298,12 @@ impl Error {
     {
         Self { code, reason }
     }
+
+    // Verus note: kept because it is called by other verified modules (e.g., frame.rs).
+    // Not present in the original source but required for Verus codebase compilation.
+    #[verifier::external_body]
+    pub fn log(&self) {
+    }
 }
 
 ///
