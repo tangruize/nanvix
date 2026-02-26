@@ -97,7 +97,14 @@ impl Bitmap {
 
         // Allocate the bitmap.
         // Note: RawArray::new() guarantees zero-initialization of the backing storage.
-        let array: RawArray<u8> = RawArray::new(number_of_bits / u8::BITS as usize)?;
+        let len: usize = number_of_bits / u8::BITS as usize;
+        proof {
+            // vstd broadcasts that size_of::<u8>() == 1, so len * 1 <= isize::MAX.
+            broadcast use vstd::layout::layout_of_primitives;
+            assert(vstd::layout::size_of::<u8>() == 1);
+            assert(len * vstd::layout::size_of::<u8>() <= isize::MAX as usize);
+        }
+        let array: RawArray<u8> = RawArray::new(len)?;
 
         let result = Self {
             number_of_bits,

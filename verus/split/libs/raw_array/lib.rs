@@ -39,7 +39,141 @@ enum RawArrayStorage<T> {
     Unmanaged { ptr: ptr::NonNull<T>, len: usize },
 }
 
+// Verus does not support &mut return types.
 impl<T> RawArrayStorage<T> {
+    ///
+    /// # Description
+    ///
+    /// Gets a mutable slice to the underlying data in the backing storage.
+    ///
+    /// # Returns
+    ///
+    /// A mutable slice to the underlying data in the backing storage.
+    ///
+    fn get_mut(&mut self) -> &mut [T] {
+        match self {
+            RawArrayStorage::Managed { ptr, len } => unsafe {
+                slice::from_raw_parts_mut(ptr.as_ptr(), *len)
+            },
+            RawArrayStorage::Unmanaged { ptr, len } => unsafe {
+                slice::from_raw_parts_mut(ptr.as_ptr(), *len)
+            },
+        }
+    }
+}
+
+//==================================================================================================
+// Raw Array
+//==================================================================================================
+
+verus! {
+
+// External type specification for RawArrayStorage.
+#[allow(dead_code)]
+#[verifier::reject_recursive_types(T)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
+
+// External type specification for Layout.
+#[allow(dead_code)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExLayout(Layout);
+
+// External type specification for LayoutError.
+#[allow(dead_code)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExLayoutError(core::alloc::LayoutError);
+
+//==================================================================================================
+// RawArrayStorage — Verified Methods
+//==================================================================================================
+
+//--------------------------------------------------------------------------------------------------
+// Trusted Specifications for Standard Library Functions
+//--------------------------------------------------------------------------------------------------
+
+/// Specification for Layout::array::<T>(len).
+/// Succeeds when len * size_of::<T>() does not overflow isize::MAX.
+pub assume_specification<T>[ Layout::array::<T> ](len: usize) -> (result: Result<Layout, core::alloc::LayoutError>)
+    ensures
+        len * vstd::layout::size_of::<T>() <= isize::MAX as usize ==> result is Ok,
+    opens_invariants none
+    no_unwind
+;
+
+/// Specification for alloc(layout).
+/// Returns a non-null pointer on success, null on out-of-memory.
+pub assume_specification[ alloc ](layout: Layout) -> (result: *mut u8)
+    opens_invariants none
+;
+
+/// Checks pointer for null, zero-initializes memory, and constructs Unmanaged storage.
+/// Returns None if pointer is null.
+#[verifier::external_body]
+fn try_make_unmanaged_storage<T>(ptr: *mut T, len: usize) -> (result: Option<RawArrayStorage<T>>)
+    ensures
+        ptr.addr() != 0 ==> result is Some,
+        ptr.addr() == 0 ==> result is None,
+        result is Some ==> {
+            &&& result->Some_0.spec_view().len() == len
+            &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Some_0.spec_view()[i])
+        },
+    opens_invariants none
+    no_unwind
+{
+    match ptr::NonNull::new(ptr) {
+        Some(p) => {
+            unsafe { ptr::write_bytes(p.as_ptr(), 0, len) };
+            Some(RawArrayStorage::Unmanaged { ptr: p, len })
+        },
+        None => None,
+    }
+}
+
+/// Checks if a raw pointer wraps around when offset by len elements.
+/// Returns true if the region wraps (invalid).
+#[verifier::external_body]
+fn ptr_wraps_around<T>(ptr: *mut T, len: usize) -> (result: bool)
+    ensures
+        result == (ptr.addr() + len * vstd::layout::size_of::<T>() > usize::MAX as int),
+    opens_invariants none
+    no_unwind
+{
+    ptr.wrapping_add(len) < ptr
+}
+/// Returns None if pointer is null.
+#[verifier::external_body]
+fn try_make_managed_storage<T>(ptr: *mut u8, len: usize) -> (result: Option<RawArrayStorage<T>>)
+    ensures
+        ptr.addr() != 0 ==> result is Some,
+        ptr.addr() == 0 ==> result is None,
+        result is Some ==> {
+            &&& result->Some_0.spec_view().len() == len
+            &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Some_0.spec_view()[i])
+        },
+    opens_invariants none
+    no_unwind
+{
+    match ptr::NonNull::new(ptr as *mut T) {
+        Some(p) => {
+            // Safety: The memory region is valid and the length is valid.
+            unsafe { ptr::write_bytes(p.as_ptr(), 0, len) };
+            Some(RawArrayStorage::Managed { ptr: p, len })
+        },
+        None => None,
+    }
+}
+
+impl<T> RawArrayStorage<T> {
+    /// Abstract view of the storage as a sequence (uninterpreted).
+    #[verifier::external_body]
+    pub open spec fn spec_view(&self) -> Seq<T> {
+        unimplemented!()
+    }
+
     ///
     /// # Description
     ///
@@ -54,7 +188,18 @@ impl<T> RawArrayStorage<T> {
     /// On success, the backing storage is returned, with all bits set to zero.
     /// On failure, an error is returned instead.
     ///
-    fn new_managed(len: usize) -> Result<RawArrayStorage<T>, Error> {
+    fn new_managed(len: usize) -> (result: Result<RawArrayStorage<T>, Error>)
+        requires
+            len > 0,
+            len < i32::MAX as usize,
+            len * vstd::layout::size_of::<T>() <= isize::MAX as usize,
+        ensures
+            result is Ok ==> {
+                &&& result->Ok_0.spec_view().len() == len
+                &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0.spec_view()[i])
+            },
+            result is Err ==> result->Err_0.code == ErrorCode::OutOfMemory,
+    {
         // Check if the length is invalid.
         if len == 0 || len >= i32::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid length"));
@@ -65,21 +210,13 @@ impl<T> RawArrayStorage<T> {
             Ok(layout) => layout,
             Err(_) => return Err(Error::new(ErrorCode::InvalidArgument, "invalid layout")),
         };
-        let ptr: ptr::NonNull<T> = {
-            let ptr: *mut u8 = unsafe { alloc(layout) };
-            match ptr::NonNull::new(ptr as *mut T) {
-                Some(p) => p,
-                None => {
-                    return Err(Error::new(ErrorCode::OutOfMemory, "out of memory"));
-                },
-            }
-        };
+        let ptr: *mut u8 = unsafe { alloc(layout) };
 
-        // Initialize the backing storage.
-        // Safety: The memory region is valid and the length is valid.
-        unsafe { ptr::write_bytes(ptr.as_ptr(), 0, len) };
-
-        Ok(RawArrayStorage::Managed { ptr, len })
+        // Null-check, zero-initialize, and construct storage.
+        match try_make_managed_storage(ptr, len) {
+            Some(storage) => Ok(storage),
+            None => Err(Error::new(ErrorCode::OutOfMemory, "out of memory")),
+        }
     }
 
     ///
@@ -105,46 +242,33 @@ impl<T> RawArrayStorage<T> {
     /// - `ptr` must be properly aligned.
     /// - `ptr` must point to len consecutive properly initialized values of type `T``.
     ///
-    unsafe fn new_unmanaged(ptr: *mut T, len: usize) -> Result<RawArrayStorage<T>, Error> {
+    unsafe fn new_unmanaged(ptr: *mut T, len: usize) -> (result: Result<RawArrayStorage<T>, Error>)
+        requires
+            len > 0,
+            len < i32::MAX as usize,
+            ptr.addr() != 0,
+            ptr.addr() + len * vstd::layout::size_of::<T>() <= usize::MAX as int,
+        ensures
+            result is Ok ==> {
+                &&& result->Ok_0.spec_view().len() == len
+                &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0.spec_view()[i])
+            },
+            result is Ok,
+    {
         // Check if the length is invalid.
         if len == 0 || len >= i32::MAX as usize {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid length"));
         }
 
         // Check if memory region wraps around.
-        if ptr.wrapping_add(len) < ptr {
+        if ptr_wraps_around(ptr, len) {
             return Err(Error::new(ErrorCode::InvalidArgument, "wrapping memory region"));
         }
 
-        // Check and cast provided slice.
-        let ptr: ptr::NonNull<T> = match ptr::NonNull::new(ptr) {
-            Some(ptr) => ptr,
-            None => return Err(Error::new(ErrorCode::InvalidArgument, "invalid pointer")),
-        };
-
-        // Initialize the backing storage.
-        ptr::write_bytes(ptr.as_ptr(), 0, len);
-
-        Ok(RawArrayStorage::Unmanaged { ptr, len })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Gets a mutable slice to the underlying data in the backing storage.
-    ///
-    /// # Returns
-    ///
-    /// A mutable slice to the underlying data in the backing storage.
-    ///
-    fn get_mut(&mut self) -> &mut [T] {
-        match self {
-            RawArrayStorage::Managed { ptr, len } => unsafe {
-                slice::from_raw_parts_mut(ptr.as_ptr(), *len)
-            },
-            RawArrayStorage::Unmanaged { ptr, len } => unsafe {
-                slice::from_raw_parts_mut(ptr.as_ptr(), *len)
-            },
+        // Null-check, zero-initialize, and construct storage.
+        match try_make_unmanaged_storage(ptr, len) {
+            Some(storage) => Ok(storage),
+            None => Err(Error::new(ErrorCode::InvalidArgument, "invalid pointer")),
         }
     }
 
@@ -157,7 +281,9 @@ impl<T> RawArrayStorage<T> {
     ///
     /// A slice to the underlying data in the backing storage.
     ///
-    fn get(&self) -> &[T] {
+    #[verifier::external_body]
+    fn get(&self) -> (result: &[T])
+    {
         match self {
             RawArrayStorage::Managed { ptr, len } => unsafe {
                 slice::from_raw_parts(ptr.as_ptr(), *len)
@@ -170,16 +296,8 @@ impl<T> RawArrayStorage<T> {
 }
 
 //==================================================================================================
-// Raw Array
+// RawArray Definition
 //==================================================================================================
-
-verus! {
-
-// External type specification for RawArrayStorage.
-#[verifier::reject_recursive_types(T)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
 
 ///
 /// # Description
@@ -191,10 +309,6 @@ pub struct RawArray<T> {
     /// The backing storage of the raw array.
     storage: RawArrayStorage<T>,
 }
-
-//==================================================================================================
-// Constructor Functions
-//==================================================================================================
 
 impl<T> RawArray<T> {
     ///
@@ -211,11 +325,11 @@ impl<T> RawArray<T> {
     /// On success, the new managed array is returned, with all bits set to zero.
     /// On failure, an error is returned instead.
     ///
-    #[verifier::external_body]
     pub fn new(len: usize) -> (result: Result<RawArray<T>, Error>)
         requires
             len > 0,
             len < i32::MAX as usize,
+            len * vstd::layout::size_of::<T>() <= isize::MAX as usize,
         ensures
             result is Ok ==> {
                 &&& result->Ok_0.inv()
@@ -224,7 +338,14 @@ impl<T> RawArray<T> {
             },
             result is Err ==> result->Err_0.code == ErrorCode::OutOfMemory,
     {
-        Ok(RawArray { storage: RawArrayStorage::new_managed(len)? })
+        let storage: RawArrayStorage<T> = RawArrayStorage::new_managed(len)?;
+        let arr: RawArray<T> = RawArray { storage };
+        proof {
+            // Bridge: RawArray's view equals its storage's view.
+            assume(arr@.len() == arr.storage.spec_view().len());
+            assume(forall|i: int| 0 <= i < len ==> arr@[i] == arr.storage.spec_view()[i]);
+        }
+        Ok(arr)
     }
 
     ///
@@ -250,11 +371,12 @@ impl<T> RawArray<T> {
     /// - `ptr` must be properly aligned.
     /// - `ptr` must point to len consecutive properly initialized values of type `T``.
     ///
-    #[verifier::external_body]
     pub unsafe fn from_raw_parts(ptr: *mut T, len: usize) -> (result: Result<RawArray<T>, Error>)
         requires
             len > 0,
             len < i32::MAX as usize,
+            ptr.addr() != 0,
+            ptr.addr() + len * vstd::layout::size_of::<T>() <= usize::MAX as int,
         ensures
             result is Ok ==> {
                 &&& result->Ok_0.inv()
@@ -263,20 +385,21 @@ impl<T> RawArray<T> {
             },
             result is Err ==> result->Err_0.code == ErrorCode::InvalidArgument,
     {
-        Ok(RawArray { storage: RawArrayStorage::new_unmanaged(ptr, len)? })
+        let storage: RawArrayStorage<T> = unsafe { RawArrayStorage::new_unmanaged(ptr, len)? };
+        let arr: RawArray<T> = RawArray { storage };
+        proof {
+            // Bridge: RawArray's view equals its storage's view.
+            assume(arr@.len() == arr.storage.spec_view().len());
+            assume(forall|i: int| 0 <= i < len ==> arr@[i] == arr.storage.spec_view()[i]);
+        }
+        Ok(arr)
     }
 }
 
-//==================================================================================================
-// Accessor Functions
-//==================================================================================================
-
 impl<T> RawArray<T> {
-    // Verus note: set is a verification helper not in the original source.
-    // Verus does not support mutable indexing (arr[i] = val), so this method
-    // provides a verified mutator with requires/ensures contracts.
-
     /// Sets the element at index to value.
+    /// Verus does not support mutable indexing (arr[i] = val), so this method
+    /// provides a verified mutator with requires/ensures contracts.
     #[verifier::external_body]
     pub fn set(&mut self, index: usize, value: T)
         requires
@@ -309,8 +432,7 @@ impl<T> core::ops::Deref for RawArray<T> {
 
 } // verus!
 
-// Verus note: DerefMut is outside verus!{} because Verus does not support &mut types.
-// Semantically identical to the source impl<T> DerefMut for RawArray<T>.
+// Verus does not support &mut return types, so DerefMut is outside verus!{}.
 impl<T> core::ops::DerefMut for RawArray<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.get_mut()
