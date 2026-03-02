@@ -1259,11 +1259,11 @@ impl Slab {
     proof fn lemma_alloc_product_in_bounds(slab: &Slab, block_idx: int)
         requires
             slab.inv(),
-            0 <= block_idx < slab.num_data_blocks as int,
+            0 <= block_idx < (slab.num_data_blocks as int),
         ensures
-            block_idx * slab.block_size as int < slab.num_data_blocks as int * slab.block_size as int,
-            block_idx * slab.block_size as int <= usize::MAX as int,
-            slab.data_addr as int + block_idx * slab.block_size as int <= usize::MAX as int,
+            block_idx * (slab.block_size as int) < (slab.num_data_blocks as int) * (slab.block_size as int),
+            block_idx * (slab.block_size as int) <= usize::MAX as int,
+            (slab.data_addr as int) + block_idx * (slab.block_size as int) <= usize::MAX as int,
     {
         Self::lemma_mul_inequality(
             block_idx, slab.num_data_blocks as int, slab.block_size as int,
@@ -1279,12 +1279,12 @@ impl Slab {
             old_slab.inv(),
             slab.inv(),
             // Block relationships.
-            block_idx == block - slab.num_index_blocks as int,
-            0 <= block_idx < slab.num_data_blocks as int,
-            block_addr == slab.data_addr as int + block_idx * slab.block_size as int,
+            block_idx == block - (slab.num_index_blocks as int),
+            0 <= block_idx < (slab.num_data_blocks as int),
+            block_addr == (slab.data_addr as int) + block_idx * (slab.block_size as int),
             // Bitmap postconditions.
-            slab.index.is_bit_set(slab.num_index_blocks as int + block_idx),
-            !old_slab.index.is_bit_set(slab.num_index_blocks as int + block_idx),
+            slab.index.is_bit_set((slab.num_index_blocks as int) + block_idx),
+            !old_slab.index.is_bit_set((slab.num_index_blocks as int) + block_idx),
             // Only the allocated bit changed.
             forall|k: int| k != block && 0 <= k < slab.index@.number_of_bits() ==>
                 slab.index.is_bit_set(k) == old_slab.index.is_bit_set(k),
@@ -1346,15 +1346,15 @@ impl Slab {
             slab@.is_valid_addr(ptr),
             slab@.can_deallocate(slab@.addr_to_block_idx(ptr)),
         ensures
-            ptr >= slab.data_addr as int,
-            (ptr - slab.data_addr as int) >= 0,
-            (ptr - slab.data_addr as int) < slab.num_data_blocks as int * slab.block_size as int,
-            ((ptr - slab.data_addr as int) % slab.block_size as int) == 0,
+            ptr >= (slab.data_addr as int),
+            (ptr - (slab.data_addr as int)) >= 0,
+            (ptr - (slab.data_addr as int)) < (slab.num_data_blocks as int) * (slab.block_size as int),
+            ((ptr - (slab.data_addr as int)) % (slab.block_size as int)) == 0,
             ({
-                let block_idx: int = (ptr - slab.data_addr as int) / slab.block_size as int;
-                &&& 0 <= block_idx < slab.num_data_blocks as int
-                &&& slab.num_index_blocks as int + block_idx < slab.index@.number_of_bits()
-                &&& slab.num_index_blocks as int + block_idx < usize::MAX as int
+                let block_idx: int = (ptr - (slab.data_addr as int)) / (slab.block_size as int);
+                &&& 0 <= block_idx < (slab.num_data_blocks as int)
+                &&& (slab.num_index_blocks as int) + block_idx < slab.index@.number_of_bits()
+                &&& (slab.num_index_blocks as int) + block_idx < usize::MAX as int
             }),
     {
         // From is_valid_addr.
@@ -1387,13 +1387,13 @@ impl Slab {
             slab.inv(),
             slab@.is_valid_addr(ptr),
             slab@.can_deallocate(slab@.addr_to_block_idx(ptr)),
-            index == slab.num_index_blocks as int
-                + (ptr - slab.data_addr as int) / slab.block_size as int,
+            index == (slab.num_index_blocks as int)
+                + (ptr - (slab.data_addr as int)) / (slab.block_size as int),
             index < slab.index@.number_of_bits(),
         ensures
             slab.index.is_bit_set(index),
             slab@.is_allocated(slab@.addr_to_block_idx(ptr)),
-            index == slab.num_index_blocks as int + slab@.addr_to_block_idx(ptr),
+            index == (slab.num_index_blocks as int) + slab@.addr_to_block_idx(ptr),
     {
         let block_idx_spec: int = slab@.addr_to_block_idx(ptr);
         assert(block_idx_spec
@@ -1422,7 +1422,7 @@ impl Slab {
             forall|j: int| j != index && 0 <= j < slab.index@.number_of_bits() ==>
                 slab.index.is_bit_set(j) == old_slab.index.is_bit_set(j),
             // Block index relationships.
-            index == old_slab.num_index_blocks as int + old_slab@.addr_to_block_idx(ptr),
+            index == (old_slab.num_index_blocks as int) + old_slab@.addr_to_block_idx(ptr),
             old_slab@.is_valid_addr(ptr),
             old_slab@.can_deallocate(old_slab@.addr_to_block_idx(ptr)),
         ensures
