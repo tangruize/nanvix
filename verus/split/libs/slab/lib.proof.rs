@@ -987,6 +987,527 @@ impl Slab {
         }
         Self::lemma_inv_from_components(slab);
     }
+
+    //==============================================================================================
+    // Extracted proof-block lemmas
+    //==============================================================================================
+
+    /// Lemma: Proves layout bounds during slab construction.
+    /// Establishes that num_index_blocks >= 1, num_data_blocks > 0,
+    /// and the product num_index_blocks * block_size is bounded.
+    proof fn lemma_from_raw_parts_layout_bounds(
+        len: int, block_size: int, total_num_blocks: int, index_len: int,
+        num_index_blocks: int, num_data_blocks: int, addr: int,
+    )
+        requires
+            len > 0,
+            len < i32::MAX as int,
+            block_size > 0,
+            block_size <= len,
+            addr > 0,
+            addr + len <= usize::MAX as int,
+            total_num_blocks == len / block_size,
+            total_num_blocks >= 8,
+            index_len == total_num_blocks / 8,
+            num_index_blocks == index_len / block_size
+                + (if index_len % block_size == 0 { 0int } else { 1int }),
+            num_index_blocks <= total_num_blocks,
+            num_data_blocks == total_num_blocks - num_index_blocks,
+        ensures
+            num_index_blocks >= 1,
+            num_data_blocks > 0,
+            num_index_blocks * block_size < total_num_blocks * block_size,
+            total_num_blocks * block_size <= len,
+            addr + num_index_blocks * block_size <= addr + len,
+            addr + num_index_blocks * block_size <= usize::MAX as int,
+    {
+        // index_len >= 1 since total_num_blocks >= 8.
+        assert(index_len >= 1);
+        // Prove num_index_blocks >= 1.
+        if index_len >= block_size {
+            assert(index_len / block_size >= 1) by(nonlinear_arith)
+                requires index_len >= block_size, block_size > 0int;
+        } else {
+            assert(index_len % block_size == index_len) by(nonlinear_arith)
+                requires 0 < index_len < block_size;
+            assert(index_len % block_size != 0);
+        }
+        assert(num_index_blocks >= 1);
+        // Prove num_data_blocks > 0.
+        assert(num_index_blocks <= index_len + 1) by {
+            assert(index_len / block_size <= index_len) by(nonlinear_arith)
+                requires block_size >= 1int, index_len >= 0int;
+        }
+        assert(index_len + 1 <= total_num_blocks) by {
+            assert(total_num_blocks / 8 + 1 <= total_num_blocks) by(nonlinear_arith)
+                requires total_num_blocks >= 8int;
+        }
+        assert(num_index_blocks < total_num_blocks);
+        assert(num_data_blocks > 0);
+        // Prove product bounds.
+        Self::lemma_div_mul_le(len, block_size);
+        Self::lemma_mul_inequality(num_index_blocks, total_num_blocks, block_size);
+    }
+
+    /// Lemma: Converts is_zero properties on a byte sequence to concrete equality with 0u8.
+    proof fn lemma_raw_array_storage_zeroed(s: Seq<u8>)
+        requires
+            forall|i: int| 0 <= i < s.len() ==> is_zero(#[trigger] s[i]),
+        ensures
+            forall|i: int| 0 <= i < s.len() ==> s[i] == 0u8,
+    {
+        assert forall|i: int| 0 <= i < s.len() implies s[i] == 0u8 by {
+            axiom_u8_zero_is_0(s[i]);
+        }
+    }
+
+    /// Lemma: Establishes pre-loop invariants for from_raw_parts.
+    /// Connects bitmap number_of_bits to total_num_blocks and layout.
+    proof fn lemma_from_raw_parts_pre_loop(
+        index_nbits: int, index_len: int, total_num_blocks: int,
+        num_index_blocks: int, num_data_blocks: int,
+    )
+        requires
+            index_nbits == index_len * 8,
+            total_num_blocks == index_len * 8,
+            num_index_blocks + num_data_blocks == total_num_blocks,
+            num_index_blocks < total_num_blocks,
+        ensures
+            index_nbits == total_num_blocks,
+            num_index_blocks + num_data_blocks == index_nbits,
+    {
+    }
+
+    /// Lemma: Proves postconditions after the initialization loop in from_raw_parts.
+    /// Establishes slab invariant, view fields, and emptiness.
+    proof fn lemma_from_raw_parts_post_loop(
+        slab: &Slab, addr: int, len: int, total_num_blocks: int,
+    )
+        requires
+            slab.index.inv(),
+            slab.block_size > 0,
+            slab.num_data_blocks > 0,
+            slab.num_index_blocks > 0,
+            // All index blocks are set in the bitmap.
+            forall|i: int| #![trigger slab.index@.set_bits.contains(i)]
+                0 <= i < slab.num_index_blocks as int ==> slab.index@.set_bits.contains(i),
+            // All data blocks are unset in the bitmap.
+            forall|i: int| slab.num_index_blocks as int <= i < slab.index@.number_of_bits()
+                ==> !slab.index.is_bit_set(i),
+            // Layout relationships.
+            slab.num_index_blocks as int + slab.num_data_blocks as int
+                == slab.index@.number_of_bits(),
+            total_num_blocks == slab.index@.number_of_bits(),
+            slab.num_data_blocks as int < total_num_blocks,
+            // Address computation.
+            slab.data_addr as int
+                == addr + slab.num_index_blocks as int * slab.block_size as int,
+            addr > 0,
+            // Original preconditions.
+            len > 0,
+            len < i32::MAX as int,
+            slab.block_size as int <= len,
+            addr + len <= usize::MAX as int,
+            total_num_blocks == len / slab.block_size as int,
+            // Power of two and alignment.
+            is_pow2(slab.block_size as int),
+            slab.data_addr as int % slab.block_size as int == 0,
+        ensures
+            slab.inv(),
+            slab@.block_size == slab.block_size as int,
+            slab@.allocated_blocks =~= Set::<int>::empty(),
+            slab@.data_addr > addr,
+            slab@.data_addr % slab.block_size as int == 0,
+            slab@.num_data_blocks > 0,
+            slab@.data_addr + slab@.num_data_blocks * slab@.block_size
+                <= addr + len,
+    {
+        // Prove memory bounds.
+        Self::lemma_div_mul_le(len, slab.block_size as int);
+        assert(total_num_blocks == len / slab.block_size as int);
+        assert(total_num_blocks * slab.block_size as int <= len);
+        Self::lemma_mul_inequality(
+            slab.num_data_blocks as int, total_num_blocks, slab.block_size as int,
+        );
+        assert((slab.num_data_blocks as int) * (slab.block_size as int)
+            < total_num_blocks * slab.block_size as int);
+        assert(len < usize::MAX as int);
+        assert((slab.num_data_blocks as int) * (slab.block_size as int) <= usize::MAX as int);
+
+        // Prove data_addr + num_data_blocks * block_size <= addr + len.
+        assert(slab.data_addr as int
+            == addr + slab.num_index_blocks as int * slab.block_size as int);
+        Self::lemma_distributive(
+            slab.num_index_blocks as int, slab.num_data_blocks as int,
+            slab.block_size as int,
+        );
+        assert(slab.num_index_blocks as int * slab.block_size as int
+            + slab.num_data_blocks as int * slab.block_size as int
+            == (slab.num_index_blocks as int + slab.num_data_blocks as int)
+                * slab.block_size as int);
+        assert(slab.data_addr as int + slab.num_data_blocks as int * slab.block_size as int
+            == addr + (slab.num_index_blocks as int + slab.num_data_blocks as int)
+                * slab.block_size as int);
+        assert(slab.num_index_blocks as int + slab.num_data_blocks as int == total_num_blocks);
+        assert(slab.data_addr as int + slab.num_data_blocks as int * slab.block_size as int
+            == addr + total_num_blocks * slab.block_size as int);
+        assert(total_num_blocks * slab.block_size as int <= len);
+        assert(addr + total_num_blocks * slab.block_size as int <= addr + len);
+        assert(addr + len <= usize::MAX as int);
+        assert(slab.data_addr as int + slab.num_data_blocks as int * slab.block_size as int
+            <= usize::MAX as int);
+
+        // Prove metadata/data disjointness.
+        assert(slab.data_addr as int
+            == addr + slab.num_index_blocks as int * slab.block_size as int);
+        assert(addr > 0);
+        assert(slab.data_addr as int
+            > slab.num_index_blocks as int * slab.block_size as int);
+        assert(slab.data_addr as int
+            >= slab.num_index_blocks as int * slab.block_size as int);
+
+        // Prove inv().
+        Self::lemma_inv_from_components(slab);
+        Self::lemma_view_fields(slab);
+        Self::lemma_new_slab_is_empty(slab);
+        Self::lemma_no_allocated_implies_empty(slab);
+        assert(slab.data_addr as int > addr);
+        assert(slab.data_addr as int % slab.block_size as int == 0);
+        assert(slab@.data_addr + slab@.num_data_blocks * slab@.block_size
+            <= addr + len);
+    }
+
+    /// Lemma: When bitmap alloc fails, slab state is preserved and cannot allocate.
+    proof fn lemma_alloc_error_preserves_state(slab: &Slab, old_slab: &Slab)
+        requires
+            old_slab.inv(),
+            slab.index.inv(),
+            slab.index@.set_bits =~= old_slab.index@.set_bits,
+            slab.index@.number_of_bits() == old_slab.index@.number_of_bits(),
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+            !slab.index@.has_free_bit(),
+        ensures
+            slab.inv(),
+            slab@ == old_slab@,
+            !old_slab@.can_allocate(),
+    {
+        // Liveness: if can_allocate(), bitmap has_free_bit - contradiction.
+        if old_slab@.can_allocate() {
+            old_slab.lemma_can_allocate_implies_bitmap_has_free_bit();
+            assert(false);
+        }
+        // Prove index blocks still set.
+        assert forall|i: int| 0 <= i < slab.num_index_blocks as int
+            implies #[trigger] slab.index@.set_bits.contains(i) by {
+            assert(old_slab.index@.set_bits.contains(i));
+            assert(slab.index@.set_bits.contains(i)
+                == old_slab.index@.set_bits.contains(i));
+        }
+        // Prove inv().
+        Self::lemma_inv_from_components(slab);
+        // Prove view equality.
+        assert(slab@.num_data_blocks == old_slab@.num_data_blocks);
+        assert(slab@.block_size == old_slab@.block_size);
+        assert(slab@.data_addr == old_slab@.data_addr);
+        assert(slab@.allocated_blocks =~= old_slab@.allocated_blocks) by {
+            assert forall|j: int| 0 <= j < slab.num_data_blocks as int implies
+                (slab@.allocated_blocks.contains(j)
+                    == old_slab@.allocated_blocks.contains(j)) by {
+                let bitmap_idx: int = slab.num_index_blocks as int + j;
+                assert(slab.index@.set_bits.contains(bitmap_idx)
+                    == old_slab.index@.set_bits.contains(bitmap_idx));
+            }
+        }
+        assert(slab@ == old_slab@);
+    }
+
+    /// Lemma: After bitmap alloc, the returned bit is a data block with valid bounds.
+    proof fn lemma_alloc_block_is_data_block_with_bounds(
+        slab: &Slab, old_slab: &Slab, block: int,
+    )
+        requires
+            old_slab.inv(),
+            slab.inv(),
+            // Bitmap alloc postconditions.
+            0 <= block < old_slab.index@.number_of_bits(),
+            !old_slab.index.is_bit_set(block),
+            slab.index.is_bit_set(block),
+            // Fields unchanged.
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+            slab.index@.number_of_bits() == old_slab.index@.number_of_bits(),
+        ensures
+            block >= slab.num_index_blocks as int,
+            block < (slab.num_index_blocks + slab.num_data_blocks) as int,
+    {
+        // An unset bit cannot be an index block (inv says index blocks are always set).
+        assert(block >= slab.num_index_blocks as int) by {
+            if block < slab.num_index_blocks as int {
+                assert(old_slab.index.is_bit_set(block));
+            }
+        };
+        // Bounds: bitmap length equals index + data blocks.
+        assert(old_slab.num_index_blocks as int + old_slab.num_data_blocks as int
+            == slab.index@.number_of_bits());
+        assert(block < slab.index@.number_of_bits());
+        assert(block < (slab.num_index_blocks + slab.num_data_blocks) as int);
+    }
+
+    /// Lemma: block_idx * block_size and data_addr + block_idx * block_size fit in usize.
+    proof fn lemma_alloc_product_in_bounds(slab: &Slab, block_idx: int)
+        requires
+            slab.inv(),
+            0 <= block_idx < slab.num_data_blocks as int,
+        ensures
+            block_idx * slab.block_size as int
+                < slab.num_data_blocks as int * slab.block_size as int,
+            block_idx * slab.block_size as int <= usize::MAX as int,
+            slab.data_addr as int + block_idx * slab.block_size as int
+                <= usize::MAX as int,
+    {
+        Self::lemma_mul_inequality(
+            block_idx, slab.num_data_blocks as int, slab.block_size as int,
+        );
+    }
+
+    /// Lemma: Establishes allocate postconditions (address validity, block index, frame).
+    proof fn lemma_alloc_establishes_postconditions(
+        slab: &Slab, old_slab: &Slab, block: int,
+        block_idx: int, block_addr: int,
+    )
+        requires
+            old_slab.inv(),
+            slab.inv(),
+            // Block relationships.
+            block_idx == block - slab.num_index_blocks as int,
+            0 <= block_idx < slab.num_data_blocks as int,
+            block_addr == slab.data_addr as int + block_idx * slab.block_size as int,
+            // Bitmap postconditions.
+            slab.index.is_bit_set(slab.num_index_blocks as int + block_idx),
+            !old_slab.index.is_bit_set(slab.num_index_blocks as int + block_idx),
+            // Only the allocated bit changed.
+            forall|k: int| k != block && 0 <= k < slab.index@.number_of_bits() ==>
+                slab.index.is_bit_set(k) == old_slab.index.is_bit_set(k),
+            // Fields unchanged.
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+        ensures
+            old_slab@.is_valid_addr(block_addr),
+            old_slab@.addr_to_block_idx(block_addr) == block_idx,
+            !old_slab@.is_allocated(block_idx),
+            slab@.is_allocated(block_idx),
+            slab@.num_data_blocks == old_slab@.num_data_blocks,
+            slab@.block_size == old_slab@.block_size,
+            slab@.data_addr == old_slab@.data_addr,
+            slab@.allocated_blocks =~= old_slab@.allocated_blocks.insert(block_idx),
+            block_addr > 0,
+    {
+        Self::lemma_view_fields(old_slab);
+        let bs: int = slab.block_size as int;
+        let ndb: int = slab.num_data_blocks as int;
+
+        // Address validity proofs.
+        assert(block_addr == slab.data_addr as int + block_idx * bs);
+        Self::lemma_mul_inequality(block_idx, ndb, bs);
+        assert(block_addr < slab.data_addr as int + ndb * bs);
+        Self::lemma_mul_divisible(block_idx, bs);
+        assert((block_addr - slab.data_addr as int) % bs == 0);
+        assert(old_slab@.is_valid_addr(block_addr));
+
+        // Block index computation.
+        Self::lemma_div_cancel(block_idx, bs);
+        assert(old_slab@.addr_to_block_idx(block_addr) == block_idx);
+
+        // Allocation status.
+        assert(!old_slab@.is_allocated(block_idx));
+        assert(slab@.is_allocated(block_idx));
+
+        // Other bits unchanged.
+        assert forall|i: int| 0 <= i < ndb && i != block_idx implies
+            #[trigger] slab.index.is_bit_set(slab.num_index_blocks as int + i)
+                == #[trigger] old_slab.index.is_bit_set(slab.num_index_blocks as int + i)
+        by {
+            let global_idx: int = slab.num_index_blocks as int + i;
+            if global_idx == block {
+                assert(i == block_idx);
+            }
+        }
+        // Frame for allocated_blocks.
+        assert forall|i: int| 0 <= i < ndb && i != block_idx
+            implies slab@.is_allocated(i) == old_slab@.is_allocated(i) by {}
+    }
+
+    /// Lemma: Proves offset and index bounds for deallocate.
+    proof fn lemma_dealloc_offset_bounds(slab: &Slab, ptr: int)
+        requires
+            slab.inv(),
+            slab@.is_valid_addr(ptr),
+            slab@.can_deallocate(slab@.addr_to_block_idx(ptr)),
+        ensures
+            ptr >= slab.data_addr as int,
+            (ptr - slab.data_addr as int) >= 0,
+            (ptr - slab.data_addr as int) < slab.num_data_blocks as int * slab.block_size as int,
+            ((ptr - slab.data_addr as int) % slab.block_size as int) == 0,
+            ({
+                let block_idx: int = (ptr - slab.data_addr as int) / slab.block_size as int;
+                &&& 0 <= block_idx < slab.num_data_blocks as int
+                &&& slab.num_index_blocks as int + block_idx < slab.index@.number_of_bits()
+                &&& slab.num_index_blocks as int + block_idx < usize::MAX as int
+            }),
+    {
+        // From is_valid_addr.
+        assert(ptr >= slab.data_addr as int);
+        assert(ptr < slab.data_addr as int
+            + slab.num_data_blocks as int * slab.block_size as int);
+        assert((ptr - slab.data_addr as int) % slab.block_size as int == 0);
+
+        let offset: int = ptr - slab.data_addr as int;
+        assert(offset >= 0);
+        assert(offset < slab.num_data_blocks as int * slab.block_size as int);
+
+        let block_idx: int = offset / slab.block_size as int;
+        assert(0 <= block_idx < slab.num_data_blocks as int);
+        assert(slab.num_index_blocks as int + block_idx < slab.index@.number_of_bits());
+
+        // Prove no overflow for usize computation.
+        assert(slab.num_index_blocks as int + block_idx
+            < slab.num_index_blocks as int + slab.num_data_blocks as int);
+        assert(slab.num_index_blocks as int + slab.num_data_blocks as int
+            == slab.index@.number_of_bits());
+        Self::lemma_slab_inv_implies_bitmap_inv(slab);
+        assert(slab.index@.number_of_bits() <= usize::MAX as int);
+        assert(slab.num_index_blocks as int + block_idx < usize::MAX as int);
+    }
+
+    /// Lemma: Connects the computed index to addr_to_block_idx and proves the bit is set.
+    proof fn lemma_dealloc_index_is_allocated(slab: &Slab, ptr: int, index: int)
+        requires
+            slab.inv(),
+            slab@.is_valid_addr(ptr),
+            slab@.can_deallocate(slab@.addr_to_block_idx(ptr)),
+            index == slab.num_index_blocks as int
+                + (ptr - slab.data_addr as int) / slab.block_size as int,
+            index < slab.index@.number_of_bits(),
+        ensures
+            slab.index.is_bit_set(index),
+            slab@.is_allocated(slab@.addr_to_block_idx(ptr)),
+            index == slab.num_index_blocks as int + slab@.addr_to_block_idx(ptr),
+    {
+        let block_idx_spec: int = slab@.addr_to_block_idx(ptr);
+        assert(block_idx_spec
+            == (ptr - slab.data_addr as int) / slab.block_size as int);
+        assert(index == slab.num_index_blocks as int + block_idx_spec);
+        assert(slab@.is_allocated(block_idx_spec));
+        assert(slab.index.is_bit_set(index));
+    }
+
+    /// Lemma: After a successful clear in deallocate, proves inv, can_allocate, and frame.
+    proof fn lemma_dealloc_clear_ok_postconditions(
+        slab: &Slab, old_slab: &Slab, index: int, ptr: int,
+    )
+        requires
+            old_slab.inv(),
+            slab.index.inv(),
+            slab.index@.number_of_bits() == old_slab.index@.number_of_bits(),
+            // Fields unchanged.
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+            // Bitmap clear postconditions.
+            !slab.index.is_bit_set(index),
+            old_slab.index.is_bit_set(index),
+            forall|j: int| j != index && 0 <= j < slab.index@.number_of_bits() ==>
+                slab.index.is_bit_set(j) == old_slab.index.is_bit_set(j),
+            // Block index relationships.
+            index == old_slab.num_index_blocks as int + old_slab@.addr_to_block_idx(ptr),
+            old_slab@.is_valid_addr(ptr),
+            old_slab@.can_deallocate(old_slab@.addr_to_block_idx(ptr)),
+        ensures
+            slab.inv(),
+            ({
+                let block_idx_spec: int = old_slab@.addr_to_block_idx(ptr);
+                &&& !slab@.is_allocated(block_idx_spec)
+                &&& slab@.num_data_blocks == old_slab@.num_data_blocks
+                &&& slab@.block_size == old_slab@.block_size
+                &&& slab@.data_addr == old_slab@.data_addr
+                &&& slab@.allocated_blocks =~=
+                        old_slab@.allocated_blocks.remove(block_idx_spec)
+                &&& slab@.can_allocate()
+            }),
+    {
+        let block_idx_spec: int = old_slab@.addr_to_block_idx(ptr);
+        assert(block_idx_spec >= 0);
+        assert(index == slab.num_index_blocks as int + block_idx_spec);
+        assert(index >= slab.num_index_blocks as int);
+
+        // Prove all index blocks are still set.
+        assert forall|j: int| 0 <= j < slab.num_index_blocks as int
+            implies slab.index.is_bit_set(j) by {
+            assert(j != index);
+            assert(old_slab.index.is_bit_set(j));
+            assert(slab.index.is_bit_set(j) == old_slab.index.is_bit_set(j));
+        }
+        Self::lemma_inv_from_components(slab);
+
+        // Prove can_allocate().
+        assert(!slab.index.is_bit_set(index));
+        slab.index.lemma_unset_bit_implies_has_free_bit(index);
+        assert(slab.index@.has_free_bit());
+
+        assert(0 <= block_idx_spec < slab@.num_data_blocks);
+        assert(!slab@.is_allocated(block_idx_spec));
+
+        // Prove allocated_blocks.len() < num_data_blocks.
+        slab.lemma_allocated_blocks_finite();
+        slab.lemma_allocated_blocks_subset_of_range();
+        let full_range: Set<int> = set_int_range(0, slab@.num_data_blocks);
+        lemma_int_range(0, slab@.num_data_blocks);
+
+        // Witness: block_idx_spec is in full_range but not in allocated_blocks.
+        assert(full_range.contains(block_idx_spec));
+        assert(!slab@.allocated_blocks.contains(block_idx_spec));
+
+        lemma_len_subset(slab@.allocated_blocks, full_range);
+        assert(slab@.allocated_blocks.len() <= full_range.len());
+
+        if slab@.allocated_blocks =~= full_range {
+            assert(slab@.allocated_blocks.contains(block_idx_spec));
+            assert(false);
+        }
+        assert(slab@.allocated_blocks !~= full_range);
+
+        assert(slab@.allocated_blocks.len() < slab@.num_data_blocks) by {
+            let with_witness: Set<int> =
+                slab@.allocated_blocks.insert(block_idx_spec);
+            assert forall|x: int| with_witness.contains(x)
+                implies full_range.contains(x) by {
+                if x == block_idx_spec {
+                    assert(full_range.contains(block_idx_spec));
+                } else {
+                    assert(slab@.allocated_blocks.contains(x));
+                    assert(full_range.contains(x));
+                }
+            }
+            assert(with_witness.subset_of(full_range));
+            axiom_set_insert_len(slab@.allocated_blocks, block_idx_spec);
+            assert(with_witness.len() == slab@.allocated_blocks.len() + 1);
+            lemma_len_subset(with_witness, full_range);
+            assert(with_witness.len() <= full_range.len());
+            assert(slab@.allocated_blocks.len() + 1 <= slab@.num_data_blocks);
+        }
+
+        assert(slab@.used() < slab@.capacity());
+        assert(slab@.free() > 0);
+        assert(slab@.can_allocate());
+    }
 }
 
 /// Test: Error conditions are prevented by preconditions.
