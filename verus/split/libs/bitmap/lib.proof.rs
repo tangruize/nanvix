@@ -4,19 +4,31 @@
 // Bitmap - Proofs
 //
 // This file contains lemmas and proof functions for Bitmap.
-// Uses Set<int> as the primary abstraction.
-
-use vstd::prelude::*;
 
 verus! {
 
 impl Bitmap {
     //==================================================================================================
+    // Lemmas: Layout
+    //==================================================================================================
+
+    /// Proves that `len` bytes fit within isize::MAX for RawArray allocation.
+    proof fn lemma_u8_array_len_fits_isize(len: usize)
+        requires
+            len <= u32::MAX as usize / (u8::BITS as usize),
+        ensures
+            len * vstd::layout::size_of::<u8>() <= isize::MAX as usize,
+    {
+        broadcast use vstd::layout::layout_of_primitives;
+        assert(vstd::layout::size_of::<u8>() == 1);
+        assert(len * vstd::layout::size_of::<u8>() <= isize::MAX as usize);
+    }
+
+    //==================================================================================================
     // Lemmas: Finiteness
     //==================================================================================================
 
-    /// Lemma: A subset of a finite set is finite.
-    /// set_bits ⊆ [0, num_bits) and [0, num_bits) is finite, so set_bits is finite.
+    /// A subset of a finite set is finite.
     pub proof fn lemma_set_bits_finite(&self)
         requires
             self@.wf(),
@@ -24,29 +36,19 @@ impl Bitmap {
         ensures
             self@.set_bits.finite(),
     {
-        // The set [0, num_bits) is finite.
-        // set_bits is a subset of [0, num_bits) by wf().
-        // A subset of a finite set is finite.
-        
-        // Use set_int_range to get a finite set.
+        // Proof sketch: [0, num_bits) is finite, set_bits ⊆ [0, num_bits) by wf(),
+        // and a subset of a finite set is finite.
         let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
-        
-        // Prove full_range is finite using vstd lemma.
         vstd::set_lib::lemma_int_range(0, self@.num_bits);
-        
-        // Prove set_bits ⊆ full_range.
+
         assert(self@.set_bits.subset_of(full_range)) by {
-            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {
-                // From wf(): set_bits.contains(i) ==> 0 <= i < num_bits
-            }
+            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
         }
-        
-        // A subset of a finite set is finite.
+
         vstd::set_lib::lemma_set_subset_finite(full_range, self@.set_bits);
     }
 
-    /// Lemma: Extensional equality preserves finiteness.
-    /// If s1 =~= s2 and s2 is finite, then s1 is finite.
+    /// Extensional equality preserves finiteness.
     pub proof fn lemma_ext_equal_finite(s1: Set<int>, s2: Set<int>)
         requires
             s1 =~= s2,
@@ -54,16 +56,13 @@ impl Bitmap {
         ensures
             s1.finite(),
     {
-        // s1 =~= s2 means forall|a| s1.contains(a) == s2.contains(a)
-        // So s1 ⊆ s2, and by lemma_set_subset_finite, s1.finite()
         assert(s1.subset_of(s2)) by {
             assert forall|a: int| s1.contains(a) implies s2.contains(a) by {}
         }
         vstd::set_lib::lemma_set_subset_finite(s2, s1);
     }
 
-    /// Lemma: Extensional equality preserves length.
-    /// If s1 =~= s2 and both are finite, then s1.len() == s2.len().
+    /// Extensional equality preserves length.
     pub proof fn lemma_ext_equal_len(s1: Set<int>, s2: Set<int>)
         requires
             s1 =~= s2,
@@ -73,7 +72,6 @@ impl Bitmap {
             s1.len() == s2.len(),
     {
         Self::lemma_ext_equal_finite(s1, s2);
-        // s1 ⊆ s2 and s2 ⊆ s1, so |s1| <= |s2| and |s2| <= |s1|.
         assert(s1.subset_of(s2)) by {
             assert forall|a: int| s1.contains(a) implies s2.contains(a) by {}
         }
@@ -84,16 +82,14 @@ impl Bitmap {
         vstd::set_lib::lemma_len_subset(s2, s1);
     }
 
-    /// Lemma: range_set(lo, hi) is finite when lo <= hi.
+    /// range_set(lo, hi) is finite when lo <= hi.
     pub proof fn lemma_range_set_finite(lo: int, hi: int)
         requires
             lo <= hi,
         ensures
             BitmapView::range_set(lo, hi).finite(),
     {
-        // range_set(lo, hi) = { i | lo <= i < hi } = set_int_range(lo, hi)
         vstd::set_lib::lemma_int_range(lo, hi);
-        // Prove equality.
         assert(BitmapView::range_set(lo, hi) =~= vstd::set_lib::set_int_range(lo, hi)) by {
             assert forall|i: int| BitmapView::range_set(lo, hi).contains(i) ==
                 vstd::set_lib::set_int_range(lo, hi).contains(i) by {}
@@ -101,7 +97,7 @@ impl Bitmap {
         Self::lemma_ext_equal_finite(BitmapView::range_set(lo, hi), vstd::set_lib::set_int_range(lo, hi));
     }
 
-    /// Lemma: Empty set is finite.
+    /// Empty set is finite.
     pub proof fn lemma_empty_set_finite()
         ensures
             Set::<int>::empty().finite(),
@@ -109,7 +105,7 @@ impl Bitmap {
         // Axiom from vstd.
     }
 
-    /// Lemma: Inserting into a finite set produces a finite set.
+    /// Inserting into a finite set produces a finite set.
     pub proof fn lemma_insert_finite(s: Set<int>, x: int)
         requires
             s.finite(),
@@ -119,7 +115,7 @@ impl Bitmap {
         // Follows from vstd axiom_set_insert_finite.
     }
 
-    /// Lemma: Removing from a finite set produces a finite set.
+    /// Removing from a finite set produces a finite set.
     pub proof fn lemma_remove_finite(s: Set<int>, x: int)
         requires
             s.finite(),
@@ -129,7 +125,7 @@ impl Bitmap {
         // Follows from vstd axiom_set_remove_finite.
     }
 
-    /// Lemma: Union of two finite sets is finite.
+    /// Union of two finite sets is finite.
     pub proof fn lemma_union_finite(s1: Set<int>, s2: Set<int>)
         requires
             s1.finite(),
@@ -140,7 +136,7 @@ impl Bitmap {
         // Follows from vstd axiom_set_union_finite.
     }
 
-    /// Lemma: Difference of a finite set and any set is finite.
+    /// Difference of a finite set and any set is finite.
     pub proof fn lemma_difference_finite(s1: Set<int>, s2: Set<int>)
         requires
             s1.finite(),
@@ -154,7 +150,7 @@ impl Bitmap {
     // Lemmas: Cardinality
     //==================================================================================================
 
-    /// Lemma: Inserting a new element increases cardinality by 1.
+    /// Inserting a new element increases cardinality by 1.
     pub proof fn lemma_insert_len(s: Set<int>, x: int)
         requires
             s.finite(),
@@ -165,7 +161,7 @@ impl Bitmap {
         // Follows from vstd axiom_set_insert_len.
     }
 
-    /// Lemma: Inserting an existing element doesn't change cardinality.
+    /// Inserting an existing element doesn't change cardinality.
     pub proof fn lemma_insert_same_len(s: Set<int>, x: int)
         requires
             s.finite(),
@@ -176,7 +172,7 @@ impl Bitmap {
         assert(s.insert(x) =~= s);
     }
 
-    /// Lemma: Disjoint union has cardinality equal to sum of cardinalities.
+    /// Disjoint union has cardinality equal to sum of cardinalities.
     pub proof fn lemma_disjoint_union_len(s1: Set<int>, s2: Set<int>)
         requires
             s1.finite(),
@@ -188,23 +184,21 @@ impl Bitmap {
         vstd::set_lib::lemma_set_disjoint_lens(s1, s2);
     }
 
-    /// Lemma: range_set cardinality equals range size.
+    /// range_set cardinality equals range size.
     pub proof fn lemma_range_set_len(lo: int, hi: int)
         requires
             lo <= hi,
         ensures
             BitmapView::range_set(lo, hi).len() == hi - lo,
     {
-        // range_set(lo, hi) = { i | lo <= i < hi } = set_int_range(lo, hi).
         vstd::set_lib::lemma_int_range(lo, hi);
-        // Prove equality.
         assert(BitmapView::range_set(lo, hi) =~= vstd::set_lib::set_int_range(lo, hi)) by {
             assert forall|i: int| BitmapView::range_set(lo, hi).contains(i) ==
                 vstd::set_lib::set_int_range(lo, hi).contains(i) by {}
         }
     }
 
-    /// Lemma: Removing an existing element decreases cardinality by 1.
+    /// Removing an existing element decreases cardinality by 1.
     pub proof fn lemma_remove_len(s: Set<int>, x: int)
         requires
             s.finite(),
@@ -215,7 +209,7 @@ impl Bitmap {
         // Follows from vstd axiom_set_remove_len.
     }
 
-    /// Lemma: Removing a non-existing element doesn't change cardinality.
+    /// Removing a non-existing element doesn't change cardinality.
     pub proof fn lemma_remove_same_len(s: Set<int>, x: int)
         requires
             s.finite(),
@@ -226,7 +220,7 @@ impl Bitmap {
         assert(s.remove(x) =~= s);
     }
 
-    /// Lemma: Empty set has cardinality 0.
+    /// Empty set has cardinality 0.
     pub proof fn lemma_empty_len()
         ensures
             Set::<int>::empty().len() == 0,
@@ -244,26 +238,17 @@ impl Bitmap {
         ensures
             self@.set_bits.insert(x).len() <= self@.number_of_bits(),
     {
-        // set_bits ⊆ [0, num_bits) by wf().
-        // x is in [0, num_bits) but not in set_bits.
-        // So set_bits is a strict subset of [0, num_bits).
-        
         let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
         vstd::set_lib::lemma_int_range(0, self@.num_bits);
-        
-        // set_bits ⊆ full_range.
+
         assert(self@.set_bits.subset_of(full_range)) by {
             assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
         }
-        
-        // x is in full_range but not in set_bits.
+
         assert(full_range.contains(x));
-        
-        // By lemma_subset_not_in_lt: |set_bits| < |full_range| = num_bits.
         self@.set_bits.lemma_subset_not_in_lt(full_range, x);
         assert(self@.set_bits.len() < full_range.len());
-        
-        // After inserting x: |set_bits.insert(x)| = |set_bits| + 1 <= num_bits.
+
         Self::lemma_insert_len(self@.set_bits, x);
     }
 
@@ -271,7 +256,7 @@ impl Bitmap {
     // Lemmas: Free Range Properties
     //==================================================================================================
 
-    /// Lemma: if a free range of size n exists starting at p, then usage <= number_of_bits - n
+    /// If a free range of size n exists starting at p, then usage <= number_of_bits - n.
     proof fn lemma_free_range_implies_usage_bound(&self, p: int, n: int)
         requires
             self.inv(),
@@ -280,86 +265,46 @@ impl Bitmap {
         ensures
             self@.usage() <= self@.number_of_bits() - n,
     {
-        // has_free_range_at(p, n) means all bits in [p, p+n) are unset.
-        // That means set_bits does not contain any index in [p, p+n).
-        // So set_bits ⊆ [0, num_bits) \ [p, p+n).
-        // |[0, num_bits) \ [p, p+n)| = num_bits - n.
-        // Therefore |set_bits| ≤ num_bits - n.
-        
+        // Proof sketch: set_bits ⊆ [0, num_bits) \ [p, p+n) because all bits in the
+        // free range are unset. The complement has size num_bits - n, so |set_bits| <= num_bits - n.
+
         let num_bits: int = self@.num_bits;
-        
-        // The full range [0, num_bits).
         let full_range: Set<int> = vstd::set_lib::set_int_range(0, num_bits);
         vstd::set_lib::lemma_int_range(0, num_bits);
-        
-        // The free range [p, p+n).
         let free_range: Set<int> = vstd::set_lib::set_int_range(p, p + n);
         vstd::set_lib::lemma_int_range(p, p + n);
-        
-        // The complement: [0, num_bits) \ [p, p+n).
         let available_range: Set<int> = full_range.difference(free_range);
-        
-        // set_bits ⊆ available_range because:
-        // - set_bits ⊆ full_range by wf()
-        // - set_bits ∩ free_range = ∅ by has_free_range_at
+
+        // set_bits ⊆ available_range: each set bit is in full_range (by wf)
+        // and not in free_range (by has_free_range_at).
         assert(self@.set_bits.subset_of(available_range)) by {
             assert forall|i: int| #![auto] self@.set_bits.contains(i) implies available_range.contains(i) by {
-                // i is in [0, num_bits) by wf().
                 assert(full_range.contains(i));
-                // i is not in [p, p+n) because all_bits_unset_in_range(p, p+n).
                 if p <= i && i < p + n {
-                    // Contradiction: i would be in the free range but also in set_bits.
-                    // has_free_range_at(p, n) implies all_bits_unset_in_range(p, p+n).
-                    // all_bits_unset_in_range(p, p+n) means forall|j| p <= j < p+n ==> !is_bit_set(j).
-                    // In particular, !is_bit_set(i).
-                    // is_bit_set(i) = (0 <= i < num_bits) && set_bits.contains(i).
-                    // Since 0 <= i < num_bits (from wf()), !is_bit_set(i) implies !set_bits.contains(i).
                     assert(self.all_bits_unset_in_range(p, p + n));
                     assert(!self.is_bit_set(i));
-                    // 0 <= i < num_bits, so !is_bit_set(i) means !set_bits.contains(i).
                     assert(0 <= i && i < num_bits);
-                    // Now the contradiction: i in set_bits but !set_bits.contains(i).
                 }
                 assert(!free_range.contains(i));
             }
         }
-        
-        // available_range is finite (subset of full_range).
+
         vstd::set_lib::lemma_set_subset_finite(full_range, available_range);
-        
-        // |set_bits| <= |available_range| by subset lemma.
         vstd::set_lib::lemma_len_subset(self@.set_bits, available_range);
-        
-        // |available_range| = |full_range| - |full_range ∩ free_range|.
-        // Since free_range ⊆ full_range, |full_range ∩ free_range| = |free_range| = n.
+
+        // |available_range| = num_bits - n via disjoint decomposition.
         assert(free_range.subset_of(full_range)) by {
             assert forall|i: int| free_range.contains(i) implies full_range.contains(i) by {}
         }
-        
         vstd::set_lib::lemma_len_difference(full_range, free_range);
-        // available_range.len() <= full_range.len() = num_bits.
-        
-        // We need: available_range.len() == num_bits - n.
-        // This follows from: available_range = full_range \ free_range,
-        // and full_range ∩ free_range = free_range (since free_range ⊆ full_range).
         assert(full_range.intersect(free_range) =~= free_range);
-        
-        // full_range = available_range ∪ (full_range ∩ free_range) = available_range ∪ free_range.
         assert(full_range =~= available_range.union(free_range));
-        
-        // available_range and free_range are disjoint.
         assert(available_range.intersect(free_range) =~= Set::empty());
-        
-        // |full_range| = |available_range| + |free_range|.
         vstd::set_lib::lemma_set_disjoint_lens(available_range, free_range);
-        assert(available_range.len() + free_range.len() == full_range.len());
         assert(available_range.len() == num_bits - n);
-        
-        // Therefore |set_bits| <= num_bits - n.
-        assert(self@.usage() <= self@.number_of_bits() - n);
     }
 
-    /// Lemma: has_free_bit implies exists_contiguous_free_range(1)
+    /// has_free_bit implies exists_contiguous_free_range(1).
     pub proof fn lemma_has_free_bit_implies_exists_free_range_1(&self)
         requires
             self.inv(),
@@ -367,14 +312,13 @@ impl Bitmap {
         ensures
             self.exists_contiguous_free_range(1),
     {
-        // has_free_bit means exists i: 0 <= i < num_bits && !set_bits.contains(i).
         let i = choose|i: int| 0 <= i < self@.number_of_bits() && !self@.set_bits.contains(i);
         assert(!self.is_bit_set(i));
         assert(self.all_bits_unset_in_range(i, i + 1));
         assert(self.has_free_range_at(i, 1));
     }
 
-    /// Lemma: if set_bits are equal, has_free_range_at returns the same result
+    /// If set_bits are equal, has_free_range_at returns the same result.
     pub proof fn lemma_set_bits_equal_has_free_range_at_equal(&self, other: &Self, p: int, n: int)
         requires
             self.inv(),
@@ -391,7 +335,7 @@ impl Bitmap {
         }
     }
 
-    /// Lemma: if set_bits are equal, exists_contiguous_free_range returns the same result
+    /// If set_bits are equal, exists_contiguous_free_range returns the same result.
     pub proof fn lemma_set_bits_equal_exists_free_range_equal(&self, other: &Self, n: int)
         requires
             self.inv(),
@@ -421,7 +365,7 @@ impl Bitmap {
     // Lemmas: View Synchronization
     //==================================================================================================
 
-    /// Lemma: if bitmap is empty, no bits are set
+    /// If bitmap is empty, no bits are set.
     pub proof fn lemma_is_empty_means_no_bits_set(&self)
         requires
             self.inv(),
@@ -429,10 +373,9 @@ impl Bitmap {
         ensures
             forall|i: int| 0 <= i < self@.number_of_bits() ==> !self.is_bit_set(i),
     {
-        // is_empty means set_bits =~= Set::empty().
     }
 
-    /// Lemma: if bitmap is full, all bits are set
+    /// If bitmap is full, all bits are set.
     pub proof fn lemma_is_full_means_all_bits_set(&self)
         requires
             self.inv(),
@@ -440,10 +383,9 @@ impl Bitmap {
         ensures
             forall|i: int| 0 <= i < self@.number_of_bits() ==> self.is_bit_set(i),
     {
-        // is_full means forall|i| 0 <= i < num_bits ==> set_bits.contains(i).
     }
 
-    /// Lemma: if bitmap is full, there are no free bits
+    /// If bitmap is full, there are no free bits.
     pub proof fn lemma_is_full_implies_no_free_bit(&self)
         requires
             self.inv(),
@@ -454,7 +396,43 @@ impl Bitmap {
         self.lemma_is_full_means_all_bits_set();
     }
 
-    /// Lemma: if bitmap is not full, there exists at least one unset bit
+    /// If usage equals number_of_bits, all bits are set.
+    pub proof fn lemma_usage_equals_number_of_bits_implies_full(&self)
+        requires
+            self.inv(),
+            self@.usage() == self@.number_of_bits(),
+        ensures
+            forall|i: int| 0 <= i < self@.number_of_bits() ==> self.is_bit_set(i),
+    {
+        // usage == number_of_bits means |set_bits| == num_bits.
+        // set_bits ⊆ [0, num_bits) and |set_bits| == |[0, num_bits)|.
+        // By pigeonhole (subset of equal size), set_bits == [0, num_bits).
+        let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
+        vstd::set_lib::lemma_int_range(0, self@.num_bits);
+        assert(self@.set_bits.subset_of(full_range)) by {
+            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
+        }
+        // |set_bits| == |full_range| == num_bits, and set_bits ⊆ full_range.
+        // Therefore is_full() holds, and we can use the existing lemma.
+        assert(self@.is_full()) by {
+            assert forall|i: int| 0 <= i < self@.num_bits implies self@.set_bits.contains(i) by {
+                if !self@.set_bits.contains(i) {
+                    // If i ∉ set_bits, then set_bits ⊆ full_range \ {i}.
+                    // |full_range \ {i}| == num_bits - 1 < |set_bits| = num_bits. Contradiction.
+                    let reduced: Set<int> = full_range.remove(i);
+                    assert(self@.set_bits.subset_of(reduced)) by {
+                        assert forall|j: int| #![auto] self@.set_bits.contains(j) implies reduced.contains(j) by {}
+                    }
+                    vstd::set_lib::lemma_len_subset(self@.set_bits, reduced);
+                    vstd::set_lib::lemma_set_subset_finite(full_range, reduced);
+                    Self::lemma_remove_len(full_range, i);
+                }
+            }
+        }
+        self.lemma_is_full_means_all_bits_set();
+    }
+
+    /// If bitmap is not full, there exists at least one unset bit.
     pub proof fn lemma_not_full_means_exists_unset_bit(&self)
         requires
             self.inv(),
@@ -462,17 +440,12 @@ impl Bitmap {
         ensures
             exists|i: int| 0 <= i < self@.number_of_bits() && !self.is_bit_set(i),
     {
-        // not is_full means: exists|i| 0 <= i < num_bits && !set_bits.contains(i).
         assert(exists|i: int| 0 <= i < self@.num_bits && !self@.set_bits.contains(i));
-        // Choose such an i.
         let i: int = choose|i: int| 0 <= i < self@.num_bits && !self@.set_bits.contains(i);
-        // Prove that !self.is_bit_set(i).
-        // is_bit_set(i) = (0 <= i < number_of_bits) && set_bits.contains(i)
-        // Since !set_bits.contains(i), we have !is_bit_set(i).
         assert(!self.is_bit_set(i));
     }
 
-    /// Lemma: If usage() < number_of_bits(), then the bitmap is not full.
+    /// If usage() < number_of_bits(), then the bitmap is not full.
     pub proof fn lemma_usage_less_than_capacity_means_not_full(&self)
         requires
             self.inv(),
@@ -480,66 +453,34 @@ impl Bitmap {
         ensures
             !self@.is_full(),
     {
-        // usage() = set_bits.len() as int.
-        // number_of_bits() = num_bits.
-        // set_bits ⊆ [0, num_bits) by wf().
-        // |set_bits| < num_bits.
-        // We need to show: exists i in [0, num_bits) such that i not in set_bits.
-        
-        // The full range [0, num_bits) has exactly num_bits elements.
+        // Proof sketch: |set_bits| < num_bits and set_bits ⊆ [0, num_bits),
+        // so [0, num_bits) \ set_bits is non-empty, witnessing !is_full().
+
         let full_range: Set<int> = vstd::set_lib::set_int_range(0, self@.num_bits);
         vstd::set_lib::lemma_int_range(0, self@.num_bits);
-        // full_range.len() == num_bits and full_range.finite().
-        
-        // set_bits ⊆ full_range.
+
         assert(self@.set_bits.subset_of(full_range)) by {
-            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {
-                // From wf(): set_bits.contains(i) ==> 0 <= i < num_bits.
-            }
+            assert forall|i: int| #![auto] self@.set_bits.contains(i) implies full_range.contains(i) by {}
         }
-        
-        // By lemma_len_subset: |set_bits| <= |full_range| = num_bits.
         vstd::set_lib::lemma_len_subset(self@.set_bits, full_range);
-        
-        // Since |set_bits| < num_bits = |full_range|, and set_bits ⊆ full_range,
-        // there must exist an element in full_range not in set_bits.
-        // Proof: if set_bits = full_range, then |set_bits| = |full_range|, contradiction.
-        
-        // The difference full_range \ set_bits is non-empty.
+
         let diff: Set<int> = full_range.difference(self@.set_bits);
-        
-        // Prove diff is non-empty by showing its length > 0.
-        // |diff| = |full_range| - |full_range ∩ set_bits| >= |full_range| - |set_bits| > 0.
         vstd::set_lib::lemma_len_difference(full_range, self@.set_bits);
-        // diff.len() <= full_range.len().
-        
-        // Since set_bits ⊆ full_range, full_range ∩ set_bits = set_bits.
         assert(full_range.intersect(self@.set_bits) =~= self@.set_bits);
-        
-        // full_range = diff ∪ set_bits (disjoint union).
         assert(full_range =~= diff.union(self@.set_bits));
-        
-        // By disjoint union: |full_range| = |diff| + |set_bits|.
-        // So |diff| = |full_range| - |set_bits| = num_bits - usage() > 0.
         vstd::set_lib::lemma_set_disjoint_lens(diff, self@.set_bits);
         assert(diff.len() > 0);
-        
-        // Non-empty finite set has an element.
+
         assert(!diff.is_empty()) by {
             vstd::set_lib::lemma_set_empty_equivalency_len(diff);
         }
-        
-        // Choose an element from diff.
+
         let i: int = diff.choose();
-        // i is in full_range but not in set_bits.
         assert(0 <= i < self@.num_bits);
         assert(!self@.set_bits.contains(i));
-        
-        // Therefore, is_full is false (not all elements of [0, num_bits) are in set_bits).
-        assert(!self@.is_full());
     }
 
-    /// Lemma: If a specific bit is unset, then has_free_bit() is true.
+    /// If a specific bit is unset, then has_free_bit() is true.
     pub proof fn lemma_unset_bit_implies_has_free_bit(&self, i: int)
         requires
             self.inv(),
@@ -551,7 +492,7 @@ impl Bitmap {
         assert(!self@.set_bits.contains(i));
     }
 
-    /// Lemma: if all bits are set, bitmap is full
+    /// Lemma: if all bits are set, bitmap is full.
     pub proof fn lemma_all_bits_set_means_full(&self)
         requires
             self.inv(),
@@ -569,7 +510,7 @@ impl Bitmap {
     // Lemmas: Bit-level Operations
     //==================================================================================================
 
-    /// Lemma: Helper for proving bit operations on bytes
+    /// Bit OR sets the target bit and preserves all other bits.
     proof fn lemma_bit_or_effects(old_byte: u8, bit_pos: int, new_byte: u8)
         requires
             0 <= bit_pos < 8,
@@ -599,7 +540,7 @@ impl Bitmap {
         }
     }
 
-    /// Lemma: Helper for proving bit clear operations on bytes
+    /// Bit AND NOT clears the target bit and preserves all other bits.
     proof fn lemma_bit_and_not_effects(old_byte: u8, bit_pos: int, new_byte: u8)
         requires
             0 <= bit_pos < 8,
@@ -629,7 +570,7 @@ impl Bitmap {
         }
     }
 
-    /// Lemma: setting a byte bit reflects in set_bits
+    /// Setting a byte bit reflects in set_bits.
     proof fn lemma_byte_or_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
             self@.number_of_bits() > 0,
@@ -646,7 +587,7 @@ impl Bitmap {
     {
         Self::lemma_bit_or_effects(self.bits@[word], bit, new_self.bits@[word]);
         let idx: int = word * (u8::BITS as int) + bit;
-        
+
         assert forall|i: int| #![auto] new_self@.set_bits.contains(i) == self@.set_bits.insert(idx).contains(i) by {
             if i == idx {
                 assert(Self::bit_at(new_self.bits@, idx));
@@ -663,7 +604,7 @@ impl Bitmap {
         }
     }
 
-    /// Lemma: clearing a byte bit reflects in set_bits
+    /// Clearing a byte bit reflects in set_bits.
     proof fn lemma_byte_and_not_reflects_in_view(&self, new_self: &Self, word: int, bit: int)
         requires
             self.inv(),
@@ -678,7 +619,7 @@ impl Bitmap {
     {
         Self::lemma_bit_and_not_effects(self.bits@[word], bit, new_self.bits@[word]);
         let idx: int = word * (u8::BITS as int) + bit;
-        
+
         assert forall|i: int| #![auto] new_self@.set_bits.contains(i) == self@.set_bits.remove(idx).contains(i) by {
             if i == idx {
                 assert(!Self::bit_at(new_self.bits@, idx));
@@ -695,7 +636,7 @@ impl Bitmap {
         }
     }
 
-    /// Lemma: when all raw bytes are zero, set_bits is empty
+    /// When all raw bytes are zero, set_bits is empty.
     proof fn lemma_zero_bytes_means_empty_set(&self)
         requires
             self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
@@ -715,7 +656,7 @@ impl Bitmap {
         }
     }
 
-    /// Lemma: Connects closed `is_bit_set` to open `BitmapView.is_bit_set`.
+    /// Connects closed `Bitmap::is_bit_set` to open `BitmapView::is_bit_set`.
     pub proof fn lemma_is_bit_set_equals_view(&self, i: int)
         requires
             self.inv(),
@@ -726,18 +667,18 @@ impl Bitmap {
         // Both reduce to self@.set_bits.contains(i).
     }
 
-    /// Proves that number_of_bits is bounded by usize::MAX.
+    /// number_of_bits is bounded by usize::MAX.
     pub proof fn lemma_number_of_bits_bounded(&self)
         requires
             self.inv(),
         ensures
             self@.number_of_bits() <= usize::MAX as int,
     {
-        // From inv(): number_of_bits < u32::MAX, and u32::MAX <= usize::MAX.
+        // From inv(): number_of_bits < u32::MAX <= usize::MAX.
     }
 
     //==========================================================================================
-    // Composite lemmas (extracted from exec proof blocks for readability).
+    // Composite Lemmas
     //==========================================================================================
 
     /// Proves that a newly constructed bitmap (with zero-initialized bytes) satisfies inv().
@@ -747,6 +688,7 @@ impl Bitmap {
             bmp@.number_of_bits() > 0,
             bmp@.number_of_bits() < u32::MAX as int,
             bmp.usage == 0,
+            bmp.next_free == 0,
             bmp.number_of_bits as int == bmp@.number_of_bits(),
             forall|i: int| 0 <= i < bmp.bits@.len() ==> is_zero(#[trigger] bmp.bits@[i]),
         ensures
@@ -964,20 +906,17 @@ impl Bitmap {
             new_self.number_of_bits as int == new_self@.number_of_bits(),
             new_self@.number_of_bits() == new_self.bits@.len() * (u8::BITS as int),
             new_self.usage == self.usage + size,
+            new_self.next_free as int <= new_self@.number_of_bits(),
         ensures
             new_self.inv(),
             new_self@.usage() == self@.usage() + size,
     {
-        // Prove range_set is finite.
         Self::lemma_range_set_finite(start, start + size);
-        // Prove union is finite.
         Self::lemma_union_finite(self@.set_bits, BitmapView::range_set(start, start + size));
-        // Transfer finiteness through extensional equality.
         Self::lemma_ext_equal_finite(
             new_self@.set_bits,
             self@.set_bits.union(BitmapView::range_set(start, start + size)),
         );
-        // Prove wf().
         assert(new_self@.wf()) by {
             assert forall|i: int| new_self@.set_bits.contains(i) implies (0 <= i < new_self@.num_bits) by {
                 if BitmapView::range_set(start, start + size).contains(i) {
@@ -986,7 +925,7 @@ impl Bitmap {
                 }
             }
         }
-        // Prove disjointness.
+        // Disjointness: set_bits ∩ range = ∅ because range was all-unset.
         let range: Set<int> = BitmapView::range_set(start, start + size);
         assert(self@.set_bits.disjoint(range)) by {
             assert forall|i: int| #![auto] !(self@.set_bits.contains(i) && range.contains(i)) by {
@@ -996,12 +935,11 @@ impl Bitmap {
                 }
             }
         }
-        // Cardinality.
         Self::lemma_disjoint_union_len(self@.set_bits, range);
         Self::lemma_range_set_len(start, start + size);
         assert(new_self@.set_bits.len() == self@.set_bits.len() + size);
         assert(new_self.usage as int == new_self@.set_bits.len());
-        // Usage bound.
+        // Usage bound via subset of full range.
         let full_range: Set<int> = vstd::set_lib::set_int_range(0, new_self@.num_bits);
         vstd::set_lib::lemma_int_range(0, new_self@.num_bits);
         assert(new_self@.set_bits.subset_of(full_range)) by {
@@ -1062,6 +1000,80 @@ impl Bitmap {
             }
         }
         Self::lemma_insert_finite(loop_old_self@.set_bits, idx);
+    }
+
+    /// Proves that positions in `[lower, N)` have no free range of given size
+    /// when all positions in `[lower, checked)` were already checked and the
+    /// remaining positions have `p + size > N`.
+    proof fn lemma_phase1_complete_no_free_range(
+        &self, initial_start: int, start: int, size: int,
+    )
+        requires
+            self.inv(),
+            size > 0,
+            initial_start >= 0,
+            initial_start <= self@.number_of_bits(),
+            start >= initial_start,
+            start <= self@.number_of_bits(),
+            start > self@.number_of_bits() - size,
+            forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                initial_start <= p < start ==> !self.has_free_range_at(p, size),
+        ensures
+            forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                initial_start <= p < self@.number_of_bits() ==> !self.has_free_range_at(p, size),
+    {
+        assert forall|p: int| #![trigger self.has_free_range_at(p, size)]
+            initial_start <= p < self@.number_of_bits() implies !self.has_free_range_at(p, size)
+        by {
+            if p < start {
+            } else {
+                assert(p + size > self@.number_of_bits());
+            }
+        }
+    }
+
+    /// Proves that all positions in `[0, N)` have no free range when both
+    /// phases have been checked.
+    proof fn lemma_all_positions_no_free_range(
+        &self, initial_start: int, start: int, size: int, wrapped: bool,
+    )
+        requires
+            self.inv(),
+            size > 0,
+            start <= self@.number_of_bits(),
+            start > self@.number_of_bits() - size || (wrapped && start >= initial_start),
+            initial_start >= 0,
+            initial_start <= self@.number_of_bits(),
+            // Phase 1 covered [initial_start, N).
+            wrapped ==> forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                initial_start <= p < self@.number_of_bits() ==> !self.has_free_range_at(p, size),
+            // Phase 2 covered [0, start).
+            wrapped ==> forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                0 <= p < start ==> !self.has_free_range_at(p, size),
+            // If not wrapped: phase 1 covered [initial_start, start), and initial_start == 0.
+            !wrapped ==> initial_start == 0,
+            !wrapped ==> forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                0 <= p < start ==> !self.has_free_range_at(p, size),
+        ensures
+            forall|p: int| #![trigger self.has_free_range_at(p, size)]
+                0 <= p < self@.number_of_bits() ==> !self.has_free_range_at(p, size),
+    {
+        assert forall|p: int| #![trigger self.has_free_range_at(p, size)]
+            0 <= p < self@.number_of_bits() implies !self.has_free_range_at(p, size)
+        by {
+            if wrapped {
+                if p < start {
+                } else if p >= initial_start {
+                } else {
+                    assert(p + size > self@.number_of_bits());
+                }
+            } else {
+                if p < start {
+                } else {
+                    assert(p + size > self@.number_of_bits());
+                }
+            }
+        }
     }
 
 } // impl Bitmap

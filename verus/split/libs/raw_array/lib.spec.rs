@@ -5,8 +5,6 @@
 //
 // This file contains specification functions, invariants, and View trait for RawArray.
 
-use vstd::prelude::*;
-
 verus! {
 
 //==================================================================================================
@@ -72,6 +70,10 @@ pub open spec fn raw_array_inv<T>(len: nat) -> bool {
     len > 0 && len < i32::MAX as nat
 }
 
+} // verus!
+
+verus! {
+
 //==================================================================================================
 // RawArray View Implementation
 //==================================================================================================
@@ -80,7 +82,10 @@ impl<T> View for RawArray<T> {
     type V = Seq<T>;
 
     /// Abstract view of the array as a sequence (uninterpreted).
-    uninterp spec fn view(&self) -> Seq<T>;
+    #[verifier::external_body]
+    open spec fn view(&self) -> Seq<T> {
+        unimplemented!()
+    }
 }
 
 //==================================================================================================

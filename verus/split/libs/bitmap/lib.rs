@@ -5,39 +5,39 @@
 //!
 //! This file contains the implementation code for bitmap allocator.
 //! Specification functions are in `lib.spec.rs` and proofs are in `lib.proof.rs`.
-//! Uses Set<int> as the primary abstraction for efficient frame conditions.
 
-use crate::libs::{
-    error::{
-        Error,
-        ErrorCode,
-    },
-    raw_array::{
-        axiom_u8_zero_is_0,
-        is_zero,
-        RawArray,
-    },
+
+use crate::libs::raw_array::RawArray;
+use crate::libs::raw_array::{
+    axiom_u8_zero_is_0,
+    is_zero,
+};
+use crate::libs::error::{
+    Error,
+    ErrorCode,
 };
 use vstd::prelude::*;
 
 // Include specifications.
 include!("lib.spec.rs");
 
-// Include proofs (lemmas).
+// Include proofs.
 include!("lib.proof.rs");
 
-verus! {
+// Include verified tests.
+include!("lib.test.rs");
 
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+verus! {
 
 ///
 /// # Description
 ///
 /// A bitmap.
 ///
-#[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 #[verifier::ext_equal]
 pub struct Bitmap {
     /// Capacity of the bitmap (in bits).
@@ -46,17 +46,15 @@ pub struct Bitmap {
     usage: usize,
     /// Underlying bits.
     bits: RawArray<u8>,
+    /// Hint: first bit index that might be free. Avoids O(n) rescans.
+    next_free: usize,
 }
 
 //==================================================================================================
-// Implementation
+// Implementations
 //==================================================================================================
 
 impl Bitmap {
-    //==================================================================================================
-    // Public Methods
-    //==================================================================================================
-
     ///
     /// # Description
     ///
@@ -99,10 +97,7 @@ impl Bitmap {
         // Note: RawArray::new() guarantees zero-initialization of the backing storage.
         let len: usize = number_of_bits / u8::BITS as usize;
         proof {
-            // vstd broadcasts that size_of::<u8>() == 1, so len * 1 <= isize::MAX.
-            broadcast use vstd::layout::layout_of_primitives;
-            assert(vstd::layout::size_of::<u8>() == 1);
-            assert(len * vstd::layout::size_of::<u8>() <= isize::MAX as usize);
+            Self::lemma_u8_array_len_fits_isize(len);
         }
         let array: RawArray<u8> = RawArray::new(len)?;
 
@@ -110,6 +105,7 @@ impl Bitmap {
             number_of_bits,
             bits: array,
             usage: 0,
+            next_free: 0,
         };
 
         proof {
@@ -153,20 +149,20 @@ impl Bitmap {
             // Liveness: given preconditions, always succeeds.
             result is Ok,
     {
-        // Check for overflow: array.len() * u8::BITS would overflow usize.
-        // Verus note: checked_mul and closures are not supported in Verus,
-        // so we use a manual overflow check. Semantically equivalent to
-        // source's array.len().checked_mul(u8::BITS as usize).ok_or_else(...).
-        if array.len() > usize::MAX / (u8::BITS as usize) {
-            let reason: &str = "bitmap size overflow: array too large";
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-        let number_of_bits: usize = array.len() * u8::BITS as usize;
+        // TODO: remove this runtime check once all callers are verified.
+        let number_of_bits: usize = match array.len().checked_mul(u8::BITS as usize) {
+            Some(n) => n,
+            None => {
+                let reason: &str = "bitmap size overflow: array too large";
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
 
         let result = Self {
             number_of_bits,
             bits: array,
             usage: 0,
+            next_free: 0,
         };
         proof {
             result.lemma_zero_bytes_means_empty_set();
@@ -252,6 +248,8 @@ impl Bitmap {
     pub fn alloc_range(&mut self, size: usize) -> (result: Result<usize, Error>)
         requires
             old(self).inv(),
+            size > 0,
+            size <= old(self)@.number_of_bits(),
         ensures
             self.inv(),
             result is Ok ==> {
@@ -271,10 +269,11 @@ impl Bitmap {
                 &&& self@.usage() == old(self)@.usage() + (size as int)
             },
             result is Err ==> self@ == old(self)@,
-            (size > 0 && old(self).exists_contiguous_free_range(size as int)) ==> result is Ok,
+            old(self).exists_contiguous_free_range(size as int) ==> result is Ok,
     {
         let ghost old_self = *self;
 
+        // TODO: remove this runtime check once all callers are verified.
         // Check if the size is valid.
         if size == 0 || size > self.number_of_bits {
             proof {
@@ -297,17 +296,14 @@ impl Bitmap {
 
         // Note: debug_assert_eq! is not supported by Verus, so we guard it
         // with cfg. The invariant self.inv() already proves this property.
-        #[cfg(not(verus_keep_ghost))]
-        debug_assert_eq!(
-            self.bits.len() * u8::BITS as usize,
-            self.number_of_bits,
-            "bitmap length must match the number of bits"
-        );
 
-        let mut start: usize = 0;
+        let initial_start: usize = self.next_free;
+        let mut start: usize = initial_start;
+        let mut wrapped: bool = false;
+        let mut done: bool = false;
 
-        // Search for a contiguous free range.
-        while start <= self.number_of_bits - size
+        // Traverse the bitmap, wrapping around once if needed.
+        while !done
             invariant
                 self.inv(),
                 old_self.inv(),
@@ -317,159 +313,201 @@ impl Bitmap {
                 start <= self.number_of_bits,
                 self@.set_bits =~= old(self)@.set_bits,
                 self.usage <= self.number_of_bits - size,
-                // number_of_bits is unchanged.
                 self.number_of_bits == old_self.number_of_bits,
-                // All positions before start don't have a free range.
-                forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                initial_start as int <= self@.number_of_bits(),
+                // Wrap-around state consistency.
+                !wrapped ==> start >= initial_start,
+                wrapped ==> initial_start > 0,
+                // Checked positions.
+                !wrapped ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                    initial_start as int <= p < start as int ==> !self.has_free_range_at(p, size as int),
+                wrapped ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                    initial_start as int <= p < self@.number_of_bits() ==> !self.has_free_range_at(p, size as int),
+                wrapped ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
                     0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
+                // When done, all positions have been checked.
+                done ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                    0 <= p < self@.number_of_bits() ==> !self.has_free_range_at(p, size as int),
             decreases
-                self.number_of_bits - start as int,
+                (if !done { 1int } else { 0int }),
+                (if !wrapped { 1int } else { 0int }),
+                self.number_of_bits - start,
         {
-            // Fast skip: if the starting word is full, skip 8 bits.
-            let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
-            if is_aligned {
-                let word: usize = start / u8::BITS as usize;
-                if self.bits[word] == u8::MAX {
+            // Stop condition: exceeded the last valid starting position.
+            if start > self.number_of_bits - size {
+                // If we haven't wrapped yet and started past 0, retry from beginning.
+                if !wrapped && initial_start > 0 {
                     proof {
-                        self.lemma_full_byte_no_free_range(start as int, size as int);
+                        self.lemma_phase1_complete_no_free_range(
+                            initial_start as int, start as int, size as int);
                     }
-
-                    start = start + u8::BITS as usize;
-                    continue;
+                    start = 0;
+                    wrapped = true;
+                } else {
+                    proof {
+                        self.lemma_all_positions_no_free_range(
+                            initial_start as int, start as int, size as int, wrapped);
+                    }
+                    done = true;
                 }
             }
 
-            // Check if all bits in the range are free.
-            let ghost start_before_inner: usize = start;
-            let mut offset: usize = 0;
-            let mut free: bool = true;
-
-            while offset < size
-                invariant_except_break
-                    start == start_before_inner,  // start doesn't change until break
-                    free,  // free remains true unless we break
-                invariant
-                    self.inv(),
-                    old_self.inv(),
-                    old_self == *old(self),
-                    0 < size <= self.number_of_bits,
-                    offset <= size,
-                    start_before_inner <= self.number_of_bits - size,  // from outer loop
-                    self@.set_bits =~= old(self)@.set_bits,
-                    forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
-                        0 <= p < start_before_inner as int ==> !self.has_free_range_at(p, size as int),
-                    // All bits checked so far are unset.
-                    free ==> forall|i: int| 0 <= i < offset ==>
-                        !#[trigger] self.is_bit_set((start_before_inner + i) as int),
-                ensures
-                    start <= self.number_of_bits,
-                    free ==> start == start_before_inner && start <= self.number_of_bits - size &&
-                        forall|i: int| 0 <= i < size ==>
-                            !#[trigger] self.is_bit_set((start + i) as int),
-                    !free ==> start > start_before_inner,
-                    !free ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
-                        0 <= p < start as int ==> !self.has_free_range_at(p, size as int),
-                decreases
-                    size - offset,
-            {
-                let idx: usize = start + offset;
-                let (w, b): (usize, usize) = self.index_unchecked(idx);
-                if (self.bits[w] & (1u8 << b)) != 0 {
-                    free = false;
-                    start += offset + 1;
-                    proof {
-                        self.lemma_set_bit_blocks_free_range(
-                            start_before_inner as int, idx as int, offset as int, size as int);
-                    }
-                    break;
+            // After wrap-around, stop if we've reached the initial position.
+            if !done && wrapped && start >= initial_start {
+                proof {
+                    self.lemma_all_positions_no_free_range(
+                        initial_start as int, start as int, size as int, wrapped);
                 }
-                offset += 1;
+                done = true;
             }
 
-            if free {
-                // Found a free range at [start, start + size).
-                proof {
-                    self.lemma_free_range_was_unset_in_old(&old_self, start as int, size as int);
-                    assert(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
+            if !done {
+                // Check for fast-skip path.
+                let is_aligned: bool = start.is_multiple_of(u8::BITS as usize);
+                if is_aligned {
+                    let word: usize = start / u8::BITS as usize;
+                    // Fast skip: if the starting word is full, skip to the next word.
+                    if self.bits[word] == u8::MAX {
+                        proof {
+                            self.lemma_full_byte_no_free_range(start as int, size as int);
+                        }
+                        start += u8::BITS as usize;
+                        continue;
+                    }
                 }
 
-                // Allocate the range.
-                let ghost pre_alloc_self = *self;
-                let mut alloc_offset: usize = 0;
+                // Check if all bits in the range are free.
+                let ghost start_before_inner: usize = start;
+                let mut offset: usize = 0;
+                let mut free: bool = true;
 
-                proof {
-                    assert(self@.number_of_bits() == old_self@.number_of_bits());
-                    assert(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
-                }
+                // Ghost: snapshot the "checked before" region for the inner loop.
+                let ghost checked_before: int = start as int;
 
-                // Verus note: `for offset in 0..size` is not supported;
-                // `self.bits[w] |= 1 << b` is not supported for mutable index.
-                while alloc_offset < size
+                while offset < size
+                    invariant_except_break
+                        start == start_before_inner,
+                        free,
                     invariant
-                        // Basic structure preservation.
-                        self.bits@.len() == pre_alloc_self.bits@.len(),
-                        self.bits@.len() == old_self.bits@.len(),
-                        self@.number_of_bits() > 0,
-                        self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
-                        self.number_of_bits == pre_alloc_self.number_of_bits,
-                        self.number_of_bits as int == self@.number_of_bits(),
-                        // Usage unchanged during this loop (updated after).
-                        self.usage == pre_alloc_self.usage,
-                        // Ghost state.
+                        self.inv(),
                         old_self.inv(),
-                        pre_alloc_self.inv(),
                         old_self == *old(self),
-                        // Bounds.
                         0 < size <= self.number_of_bits,
-                        start <= self.number_of_bits - size,
-                        alloc_offset <= size,
-                        // Bits [start, start+alloc_offset) are set.
-                        forall|i: int| 0 <= i < alloc_offset ==>
-                            #[trigger] self.is_bit_set((start + i) as int),
-                        // Bits outside [start, start+alloc_offset) are unchanged.
-                        forall|i: int| (0 <= i < self@.number_of_bits() &&
-                            (i < start as int || i >= (start + alloc_offset) as int)) ==>
-                            #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i),
-                        // Set-based invariant.
-                        self@.set_bits =~= old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (alloc_offset as int))),
-                        self@.set_bits.finite(),
-                        // The range [start, start+size) was free in old_self.
-                        old_self.all_bits_unset_in_range(start as int, start as int + (size as int)),
+                        offset <= size,
+                        start_before_inner <= self.number_of_bits - size,
+                        self@.set_bits =~= old(self)@.set_bits,
+                        checked_before == start_before_inner as int,
+                        // Positions before start_before_inner are already checked.
+                        forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                            (!wrapped ==> initial_start as int <= p < checked_before ==> !self.has_free_range_at(p, size as int)),
+                        forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                            (wrapped ==> 0 <= p < checked_before ==> !self.has_free_range_at(p, size as int)),
+                        free ==> forall|i: int| 0 <= i < offset ==>
+                            !#[trigger] self.is_bit_set((start_before_inner + i) as int),
+                    ensures
+                        start <= self.number_of_bits,
+                        free ==> start == start_before_inner && start <= self.number_of_bits - size &&
+                            forall|i: int| 0 <= i < size ==>
+                                !#[trigger] self.is_bit_set((start + i) as int),
+                        !free ==> start > start_before_inner,
+                        !free ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                            (!wrapped ==> initial_start as int <= p < start as int ==> !self.has_free_range_at(p, size as int)),
+                        !free ==> forall|p: int| #![trigger self.has_free_range_at(p, size as int)]
+                            (wrapped ==> 0 <= p < start as int ==> !self.has_free_range_at(p, size as int)),
                     decreases
-                        size - alloc_offset,
+                        size - offset,
                 {
-                    let idx: usize = start + alloc_offset;
+                    let idx: usize = start + offset;
                     let (w, b): (usize, usize) = self.index_unchecked(idx);
-                    let ghost loop_old_self = *self;
+                    if (self.bits[w] & (1 << b)) != 0 {
+                        free = false;
+                        start += offset + 1;
+                        proof {
+                            self.lemma_set_bit_blocks_free_range(
+                                start_before_inner as int, idx as int, offset as int, size as int);
+                        }
+                        break;
+                    }
+                    offset += 1;
+                }
 
-                    self.bits.set(w, self.bits[w] | (1u8 << b));
+                if free {
+                    // Found a free range at [start, start + size).
+                    proof {
+                        self.lemma_free_range_was_unset_in_old(&old_self, start as int, size as int);
+                        assert(old(self).all_bits_unset_in_range(start as int, start as int + (size as int)));
+                    }
+                    // Allocate the range.
+                    let ghost pre_alloc_self = *self;
+                    let mut alloc_offset: usize = 0;
 
                     proof {
-                        loop_old_self.lemma_byte_or_reflects_in_view(self, w as int, b as int);
-                        Self::lemma_alloc_loop_step_inv(
-                            &old_self, &loop_old_self, self, start as int, alloc_offset as int, idx as int);
+                        assert(self@.number_of_bits() == old_self@.number_of_bits());
+                        assert(pre_alloc_self@.number_of_bits() == old_self@.number_of_bits());
                     }
 
-                    alloc_offset += 1;
-                }
-                // Verus note: compound assignment on struct fields not supported.
-                // Equivalent to source's `self.usage += size`.
-                self.usage = self.usage + size;
+                    // Verus note: `for offset in 0..size` is not supported;
+                    // `self.bits[w] |= 1 << b` is not supported for mutable index.
+                    while alloc_offset < size
+                        invariant
+                            self.bits@.len() == pre_alloc_self.bits@.len(),
+                            self.bits@.len() == old_self.bits@.len(),
+                            self@.number_of_bits() > 0,
+                            self@.number_of_bits() == self.bits@.len() * (u8::BITS as int),
+                            self.number_of_bits == pre_alloc_self.number_of_bits,
+                            self.number_of_bits as int == self@.number_of_bits(),
+                            self.usage == pre_alloc_self.usage,
+                            old_self.inv(),
+                            pre_alloc_self.inv(),
+                            old_self == *old(self),
+                            0 < size <= self.number_of_bits,
+                            start <= self.number_of_bits - size,
+                            alloc_offset <= size,
+                            forall|i: int| 0 <= i < alloc_offset ==>
+                                #[trigger] self.is_bit_set((start + i) as int),
+                            forall|i: int| (0 <= i < self@.number_of_bits() &&
+                                (i < start as int || i >= (start + alloc_offset) as int)) ==>
+                                #[trigger] self.is_bit_set(i) == #[trigger] old_self.is_bit_set(i),
+                            self@.set_bits =~= old_self@.set_bits.union(BitmapView::range_set(start as int, start as int + (alloc_offset as int))),
+                            self@.set_bits.finite(),
+                            old_self.all_bits_unset_in_range(start as int, start as int + (size as int)),
+                        decreases
+                            size - alloc_offset,
+                    {
+                        let idx: usize = start + alloc_offset;
+                        let (w, b): (usize, usize) = self.index_unchecked(idx);
+                        let ghost loop_old_self = *self;
 
+                        self.bits.set(w, self.bits[w] | (1 << b));
+
+                        proof {
+                            loop_old_self.lemma_byte_or_reflects_in_view(self, w as int, b as int);
+                            Self::lemma_alloc_loop_step_inv(
+                                &old_self, &loop_old_self, self, start as int, alloc_offset as int, idx as int);
+                        }
+
+                        alloc_offset += 1;
+                    }
+                    // Verus note: compound assignment on struct fields not supported.
+                    self.usage = self.usage + size;
+                    self.next_free = start + size;
+
+                    proof {
+                        old_self.lemma_alloc_range_establishes_inv(self, start as int, size as int);
+                    }
+
+                    return Ok(start);
+                }
+                // !free: start was advanced past the blocked position.
                 proof {
-                    old_self.lemma_alloc_range_establishes_inv(self, start as int, size as int);
+                    assert(start > start_before_inner);
                 }
-
-                return Ok(start);
-            }
-            // !free: start was advanced past the blocked position.
-            proof {
-                assert(start > start_before_inner);
             }
         }
 
-        // No free range found.
+        // No free range found anywhere in the bitmap.
         proof {
+            assert(done);
             self.lemma_no_range_found_frame(&old_self, size as int);
             assert(!old(self).exists_contiguous_free_range(size as int));
         }
@@ -558,12 +596,13 @@ impl Bitmap {
     pub fn clear(&mut self, index: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
+            (index as int) < old(self)@.number_of_bits(),
+            old(self).is_bit_set(index as int),
         ensures
             self.inv(),
             result is Ok ==> {
                 &&& (index as int) < self@.number_of_bits()
                 &&& !self.is_bit_set(index as int)
-                &&& old(self).is_bit_set(index as int)
                 &&& self@.number_of_bits() == old(self)@.number_of_bits()
                 // Frame.
                 &&& forall|i: int| 0 <= i < self@.number_of_bits() && i != (index as int) ==>
@@ -572,10 +611,10 @@ impl Bitmap {
                 &&& self@.set_bits =~= old(self)@.set_bits.remove(index as int)
                 &&& self@.usage() == old(self)@.usage() - 1
             },
-            result is Err ==> *self == *old(self),
-            ((index as int) < old(self)@.number_of_bits() && old(self).is_bit_set(index as int))
-                ==> result is Ok,
+            // Liveness: given preconditions, always succeeds.
+            result is Ok,
     {
+        // TODO: remove this runtime check once all callers are verified.
         // Check if the bit is already cleared.
         if !self.test(index)? {
             let reason: &str = "bit is already cleared";
@@ -599,6 +638,9 @@ impl Bitmap {
         }
 
         self.usage = self.usage - 1;
+        if index < self.next_free {
+            self.next_free = index;
+        }
 
         proof {
             assert(self.usage as int == self@.usage());
@@ -633,41 +675,7 @@ impl Bitmap {
             (index as int) < self@.number_of_bits() ==> result is Ok,
     {
         let (word, bit): (usize, usize) = self.index(index)?;
-        let byte_val: u8 = self.bits[word];
-        let result_val: bool = (byte_val & (1 << bit)) != 0;
-
-        Ok(result_val)
-    }
-
-    //==================================================================================================
-    // Private Methods
-    //==================================================================================================
-
-    ///
-    /// # Description
-    ///
-    /// Returns the `(word, bit)` pair of a index without checking bounds.
-    ///
-    /// # Parameters
-    ///
-    /// - `index`: Index of the bit.
-    ///
-    /// # Returns
-    ///
-    /// The `(word, bit)` pair of the index.
-    ///
-    fn index_unchecked(&self, bit_index: usize) -> (result: (usize, usize))
-        requires
-            bit_index < self.bits@.len() * u8::BITS as usize,
-        ensures
-            result.0 < self.bits@.len(),
-            result.1 < u8::BITS as usize,
-            result.0 as int == bit_index as int / (u8::BITS as int),
-            result.1 as int == bit_index as int % (u8::BITS as int),
-    {
-        let word: usize = bit_index / u8::BITS as usize;
-        let bit: usize = bit_index % u8::BITS as usize;
-        (word, bit)
+        Ok((self.bits[word] & (1 << bit)) != 0)
     }
 
     ///
@@ -684,41 +692,56 @@ impl Bitmap {
     /// Upon success, the `(word, bit)` pair of the index is returned. Upon
     /// failure, an error is returned instead.
     ///
-    fn index(&self, bit_index: usize) -> (result: Result<(usize, usize), Error>)
+    fn index(&self, index: usize) -> (result: Result<(usize, usize), Error>)
         requires
             self.inv(),
         ensures
             result is Ok ==> {
-                &&& bit_index < self.number_of_bits
+                &&& index < self.number_of_bits
                 &&& result->Ok_0.0 < self.bits@.len()
                 &&& result->Ok_0.1 < u8::BITS as usize
-                &&& result->Ok_0.0 as int == bit_index as int / (u8::BITS as int)
-                &&& result->Ok_0.1 as int == bit_index as int % (u8::BITS as int)
+                &&& result->Ok_0.0 as int == index as int / (u8::BITS as int)
+                &&& result->Ok_0.1 as int == index as int % (u8::BITS as int)
             },
-            result is Err ==> bit_index >= self.number_of_bits,
-            bit_index < self.number_of_bits ==> result is Ok,
+            result is Err ==> index >= self.number_of_bits,
+            index < self.number_of_bits ==> result is Ok,
     {
         // Check if the index is out of bounds.
-        if bit_index >= self.bits.len() * u8::BITS as usize {
+        if index >= self.bits.len() * u8::BITS as usize {
             let reason: &str = "index out of bounds";
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
-        Ok(self.index_unchecked(bit_index))
+
+        Ok(self.index_unchecked(index))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the `(word, bit)` pair of a index without checking bounds.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the bit.
+    ///
+    /// # Returns
+    ///
+    /// The `(word, bit)` pair of the index.
+    ///
+    fn index_unchecked(&self, index: usize) -> (result: (usize, usize))
+        requires
+            index < self.bits@.len() * u8::BITS as usize,
+        ensures
+            result.0 < self.bits@.len(),
+            result.1 < u8::BITS as usize,
+            result.0 as int == index as int / (u8::BITS as int),
+            result.1 as int == index as int % (u8::BITS as int),
+    {
+        let word: usize = index / u8::BITS as usize;
+        let bit: usize = index % u8::BITS as usize;
+        (word, bit)
     }
 }
 
 } // verus!
 
-// Include verified tests.
-include!("lib.test.rs");
-
-// Deref implementation for test support (external to verification).
-#[cfg(test)]
-#[verifier::external]
-impl ::core::ops::Deref for Bitmap {
-    type Target = RawArray<u8>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.bits
-    }
-}

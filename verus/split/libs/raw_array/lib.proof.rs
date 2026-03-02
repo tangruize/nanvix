@@ -5,8 +5,6 @@
 //
 // This file contains lemmas and proof functions for RawArray.
 
-use vstd::prelude::*;
-
 verus! {
 
 //==================================================================================================
@@ -131,7 +129,3 @@ pub proof fn lemma_set_frame<T>(view: Seq<T>, i: int, value: T)
 }
 
 } // verus!
-
-// Include verified tests.
-include!("lib.test.rs");
-

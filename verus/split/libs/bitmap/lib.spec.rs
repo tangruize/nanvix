@@ -4,18 +4,14 @@
 // Bitmap - Specifications
 //
 // This file contains specification functions, BitmapView, and View trait for Bitmap.
-// Uses Set<int> as the primary abstraction (no Seq<bool>).
-
-use vstd::prelude::*;
 
 verus! {
 
 //==================================================================================================
-// BitmapView - Abstract Specification Model (Set-based)
+// BitmapView - Abstract Specification Model
 //==================================================================================================
 
 /// A view of the Bitmap as a set of indices where bits are set.
-/// This avoids expensive `Seq<bool>` which triggers `axiom_seq_new_index`.
 #[verifier::ext_equal]
 pub struct BitmapView {
     /// Number of bits in the bitmap.
@@ -143,6 +139,7 @@ impl Bitmap {
         &&& self@.usage() <= self@.number_of_bits()
         &&& self.number_of_bits as int == self@.number_of_bits()
         &&& self.usage as int == self@.usage()
+        &&& self.next_free as int <= self@.number_of_bits()
     }
 }
 

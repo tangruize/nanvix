@@ -5,22 +5,25 @@
 //!
 //! This file contains the implementation code for raw arrays.
 
+use std::{
+    alloc::*,
+    ops::{
+        Deref,
+        DerefMut,
+    },
+    ptr,
+    slice,
+};
 use crate::libs::error::{
     Error,
     ErrorCode,
 };
 use vstd::prelude::*;
 
-use std::{
-    alloc::*,
-    ptr,
-    slice,
-};
-
-// Include specifications (spec functions, View trait, invariants).
+// Include specifications.
 include!("lib.spec.rs");
 
-// Include proofs (lemmas).
+// Include proofs.
 include!("lib.proof.rs");
 
 //==================================================================================================
@@ -32,6 +35,7 @@ include!("lib.proof.rs");
 ///
 /// A type that represents the backing storage of a [`RawArray`].
 ///
+#[derive(Debug)]
 enum RawArrayStorage<T> {
     /// A storage area that is managed by [alloc::GlobalAlloc].
     Managed { ptr: ptr::NonNull<T>, len: usize },
@@ -66,34 +70,25 @@ impl<T> RawArrayStorage<T> {
 // Raw Array
 //==================================================================================================
 
+// External type specifications for Verus verification.
+#[cfg(verus_keep_ghost)]
 verus! {
 
 // External type specification for RawArrayStorage.
-#[allow(dead_code)]
 #[verifier::reject_recursive_types(T)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExRawArrayStorage<T>(RawArrayStorage<T>);
 
 // External type specification for Layout.
-#[allow(dead_code)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExLayout(Layout);
 
 // External type specification for LayoutError.
-#[allow(dead_code)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExLayoutError(core::alloc::LayoutError);
-
-//==================================================================================================
-// RawArrayStorage — Verified Methods
-//==================================================================================================
-
-//--------------------------------------------------------------------------------------------------
-// Trusted Specifications for Standard Library Functions
-//--------------------------------------------------------------------------------------------------
 
 /// Specification for Layout::array::<T>(len).
 /// Succeeds when len * size_of::<T>() does not overflow isize::MAX.
@@ -109,6 +104,14 @@ pub assume_specification<T>[ Layout::array::<T> ](len: usize) -> (result: Result
 pub assume_specification[ alloc ](layout: Layout) -> (result: *mut u8)
     opens_invariants none
 ;
+
+}
+
+verus! {
+
+//==================================================================================================
+// RawArrayStorage — Verified Methods
+//==================================================================================================
 
 /// Checks pointer for null, zero-initializes memory, and constructs Unmanaged storage.
 /// Returns None if pointer is null.
@@ -144,6 +147,7 @@ fn ptr_wraps_around<T>(ptr: *mut T, len: usize) -> (result: bool)
 {
     ptr.wrapping_add(len) < ptr
 }
+
 /// Returns None if pointer is null.
 #[verifier::external_body]
 fn try_make_managed_storage<T>(ptr: *mut u8, len: usize) -> (result: Option<RawArrayStorage<T>>)
@@ -343,7 +347,7 @@ impl<T> RawArray<T> {
         proof {
             // Bridge: RawArray's view equals its storage's view.
             assume(arr@.len() == arr.storage.spec_view().len());
-            assume(forall|i: int| 0 <= i < len ==> arr@[i] == arr.storage.spec_view()[i]);
+            assume(forall|i: int| #![auto] 0 <= i < len ==> arr@[i] == arr.storage.spec_view()[i]);
         }
         Ok(arr)
     }
@@ -390,7 +394,7 @@ impl<T> RawArray<T> {
         proof {
             // Bridge: RawArray's view equals its storage's view.
             assume(arr@.len() == arr.storage.spec_view().len());
-            assume(forall|i: int| 0 <= i < len ==> arr@[i] == arr.storage.spec_view()[i]);
+            assume(forall|i: int| #![auto] 0 <= i < len ==> arr@[i] == arr.storage.spec_view()[i]);
         }
         Ok(arr)
     }
@@ -414,11 +418,7 @@ impl<T> RawArray<T> {
     }
 }
 
-//==================================================================================================
-// Deref Implementation
-//==================================================================================================
-
-impl<T> core::ops::Deref for RawArray<T> {
+impl<T> Deref for RawArray<T> {
     type Target = [T];
 
     #[verifier::external_body]
@@ -432,8 +432,7 @@ impl<T> core::ops::Deref for RawArray<T> {
 
 } // verus!
 
-// Verus does not support &mut return types, so DerefMut is outside verus!{}.
-impl<T> core::ops::DerefMut for RawArray<T> {
+impl<T> DerefMut for RawArray<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage.get_mut()
     }

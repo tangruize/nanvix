@@ -61,7 +61,7 @@ fn test_bitmap_alloc_range_verified(number_of_bits: usize, size: usize)
 /// Verifiable test: multiple allocations should not overlap.
 fn test_bitmap_multiple_alloc_verified(number_of_bits: usize)
     requires
-        number_of_bits >= 16,  // Need at least 2 bits.
+        number_of_bits >= 8,  // Need at least 8 bits (minimum valid bitmap size).
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
 {
@@ -147,6 +147,7 @@ fn test_set_and_clear_all_bits_verified(number_of_bits: usize)
                     bitmap.inv(),
                     bitmap@.number_of_bits() == number_of_bits as int,
                     forall|k: int| 0 <= k < j as int ==> !bitmap.is_bit_set(k),
+                    forall|k: int| j as int <= k < number_of_bits as int ==> bitmap.is_bit_set(k),
                 decreases number_of_bits - j,
             {
                 let clear_result: Result<(), Error> = bitmap.clear(j);
@@ -198,6 +199,11 @@ fn test_alloc_and_clear_all_bits_verified(number_of_bits: usize)
             // Usage should equal number_of_bits.
             assert(bitmap@.usage() == number_of_bits as int);
 
+            // All bits must be set (usage == number_of_bits implies full).
+            proof {
+                bitmap.lemma_usage_equals_number_of_bits_implies_full();
+            }
+
             // Clear all bits.
             let mut j: usize = 0;
             while j < number_of_bits
@@ -206,6 +212,7 @@ fn test_alloc_and_clear_all_bits_verified(number_of_bits: usize)
                     bitmap.inv(),
                     bitmap@.number_of_bits() == number_of_bits as int,
                     forall|k: int| 0 <= k < j as int ==> !bitmap.is_bit_set(k),
+                    forall|k: int| j as int <= k < number_of_bits as int ==> bitmap.is_bit_set(k),
                 decreases number_of_bits - j,
             {
                 let clear_result: Result<(), Error> = bitmap.clear(j);
@@ -228,7 +235,7 @@ fn test_alloc_and_clear_all_bits_verified(number_of_bits: usize)
 /// Verifiable test: allocating a range that crosses a word boundary.
 fn test_alloc_range_across_word_boundary_verified(number_of_bits: usize, start: usize, end: usize)
     requires
-        number_of_bits >= 16,
+        number_of_bits >= 8,
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
         start < end,
@@ -266,7 +273,7 @@ fn test_alloc_range_across_word_boundary_verified(number_of_bits: usize, start: 
 /// Verifiable test: allocating a bit in a partially filled bitmap.
 fn test_alloc_in_partial_bitmap_verified(number_of_bits: usize, set_index: usize)
     requires
-        number_of_bits >= 16,
+        number_of_bits >= 8,
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
         set_index < number_of_bits,
@@ -322,9 +329,11 @@ fn test_alloc_range_and_clear_verified(number_of_bits: usize, size: usize)
                 invariant
                     start <= i <= end,
                     end == start + size,
+                    end <= number_of_bits,
                     bitmap.inv(),
                     bitmap@.number_of_bits() == number_of_bits as int,
                     forall|j: int| start as int <= j < i as int ==> !bitmap.is_bit_set(j),
+                    forall|j: int| i as int <= j < end as int ==> bitmap.is_bit_set(j),
                 decreases end - i,
             {
                 let clear_result: Result<(), Error> = bitmap.clear(i);
@@ -347,7 +356,7 @@ fn test_alloc_range_and_clear_verified(number_of_bits: usize, size: usize)
 /// Verifiable test: usage tracking is correct.
 fn test_bitmap_usage_tracking_verified(number_of_bits: usize)
     requires
-        number_of_bits >= 24,  // Need at least 3 bits.
+        number_of_bits >= 8,  // Need at least 8 bits (minimum valid bitmap size).
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
 {
@@ -386,7 +395,7 @@ fn test_bitmap_usage_tracking_verified(number_of_bits: usize)
 /// Verifiable test: alloc_range preserves bits outside the allocated range.
 fn test_bitmap_alloc_range_preserves_others_verified(number_of_bits: usize, size: usize, test_index: usize)
     requires
-        number_of_bits >= 16,
+        number_of_bits >= 8,
         number_of_bits < u32::MAX as usize,
         number_of_bits % (u8::BITS as usize) == 0,
         size > 0,
