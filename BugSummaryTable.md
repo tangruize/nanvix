@@ -19,6 +19,7 @@
 | 12 | [Bitmap `from_raw_array()` Multiplication Overflow](https://github.com/nanvix/nanvix/blob/verus-wip/slab-reports/BitmapOverflowBugReport.md) | MEDIUM | Bug (Fixed) | ✅ Fixed — [`22380297a`](https://github.com/nanvix/nanvix/commit/22380297a), PR [#1365](https://github.com/nanvix/nanvix/pull/1365) | libs/bitmap | [`bitmap/lib.rs`](https://github.com/nanvix/nanvix/blob/dev/src/libs/bitmap/src/lib.rs) | `array.len() * u8::BITS` overflows on 32-bit | Wrong `number_of_bits`; OOB access | Fixed with `checked_mul`. No regression. |
 | 13 | [Slab Address Addition Overflow](https://github.com/nanvix/nanvix/blob/verus-wip/slab-reports/AddressOverflowBugReport.md) | MEDIUM | FP | ❌ Unpatched | libs/slab | [`slab/lib.rs:136`](https://github.com/nanvix/nanvix/blob/dev/src/libs/slab/src/lib.rs#L136) | `addr + index_region_size` wraps on high addresses | `data_addr` points to wrong memory | `num_index_blocks * block_size ≤ len` and `addr + len` is checked not to wrap (line 97), so `addr + product` also cannot wrap. |
 | 14 | [Slab Multiplication Overflow](https://github.com/nanvix/nanvix/blob/verus-wip/slab-reports/MultiplicationOverflowBugReport.md) | MEDIUM | FP | ❌ Unpatched | libs/slab | [`slab/lib.rs:136`](https://github.com/nanvix/nanvix/blob/dev/src/libs/slab/src/lib.rs#L136) | `num_index_blocks * block_size` wraps to small value | Index/data regions overlap | `num_index_blocks ≤ total_num_blocks` (#5 fix) and `total_num_blocks * block_size = len < i32::MAX`, so product cannot overflow. |
+| 15 | Bitmap `alloc_range()` No Wrap-Around | MEDIUM | Bug (Fixed) | ✅ Fixed — [`5e380e217`](https://github.com/nanvix/nanvix/commit/5e380e217), PR [#1479](https://github.com/nanvix/nanvix/pull/1479) | libs/bitmap | [`bitmap/lib.rs`](https://github.com/nanvix/nanvix/blob/dev/src/libs/bitmap/src/lib.rs) | New `next_free` hint feature ([`a581c46dc`](https://github.com/nanvix/nanvix/commit/a581c46dc), 2026-02-25) scans from `next_free` to end without wrap-around; free bits before `next_free` become permanently unreachable | Spurious `OutOfMemory` errors when free bits exist before `next_free`; bitmap capacity effectively shrinks over time | **New feature introduced a bug, caught by Verus.** Verus postcondition `exists_contiguous_free_range ==> Ok` could not be proven, revealing the missing wrap-around. |
 
 ## Confidence Legend
 
@@ -31,8 +32,8 @@
 
 ## Statistics
 
-- **Total:** 14 reports
-- **Real bugs (fixed):** 3 — TID overflow (PR [#1441](https://github.com/nanvix/nanvix/pull/1441)), Slab underflow (PR [#1368](https://github.com/nanvix/nanvix/pull/1368)), Bitmap overflow (PR [#1365](https://github.com/nanvix/nanvix/pull/1365))
+- **Total:** 15 reports
+- **Real bugs (fixed):** 4 — TID overflow (PR [#1441](https://github.com/nanvix/nanvix/pull/1441)), Slab underflow (PR [#1368](https://github.com/nanvix/nanvix/pull/1368)), Bitmap overflow (PR [#1365](https://github.com/nanvix/nanvix/pull/1365)), Bitmap alloc wrap-around (PR [#1479](https://github.com/nanvix/nanvix/pull/1479))
 - **Real bugs (unfixed):** 5 — #2 (doc), #3 (quantum), #6 (condvar doc), #7 (zombie), #8 (mutex capacity)
 - **Likely FP / hardening:** 3 — #1 (semaphore), #9 (bitmap index), #10 (dealloc alignment)
 - **False positives:** 3 — #11, #13, #14 (arithmetic overflows unreachable after #5 fix + existing guards)
