@@ -5,6 +5,22 @@
 
 verus! {
 
+/// A view of the Slab as an abstract specification.
+#[verifier::ext_equal]
+pub struct SlabView {
+    /// Set of allocated block indices (relative to data blocks).
+    pub allocated_blocks: Set<int>,
+    /// Total number of data blocks.
+    pub num_data_blocks: int,
+    /// Block size in bytes.
+    pub block_size: int,
+    /// Base address of data region.
+    pub data_addr: int,
+    /// Base address of the entire slab buffer (including index region).
+    pub base_addr: int,
+    /// Total length of the slab buffer in bytes.
+    pub total_len: int,
+}
 
 impl SlabView {
     /// Returns the number of allocated blocks.

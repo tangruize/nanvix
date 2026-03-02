@@ -44,6 +44,7 @@ include!("lib.test.rs");
 verus! {
 
 /// Wrapper for `usize` to `*mut u8` cast (Verus cannot cast integers to pointers).
+#[inline]
 #[verifier::external_body]
 pub fn usize_to_ptr(addr: usize) -> (result: *mut u8)
     ensures result as int == addr as int,
@@ -52,6 +53,7 @@ pub fn usize_to_ptr(addr: usize) -> (result: *mut u8)
 }
 
 /// Wrapper for unsafe `ptr.add(count)` with verified postcondition.
+#[inline]
 #[verifier::external_body]
 pub fn ptr_add(ptr: *mut u8, count: usize) -> (result: *mut u8)
     ensures result as int == ptr as int + count as int,
@@ -60,6 +62,7 @@ pub fn ptr_add(ptr: *mut u8, count: usize) -> (result: *mut u8)
 }
 
 /// Wrapper for unsafe `ptr.offset_from_unsigned(origin)` with verified postcondition.
+#[inline]
 #[verifier::external_body]
 pub fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
     requires ptr as int >= origin as int,
@@ -82,7 +85,6 @@ pub fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
 /// +-------------------+--------------------------------------+
 /// ```
 ///
-#[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 pub struct Slab {
     /// An index that keeps track of free blocks.
     index: Bitmap,
@@ -102,24 +104,6 @@ pub struct Slab {
     total_len: usize,
 }
 
-
-/// A view of the Slab as an abstract specification.
-#[verifier::ext_equal]
-pub struct SlabView {
-    /// Set of allocated block indices (relative to data blocks).
-    pub allocated_blocks: Set<int>,
-    /// Total number of data blocks.
-    pub num_data_blocks: int,
-    /// Block size in bytes.
-    pub block_size: int,
-    /// Base address of data region.
-    pub data_addr: int,
-    // Track buffer bounds in view for spec-level bounds checking.
-    /// Base address of the entire slab buffer (including index region).
-    pub base_addr: int,
-    /// Total length of the slab buffer in bytes.
-    pub total_len: int,
-}
 
 //==================================================================================================
 // Implementations
@@ -235,6 +219,12 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid slab length"));
         }
 
+        // TODO: remove this runtime check once all callers are verified.
+        // Check if the memory region wraps around.
+        if (addr as usize).wrapping_add(len) < (addr as usize) {
+            return Err(Error::new(ErrorCode::InvalidArgument, "wrapping memory region"));
+        }
+
         // Check if block size is valid.
         if block_size == 0 || block_size >= i32::MAX as usize || block_size > len {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
@@ -255,17 +245,21 @@ impl Slab {
 
         // Compute layout of the slab allocator.
         let total_num_blocks: usize = len / block_size;
+        // info!("total number of blocks: {:?}", total_num_blocks);
         if !total_num_blocks.is_multiple_of(u8::BITS as usize) {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
         }
 
         let index_len: usize = total_num_blocks / u8::BITS as usize;
+        // info!("index length: {:?}", index_len);
         let num_index_blocks: usize = (index_len / block_size)
             + if index_len.is_multiple_of(block_size) { 0 } else { 1 };
+        // info!("number of index blocks: {:?}", num_index_blocks);
         if num_index_blocks > total_num_blocks {
             return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
+        // info!("number of data blocks: {:?}", num_data_blocks);
 
         // Source uses `addr.add(...)` (pointer arithmetic); Verus uses integer arithmetic.
         // Prove num_index_blocks * block_size fits in usize.
