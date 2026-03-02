@@ -170,7 +170,6 @@ impl Slab {
     /// Compared to the original `src/libs/slab/src/lib.rs`:
     /// - Parameter `addr: *mut u8` → `addr: usize` (Verus: no raw pointers).
     /// - Wrapping check replaced by precondition on address space bounds.
-    /// - `is_multiple_of()` → `% ... != 0` (not available in Verus).
     /// - Bitwise power-of-two check → `is_power_of_two()` verified helper.
     /// - `RawArray::from_raw_parts` → `raw_array_from_addr` (Verus cannot cast `usize` to `*mut T`).
     /// - `for` loop → `while` loop (Verus: no `for` loops).
@@ -242,20 +241,19 @@ impl Slab {
         assert(Self::spec_is_power_of_two(block_size as int));
 
         // Check if `addr` is aligned to `block_size`.
-        if addr % block_size != 0 {
+        if !addr.is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
         }
 
         // Compute layout of the slab allocator.
         let total_num_blocks: usize = len / block_size;
-        if total_num_blocks % (u8::BITS as usize) != 0 {
+        if !total_num_blocks.is_multiple_of(u8::BITS as usize) {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
         }
 
         let index_len: usize = total_num_blocks / u8::BITS as usize;
-        // Source uses `is_multiple_of()`; replaced with `% == 0` (equivalent).
         let num_index_blocks: usize = (index_len / block_size)
-            + if index_len % block_size == 0 { 0 } else { 1 };
+            + if index_len.is_multiple_of(block_size) { 0 } else { 1 };
         if num_index_blocks > total_num_blocks {
             return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
@@ -322,7 +320,7 @@ impl Slab {
         let data_addr: usize = addr + num_index_blocks * block_size;
 
         // Check if `data_addr` is aligned to `block_size`.
-        if data_addr % block_size != 0 {
+        if !data_addr.is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned data address"));
         }
 
