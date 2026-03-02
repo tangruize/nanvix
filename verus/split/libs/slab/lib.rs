@@ -251,60 +251,65 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
         }
 
-        // Need at least 8 blocks for valid slab.
-        if total_num_blocks < 8 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "too few blocks"));
-        }
-
         let index_len: usize = total_num_blocks / u8::BITS as usize;
-
-        // Prove that index_len >= 1.
-        assert(index_len >= 1);
-
+        // Verus note: source uses `index_len.is_multiple_of(block_size)`.
+        // `is_multiple_of()` is not available in Verus; `% == 0` is equivalent.
         let num_index_blocks: usize = (index_len / block_size)
             + if index_len % block_size == 0 { 0 } else { 1 };
-
-        // Check that num_index_blocks >= 1.
-        if num_index_blocks == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "no index blocks"));
+        if num_index_blocks > total_num_blocks {
+            return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
-
-        // Check that num_index_blocks < total_num_blocks.
-        if num_index_blocks >= total_num_blocks {
-            return Err(Error::new(ErrorCode::InvalidArgument, "too many index blocks"));
-        }
-
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
 
-        // Check that we have at least one data block.
-        if num_data_blocks == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "no data blocks"));
-        }
+        // Verus note: source uses `addr.add(num_index_blocks * block_size)` (pointer
+        // arithmetic). Verus uses integer arithmetic; overflow safety proven via
+        // preconditions. Prove num_index_blocks * block_size fits in usize.
+        proof {
+            // total_num_blocks >= 8 (from precondition), so index_len >= 1.
+            assert(total_num_blocks >= 8usize);
+            assert(index_len >= 1usize);
+            // num_index_blocks >= 1.
+            assert(num_index_blocks >= 1usize);
+            // num_index_blocks <= total_num_blocks (from check above).
+            // Since total_num_blocks >= 8 and num_index_blocks <= total_num_blocks / 8 + 1
+            // (at most), we need to show num_index_blocks < total_num_blocks.
+            // Actually: index_len = total_num_blocks / 8.
+            // num_index_blocks = ceil(index_len / block_size) <= index_len (since block_size >= 1).
+            // But index_len = total_num_blocks / 8, so num_index_blocks <= total_num_blocks / 8.
+            // total_num_blocks / 8 < total_num_blocks (since total_num_blocks >= 8).
+            // So num_index_blocks < total_num_blocks, hence num_data_blocks >= 1.
+            assert(num_index_blocks <= total_num_blocks);
+            // Prove num_data_blocks > 0: we need num_index_blocks < total_num_blocks.
+            // index_len = total_num_blocks / 8 <= total_num_blocks / 8.
+            // num_index_blocks <= (index_len / block_size) + 1.
+            // block_size >= 1, so (index_len / block_size) <= index_len.
+            // num_index_blocks <= index_len + 1 = total_num_blocks / 8 + 1.
+            // For total_num_blocks >= 8: total_num_blocks / 8 + 1 <= total_num_blocks
+            //   iff total_num_blocks / 8 <= total_num_blocks - 1
+            //   iff total_num_blocks <= 8 * (total_num_blocks - 1) = 8*total_num_blocks - 8
+            //   iff 8 <= 7 * total_num_blocks
+            //   iff total_num_blocks >= 2 (true since >= 8).
+            assert(num_index_blocks as int <= (index_len as int) + 1) by {
+                assert((index_len as int) / (block_size as int) <= (index_len as int)) by(nonlinear_arith)
+                    requires block_size >= 1int, index_len >= 0int;
+            }
+            assert((index_len as int) + 1 <= (total_num_blocks as int)) by {
+                assert((total_num_blocks as int) / 8 + 1 <= (total_num_blocks as int)) by(nonlinear_arith)
+                    requires total_num_blocks >= 8int;
+            }
+            assert(num_index_blocks < total_num_blocks);
+            assert(num_data_blocks > 0usize);
 
-        // Check for overflow in address calculation.
-        if block_size == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "block size is zero"));
+            // Prove num_index_blocks * block_size <= len.
+            Self::lemma_div_mul_le(len as int, block_size as int);
+            Self::lemma_mul_inequality(num_index_blocks as int, total_num_blocks as int, block_size as int);
+            // addr + num_index_blocks * block_size < addr + len <= usize::MAX.
+            assert((num_index_blocks as int) * (block_size as int) < (total_num_blocks as int) * (block_size as int));
+            assert((total_num_blocks as int) * (block_size as int) <= len as int);
+            assert((addr as int) + (num_index_blocks as int) * (block_size as int) <= (addr as int) + (len as int));
+            assert((addr as int) + (len as int) <= usize::MAX as int);
         }
-        let max_blocks: usize = usize::MAX / block_size;
-        if num_index_blocks > max_blocks {
-            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
-        }
-
-        // Now we can safely multiply using checked_mul.
-        let index_region_size: usize = match num_index_blocks.checked_mul(block_size) {
-            Some(v) => v,
-            None => return Err(Error::new(ErrorCode::InvalidArgument, "address overflow")),
-        };
-
-        // Check index_region_size > 0.
-        if index_region_size == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "index region size is zero"));
-        }
-
-        if addr > usize::MAX - index_region_size {
-            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
-        }
-        let data_addr: usize = addr + index_region_size;
+        let data_addr: usize = addr + num_index_blocks * block_size;
 
         // Check if `data_addr` is aligned to `block_size`.
         if data_addr % block_size != 0 {
@@ -824,35 +829,21 @@ impl Slab {
             // Liveness: if preconditions are met (block is valid and allocated), deallocation succeeds.
             result is Ok,
     {
-        // Issue 3 FIX: Keep runtime bounds check for defensive programming.
-        // This protects against unverified callers that may violate preconditions.
-        // Check if the address is below the data region.
-        if addr < self.data_addr {
-            return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds (below data region)"));
-        }
-
-        // Check if the address is beyond the data region.
-        // Compute end of data region carefully to avoid overflow.
-        // From invariant: data_addr + num_data_blocks * block_size <= usize::MAX.
+        // Check if the pointer lies in a memory region that is not managed by this allocator.
+        // Verus note: source uses `ptr < self.data_addr || ptr >= unsafe { self.data_addr.add(...) }`.
+        // Verus uses integer arithmetic since raw pointers are not supported.
         proof {
             assert((self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int);
         }
-        let data_region_size: usize = self.num_data_blocks * self.block_size;
-        let data_region_end: usize = self.data_addr + data_region_size;
-        if addr >= data_region_end {
-            return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds (beyond data region)"));
+        if addr < self.data_addr
+            || addr >= self.data_addr + self.num_data_blocks * self.block_size
+        {
+            return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
 
-        // Check if the address is properly aligned to block size.
-        if (addr - self.data_addr) % self.block_size != 0 {
-            return Err(Error::new(ErrorCode::BadAddress, "unaligned block address"));
-        }
-
-        // Compute the bitmap index for this address.
-        // Since precondition guarantees is_valid_addr, we know:
-        // - addr >= data_addr
-        // - addr < data_addr + num_data_blocks * block_size
-        // - (addr - data_addr) % block_size == 0
+        // Compute the block index.
+        // Verus note: source uses `ptr.offset_from_unsigned(self.data_addr)`.
+        // Verus uses integer subtraction since raw pointers are not supported.
 
         proof {
             // From is_valid_addr:
