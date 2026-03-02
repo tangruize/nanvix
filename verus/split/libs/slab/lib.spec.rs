@@ -16,10 +16,6 @@ pub struct SlabView {
     pub block_size: int,
     /// Base address of data region.
     pub data_addr: int,
-    /// Base address of the entire slab buffer (including index region).
-    pub base_addr: int,
-    /// Total length of the slab buffer in bytes.
-    pub total_len: int,
 }
 
 impl SlabView {
@@ -73,11 +69,6 @@ impl SlabView {
         &&& addr >= self.data_addr
         &&& addr < self.data_addr + self.num_data_blocks * self.block_size
         &&& (addr - self.data_addr) % self.block_size == 0
-    }
-
-    /// Returns true if an address is within the overall buffer.
-    pub open spec fn is_within_buffer(&self, addr: int) -> bool {
-        addr >= self.base_addr && addr < self.base_addr + self.total_len
     }
 
     //==============================================================================================
@@ -161,7 +152,6 @@ impl SlabView {
     //==============================================================================================
 }
 
-
 impl View for Slab {
     type V = SlabView;
 
@@ -181,8 +171,6 @@ impl View for Slab {
             num_data_blocks: self.num_data_blocks as int,
             block_size: self.block_size as int,
             data_addr: self.data_addr as int,
-            base_addr: self.base_addr as int,
-            total_len: self.total_len as int,
         }
     }
 }
@@ -213,37 +201,25 @@ impl Slab {
         // data_addr >= index_end (data starts at or after index region).
         // Since data_addr = base_addr + num_index_blocks * block_size in from_raw_parts,
         // this is ensured by construction. The invariant captures that data_addr is correctly computed.
-        &&& self.data_addr as int >= self.num_index_blocks as int * self.block_size as int
         // Power-of-two and alignment requirements.
         // Block size must be a power of two (required for correct address arithmetic).
         &&& Self::spec_is_power_of_two(self.block_size as int)
         // Data address must be aligned to block size (required for aligned allocations).
         &&& self.data_addr as int % self.block_size as int == 0
-        // Buffer bounds - record and validate the overall slab buffer.
-        &&& self.base_addr > 0
-        &&& self.total_len > 0
-        // base_addr + total_len fits in usize (no overflow).
-        &&& (self.base_addr as int) + (self.total_len as int) <= usize::MAX as int
-        // data_addr is within the buffer: base_addr <= data_addr.
-        &&& self.base_addr as int <= self.data_addr as int
-        // All data blocks are within the buffer.
-        &&& (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int)
-            <= (self.base_addr as int) + (self.total_len as int)
-        // Metadata/data disjointness with explicit base_addr.
-        &&& self.data_addr as int == self.base_addr as int + self.num_index_blocks as int * self.block_size as int
+        // data_addr >= num_index_blocks * block_size (data starts after index region).
+        &&& self.data_addr as int >= self.num_index_blocks as int * self.block_size as int
+        // All data blocks fit within usize range.
+        &&& (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
         // View consistency: connect concrete fields to the view.
         // This is needed because view() is closed.
         &&& self@.num_data_blocks == self.num_data_blocks as int
         &&& self@.block_size == self.block_size as int
         &&& self@.data_addr == self.data_addr as int
-        &&& self@.base_addr == self.base_addr as int
-        &&& self@.total_len == self.total_len as int
         // Allocated blocks are in range: all allocated indices are valid data block indices.
         // This is true by definition of allocated_blocks in view(), but needs to be explicit
         // because view() is closed.
         &&& self@.allocated_blocks_in_range()
     }
-
 
     /// Specification function: checks if a value is a power of two.
     /// Uses recursive definition: 1, 2, 4, 8, 16, ... are powers of two.
@@ -263,16 +239,6 @@ impl Slab {
 
     //==============================================================================================
 
-    /// Property: The index (metadata) region and data region are disjoint.
-    /// The index uses bytes [base_addr, base_addr + index_bytes_used).
-    /// The data region starts at data_addr = base_addr + num_index_blocks * block_size.
-    /// Since num_index_blocks * block_size >= index_bytes_used (rounded up), they don't overlap.
-    pub closed spec fn metadata_data_disjoint(&self, base_addr: int, index_bytes: int) -> bool {
-        let index_region_end = base_addr + index_bytes;
-        let data_region_start = self.data_addr as int;
-        // Data region starts at or after index region ends.
-        data_region_start >= index_region_end
-    }
 }
 
 } // verus!

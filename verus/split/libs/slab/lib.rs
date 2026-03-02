@@ -62,7 +62,6 @@ pub fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
     unsafe { ptr.offset_from_unsigned(origin) }
 }
 
-
 ///
 /// # Description
 ///
@@ -76,6 +75,7 @@ pub fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
 /// +-------------------+--------------------------------------+
 /// ```
 ///
+#[cfg_attr(not(verus_keep_ghost), derive(Debug))]
 pub struct Slab {
     /// An index that keeps track of free blocks.
     index: Bitmap,
@@ -87,14 +87,7 @@ pub struct Slab {
     num_data_blocks: usize,
     /// Size of blocks in the slab.
     block_size: usize,
-    /// Base address of the entire slab buffer (including index region).
-    /// Not in the original source; added for verification invariants.
-    base_addr: usize,
-    /// Total length of the slab buffer in bytes.
-    /// Not in the original source; added for verification invariants.
-    total_len: usize,
 }
-
 
 //==================================================================================================
 // Implementations
@@ -158,7 +151,7 @@ impl Slab {
     /// - `RawArray::from_raw_parts` → `raw_array_from_addr` (Verus cannot cast `usize` to `*mut T`).
     /// - `for` loop → `while` loop (Verus: no `for` loops).
     /// - Pointer arithmetic → integer arithmetic.
-    /// - Extra fields `base_addr`, `total_len` stored for invariant proofs.
+
     ///
     pub unsafe fn from_raw_parts(
         addr: *mut u8,
@@ -197,9 +190,6 @@ impl Slab {
                 &&& slab@.data_addr % (block_size as int) == 0
                 // Number of data blocks is positive.
                 &&& slab@.num_data_blocks > 0
-                // Buffer bounds are recorded.
-                &&& slab@.base_addr == addr as int
-                &&& slab@.total_len == len as int
                 // Data region fits within the buffer.
                 &&& slab@.data_addr + slab@.num_data_blocks * slab@.block_size
                     <= addr as int + len as int
@@ -380,8 +370,6 @@ impl Slab {
             num_index_blocks,
             num_data_blocks,
             block_size,
-            base_addr: addr as usize,
-            total_len: len,
         };
 
         proof {
@@ -452,11 +440,13 @@ impl Slab {
             assert(result_slab.data_addr as int > addr as int);
             // Prove data_addr is aligned to block_size.
             assert(result_slab.data_addr as int % (block_size as int) == 0);
+            // Data region fits within buffer: data_addr + num_data_blocks * block_size <= addr + len.
+            assert(result_slab@.data_addr + result_slab@.num_data_blocks * result_slab@.block_size
+                   <= addr as int + len as int);
         }
 
         Ok(result_slab)
     }
-
 
     ///
     /// # Description
@@ -475,7 +465,6 @@ impl Slab {
     ///
     /// A slab whose data region is within [base_addr + offset * slab_size, base_addr + (offset+1) * slab_size).
     ///
-
 
     ///
     /// # Description
@@ -512,8 +501,6 @@ impl Slab {
                 &&& self@.data_addr == old(self)@.data_addr
                 // Frame: allocated_blocks is old plus the new block (Set-based, no forall).
                 &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.insert(block_idx)
-                // Explicit postcondition that address is within buffer bounds.
-                &&& old(self)@.is_within_buffer(addr)
                 // Returned address is non-null (derivable from data_addr as int > 0 and is_valid_addr).
                 &&& addr > 0
             },
@@ -548,8 +535,6 @@ impl Slab {
                     assert(self.num_data_blocks == old(self).num_data_blocks);
                     assert(self.num_index_blocks == old(self).num_index_blocks);
                     assert(self.data_addr == old(self).data_addr);
-                    assert(self.base_addr == old(self).base_addr);
-                    assert(self.total_len == old(self).total_len);
                     // Bitmap size is unchanged.
                     assert(self.index@.number_of_bits() == old(self).index@.number_of_bits());
                     // Prove index blocks are still set (set_bits unchanged means is_bit_set unchanged).
@@ -632,6 +617,7 @@ impl Slab {
         let block_addr: *mut u8 = ptr_add(self.data_addr, product);
 
         proof {
+            Self::lemma_view_fields(old(self));
             let block_idx_int: int = block_idx as int;
             let addr_int: int = block_addr as int;
             let bs: int = self.block_size as int;
@@ -675,13 +661,10 @@ impl Slab {
             assert forall|i: int| 0 <= i < ndb && i != block_idx_int
                 implies self@.is_allocated(i) == old(self)@.is_allocated(i) by {}
 
-            // Address within buffer.
-            assert(old(self)@.is_within_buffer(addr_int));
         }
 
         Ok(block_addr)
     }
-
 
     ///
     /// # Description

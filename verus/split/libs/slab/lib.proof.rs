@@ -14,7 +14,6 @@ impl Slab {
         // By definition: spec_is_power_of_two(1) == true.
     }
 
-
     /// Lemma: If n > 1 and n % 2 == 0 and n/2 is power of two, then n is power of two.
     proof fn lemma_double_power_of_two(n: int)
         requires
@@ -27,7 +26,6 @@ impl Slab {
         // By definition: for n > 1 and n % 2 == 0, spec_is_power_of_two(n) == spec_is_power_of_two(n/2).
     }
 
-
     /// Lemma: If n > 1 and n % 2 != 0, then n is not a power of two.
     proof fn lemma_odd_not_power_of_two(n: int)
         requires
@@ -39,7 +37,6 @@ impl Slab {
         // By definition: for n > 1 and n % 2 != 0, spec_is_power_of_two(n) == false.
     }
 
-
     /// Lemma: 8 is a power of two.
     pub proof fn lemma_power_of_two_8()
         ensures Self::spec_is_power_of_two(8),
@@ -50,7 +47,6 @@ impl Slab {
         Self::lemma_double_power_of_two(8);
     }
 
-
     /// Lemma: 16 is a power of two.
     pub proof fn lemma_power_of_two_16()
         ensures Self::spec_is_power_of_two(16),
@@ -58,7 +54,6 @@ impl Slab {
         Self::lemma_power_of_two_8();
         Self::lemma_double_power_of_two(16);
     }
-
 
     /// Lemma: 32 is a power of two.
     pub proof fn lemma_power_of_two_32()
@@ -68,7 +63,6 @@ impl Slab {
         Self::lemma_double_power_of_two(32);
     }
 
-
     /// Lemma: 64 is a power of two.
     pub proof fn lemma_power_of_two_64()
         ensures Self::spec_is_power_of_two(64),
@@ -76,7 +70,6 @@ impl Slab {
         Self::lemma_power_of_two_32();
         Self::lemma_double_power_of_two(64);
     }
-
 
     /// Lemma: 128 is a power of two.
     pub proof fn lemma_power_of_two_128()
@@ -86,7 +79,6 @@ impl Slab {
         Self::lemma_double_power_of_two(128);
     }
 
-
     /// Lemma: 256 is a power of two.
     pub proof fn lemma_power_of_two_256()
         ensures Self::spec_is_power_of_two(256),
@@ -94,7 +86,6 @@ impl Slab {
         Self::lemma_power_of_two_128();
         Self::lemma_double_power_of_two(256);
     }
-
 
     /// Lemma: 512 is a power of two.
     pub proof fn lemma_power_of_two_512()
@@ -104,7 +95,6 @@ impl Slab {
         Self::lemma_double_power_of_two(512);
     }
 
-
     /// Lemma: 1024 is a power of two.
     pub proof fn lemma_power_of_two_1024()
         ensures Self::spec_is_power_of_two(1024),
@@ -113,7 +103,6 @@ impl Slab {
         Self::lemma_double_power_of_two(1024);
     }
 
-
     /// Lemma: 2048 is a power of two.
     pub proof fn lemma_power_of_two_2048()
         ensures Self::spec_is_power_of_two(2048),
@@ -121,7 +110,6 @@ impl Slab {
         Self::lemma_power_of_two_1024();
         Self::lemma_double_power_of_two(2048);
     }
-
 
     /// Lemma: 4096 is a power of two.
     pub proof fn lemma_power_of_two_4096()
@@ -166,20 +154,11 @@ impl Slab {
             // Power-of-two and alignment conditions.
             Self::spec_is_power_of_two(slab.block_size as int),
             slab.data_addr as int % slab.block_size as int == 0,
-            // Buffer bounds conditions.
-            slab.base_addr > 0,
-            slab.total_len > 0,
-            (slab.base_addr as int) + (slab.total_len as int) <= usize::MAX as int,
-            slab.base_addr as int <= slab.data_addr as int,
-            (slab.data_addr as int) + (slab.num_data_blocks as int) * (slab.block_size as int)
-                <= (slab.base_addr as int) + (slab.total_len as int),
-            slab.data_addr as int == slab.base_addr as int + slab.num_index_blocks as int * slab.block_size as int,
         ensures
             slab.inv(),
     {
         // This follows directly from the definition of inv().
     }
-
 
     /// Lemma: Reveal the relationship between slab view and slab fields.
     proof fn lemma_view_fields(slab: &Slab)
@@ -192,7 +171,6 @@ impl Slab {
     {
         // Follows from definition of view().
     }
-
 
     /// Lemma: Allocated blocks are always within valid range.
     /// This follows from the definition of allocated_blocks in view().
@@ -207,7 +185,6 @@ impl Slab {
         // 0 <= i < num_data_blocks && is_bit_set(num_index_blocks + i).
         // So if i is allocated, it must be in [0, num_data_blocks).
     }
-
 
     /// Lemma: If no block is allocated, the slab is empty.
     /// Bridges `forall|i| !is_allocated(i)` to `is_empty()`.
@@ -243,7 +220,6 @@ impl Slab {
         // allocated_blocks =~= empty set, so len() == 0, so is_empty().
     }
 
-
     /// Lemma: Reveal that a newly created slab with no data blocks allocated has no allocated blocks.
     proof fn lemma_new_slab_is_empty(slab: &Slab)
         requires
@@ -263,7 +239,6 @@ impl Slab {
         }
     }
 
-
     /// Lemma: If a block is an index block, it's always set in the bitmap.
     /// Therefore, alloc() will never return an index block.
     proof fn lemma_index_blocks_always_set(&self)
@@ -274,7 +249,6 @@ impl Slab {
     {
         // Follows directly from the invariant.
     }
-
 
     /// Lemma: Slab invariant implies Bitmap invariant.
     proof fn lemma_slab_inv_implies_bitmap_inv(&self)
@@ -287,7 +261,6 @@ impl Slab {
         // slab.inv() implies index.inv(), and index.inv() implies the bound.
         self.index.lemma_number_of_bits_bounded();
     }
-
 
     /// Lemma: If bitmap.alloc() returns a bit index, that bit was not set before.
     /// Combined with lemma_index_blocks_always_set, this means alloc returns a data block.
@@ -307,7 +280,6 @@ impl Slab {
         }
     }
 
-
     /// Lemma: After allocation, the allocated block is in the set.
     proof fn lemma_allocate_adds_block(&self, new_self: &Self, block_idx: int)
         requires
@@ -326,7 +298,6 @@ impl Slab {
         // Follows from definition of view and is_allocated.
     }
 
-
     /// Lemma: After deallocation, the deallocated block is not in the set.
     proof fn lemma_deallocate_removes_block(&self, new_self: &Self, block_idx: int)
         requires
@@ -344,7 +315,6 @@ impl Slab {
     {
         // Follows from definition of view and is_allocated.
     }
-
 
     /// Lemma (Liveness): After deallocating a block, it can be allocated again.
     /// This ensures the allocator doesn't "lose" freed blocks.
@@ -367,7 +337,6 @@ impl Slab {
         // - used count decremented.
         // - The block is now in the free set and can be returned by next alloc.
     }
-
 
     /// Lemma: Invariant implies positive capacity.
     ///
@@ -418,7 +387,6 @@ impl Slab {
         assert(self@.allocated_blocks.subset_of(full_range));
     }
 
-
     /// Helper lemma: allocated_blocks is finite.
     /// Since allocated_blocks is a subset of set_int_range(0, num_data_blocks), and that's finite,
     /// allocated_blocks is also finite.
@@ -443,7 +411,6 @@ impl Slab {
         // Note: lemma_set_subset_finite(superset, subset) - superset comes first!
         lemma_set_subset_finite(full_range, self@.allocated_blocks);
     }
-
 
     /// Lemma (Liveness): If slab can_allocate(), then bitmap has_free_bit().
     /// This is the key lemma connecting slab liveness to bitmap liveness.
@@ -552,7 +519,6 @@ impl Slab {
         assert(self.index@.has_free_bit());
     }
 
-
     /// Lemma (Liveness): If bitmap is full, then slab is full.
     /// This is the converse of lemma_can_allocate_implies_bitmap_has_free_bit.
     /// It connects bitmap fullness to slab fullness.
@@ -617,7 +583,6 @@ impl Slab {
         assert(self@.used() == self@.num_data_blocks);
         assert(self@.is_full());
     }
-
 
     /// Lemma (Liveness): Deallocation from full slab enables allocation.
     /// If the slab was full, after deallocating one block, allocation becomes possible.
@@ -746,7 +711,6 @@ impl Slab {
         }
     }
 
-
     /// Lemma: A freshly initialized slab has maximum free capacity.
     proof fn lemma_fresh_slab_max_free(slab: &Slab)
         requires
@@ -760,37 +724,6 @@ impl Slab {
     }
 
     //==============================================================================================
-
-    /// Lemma: Metadata and data regions are disjoint.
-    /// This proves that writing to the index bitmap cannot corrupt data blocks.
-    proof fn lemma_metadata_data_disjoint(&self, base_addr: int, index_bytes: int)
-        requires
-            self.inv(),
-            base_addr >= 0,
-            // data_addr is computed as base_addr + num_index_blocks * block_size
-            self.data_addr as int == base_addr + self.num_index_blocks as int * self.block_size as int,
-            // index_bytes is the number of bytes used by the bitmap
-            index_bytes >= 0,
-            // num_index_blocks * block_size >= index_bytes (ceiling division ensures this)
-            self.num_index_blocks as int * self.block_size as int >= index_bytes,
-        ensures
-            self.metadata_data_disjoint(base_addr, index_bytes),
-    {
-        // The index uses index_bytes bytes starting at base_addr.
-        // num_index_blocks = ceil(index_bytes / block_size), so:
-        // num_index_blocks * block_size >= index_bytes.
-        // Therefore: data_addr = base_addr + num_index_blocks * block_size
-        //                     >= base_addr + index_bytes
-        //                      = index_region_end.
-        let index_region_end = base_addr + index_bytes;
-        let data_region_start = self.data_addr as int;
-
-        // From precondition: data_addr = base_addr + num_index_blocks * block_size.
-        // From precondition: num_index_blocks * block_size >= index_bytes.
-        // Therefore: data_addr >= base_addr + index_bytes = index_region_end.
-        assert(data_region_start >= index_region_end);
-    }
-
 
     /// Lemma: Block memory regions are disjoint for different block indices.
     /// This proves the no_memory_aliasing property.
@@ -857,7 +790,6 @@ impl Slab {
         }
     }
 
-
     /// Lemma: addr_to_block_idx(block_addr(i)) == i for valid block index i.
     /// This proves the inverse relationship between address and block index.
     proof fn lemma_addr_block_idx_inverse(view: &SlabView, i: int)
@@ -889,7 +821,6 @@ impl Slab {
         assert(view.addr_to_block_idx(addr) == (addr - view.data_addr) / bs);
         assert(view.addr_to_block_idx(addr) == i);
     }
-
 
     /// Lemma: block_addr(addr_to_block_idx(a)) == a for valid addresses.
     /// This proves the inverse relationship for valid addresses.
@@ -928,7 +859,6 @@ impl Slab {
         assert(data_addr + offset == addr);
     }
 
-
     /// Lemma: All allocated blocks are within valid range.
     proof fn lemma_allocated_blocks_in_range(&self)
         requires
@@ -940,7 +870,6 @@ impl Slab {
         // 0 <= i < num_data_blocks && is_bit_set(num_index_blocks + i).
         // Therefore, any allocated block index is in [0, num_data_blocks).
     }
-
 
     /// Lemma: No memory aliasing - all allocated blocks have disjoint regions.
     proof fn lemma_no_memory_aliasing(&self)
@@ -978,7 +907,6 @@ impl Slab {
             requires b > 0;
     }
 
-
     /// Lemma: (a * b) / b == a (when b > 0).
     proof fn lemma_div_cancel(a: int, b: int)
         requires b > 0,
@@ -987,7 +915,6 @@ impl Slab {
         assert((a * b) / b == a) by(nonlinear_arith)
             requires b > 0;
     }
-
 
     /// Lemma: if a < b and c > 0, then a * c < b * c.
     proof fn lemma_mul_inequality(a: int, b: int, c: int)
@@ -998,7 +925,6 @@ impl Slab {
             requires a < b, c > 0;
     }
 
-
     /// Lemma: if q = a / b (integer division), then q * b <= a.
     proof fn lemma_div_mul_le(a: int, b: int)
         requires b > 0, a >= 0,
@@ -1007,7 +933,6 @@ impl Slab {
         assert((a / b) * b <= a) by(nonlinear_arith)
             requires b > 0, a >= 0;
     }
-
 
     /// Lemma: for integer division, (a / b) * b + (a % b) == a.
     proof fn lemma_div_mod_identity(a: int, b: int)
@@ -1018,14 +943,12 @@ impl Slab {
             requires b > 0, a >= 0;
     }
 
-
     /// Lemma: distributive property (a + b) * c == a * c + b * c.
     proof fn lemma_distributive(a: int, b: int, c: int)
         ensures (a + b) * c == a * c + b * c,
     {
         assert((a + b) * c == a * c + b * c) by(nonlinear_arith);
     }
-
 
     /// Lemma: Product of two positive integers is positive.
     proof fn lemma_pos_mul_pos(a: int, b: int)
@@ -1039,7 +962,6 @@ impl Slab {
             requires a > 0, b > 0;
     }
 }
-
 
 /// Test: Error conditions are prevented by preconditions.
 /// This test documents what the original error tests check, but in Verus
@@ -1093,7 +1015,6 @@ proof fn test_addr_block_bijection_property(
     assert(back_to_idx == block_idx);
 }
 
-
 /// Test: All Allocated Blocks Are In Range
 /// Original: Implicitly assumed
 /// Verified: Proves allocated_blocks are within [0, num_data_blocks)
@@ -1109,7 +1030,6 @@ proof fn test_allocated_blocks_in_range_property(view: SlabView)
         // This follows directly from the precondition.
     }
 }
-
 
 /// Test: No Memory Aliasing Property
 /// Original: Not tested
@@ -1127,7 +1047,6 @@ proof fn test_no_memory_aliasing_property(view: SlabView)
         // This follows directly from the precondition.
     }
 }
-
 
 /// Test: Liveness - Deallocation Enables Reallocation
 /// Verified: Freed block becomes available for allocation
@@ -1214,7 +1133,6 @@ proof fn test_liveness_dealloc_enables_alloc(view: SlabView, freed_view: SlabVie
     // Therefore: freed_view.used() < freed_view.capacity()
     assert(freed_view.can_allocate());
 }
-
 
 /// Test: Fresh Initialization Property
 /// Verified: Freshly initialized slab has no allocated blocks

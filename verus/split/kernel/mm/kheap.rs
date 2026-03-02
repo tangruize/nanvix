@@ -56,18 +56,14 @@ verus! {
 /// Number of slabs in the heap.
 pub const NUM_OF_SLABS: usize = 8;
 
-
 /// Number of blocks per slab.
 const SLAB_COUNT: usize = 32;
-
 
 /// Page size (assumed for alignment).
 pub const PAGE_SIZE: usize = 4096;
 
-
 /// Minimum slab size in bytes.
 pub const MIN_SLAB_SIZE: usize = 131072; // SLAB_COUNT * PAGE_SIZE = 32 * 4096 = 131072
-
 
 /// Minimum heap size in bytes.
 pub const MIN_HEAP_SIZE: usize = 1048576; // NUM_OF_SLABS * MIN_SLAB_SIZE = 8 * 131072 = 1048576
@@ -974,7 +970,6 @@ fn test_layout_to_slab_size_verified()
     let r1000: Result<SlabSize, Error> = layout_to_slab_size(1000);
     assert(r1000 is Err);
 }
-
 
 /// Test: SlabSize as_usize returns correct values.
 fn test_slab_size_as_usize_verified()
