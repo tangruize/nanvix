@@ -1,0 +1,26 @@
+=== Verus Verification ===
+Timestamp: Mon Mar  2 14:16:58 CST 2026
+Module: libs::slab
+Command: verus --crate-type lib lib.rs --verify-module libs::slab
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module libs::slab
+
+error: assertion failed
+   --> libs/slab/lib.rs:272:20
+    |
+272 |             assert(num_index_blocks >= 1usize);
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+verification results:: 84 verified, 1 errors (partial verification with `--verify-*`)
+error: aborting due to 1 previous error
+
+
+Duration: 9s
+Exit code: 1
+
+=== Summary ===
+Verified: 84
+Errors: 1
+Status: FAILED
+Committed: [verus] Verification failed for libs::slab (verified:84, errors:1)
