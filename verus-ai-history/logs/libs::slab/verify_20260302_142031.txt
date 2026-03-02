@@ -1,0 +1,18 @@
+=== Verus Verification ===
+Timestamp: Mon Mar  2 14:20:31 CST 2026
+Module: libs::slab
+Command: verus --crate-type lib lib.rs --verify-module libs::slab
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module libs::slab
+
+verification results:: 87 verified, 0 errors (partial verification with `--verify-*`)
+
+Duration: 12s
+Exit code: 0
+
+=== Summary ===
+Verified: 87
+Errors: 0
+Status: PASSED
+No changes to commit in verus/
