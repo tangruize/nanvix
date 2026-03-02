@@ -10,8 +10,11 @@
 /* Page size. */
 #define PAGE_SIZE 4096
 
-/* Kernel Red Zone Size */
-#define KREDZONE_SIZE 128
+/* KSTACK_SIZE is defined via -DKSTACK_SIZE=<value> from build.rs. */
+
+/* KREDZONE_SIZE is defined via -DKREDZONE_SIZE=<value> from build.rs. */
+
+/* KSTACK_GUARD_PATTERN is defined via -DKSTACK_GUARD_PATTERN=<value> from build.rs. */
 
 /* Multiboot2 magic constant */
 #define MBOOT2_HEADER_MAGIC 0xe85250d6
@@ -110,6 +113,20 @@ _do_start2:
     xorl %eax, %eax          /* Zero out EAX.                      */
     cld                      /* Increment EDI register.            */
     rep stosb                /* Fill BSS section with zeros.       */
+
+    /*
+     * Fill the boot stack guard page with a watermark pattern.
+     * If a stack overflow occurs, this pattern will be overwritten,
+     * allowing runtime detection of stack corruption.
+     *
+     * TODO (#1432): Investigate whether moving the kstack to the .data section
+     * would allow filling the guard page at compile time instead of runtime.
+     */
+    movl $kstack_guard, %edi         /* Start of guard page.       */
+    movl $(PAGE_SIZE / 4), %ecx      /* Number of 32-bit words.    */
+    movl $KSTACK_GUARD_PATTERN, %eax /* Watermark pattern.         */
+    rep stosl                        /* Fill guard page.           */
+
     movl %edx, %eax          /* Restore EAX register.              */
 
     /* Reset stack. */
@@ -196,6 +213,8 @@ _do_ap_start:
  *----------------------------------------------------------------------------*/
 
 .align PAGE_SIZE
+.globl kstack_guard
+kstack_guard:
 .space KSTACK_SIZE
 .globl kstack
 kstack:

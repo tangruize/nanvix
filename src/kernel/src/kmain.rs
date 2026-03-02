@@ -32,6 +32,7 @@ extern crate alloc;
 
 use crate::{
     hal::{
+        io::IoMemoryAllocator,
         mem::{
             AccessPermission,
             Address,
@@ -206,18 +207,17 @@ fn test() {
 /// # Parameters
 ///
 /// - `mm`: A reference to the virtual memory manager to use.
-/// - `pm`: A reference to the process manager to use.
 /// - `kmods`: A reference to the list of kernel modules to spawn.
 ///
 /// # Returns
 ///
 /// The number of servers that were successfully spawned.
 ///
-fn spawn_servers(
-    mm: &mut VirtMemoryManager,
-    pm: &mut ProcessManager,
-    kmods: &LinkedList<KernelModule>,
-) -> usize {
+fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &LinkedList<KernelModule>) -> usize {
+    // SAFETY: the process manager is initialized, this is a single-core system, interrupts are
+    // disabled, and the resulting `&mut ProcessManager` does not alias `mm`.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     let mut count: usize = 0;
     // Spawn all servers.
     for kmod in kmods.iter() {
@@ -265,15 +265,17 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         Option<usize>,
         LinkedList<MemoryRegion<VirtualAddress>>,
         LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
+        IoMemoryAllocator,
         LinkedList<KernelModule>,
     );
-    let (madt, mem_lower, mut memory_regions, mut mmio_regions, kernel_modules): KernelArgs =
-        match kargs.parse() {
+    let (madt, mem_lower, mut memory_regions, mut mmio_regions, mut ioaddresses, kernel_modules):
+        KernelArgs = match kargs.parse() {
             Ok(bootinfo) => (
                 bootinfo.madt,
                 bootinfo.mem_lower,
                 bootinfo.memory_regions,
                 bootinfo.mmio_regions,
+                bootinfo.ioaddresses,
                 bootinfo.kernel_modules,
             ),
             Err(err) => {
@@ -309,28 +311,28 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         }
     }
 
-    let mut hal: Hal = match hal::init(&mut memory_regions, &mut mmio_regions, &madt, mem_lower) {
-        Ok(hal) => hal,
-        Err(err) => {
-            panic!("failed to initialize hardware abstraction layer: {:?}", err);
-        },
-    };
+    if let Err(err) =
+        Hal::init(&mut memory_regions, &mut mmio_regions, &mut ioaddresses, &madt, mem_lower)
+    {
+        panic!("failed to initialize hardware abstraction layer: {:?}", err);
+    }
 
     // Initialize the memory manager.
-    let (root, mut mm): (Vmem, VirtMemoryManager) =
-        match mm::init(&kimage, memory_regions, mmio_regions) {
-            Ok((root, mm)) => (root, mm),
-            Err(err) => {
-                panic!("failed to initialize memory manager: {:?}", err);
-            },
-        };
-
-    let mut pm: ProcessManager = match pm::init(&mut hal, root) {
-        Ok(pm) => pm,
+    let root: Vmem = match mm::init(&kimage, memory_regions, mmio_regions) {
+        Ok(root) => root,
         Err(err) => {
-            panic!("failed to initialize process manager: {:?}", err);
+            panic!("failed to initialize memory manager: {:?}", err);
         },
     };
+
+    // Check boot stack guard watermark for corruption.
+    if let Err(err) = mm::kstack::check_boot_stack_guard() {
+        panic!("boot stack overflow detected: {:?}", err);
+    }
+
+    if let Err(err) = pm::init(root) {
+        panic!("failed to initialize process manager: {:?}", err);
+    }
 
     // Start application cores.
     #[cfg(feature = "smp")]
@@ -368,23 +370,26 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
                 info!("starting application core {}...", coreid);
 
                 // Allocate a kernel stack for the application core.
-                let kstack: KernelStack = match KernelStack::new(&mut mm) {
-                    Ok(kstack) => kstack,
-                    Err(err) => {
-                        panic!(
-                            "failed to allocate kernel stack for application core (error={:?})",
-                            err
-                        );
-                    },
-                };
+                // SAFETY: the memory manager is initialized and access is synchronized.
+                let kstack: KernelStack =
+                    match KernelStack::new(unsafe { VirtMemoryManager::get_mut() }) {
+                        Ok(kstack) => kstack,
+                        Err(err) => {
+                            panic!(
+                                "failed to allocate kernel stack for application core (error={:?})",
+                                err
+                            );
+                        },
+                    };
 
                 // Obtain a cached version of the number of cores online.
                 let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
 
                 // Start core.
-                if let Err(e) = hal
-                    .intman
-                    .as_mut()
+                // SAFETY: the hardware abstraction layer is initialized and access is
+                // synchronized.
+                if let Err(e) = unsafe { Hal::get_mut() }
+                    .intman()
                     .expect("interrupts must be supported")
                     .start_core(
                         coreid,
@@ -412,21 +417,24 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     let cores_online: usize = CORES_ONLINE.load(Ordering::Acquire);
     info!("number of cores online: {}", cores_online);
 
-    let status: ExitStatus = if spawn_servers(&mut mm, &mut pm, &kernel_modules) > 0 {
-        // Initialize kernel call dispatcher.
-        kcall::init();
+    // SAFETY: the memory manager is initialized and access is synchronized.
+    let status: ExitStatus =
+        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &kernel_modules) > 0 {
+            // Initialize kernel call dispatcher.
+            kcall::init();
 
-        // Enable timer interrupts, if they are supported.
-        if let Some(intman) = &mut hal.intman {
-            if let Err(e) = intman.unmask(hal::arch::InterruptNumber::Timer) {
-                panic!("failed to mask timer interrupt: {:?}", e);
+            // Enable timer interrupts, if they are supported.
+            // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
+            if let Some(intman) = unsafe { Hal::get_mut() }.intman() {
+                if let Err(e) = intman.unmask(hal::arch::InterruptNumber::Timer) {
+                    panic!("failed to mask timer interrupt: {:?}", e);
+                }
             }
-        }
 
-        kcall::handler(&mut hal, &mut mm, &mut pm)
-    } else {
-        ExitStatus::ok()
-    };
+            kcall::handler()
+        } else {
+            ExitStatus::ok()
+        };
 
     #[cfg(feature = "smp")]
     startup::wait().expect("failed to synchronize application cores");

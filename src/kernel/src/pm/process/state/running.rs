@@ -185,6 +185,13 @@ impl RunningProcess {
         status: ExitStatus,
     ) -> Result<(RunnableProcess, *mut ContextInformation), (ZombieProcess, *mut ContextInformation)>
     {
+        // Save the exit status before terminating any threads. This ensures that the intended
+        // exit code from the first exit() call is preserved, even if subsequent thread cleanup
+        // triggers additional exit() calls with different status values (e.g., ESRCH from
+        // detached thread teardown). The set_pending_exit_status() method is a no-op when a
+        // pending status is already set, so only the first caller's status is retained.
+        self.state.set_pending_exit_status(status);
+
         let (zombie_thread, ctx) = self.running.exit(status);
         let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(mut zombie_threads) => {
@@ -223,7 +230,11 @@ impl RunningProcess {
 
             Ok((interrupted_process.resume(), ctx))
         } else {
-            Err((ZombieProcess::new(self.state, zombie_threads, status), ctx))
+            // Use pending exit status (from the first exit() call). The unwrap_or fallback
+            // should never be reached because set_pending_exit_status is called above, but is
+            // kept as a defensive measure.
+            let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
+            Err((ZombieProcess::new(self.state, zombie_threads, final_status), ctx))
         }
     }
 
@@ -283,7 +294,7 @@ impl RunningProcess {
                 self.state,
                 self.sleeping_threads.take(),
                 interrupted_threads,
-                Some(zombie_threads),
+                self.zombie.take(),
             );
 
             Ok((join_cond, interrupted_process.resume(), ctx))
@@ -294,12 +305,52 @@ impl RunningProcess {
                 ctx,
             )))
         } else {
-            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, status), ctx)))
+            // Use pending exit status if set (from a prior exit() call), otherwise use current
+            // thread's status.
+            let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
+            Err(Err((join_cond, ZombieProcess::new(self.state, zombie_threads, final_status), ctx)))
         }
     }
 
     pub fn get_tid(&self) -> ThreadIdentifier {
         self.running.id()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks the guard watermark of the running thread's kernel stack for corruption.
+    ///
+    /// # Returns
+    ///
+    /// Upon success (watermark intact or no kernel stack), `Ok(())` is returned. Upon failure
+    /// (watermark corrupted), an error is returned.
+    ///
+    #[inline]
+    pub fn check_guard_watermark(&self) -> Result<(), Error> {
+        self.running.check_guard_watermark()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Adds a ready thread to the running process.
+    ///
+    /// # Parameters
+    ///
+    /// - `ready_thread`: Thread to add.
+    ///
+    pub fn add_thread(&mut self, ready_thread: ReadyThread) {
+        trace!("self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
+        match self.ready.take() {
+            Some(mut ready_threads) => {
+                ready_threads.push_back(ready_thread);
+                self.ready = Some(ready_threads);
+            },
+            None => {
+                self.ready = Some(NonEmptyVecDeque::new(ready_thread));
+            },
+        }
     }
 
     pub fn wakeup(mut self, tid: ThreadIdentifier) -> Result<RunningProcess, RunningProcess> {

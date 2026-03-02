@@ -76,8 +76,8 @@ use ::sys::error::Error;
 ::static_assert::assert_eq!(config::kernel::KPOOL_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel stack size is multiple of a page size.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE.is_multiple_of(PAGE_ALIGNMENT as usize));
-// Ensure that the kernel stack size is at least one page.
-::static_assert::assert_eq!(config::kernel::KSTACK_SIZE >= mem::PAGE_SIZE);
+// Ensure that the kernel stack size is at least two pages (one guard page + one usable page).
+::static_assert::assert_eq!(config::kernel::KSTACK_SIZE >= 2 * mem::PAGE_SIZE);
 // Ensure that the kernel stack size fits in a single page table.
 ::static_assert::assert_eq!(config::kernel::KSTACK_SIZE <= mem::PGTAB_SIZE);
 // Ensure that the kernel base address is aligned to a page boundary.
@@ -120,29 +120,21 @@ use ::sys::error::Error;
 ::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
-// Ensure that the user heap base address is aligned to a page boundary.
+// Ensure that the mmap base address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
-// Ensure that the user heap base address is aligned to a page table boundary.
+// Ensure that the mmap base address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
-//Ensure that the user libraries base address is aligned to a page boundary.
+// Ensure that the mmap end address is aligned to a page boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_END_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
 );
-// Ensure that the user libraries base address is aligned to a page table boundary.
+// Ensure that the mmap end address is aligned to a page table boundary.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
-);
-// Ensure that the user libraries end address is aligned to a page boundary.
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW.is_multiple_of(PAGE_ALIGNMENT as usize)
-);
-// Ensure that the user libraries end address is aligned to a page table boundary.
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
+    config::memory_layout::USER_MMAP_END_RAW.is_multiple_of(PGTAB_ALIGNMENT as usize)
 );
 // Ensure that the user and kernel address spaces do not overlap.
 ::static_assert::assert_eq!(
@@ -162,13 +154,15 @@ use ::sys::error::Error;
     config::memory_layout::KPOOL_BASE_RAW + config::kernel::KPOOL_SIZE
         < config::memory_layout::KERNEL_END_RAW
 );
-// Ensure that the user heap lies within the user base and end addresses.
+// Ensure that the mmap region lies within the user base and end addresses.
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW >= config::memory_layout::USER_BASE_RAW
+    config::memory_layout::USER_MMAP_BASE_RAW >= config::memory_layout::USER_BASE_RAW
 );
 ::static_assert::assert_eq!(
-    config::memory_layout::USER_HEAP_BASE_RAW + config::memory_layout::USER_HEAP_SIZE
-        < config::memory_layout::USER_END_RAW
+    config::memory_layout::USER_MMAP_END_RAW > config::memory_layout::USER_MMAP_BASE_RAW
+);
+::static_assert::assert_eq!(
+    config::memory_layout::USER_MMAP_END_RAW < config::memory_layout::USER_END_RAW
 );
 // Ensure that the user stack lies within the user base and end addresses.
 ::static_assert::assert_eq!(
@@ -176,19 +170,6 @@ use ::sys::error::Error;
 );
 ::static_assert::assert_eq!(
     config::memory_layout::USER_STACK_TOP_RAW >= config::memory_layout::USER_BASE_RAW
-);
-// Ensure that the user libraries base address lies within the user base and end addresses.
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW >= config::memory_layout::USER_BASE_RAW
-);
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_BASE_RAW < config::memory_layout::USER_END_RAW
-);
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW > config::memory_layout::USER_LIBS_BASE_RAW
-);
-::static_assert::assert_eq!(
-    config::memory_layout::USER_LIBS_END_RAW < config::memory_layout::USER_END_RAW
 );
 
 //==================================================================================================
@@ -245,7 +226,7 @@ pub fn init(
     kimage: &KernelImage,
     memory_regions: LinkedList<MemoryRegion<VirtualAddress>>,
     mmio_regions: LinkedList<TruncatedMemoryRegion<VirtualAddress>>,
-) -> Result<(Vmem, VirtMemoryManager), Error> {
+) -> Result<Vmem, Error> {
     info!("initializing the memory manager ...");
 
     type VirtMemRegions = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
@@ -269,8 +250,7 @@ pub fn init(
         LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) = (LinkedList::new(), virt::init(virtual_memory_regions, mmio_regions)?);
 
-    let (mut vmem, mut mm): (Vmem, VirtMemoryManager) =
-        VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
+    let mut vmem: Vmem = VirtMemoryManager::init(kernel_pages, kernel_page_tables, physman)?;
 
     // Map virtual memory regions that lie outside the physical memory.
     while let Some(region) = other_virtual_memory_regions.pop_front() {
@@ -279,25 +259,29 @@ pub fn init(
         let end: VirtualAddress =
             VirtualAddress::new(region.start().into_raw_value() + (region.size() - 1));
 
-        while vaddr.into_inner() < end {
-            let kpage: KernelPage = mm.alloc_kpage(false)?;
+        {
+            // SAFETY: the memory manager is initialized and access is synchronized.
+            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+            while vaddr.into_inner() < end {
+                let kpage: KernelPage = mm.alloc_kpage(false)?;
 
-            let page_table_allocator = || {
-                let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
-                    [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
-                ));
-                let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
-                Ok(page_table)
-            };
+                let page_table_allocator = || {
+                    let pgtable_storage: PageTableStorage = PageTableStorage::Heap(Box::new(
+                        [0; mem::PAGE_SIZE / core::mem::size_of::<u32>()],
+                    ));
+                    let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
+                    Ok(page_table)
+                };
 
-            vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
+                vmem.map_kpage(kpage, vaddr, page_table_allocator)?;
 
-            match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
-                Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,
-                None => break,
-            };
+                match vaddr.into_raw_value().checked_add(mem::PAGE_SIZE) {
+                    Some(raw_addr) => vaddr = PageAligned::from_raw_value(raw_addr)?,
+                    None => break,
+                };
+            }
         }
     }
 
-    Ok((vmem, mm))
+    Ok(vmem)
 }

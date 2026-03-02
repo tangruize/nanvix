@@ -6,7 +6,9 @@
 //==================================================================================================
 
 use crate::{
+    debug,
     event,
+    io,
     ipc,
     kcall::{
         KcallResult,
@@ -52,14 +54,8 @@ use ::sys::{
 ///
 #[unsafe(no_mangle)]
 pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> i64 {
-    let pid: ProcessIdentifier = match unsafe { ProcessManager::get() }.get_pid() {
-        Ok(pid) => pid,
-        Err(e) => return KcallResult::Error(e.code.into()).into(),
-    };
-    let tid: ThreadIdentifier = match unsafe { ProcessManager::get() }.get_tid() {
-        Ok(tid) => tid,
-        Err(e) => return KcallResult::Error(e.code.into()).into(),
-    };
+    let pid: ProcessIdentifier = unsafe { ProcessManager::get() }.get_pid();
+    let tid: ThreadIdentifier = unsafe { ProcessManager::get() }.get_tid();
 
     match KcallNumber::from(number) {
         // Handle `getpid()` locally.
@@ -84,9 +80,62 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             let e: Error = unsafe { ProcessManager::exit_thread(arg0.into()).unwrap_err() };
             KcallResult::Error(e.code.into())
         },
+        // Handle `capctl()` locally.
+        KcallNumber::CapCtl => pm::capctl(pid, arg0, arg1),
+        // Handle `terminate()` locally.
+        KcallNumber::Terminate => pm::terminate(pid, arg0),
+        // Handle `evctrl()` locally.
+        KcallNumber::EventCtrl => event::evctrl(pid, arg0, arg1),
+        // Handle `set_thread_data_area()` locally.
+        KcallNumber::SetThreadDataArea => pm::set_thread_data_area(pid, tid, arg0),
+        // Handle `get_thread_data_area()` locally.
+        KcallNumber::GetThreadDataArea => pm::get_thread_data_area(pid, tid),
+        // Handle `mmio_free()` locally.
+        KcallNumber::FreeMmio => io::mmio_free(pid, arg0, arg1),
+        // Handle `mmio_alloc()` locally.
+        KcallNumber::AllocMmio => io::mmio_alloc(pid, arg0, arg1),
+        // Handle `mmio_info()` locally.
+        KcallNumber::MmioInfo => io::mmio_info(pid, arg0, arg1, arg2),
+        // Handle `pmio_free()` locally.
+        KcallNumber::FreePmio => io::pmio_free(pid, arg0),
+        // Handle `pmio_alloc()` locally.
+        KcallNumber::AllocPmio => io::pmio_alloc(pid, arg0, arg1),
+        // Handle `pmio_read()` locally.
+        KcallNumber::ReadPmio => io::pmio_read(pid, arg0, arg1),
+        // Handle `pmio_write()` locally.
+        KcallNumber::WritePmio => io::pmio_write(pid, arg0, arg1, arg2),
+        // Handle `gettime()` locally.
+        KcallNumber::GetTime => pm::gettime(pid, arg0),
+        // Handle `debug()` locally.
+        KcallNumber::Debug => debug::debug(pid, arg0, arg1),
+        // Handle `mmap()` locally.
+        KcallNumber::MemoryMap => pm::mmap(pid, arg0, arg1, arg2),
+        // Handle `munmap()` locally.
+        KcallNumber::MemoryUnmap => pm::munmap(pid, arg0, arg1),
+        // Handle `mctrl()` locally.
+        KcallNumber::MemoryCtrl => pm::mctrl(pid, arg0, arg1, arg2),
+        // Handle `mcopy()` locally.
+        KcallNumber::MemoryCopy => pm::mcopy(pid, arg0, arg1, arg2, arg3),
+        // Handle `create_thread()` locally.
+        KcallNumber::CreateThread => pm::create_thread(pid, arg0),
+        // Handle `send()` locally.
+        KcallNumber::Send => ipc::send(pid, tid, arg0),
         // SAFETY: The calling thread is not the kernel and no resources are held.
         KcallNumber::Recv => match unsafe { ipc::recv(tid, pid, arg0 as usize) } {
             Ok(()) => KcallResult::ok(),
+            Err(sleep_error) => handle_sleep_error(sleep_error),
+        },
+        // SAFETY: The calling thread is not the kernel and no resources are held.
+        KcallNumber::Push => match ipc::push(pid, tid, arg0, arg1, arg2 as usize, arg3) {
+            Ok(()) => KcallResult::ok(),
+            Err(sleep_error) => handle_sleep_error(sleep_error),
+        },
+        // SAFETY: The calling thread is not the kernel and no resources are held.
+        KcallNumber::Pull => match ipc::pull(pid, tid, arg0, arg1, arg2 as usize, arg3) {
+            Ok(bytes_transferred) => match u32::try_from(bytes_transferred) {
+                Ok(bytes_u32) => KcallResult::Success(bytes_u32.into()),
+                Err(_) => KcallResult::Error(ErrorCode::InvalidArgument.into()),
+            },
             Err(sleep_error) => handle_sleep_error(sleep_error),
         },
         // SAFETY: The calling thread does not hold a reference to the process manager.

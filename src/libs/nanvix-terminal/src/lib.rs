@@ -26,6 +26,11 @@ use ::libc::{
     sigemptyset,
     SIGUSR1,
 };
+use ::log::{
+    error,
+    info,
+    warn,
+};
 use ::nanvix_sandbox_cache::{
     syscomm::{
         SocketStream,
@@ -39,14 +44,13 @@ use ::nanvix_sandbox_cache::{
     SandboxCacheConfig,
 };
 use ::std::{
-    io::Read,
+    io::{
+        ErrorKind,
+        Read,
+    },
     mem,
     ptr,
     sync::Arc,
-};
-use ::syslog::{
-    error,
-    info,
 };
 use ::tokio::{
     io::{
@@ -136,8 +140,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
     ///
     /// # Returns
     ///
-    /// On success, this function returns an empty tuple after the terminal session ends. On
-    /// failure, it returns an object that describes the error that occurred.
+    /// On success, returns the exit code of the guest program. On failure, returns an error
+    /// describing what went wrong.
     ///
     pub async fn run(
         &mut self,
@@ -145,8 +149,9 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         app_name: Option<&str>,
         guest_binary_path: &str,
         guest_binary_args: &str,
-    ) -> Result<()> {
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone())?;
+    ) -> Result<i32> {
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> =
+            SandboxCache::new(self.config.clone()).await?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
 
         let tenant_id: String = match tenant_id {
@@ -156,7 +161,7 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
         let app_name: String = app_name
             .map(|s| s.to_owned())
             .unwrap_or_else(|| DEFAULT_APP_NAME.to_owned());
-        let (_uservm_id, gateway_sockaddr, gateway_socket_type): (
+        let (uservm_id, gateway_sockaddr, gateway_socket_type): (
             UserVmIdentifier,
             String,
             SocketType,
@@ -230,9 +235,18 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
                                 stdout.flush().await?;
                             }
                         },
-                        Err(error) => {
-                            error!("failed to read from gateway: {}", error);
-                            break Err(anyhow::anyhow!(error));
+                        Err(error) => match error.kind() {
+                            ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
+                                // Treat connection reset and unexpected EOF as normal close.
+                                // The guest program may exit without writing any output, which
+                                // causes the gateway socket to be reset from the VM side.
+                                warn!("gateway closed with {}: treating as normal close.", error.kind());
+                                break Ok(());
+                            },
+                            _ => {
+                                error!("failed to read from gateway: {}", error);
+                                break Err(anyhow::anyhow!(error));
+                            },
                         },
                     }
                 },
@@ -275,8 +289,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
             }
         };
 
-        // Cleanup sandbox resources.
-        sandbox_cache.lock().await.cleanup().await;
+        // Terminate the sandbox and retrieve the exit code.
+        let exit_code: i32 = sandbox_cache.lock().await.kill(uservm_id).await?;
 
         // Send SIGUSR1 signal to stdin thread to interrupt the blocking read operation.
         // SAFETY: The thread ID is valid and was obtained from the stdin thread itself.
@@ -285,7 +299,8 @@ impl<T: Sync + Send + Clone + Default + 'static> Terminal<T> {
             error!("failed to send signal to stdin thread: error code {kill_result}");
         }
 
-        result
+        // Return the exit code if the session ended normally, otherwise propagate the error.
+        result.map(|()| exit_code)
     }
 
     ///
@@ -402,7 +417,7 @@ fn install_signal_handler() {
     // SAFETY: We install a signal handler that is a no-op so this is safe.
     let ret: c_int = unsafe {
         let sig_action: sigaction = sigaction {
-            sa_sigaction: stdin_thread_signal_handler as usize,
+            sa_sigaction: stdin_thread_signal_handler as *const () as usize,
             // Empty set to not block any other signals that may happen during signal handling.
             sa_mask: {
                 let mut set: libc::sigset_t = mem::zeroed();

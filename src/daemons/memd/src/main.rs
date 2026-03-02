@@ -122,7 +122,12 @@ pub fn main() {
     loop {
         match ::sys::kcall::ipc::recv() {
             Ok(message) => match message.message_type {
-                MessageType::Exception => handle_page_fault(EventInformation::from(message)),
+                MessageType::Exception => match EventInformation::try_from(message) {
+                    Ok(info) => handle_page_fault(info),
+                    Err(e) => {
+                        ::syslog::error!("failed to parse event information (error={:?})", e)
+                    },
+                },
                 MessageType::Ipc => match handle_ipc_request(message) {
                     Ok(true) => break,
                     Ok(false) => continue,
@@ -132,6 +137,10 @@ pub fn main() {
                 MessageType::Ikc => unreachable!("should not receive ikc messages"),
                 MessageType::ProcessTerminationEvent => {
                     unreachable!("should not receive process termination events")
+                },
+                MessageType::PullResponse => {
+                    ::syslog::error!("received unexpected pull response, ignoring");
+                    continue;
                 },
             },
             Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),

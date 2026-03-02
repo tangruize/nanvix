@@ -22,16 +22,16 @@ use ::anyhow::{
     Error,
     Result,
 };
-use ::std::{
-    marker::Send,
-    pin::Pin,
-};
-use ::sys::ipc::Message;
-use ::syslog::{
+use ::log::{
     debug,
     error,
     trace,
 };
+use ::std::{
+    marker::Send,
+    pin::Pin,
+};
+use ::sys::ipc::IkcFrame;
 use ::tokio::sync::mpsc::{
     Receiver,
     Sender,
@@ -49,10 +49,10 @@ pub type AddCreditFn =
 // Structures
 //==================================================================================================
 
-/// Tokio task that relays `Message` frames while coordinating credit management.
+/// Tokio task that relays [`IkcFrame`] frames while coordinating credit management.
 pub struct MemoryThread {
-    data_rx: Receiver<Message>,
-    data_tx: Sender<Message>,
+    data_rx: Receiver<IkcFrame>,
+    data_tx: Sender<IkcFrame>,
     control_rx: Receiver<MemoryControlCommand>,
     control_tx: Sender<MemoryControlResponse>,
     add_credit: Box<AddCreditFn>,
@@ -79,8 +79,8 @@ impl MemoryThread {
     /// - `counters`: Shared counters for tracking message flow across threads.
     ///
     pub fn new(
-        data_rx: Receiver<Message>,
-        data_tx: Sender<Message>,
+        data_rx: Receiver<IkcFrame>,
+        data_tx: Sender<IkcFrame>,
         control_rx: Receiver<MemoryControlCommand>,
         control_tx: Sender<MemoryControlResponse>,
         add_credit: Box<AddCreditFn>,
@@ -111,8 +111,8 @@ impl MemoryThread {
     pub fn spawn(self) -> ::tokio::task::JoinHandle<()> {
         trace!("spawn()");
         ::tokio::spawn(async move {
-            let mut data_rx: Receiver<Message> = self.data_rx;
-            let data_tx: Sender<Message> = self.data_tx;
+            let mut data_rx: Receiver<IkcFrame> = self.data_rx;
+            let data_tx: Sender<IkcFrame> = self.data_tx;
             let mut control_rx: Receiver<MemoryControlCommand> = self.control_rx;
             let _control_tx: Sender<MemoryControlResponse> = self.control_tx;
             let mut add_credit: Box<AddCreditFn> = self.add_credit;
@@ -134,17 +134,27 @@ impl MemoryThread {
                     }
                     msg = data_rx.recv() => {
                         match msg {
-                            Some(mut msg) => {
-                                // Label: uservm::memory_thread::data_rx::recv()
-                                profiler::timestamp_message!(&mut msg.payload,
-                                    std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
-                                        + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                                );
+                            Some(transfer) => {
+                                // Apply profiler timestamp for both Message and Data chunk transfers.
+                                let mut stamped_transfer: IkcFrame = transfer;
+                                match stamped_transfer {
+                                    IkcFrame::Message(ref mut msg) => {
+                                        // Label: uservm::memory_thread::data_rx::recv()
+                                        profiler::timestamp_message!(&mut msg.payload,
+                                            std::mem::offset_of!(syscall::LinuxDaemonMessage, payload)
+                                                + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
+                                        );
+                                    },
+                                    IkcFrame::Bulk(ref mut bulk) => {
+                                        // Label: uservm::memory_thread::data_rx::recv()
+                                        profiler::timestamp_message!(bulk.data_mut(), 0);
+                                    },
+                                }
 
                                 on_message_received_from_io_thread(&counters);
 
-                                if let Err(e) = data_tx.send(msg).await {
-                                    error!("spawn(): failed to send message: {e}");
+                                if let Err(e) = data_tx.send(stamped_transfer).await {
+                                    error!("spawn(): failed to send transfer: {e}");
                                     continue;
                                 }
                                 if let Err(error) = add_credit().await {
@@ -214,6 +224,8 @@ fn on_message_received_from_io_thread(counters: &MessageCounters) {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
     use ::anyhow::anyhow;
@@ -224,6 +236,7 @@ mod tests {
             Ordering,
         },
     };
+    use ::sys::ipc::Message;
     use ::tokio::{
         task::JoinHandle,
         time::{
@@ -238,12 +251,12 @@ mod tests {
 
     /// Spawns a memory thread for tests with an injected credit function.
     fn spawn(
-        data_rx: Receiver<Message>,
-        data_tx: Sender<Message>,
+        data_rx: Receiver<IkcFrame>,
+        data_tx: Sender<IkcFrame>,
         control_rx: Receiver<MemoryControlCommand>,
         control_tx: Sender<MemoryControlResponse>,
         mut add_credit: impl FnMut() -> Result<()> + Send + 'static,
-    ) -> JoinHandle<()> {
+    ) -> (JoinHandle<()>, MessageCounters) {
         // Wrap the synchronous test closure into the asynchronous AddCreditFn expected by
         // `MemoryThread::new` in test builds.
         let add_credit_box: Box<AddCreditFn> = Box::new(move || {
@@ -251,8 +264,16 @@ mod tests {
             Box::pin(async move { res })
         });
         let counters: MessageCounters = MessageCounters::new();
-        MemoryThread::new(data_rx, data_tx, control_rx, control_tx, add_credit_box, counters)
-            .spawn()
+        let handle: JoinHandle<()> = MemoryThread::new(
+            data_rx,
+            data_tx,
+            control_rx,
+            control_tx,
+            add_credit_box,
+            counters.clone(),
+        )
+        .spawn();
+        (handle, counters)
     }
 
     // Helper: small timeout to avoid hanging tests.
@@ -262,10 +283,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_message_forward_and_credit_increment() {
-        let (io_tx, io_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(4);
-        let (vm_tx, mut vm_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(4);
+        let (io_tx, io_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
+            ::tokio::sync::mpsc::channel::<IkcFrame>(4);
+        let (vm_tx, mut vm_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
+            ::tokio::sync::mpsc::channel::<IkcFrame>(4);
         let (control_tx, control_rx): (
             Sender<MemoryControlCommand>,
             Receiver<MemoryControlCommand>,
@@ -276,25 +297,33 @@ mod tests {
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let credits_clone: Arc<AtomicUsize> = credits.clone();
 
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
-            credits_clone.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        });
+        let (handle, counters): (JoinHandle<()>, MessageCounters) =
+            spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+                credits_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            });
 
         // Send a message that should be forwarded.
         let original: Message = Message::default();
+        // Pre-increment the I/O counter to satisfy the debug_assert in
+        // on_message_received_from_io_thread (mem_received <= io_received).
+        counters.increment_io_thread_messages_received();
         io_tx
-            .send(original.clone())
+            .send(IkcFrame::Message(original.clone()))
             .await
             .expect("send to memory thread");
 
-        let received: Message = timeout(short_timeout(), vm_rx.recv())
+        let received: IkcFrame = timeout(short_timeout(), vm_rx.recv())
             .await
             .expect("forward receive timeout")
             .expect("forward channel closed unexpectedly");
 
+        let received_msg: Message = match received {
+            IkcFrame::Message(m) => m,
+            _ => panic!("expected IkcFrame::Message"),
+        };
         assert_eq!(
-            received.clone().to_bytes(),
+            received_msg.to_bytes(),
             original.clone().to_bytes(),
             "message payload mismatch"
         );
@@ -316,10 +345,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_shutdown_without_messages() {
-        let (_io_tx, io_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(1);
-        let (vm_tx, mut _vm_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(1);
+        let (_io_tx, io_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
+            ::tokio::sync::mpsc::channel::<IkcFrame>(1);
+        let (vm_tx, mut _vm_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
+            ::tokio::sync::mpsc::channel::<IkcFrame>(1);
         let (control_tx, control_rx): (
             Sender<MemoryControlCommand>,
             Receiver<MemoryControlCommand>,
@@ -329,10 +358,11 @@ mod tests {
 
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let credits_clone: Arc<AtomicUsize> = credits.clone();
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
-            credits_clone.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        });
+        let (handle, _counters): (JoinHandle<()>, MessageCounters) =
+            spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+                credits_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            });
 
         // Immediate shutdown.
         control_tx
@@ -351,10 +381,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_credit_error_terminates_thread() {
-        let (io_tx, io_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(2);
-        let (vm_tx, mut vm_rx): (Sender<Message>, Receiver<Message>) =
-            ::tokio::sync::mpsc::channel::<Message>(2);
+        let (io_tx, io_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
+            ::tokio::sync::mpsc::channel::<IkcFrame>(2);
+        let (vm_tx, mut vm_rx): (Sender<IkcFrame>, Receiver<IkcFrame>) =
+            ::tokio::sync::mpsc::channel::<IkcFrame>(2);
         let (_control_tx, control_rx): (
             Sender<MemoryControlCommand>,
             Receiver<MemoryControlCommand>,
@@ -363,21 +393,32 @@ mod tests {
             ::tokio::sync::mpsc::channel::<MemoryControlResponse>(1);
 
         let credits: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let handle: JoinHandle<()> = spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
-            // Simulate a failure on first credit attempt.
-            Err(anyhow!("simulated credit failure"))
-        });
+        let (handle, counters): (JoinHandle<()>, MessageCounters) =
+            spawn(io_rx, vm_tx, control_rx, resp_tx, move || {
+                // Simulate a failure on first credit attempt.
+                Err(anyhow!("simulated credit failure"))
+            });
 
         let msg: Message = Message::default();
-        io_tx.send(msg.clone()).await.expect("send first message");
+        // Pre-increment the I/O counter to satisfy the debug_assert in
+        // on_message_received_from_io_thread (mem_received <= io_received).
+        counters.increment_io_thread_messages_received();
+        io_tx
+            .send(IkcFrame::Message(msg.clone()))
+            .await
+            .expect("send first message");
 
         // Forwarded even though credit fails afterwards.
-        let forwarded: Message = timeout(short_timeout(), vm_rx.recv())
+        let forwarded: IkcFrame = timeout(short_timeout(), vm_rx.recv())
             .await
             .expect("forward receive timeout")
             .expect("forward channel closed");
+        let forwarded_msg: Message = match forwarded {
+            IkcFrame::Message(m) => m,
+            _ => panic!("expected IkcFrame::Message"),
+        };
         assert_eq!(
-            forwarded.clone().to_bytes(),
+            forwarded_msg.to_bytes(),
             msg.clone().to_bytes(),
             "message not forwarded prior to error"
         );

@@ -16,6 +16,7 @@ use crate::{
             AnyIoPort,
             IoMemoryRegion,
             IoPortWidth,
+            MmioTag,
         },
         mem::{
             AccessPermission,
@@ -67,15 +68,10 @@ use ::alloc::{
         LinkedList,
     },
     ffi::CString,
-    rc::Rc,
 };
 use ::arch::mem::PAGE_SIZE;
 use ::config::memory_layout::USER_STACK_TOP_RAW;
-use ::core::cell::{
-    Ref,
-    RefCell,
-    RefMut,
-};
+
 use ::sys::{
     error::{
         Error,
@@ -110,7 +106,7 @@ pub enum SleepError {
 }
 
 //==================================================================================================
-// Process Manager Inner
+// Process Manager
 //==================================================================================================
 
 ///
@@ -118,7 +114,7 @@ pub enum SleepError {
 ///
 /// A type that represents the process manager.
 ///
-struct ProcessManagerInner {
+pub struct ProcessManager {
     /// Is this platform interrupt capable?
     interrupt_capable: bool,
     /// Reason for the last interrupt.
@@ -141,7 +137,7 @@ struct ProcessManagerInner {
     number_buffered_messages: usize,
 }
 
-impl ProcessManagerInner {
+impl ProcessManager {
     /// Initializes the process manager.
     pub fn new(
         interrupt_capable: bool,
@@ -217,7 +213,7 @@ impl ProcessManagerInner {
         debug_assert!(Vmem::is_user_addr(args.user_fn));
 
         let kernel_func: VirtualAddress =
-            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as usize);
+            VirtualAddress::from_raw_value(__leave_kernel_to_user_mode as *const () as usize);
 
         // Alloc kernel pages for the kernel stack. If we fail beyond this point, `kernel_stack`
         // gets dropped as soon as we exit this scope and underlying pages are released.
@@ -266,7 +262,7 @@ impl ProcessManagerInner {
     ///   - `user_fn` must point to a user memory region that is executable.
     ///   - `user_stack` must point to a user memory region that is writable.
     ///
-    fn create_thread(
+    pub fn create_thread(
         &mut self,
         mm: &mut VirtMemoryManager,
         pid: ProcessIdentifier,
@@ -276,36 +272,22 @@ impl ProcessManagerInner {
 
         // Assert pre-conditions (these should have been checked by the caller).
         debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
+        debug_assert!(
+            self.get_running().state().pid() == pid,
+            "create_thread: pid must match the running process"
+        );
+
+        // Reserve the next thread identifier early, before any resource allocation.
+        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
 
         let ready_thread: ReadyThread = {
             let enable_interrupts: bool = self.interrupt_capable;
-
-            // Find corresponding process.
-            let mut process: ProcessRefMut = self.find_process_mut(pid)?;
-
-            // Ensure that the process is in a valid state.
-            if let ProcessRefMut::Running(_) = process {
-                // TODO: Re-evaluate this condition when we support multicore.
-                let reason: &str = "process is running";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
-            }
-            if let ProcessRefMut::Interrupted(_) = process {
-                let reason: &str = "process is interrupted";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
-            }
-            if let ProcessRefMut::Zombie(_) = process {
-                let reason: &str = "process is a zombie";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
-            }
 
             // Create a kernel context.
             let (kernel_stack, context): (KernelStack, ContextInformation) =
                 Self::forge_user_context(
                     mm,
-                    process.state_mut().vmem_mut(),
+                    self.get_running_mut().state_mut().vmem_mut(),
                     thread_create_args,
                     enable_interrupts,
                 )?;
@@ -315,60 +297,23 @@ impl ProcessManagerInner {
             //==============================================================
 
             // Create a new thread.
-            self.tm
-                .create_thread(Some(kernel_stack), None, thread_create_args.user_tda, context)
+            self.tm.create_thread(
+                tid,
+                Some(kernel_stack),
+                None,
+                thread_create_args.user_tda,
+                context,
+            )
         };
 
-        Ok(self.try_add_thread(pid, ready_thread))
-    }
+        // Commit the next thread identifier now that all fallible operations have succeeded.
+        self.tm.commit_next_tid(next_tid);
 
-    fn try_add_thread(
-        &mut self,
-        pid: ProcessIdentifier,
-        ready_thread: ReadyThread,
-    ) -> ThreadIdentifier {
-        trace!("pid={pid:?}, ready_thread={ready_thread:?}");
+        // Add the new thread to the running process.
         let tid: ThreadIdentifier = ready_thread.id();
+        self.get_running_mut().add_thread(ready_thread);
 
-        // Search process in the list of sleeping processes.
-        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
-        while let Some(process) = self.suspended.pop_front() {
-            // Found.
-            if process.state().pid() == pid {
-                let ready_process: RunnableProcess = process.add_thread(ready_thread);
-                // Rollback list to its original state.
-                while let Some(process) = suspended.pop_back() {
-                    self.suspended.push_front(process);
-                }
-                // Push process to the list of ready processes.
-                self.ready.push_back(ready_process);
-                return tid;
-            }
-            suspended.push_back(process);
-        }
-        // Process is not in the list of sleeping processes, rollback list to its original state.
-        self.suspended = suspended;
-
-        // Search process in the list of ready processes.
-        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
-        while let Some(process) = self.ready.pop_front() {
-            // Found.
-            if process.state().pid() == pid {
-                let ready_process: RunnableProcess = process.add_thread(ready_thread);
-                // Rollback list to its original state.
-                while let Some(process) = ready.pop_back() {
-                    self.ready.push_front(process);
-                }
-                // Push process to the list of ready processes.
-                self.ready.push_back(ready_process);
-                return tid;
-            }
-            ready.push_back(process);
-        }
-        // Process is not in the list of ready processes, rollback list to its original state.
-        self.ready = ready;
-
-        unreachable!("process must be either sleeping or runnable")
+        Ok(tid)
     }
 
     ///
@@ -393,26 +338,22 @@ impl ProcessManagerInner {
     ///
     /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
     ///
-    fn set_thread_data_area(
+    pub fn set_thread_data_area(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
         user_tda: Option<VirtualAddress>,
     ) -> Result<(), Error> {
-        // Search for the process in the list of sleeping processes.
-        let sleeping_process: &mut SleepingProcess = self
-            .suspended
-            .iter_mut()
-            .find(|p| p.state().pid() == pid)
-            .ok_or_else(|| {
-                let reason: &str = "process not found";
-                error!("{reason} (pid={pid:?}, tid={tid:?}, user_tda={user_tda:?})");
-                Error::new(ErrorCode::NoSuchEntry, reason)
-            })?;
+        // Search for the process across all states.
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
 
-        // Search for the thread.
-        match sleeping_process.find_thread_mut(tid) {
+        // Search for the thread and set its data area.
+        match process.find_thread_mut(tid) {
             Some(ThreadRefMut::Sleeping(thread)) => {
+                thread.set_thread_data_area(user_tda);
+                Ok(())
+            },
+            Some(ThreadRefMut::Running(thread)) => {
                 thread.set_thread_data_area(user_tda);
                 Ok(())
             },
@@ -445,25 +386,18 @@ impl ProcessManagerInner {
     ///
     /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
     ///
-    fn get_thread_data_area(
+    pub fn get_thread_data_area(
         &self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<Option<VirtualAddress>, Error> {
-        // Search for the process in the list of sleeping processes.
-        let sleeping_process: &SleepingProcess = self
-            .suspended
-            .iter()
-            .find(|p| p.state().pid() == pid)
-            .ok_or_else(|| {
-                let reason: &str = "process not found";
-                error!("{reason} (pid={pid:?}, tid={tid:?})");
-                Error::new(ErrorCode::NoSuchEntry, reason)
-            })?;
+        // Search for the process across all states.
+        let process: ProcessRef = self.find_process(pid)?;
 
-        // Attempt to get thread data area and check for errors.
-        match sleeping_process.find_thread(tid) {
+        // Search for the thread and get its data area.
+        match process.find_thread(tid) {
             Some(ThreadRef::Sleeping(thread)) => Ok(thread.get_thread_data_area()),
+            Some(ThreadRef::Running(thread)) => Ok(thread.get_thread_data_area()),
             _ => {
                 let reason: &str = "thread not found";
                 error!("{reason} (tid={tid:?}, pid={pid:?})");
@@ -489,7 +423,7 @@ impl ProcessManagerInner {
     /// Upon successful completion, the process identifier of the new process is returned.
     /// Otherwise, an error is returned instead.
     ///
-    fn create_process(
+    pub fn create_process(
         &mut self,
         mm: &mut VirtMemoryManager,
         elf: &Elf32Fhdr,
@@ -501,6 +435,10 @@ impl ProcessManagerInner {
         }
 
         trace!("args={:?}, env={:?}", args, env);
+
+        // Reserve the next process and thread identifiers early, before any resource allocation.
+        let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
+        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
 
         // Strip leading and trailing spaces from arguments.
         let args: &str = args.trim();
@@ -608,13 +546,17 @@ impl ProcessManagerInner {
         // NOTE: if we fail beyond this point we need to page mappings.
         //==============================================================
 
-        let thread: ReadyThread =
-            self.tm
-                .create_thread(Some(kernel_stack), Some(user_stack), args.user_tda, context);
+        let thread: ReadyThread = self.tm.create_thread(
+            tid,
+            Some(kernel_stack),
+            Some(user_stack),
+            args.user_tda,
+            context,
+        );
 
-        // Create process.
-        let pid: ProcessIdentifier = self.next_pid;
-        self.next_pid = ProcessIdentifier::from(i32::from(pid) + 1);
+        // Commit the next process and thread identifiers now that all fallible operations have succeeded.
+        self.next_pid = next_pid;
+        self.tm.commit_next_tid(next_tid);
         let process: RunnableProcess = RunnableProcess::new(pid, thread, vmem);
 
         // Add process to the queue of ready processes.
@@ -646,6 +588,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         // Reschedule running process.
         let previous_process: RunningProcess = self.take_running();
 
@@ -722,7 +667,7 @@ impl ProcessManagerInner {
     /// - A pointer to the context information of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
-    fn sleep(
+    fn do_sleep(
         &mut self,
         alarm: Option<SystemTime>,
     ) -> (
@@ -732,6 +677,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         let running_process: RunningProcess = self.take_running();
 
         // Check if kernel is trying to sleep.
@@ -783,7 +731,7 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
     ///
-    pub fn wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+    pub fn do_wakeup(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
         // Check if thread belongs to the running process.
         if self.get_running().find_thread(tid).is_some() {
             let running_process: RunningProcess = self.take_running();
@@ -892,7 +840,7 @@ impl ProcessManagerInner {
     /// - A pointer to the context information of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
-    fn exit(
+    fn do_exit(
         &mut self,
         status: ExitStatus,
     ) -> (
@@ -902,6 +850,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         let running_process: RunningProcess = self.take_running();
         trace!(
             "pid={:?}, tid={:?}, status={status:?}",
@@ -913,6 +864,10 @@ impl ProcessManagerInner {
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
             panic!("kernel process cannot exit");
         }
+
+        // Clean up any pending rendezvous entries for this process and wake up counterpart
+        // threads that would otherwise block forever.
+        self.cleanup_rendezvous(running_process.state().pid(), "do_exit");
 
         // Terminate the calling thread.
         let previous_context: *mut ContextInformation = match running_process.exit(status) {
@@ -971,7 +926,7 @@ impl ProcessManagerInner {
     ///
     /// - The calling process is not the kernel process.
     ///
-    fn exit_thread(
+    fn do_exit_thread(
         &mut self,
         status: ExitStatus,
     ) -> (
@@ -982,6 +937,9 @@ impl ProcessManagerInner {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Check the running thread's kernel stack guard watermark before switching away.
+        self.check_running_stack_guard();
+
         let running_process: RunningProcess = self.take_running();
 
         trace!(
@@ -1047,6 +1005,10 @@ impl ProcessManagerInner {
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+
+        // Clean up any pending rendezvous entries for the terminated process and wake up
+        // counterpart threads that would otherwise block forever.
+        self.cleanup_rendezvous(pid, "terminate");
 
         // Check if target process is ready.
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
@@ -1188,7 +1150,7 @@ impl ProcessManagerInner {
         self.interrupt_reason.take()
     }
 
-    fn harvest_zombies(
+    fn pop_zombie_process(
         &mut self,
     ) -> Option<(VecDeque<ZombieThread>, Box<ProcessState>, ExitStatus)> {
         if let Some(zombie) = self.zombies.pop_front() {
@@ -1253,7 +1215,7 @@ impl ProcessManagerInner {
     /// associated with the given address, a new mutex is created and returned. On failure, an error
     /// is returned instead.
     ///
-    fn get_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
+    fn lookup_mutex(&mut self, mutex_addr: MutexAddress) -> Result<Mutex, Error> {
         self.get_running_mut().state_mut().get_mutex(mutex_addr)
     }
 
@@ -1272,7 +1234,7 @@ impl ProcessManagerInner {
     /// no condition variable is associated with the given address, a new condition variable is
     /// created and returned. On failure, an error is returned instead.
     ///
-    fn get_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
+    fn lookup_cond(&mut self, cond_addr: ConditionAddress) -> Result<Condvar, Error> {
         self.get_running_mut().state_mut().get_cond(cond_addr)
     }
 
@@ -1289,7 +1251,7 @@ impl ProcessManagerInner {
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
     ///
-    fn put_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
+    fn release_cond(&mut self, cond_addr: ConditionAddress) -> Result<(), Error> {
         self.get_running_mut().state_mut().put_cond(cond_addr)
     }
 
@@ -1303,7 +1265,7 @@ impl ProcessManagerInner {
     /// - `mutex_addr`: Address of the mutex.
     /// - `guard`: Mutex guard to store.
     ///
-    fn put_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) {
+    fn store_mutex_guard(&mut self, mutex_addr: MutexAddress, guard: MutexGuard) {
         self.get_running_mut()
             .running_mut()
             .put_mutex_guard(mutex_addr, guard);
@@ -1325,7 +1287,7 @@ impl ProcessManagerInner {
     /// Upon successful completion, the mutex guard is returned. Otherwise, an error is returned
     /// instead.
     ///
-    fn take_mutex_guard(
+    fn remove_mutex_guard(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
@@ -1349,6 +1311,40 @@ impl ProcessManagerInner {
         Ok(mutex_guard)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Reserves the next process identifier, performing a checked increment.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, this function returns a tuple containing the reserved [`ProcessIdentifier`]
+    /// and the next [`ProcessIdentifier`] value. The caller must commit the next identifier by
+    /// updating `self.next_pid` after all fallible operations have succeeded.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the process identifier would overflow.
+    ///
+    /// # Known Bugs
+    ///
+    /// - FIXME (#1440): process identifiers are never recycled, so a fork bomb or repeated
+    ///   `create_process` calls can exhaust the identifier space.
+    ///
+    fn try_next_pid(&self) -> Result<(ProcessIdentifier, ProcessIdentifier), Error> {
+        let pid: ProcessIdentifier = self.next_pid;
+        let raw_pid: i32 = i32::from(pid);
+        let next_raw_pid: i32 = match raw_pid.checked_add(1) {
+            Some(val) => val,
+            None => {
+                let reason: &str = "process identifier overflow";
+                error!("{reason} (next_pid={raw_pid:?})");
+                return Err(Error::new(ErrorCode::ValueOverflow, reason));
+            },
+        };
+        Ok((pid, ProcessIdentifier::from(next_raw_pid)))
+    }
+
     fn take_earliest_ready(&mut self) -> RunnableProcess {
         // SAFETY: As the kernel process is always runnable, the following statement will never panic.
         let mut selected: (usize, SystemTime) = (
@@ -1369,6 +1365,54 @@ impl ProcessManagerInner {
 
         // Remove the selected process from the list of ready processes.
         self.ready.remove(selected.0)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks the running thread's kernel stack guard watermark for corruption.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the watermark has been corrupted, indicating a stack overflow.
+    ///
+    fn check_running_stack_guard(&self) {
+        if let Some(ref running) = self.running {
+            if let Err(e) = running.check_guard_watermark() {
+                panic!(
+                    "stack overflow detected for thread {:?} in process {:?}: {:?}",
+                    running.get_tid(),
+                    running.state().pid(),
+                    e
+                );
+            }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Cleans up pending rendezvous push/pull entries for a process and wakes up counterpart
+    /// threads that would otherwise block forever. This is called during both voluntary exit
+    /// (`do_exit`) and forced termination (`terminate`).
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process identifier of the exiting/terminated process.
+    /// - `caller`: Label used in log messages to identify the call site.
+    ///
+    fn cleanup_rendezvous(&mut self, pid: ProcessIdentifier, caller: &str) {
+        // SAFETY: single-core system with interrupts disabled.
+        let orphaned_tids: ::alloc::vec::Vec<ThreadIdentifier> =
+            unsafe { crate::ipc::rendezvous::cleanup_process(pid) };
+        for tid in orphaned_tids {
+            if let Err(e) = self.do_wakeup(tid) {
+                warn!(
+                    "{caller}(): failed to wake orphaned rendezvous thread (tid={tid:?}, \
+                     error={e:?})"
+                );
+            }
+        }
     }
 
     fn take_running(&mut self) -> RunningProcess {
@@ -1520,15 +1564,80 @@ impl ProcessManagerInner {
         error!("{reason} (tid={tid:?})");
         Err(Error::new(ErrorCode::NoSuchEntry, reason))
     }
-}
 
-//==================================================================================================
-// Process Manager
-//==================================================================================================
+    ///
+    /// # Description
+    ///
+    /// Notes that a message was posted.
+    ///
+    /// # Parameters
+    ///
+    /// None.
+    ///
+    /// # Returns
+    ///
+    /// An error if and only if incrementing by one would overflow the number of buffered messages.
+    ///
+    pub fn note_message_posted(&mut self) -> Result<(), Error> {
+        match self.number_buffered_messages.checked_add(1) {
+            Some(n) => {
+                self.number_buffered_messages = n;
+                Ok(())
+            },
+            None => {
+                error!("number of buffered messages overflowed");
+                Err(Error::new(ErrorCode::ValueOverflow, "number of buffered messages overflowed"))
+            },
+        }
+    }
 
-pub struct ProcessManager(Rc<RefCell<ProcessManagerInner>>);
+    ///
+    /// # Description
+    ///
+    /// Notes that a message was received.
+    ///
+    /// # Parameters
+    ///
+    /// None.
+    ///
+    /// # Returns
+    ///
+    /// An error if and only if decrementing by one would underflow the number of buffered messages.
+    ///
+    pub fn note_message_received(&mut self) -> Result<(), Error> {
+        match self.number_buffered_messages.checked_sub(1) {
+            Some(n) => {
+                self.number_buffered_messages = n;
+                Ok(())
+            },
+            None => {
+                error!("number of buffered messages underflowed");
+                Err(Error::new(
+                    ErrorCode::InvalidArgument,
+                    "number of buffered messages underflowed",
+                ))
+            },
+        }
+    }
 
-impl ProcessManager {
+    ///
+    /// # Description
+    ///
+    /// Returns the number of messages that have been posted but not yet received.
+    ///
+    /// # Parameters
+    ///
+    /// None.
+    ///
+    /// # Returns
+    ///
+    /// The count of buffered messages.
+    ///
+    #[cfg(feature = "stdio")]
+    pub fn number_buffered_messages(&self) -> usize {
+        self.number_buffered_messages
+    }
+
     ///
     /// # Description
     ///
@@ -1536,12 +1645,10 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the ID of the calling process is returned. Otherwise, an error
-    /// code is returned instead.
+    /// The ID of the calling process.
     ///
-    pub fn get_pid(&self) -> Result<ProcessIdentifier, Error> {
-        // SAFETY: This is the only thread running, thus access to the process manager is synchronized.
-        Ok(self.try_borrow()?.get_running().state().pid())
+    pub fn get_pid(&self) -> ProcessIdentifier {
+        self.get_running().state().pid()
     }
 
     ///
@@ -1551,136 +1658,10 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the ID of the calling thread is returned. Otherwise, an error
-    /// code is returned instead.
+    /// The ID of the calling thread.
     ///
-    pub fn get_tid(&self) -> Result<ThreadIdentifier, Error> {
-        Ok(self.try_borrow()?.get_running().get_tid())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Creates a new process.
-    ///
-    /// # Parameters
-    ///
-    /// - `mm`: Memory manager to use.
-    /// - `elf`: ELF header of the executable to load.
-    /// - `args`: Command line arguments.
-    /// - `env`: Environment variables.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the process identifier of the new process is returned.
-    /// Otherwise, an error is returned instead.
-    ///
-    pub fn create_process(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        elf: &Elf32Fhdr,
-        args: &str,
-        env: &str,
-    ) -> Result<ProcessIdentifier, Error> {
-        self.try_borrow_mut()?.create_process(mm, elf, args, env)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Creates a new thread in the running process.
-    ///
-    /// # Parameters
-    ///
-    /// - `mm`: Memory manager to use.
-    /// - `pid`: Process identifier.
-    /// - `thread_create_args`: Arguments for the thread creation.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the thread identifier of the new thread is returned.
-    /// Otherwise, an error is returned instead.
-    ///
-    /// # Safety Notes
-    ///
-    /// - `thread_create_args` must have valid fields, specifically:
-    ///   - `user_wrapper_fn` must point to a user memory region that is executable.
-    ///   - `user_fn` must point to a user memory region that is executable.
-    ///   - `user_stack` must point to a user memory region that is writable.
-    ///
-    pub fn create_thread(
-        &mut self,
-        mm: &mut VirtMemoryManager,
-        pid: ProcessIdentifier,
-        thread_create_args: &ThreadCreateArgs,
-    ) -> Result<ThreadIdentifier, Error> {
-        // Assert pre-conditions (these should have been checked by the caller).
-        debug_assert!(Vmem::is_user_addr(thread_create_args.user_fn));
-
-        self.try_borrow_mut()?
-            .create_thread(mm, pid, thread_create_args)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Sets the base address for the user-space thread data area pointer for a thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: Process identifier.
-    /// - `tid`: Thread identifier.
-    /// - `user_tda`: Optional base address for the user-space thread data area to set.
-    ///
-    /// # Return Value
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
-    ///
-    /// # Errors
-    ///
-    /// This function fails with the following error codes:
-    ///
-    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
-    /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
-    ///
-    pub fn set_thread_data_area(
-        &mut self,
-        pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
-        user_tda: Option<VirtualAddress>,
-    ) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .set_thread_data_area(pid, tid, user_tda)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Gets the user-space thread data area of a thread.
-    ///
-    /// # Parameters
-    ///
-    /// - `pid`: The identifier of the process containing the thread.
-    /// - `tid`: The identifier of the thread whose thread data area pointer is to be retrieved.
-    ///
-    /// # Return Values
-    ///
-    /// Upon successful completion, this function returns the user-space thread data area of the
-    /// specified thread. Upon failure, this function returns an error.
-    ///
-    /// # Errors
-    ///
-    /// This function fails with the following error codes:
-    ///
-    /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
-    /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
-    ///
-    pub fn get_thread_data_area(
-        &self,
-        pid: ProcessIdentifier,
-        tid: ThreadIdentifier,
-    ) -> Result<Option<VirtualAddress>, Error> {
-        self.try_borrow()?.get_thread_data_area(pid, tid)
+    pub fn get_tid(&self) -> ThreadIdentifier {
+        self.get_running().get_tid()
     }
 
     pub fn has_capability(
@@ -1688,24 +1669,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         capability: Capability,
     ) -> Result<bool, Error> {
-        Ok(self
-            .try_borrow()?
-            .find_process(pid)?
-            .state()
-            .has_capability(capability))
-    }
-
-    pub fn capctl(
-        &mut self,
-        pid: ProcessIdentifier,
-        capability: Capability,
-        value: bool,
-    ) -> Result<(), Error> {
-        self.try_borrow_mut()?.capctl(pid, capability, value)
-    }
-
-    pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
-        self.try_borrow_mut()?.terminate(pid)
+        Ok(self.find_process(pid)?.state().has_capability(capability))
     }
 
     pub fn vmcopy_from_user(
@@ -1715,8 +1679,7 @@ impl ProcessManager {
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .find_process_mut(pid)?
+        self.find_process_mut(pid)?
             .state_mut()
             .copy_from_user_unaligned(dst, src, size)
     }
@@ -1728,10 +1691,65 @@ impl ProcessManager {
         src: VirtualAddress,
         size: usize,
     ) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .find_process_mut(pid)?
+        self.find_process_mut(pid)?
             .state_mut()
             .copy_to_user_unaligned(dst, src, size)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Copies data directly between the user spaces of two processes.
+    ///
+    /// # Parameters
+    ///
+    /// - `src_pid`: Source process identifier.
+    /// - `src`: Source address in `src_pid`'s user space.
+    /// - `dst_pid`: Destination process identifier.
+    /// - `dst`: Destination address in `dst_pid`'s user space.
+    /// - `size`: Number of bytes to copy.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. On failure, an error is returned instead.
+    ///
+    pub fn vmcopy_user_to_user(
+        &self,
+        src_pid: ProcessIdentifier,
+        src: VirtualAddress,
+        dst_pid: ProcessIdentifier,
+        dst: VirtualAddress,
+        size: usize,
+    ) -> Result<(), Error> {
+        let src_proc: ProcessRef<'_> = self.find_process(src_pid)?;
+        let dst_proc: ProcessRef<'_> = self.find_process(dst_pid)?;
+        let src_vmem: &Vmem = src_proc.state().vmem();
+        let dst_vmem: &Vmem = dst_proc.state().vmem();
+        Vmem::copy_user_to_user(src_vmem, src, dst_vmem, dst, size)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Translates a user-space virtual address to a guest physical address for a given process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Process whose page tables should be walked.
+    /// - `vaddr`: User-space virtual address to translate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the guest physical address is returned. Upon failure, an error is returned.
+    ///
+    #[cfg(feature = "stdio")]
+    pub fn user_vaddr_to_paddr(
+        &self,
+        pid: ProcessIdentifier,
+        vaddr: VirtualAddress,
+    ) -> Result<usize, Error> {
+        let proc_ref: ProcessRef<'_> = self.find_process(pid)?;
+        proc_ref.state().vmem().user_vaddr_to_paddr(vaddr)
     }
 
     pub fn harvest_zombies(
@@ -1742,7 +1760,7 @@ impl ProcessManager {
             VecDeque<ZombieThread>,
             Box<ProcessState>,
             ExitStatus,
-        ) = match self.try_borrow_mut()?.harvest_zombies() {
+        ) = match self.pop_zombie_process() {
             Some((zombie_threads, state, status)) => (zombie_threads, state, status),
             None => return Ok(None),
         };
@@ -1788,8 +1806,7 @@ impl ProcessManager {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.alloc_upage(vmem, vaddr, access, true)
     }
@@ -1800,8 +1817,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         vaddr: PageAligned<VirtualAddress>,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.unmap_upage(vmem, vaddr)
     }
@@ -1813,8 +1829,7 @@ impl ProcessManager {
         vaddr: PageAligned<VirtualAddress>,
         access: AccessPermission,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let vmem: &mut Vmem = process.state_mut().vmem_mut();
         mm.ctrl_upage(vmem, vaddr, access)
     }
@@ -1824,35 +1839,86 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         region: IoMemoryRegion,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
 
-        // TODO: change page permissions.
+        // Map all pages in the MMIO region.
         let vmem: &mut Vmem = state.vmem_mut();
-        vmem.kctrl(region.base(), region.perm())?;
+        let base: usize = region.base().into_raw_value();
+        let end: usize = base.checked_add(region.size()).ok_or_else(|| {
+            let reason: &str = "mmio region end address overflow";
+            error!("{reason} (base={base:#x}, size={:#?})", region.size());
+            Error::new(ErrorCode::ValueOverflow, reason)
+        })?;
+        for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
+            // FIXME (#1482): Use infallible logic for address conversion.
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            // FIXME (#1481): If we fail, we need to revert operation.
+            vmem.kctrl(vaddr, region.perm())?;
+        }
 
         state.add_mmio(region);
 
         Ok(())
     }
 
-    pub fn mmio_free(
-        &mut self,
-        pid: ProcessIdentifier,
-        addr: PageAligned<VirtualAddress>,
-    ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+    ///
+    /// # Description
+    ///
+    /// Detaches a memory-mapped I/O region identified by `tag` from the process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process from which to detach the region.
+    /// - `tag`: Tag that uniquely identifies the MMIO region to detach.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn mmio_free(&mut self, pid: ProcessIdentifier, tag: MmioTag) -> Result<(), Error> {
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         let state: &mut ProcessState = process.state_mut();
-        state.remove_mmio(addr);
+        state.remove_mmio(tag);
 
         Ok(())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Retrieves metadata for the MMIO region identified by `tag` attached to a process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process that owns the region.
+    /// - `tag`: Tag that uniquely identifies the MMIO region.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a tuple containing the base address, size, and access permissions of the
+    /// region is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn mmio_info(
+        &self,
+        pid: ProcessIdentifier,
+        tag: MmioTag,
+    ) -> Result<(PageAligned<VirtualAddress>, usize, AccessPermission), Error> {
+        let process: ProcessRef = self.find_process(pid)?;
+        let state: &ProcessState = process.state();
+
+        match state.mmio_info(tag) {
+            Some(region) => Ok((region.base(), region.size(), region.perm())),
+            None => {
+                let reason: &'static str = "mmio region not found";
+                error!("{reason}");
+                Err(Error::new(ErrorCode::NoSuchEntry, reason))
+            },
+        }
+    }
+
     pub fn attach_pmio(&mut self, pid: ProcessIdentifier, port: AnyIoPort) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         process.state_mut().add_pmio(port);
         Ok(())
     }
@@ -1862,8 +1928,7 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         port_number: u16,
     ) -> Result<AnyIoPort, Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         process.state_mut().remove_pmio(port_number)
     }
 
@@ -1873,8 +1938,7 @@ impl ProcessManager {
         port_number: u16,
         port_width: IoPortWidth,
     ) -> Result<u32, Error> {
-        let pm: Ref<ProcessManagerInner> = self.try_borrow()?;
-        let process: ProcessRef = pm.find_process(pid)?;
+        let process: ProcessRef = self.find_process(pid)?;
         process.state().read_pmio(port_number, port_width)
     }
 
@@ -1885,8 +1949,7 @@ impl ProcessManager {
         port_width: IoPortWidth,
         value: u32,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = pm.find_process_mut(pid)?;
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         process
             .state_mut()
             .write_pmio(port_number, port_width, value)
@@ -1911,72 +1974,26 @@ impl ProcessManager {
         receiver: MessageReceiver,
         message: Message,
     ) -> Result<(), Error> {
-        let mut pm: RefMut<ProcessManagerInner> = self.try_borrow_mut()?;
-        let mut process: ProcessRefMut = match receiver.as_id() {
-            Ok(pid) => pm.find_process_mut(pid)?,
-            Err(tid) => pm.find_process_by_tid(tid)?,
-        };
-        process.state_mut().post_message(message);
-        pm.number_buffered_messages += 1;
+        {
+            let mut process: ProcessRefMut = match receiver.as_id() {
+                Ok(pid) => self.find_process_mut(pid)?,
+                Err(tid) => self.find_process_by_tid(tid)?,
+            };
+            process.state_mut().post_message(message);
+        }
+        self.note_message_posted()?;
         Ok(())
     }
 
     pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .add_event(ownership);
+        self.get_running_mut().state_mut().add_event(ownership);
 
         Ok(())
     }
 
     pub fn remove_event(&mut self, ev: &Event) -> Result<(), Error> {
-        self.try_borrow_mut()?
-            .get_running_mut()
-            .state_mut()
-            .remove_event(ev);
+        self.get_running_mut().state_mut().remove_event(ev);
 
         Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the number of buffered messages.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, the number of buffered messages is returned. Otherwise, an error
-    /// code is returned instead.
-    ///
-    #[cfg(feature = "stdio")]
-    pub fn number_buffered_messages(&self) -> Result<usize, Error> {
-        Ok(self.try_borrow()?.number_buffered_messages)
-    }
-
-    pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {
-        self.try_borrow_mut()?.handle_fpu_exception()
-    }
-
-    fn try_borrow(&self) -> Result<Ref<'_, ProcessManagerInner>, Error> {
-        match self.0.try_borrow() {
-            Ok(pm) => Ok(pm),
-            Err(_) => {
-                let reason: &str = "cannot borrow process manager";
-                error!("{reason}");
-                Err(Error::new(ErrorCode::ResourceBusy, reason))
-            },
-        }
-    }
-
-    fn try_borrow_mut(&mut self) -> Result<RefMut<'_, ProcessManagerInner>, Error> {
-        match self.0.try_borrow_mut() {
-            Ok(pm) => Ok(pm),
-            Err(_) => {
-                let reason: &str = "cannot borrow process manager";
-                error!("{reason}");
-                Err(Error::new(ErrorCode::ResourceBusy, reason))
-            },
-        }
     }
 }

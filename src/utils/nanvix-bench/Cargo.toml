@@ -12,8 +12,10 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+build-utils = { workspace = true }
 indicatif = { workspace = true }
 libc = { workspace = true }
+log = { workspace = true }
 nanvixd = { workspace = true }
 nanvix = { workspace = true, features = ["internal-api"] }
 profiler = { workspace = true, optional = true }

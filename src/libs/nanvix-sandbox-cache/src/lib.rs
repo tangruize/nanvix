@@ -14,22 +14,14 @@
 pub mod config;
 
 //==================================================================================================
-// Private Modules
-//==================================================================================================
-
-mod tag;
-
-//==================================================================================================
 // Exports
 //==================================================================================================
 
-pub use self::{
-    config::SandboxCacheConfig,
-    tag::SandboxTag,
-};
+pub use self::config::SandboxCacheConfig;
 pub use ::nanvix_sandbox::{
     syscomm,
     HwLoc,
+    SandboxTag,
 };
 
 #[cfg(feature = "single-process")]
@@ -40,6 +32,12 @@ pub use ::nanvix_sandbox::SyscallTable;
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    trace,
+    warn,
+};
 #[cfg(not(feature = "single-process"))]
 use ::nanvix_sandbox::netns::{
     NetnsHandle,
@@ -55,6 +53,7 @@ use ::nanvix_sandbox::{
     syscomm::{
         SocketListener,
         SocketType,
+        UnboundSocket,
     },
     tcp_port::TcpPort,
     user_vm_sockaddr_builder,
@@ -68,15 +67,22 @@ use ::nanvix_sandbox::{
 use ::std::marker::PhantomData;
 use ::std::{
     collections::HashMap,
+    fs,
+    path::PathBuf,
     sync::Arc,
 };
-use ::syslog::{
-    debug,
-    error,
-    trace,
-    warn,
-};
 use ::tokio::sync::Mutex;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default exit code returned when the User VM exit code cannot be retrieved.
+pub const DEFAULT_EXIT_CODE: i32 = -1;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
 
 ///
 /// # Description
@@ -95,12 +101,10 @@ use ::tokio::sync::Mutex;
 pub struct SandboxCache<T> {
     /// Configuration parameters for all sandboxes.
     config: SandboxCacheConfig<T>,
-    /// Registry of all currently running sandboxes indexed by their unique tag.
-    running_sandboxes: HashMap<SandboxTag, RunningSandbox>,
+    /// Registry of all currently running sandboxes indexed by their unique User VM identifier.
+    running_sandboxes: HashMap<UserVmIdentifier, RunningSandbox>,
     /// Registry of Linux Daemon instances indexed by tenant ID (one per tenant).
     linuxd_instances: HashMap<String, Arc<LinuxDaemon>>,
-    /// Reverse index mapping User VM identifiers to their sandbox tags.
-    sandbox_index: HashMap<UserVmIdentifier, SandboxTag>,
     /// Shared control plane listener socket (reused across sandboxes for efficiency).
     control_plane_bind_socket: Option<Arc<Mutex<(SocketListener, String, SocketType)>>>,
     /// Network namespace pool for different L2 VMs.
@@ -111,10 +115,6 @@ pub struct SandboxCache<T> {
     #[cfg(not(feature = "single-process"))]
     _phantom: PhantomData<T>,
 }
-
-//==================================================================================================
-// Structures
-//==================================================================================================
 
 ///
 /// # Description
@@ -128,7 +128,6 @@ pub struct SandboxCache<T> {
 pub struct SandboxCacheStateSummary {
     running_sandboxes: usize,
     linuxd_instances: usize,
-    sandbox_index_entries: usize,
     has_control_plane_bind_socket: bool,
     l2_enabled: bool,
 }
@@ -150,15 +149,6 @@ impl SandboxCacheStateSummary {
     ///
     pub fn linuxd_instances(&self) -> usize {
         self.linuxd_instances
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the number of sandbox index entries.
-    ///
-    pub fn sandbox_index_entries(&self) -> usize {
-        self.sandbox_index_entries
     }
 
     ///
@@ -196,22 +186,86 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// # Errors
     ///
-    /// This function returns an error if network namespace pool initialization fails.
+    /// This function returns an error if network namespace pool initialization fails or if the
+    /// control plane socket cannot be bound.
     ///
-    pub fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Mutex<Self>>> {
+    pub async fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Mutex<Self>>> {
+        // Only pre-allocate network namespaces when L2 is enabled; otherwise keep it lazy so
+        // non-L2 deployments do not try to create netns at startup (which triggers sudo+sysctl).
+        #[cfg(not(feature = "single-process"))]
+        let netns_init_strategy: NetnsPoolInitStrategy = if config.l2() {
+            match config.netns_pool_size() {
+                0 => NetnsPoolInitStrategy::Lazy,
+                size => NetnsPoolInitStrategy::Prefill(size),
+            }
+        } else {
+            NetnsPoolInitStrategy::Lazy
+        };
+
+        // Build control plane socket address. The control plane socket address is the same for
+        // all sandboxes regardless of network namespace, so we initialize it once at cache
+        // creation time.
+        //
+        // In L2 mode, the control plane uses TCP since linuxd runs inside a VM and communicates
+        // via the host's VETH interface. We bind to 0.0.0.0:{CONTROL_PLANE_PORT}.
+        // In non-L2 mode, we use a Unix socket in the tmp directory.
+        #[cfg(not(feature = "single-process"))]
+        let control_plane_bind_sockaddr: String = if config.l2() {
+            format!("0.0.0.0:{}", ::config::linuxd::CONTROL_PLANE_PORT)
+        } else {
+            let (bind_addr, _connect_addr): (String, String) =
+                control_plane_sockaddr_builder(config.tmp_directory(), None)?;
+            bind_addr
+        };
+
+        #[cfg(feature = "single-process")]
+        let control_plane_bind_sockaddr: String = {
+            let (bind_addr, _connect_addr): (String, String) =
+                control_plane_sockaddr_builder(config.tmp_directory())?;
+            bind_addr
+        };
+
+        // Bind control plane socket.
+        // In L2 mode, force TCP socket type since we communicate over the network.
+        #[cfg(not(feature = "single-process"))]
+        let control_plane_bind_socket_type: SocketType = if config.l2() {
+            SocketType::Tcp
+        } else {
+            config.control_plane_sockaddr_type()
+        };
+        #[cfg(feature = "single-process")]
+        let control_plane_bind_socket_type: SocketType = config.control_plane_sockaddr_type();
+        let unbound_socket: UnboundSocket = UnboundSocket::new(control_plane_bind_socket_type);
+        let control_plane_bind_socket: SocketListener =
+            match unbound_socket.bind(&control_plane_bind_sockaddr).await {
+                Ok(listener) => listener,
+                Err(error) => {
+                    let reason: String = format!(
+                        "failed to bind control-plane socket \
+                         (control_plane_bind_socket_address={control_plane_bind_sockaddr}, \
+                         error={error:?})"
+                    );
+                    error!("new(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            };
+
         Ok(Arc::new(Mutex::new(Self {
             config,
             running_sandboxes: HashMap::new(),
             linuxd_instances: HashMap::new(),
-            sandbox_index: HashMap::new(),
-            control_plane_bind_socket: None,
+            control_plane_bind_socket: Some(Arc::new(Mutex::new((
+                control_plane_bind_socket,
+                control_plane_bind_sockaddr,
+                control_plane_bind_socket_type,
+            )))),
             #[cfg(not(feature = "single-process"))]
             netns_pool: NetnsPool::new(
                 NetnsPoolConfig::new(
                     ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
                     ::config::linuxd::GATEWAY_PORT_RANGE_END,
                 )?,
-                NetnsPoolInitStrategy::Lazy,
+                netns_init_strategy,
             )?,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
@@ -231,7 +285,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         SandboxCacheStateSummary {
             running_sandboxes: self.running_sandboxes.len(),
             linuxd_instances: self.linuxd_instances.len(),
-            sandbox_index_entries: self.sandbox_index.len(),
             has_control_plane_bind_socket: self.control_plane_bind_socket.is_some(),
             l2_enabled: self.config.l2(),
         }
@@ -335,7 +388,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         let tag: SandboxTag = SandboxTag::new(tenant_id, program, app_name, program_args);
 
         // Check if sandbox is in cache.
-        match self.running_sandboxes.get(&tag) {
+        match self.running_sandboxes.get(&tag.sandbox_id()) {
             // Cache hit: sandbox found.
             Some(sandbox) => Ok((
                 tag.sandbox_id(),
@@ -344,8 +397,20 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             )),
             // Cache miss: sandbox not found.
             None => {
-                let uninitialized_sandbox: UninitializedSandbox<T> =
-                    UninitializedSandbox::new(tag.program(), tag.program_args().cloned());
+                // Get control plane socket (must exist, initialized in new()).
+                let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
+                    self.control_plane_bind_socket.clone().ok_or_else(|| {
+                        let reason: &str = "control plane socket not initialized";
+                        error!("get(): {reason}");
+                        anyhow::anyhow!(reason)
+                    })?;
+
+                let uninitialized_sandbox: UninitializedSandbox<T> = UninitializedSandbox::new(
+                    tag.program(),
+                    tag.program_args().cloned(),
+                    self.config.ramfs_filename().map(|s| s.to_string()),
+                    control_plane_bind_socket,
+                );
 
                 // Gateway port guard for L2 deployments.
                 #[cfg(not(feature = "single-process"))]
@@ -458,17 +523,24 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                     &gateway_l2_port,
                 )?;
 
-                // Add control-plane listener socket if one exists.
-                let uninitialized_sandbox: UninitializedSandbox<T> =
-                    if let Some(control_plane_bind_socket) = &self.control_plane_bind_socket {
-                        uninitialized_sandbox
-                            .with_control_plane_bind_socket(control_plane_bind_socket.clone())
-                    } else {
-                        uninitialized_sandbox
-                    };
-
                 let gateway_socket_address: String = gateway_sockaddr.clone();
                 let gateway_socket_type: SocketType = self.config.gateway_sockaddr_type();
+
+                // Work-out the temporary directory for this sandbox based on the base temporary
+                // directory for the sandbox cache, and the tenant id.
+                let sandbox_tmp_dir: PathBuf =
+                    PathBuf::from(self.config.tmp_directory()).join(tag.tenant_id());
+                if let Err(error) = fs::create_dir_all(&sandbox_tmp_dir) {
+                    let reason: String = format!(
+                        "failed to create sandbox temporary directory (tenant_id={}, program={}, \
+                         app_name={}, tmp_dir={sandbox_tmp_dir:?}, error={error:?})",
+                        tag.tenant_id(),
+                        tag.program(),
+                        tag.app_name()
+                    );
+                    error!("get(): {reason}");
+                    anyhow::bail!(reason);
+                }
 
                 let config: SandboxConfig<T> = SandboxConfig::new(
                     tag.sandbox_id(),
@@ -493,7 +565,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         self.config.control_plane_sockaddr_type(),
                     ),
                     Some(self.config.toolchain_binary_directory().to_string()),
-                    Some(self.config.tmp_directory().to_string()),
+                    Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
                     Some(self.config.l2()),
                     Some(self.config.l2_snapshot_path().to_string()),
                 );
@@ -516,19 +588,15 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                         },
                     };
 
-                // Update control-plane listener socket (re-used across all sandboxes).
-                self.control_plane_bind_socket
-                    .replace(initialized_sandbox.control_plane_bind_socket_info());
-
                 // Update Linux Daemon instance.
                 self.linuxd_instances
                     .insert(tag.tenant_id().to_string(), initialized_sandbox.linuxd());
-                self.sandbox_index.insert(tag.sandbox_id(), tag.clone());
 
                 // Run sandbox.
-                match initialized_sandbox.start().await {
+                match initialized_sandbox.start(tag.clone()).await {
                     Ok(running_sandbox) => {
-                        self.running_sandboxes.insert(tag.clone(), running_sandbox);
+                        self.running_sandboxes
+                            .insert(tag.sandbox_id(), running_sandbox);
                     },
                     Err(error) => {
                         error!(
@@ -558,51 +626,39 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// # Returns
     ///
-    /// On success, returns an empty tuple. On failure, returns an error if the User VM
-    /// identifier was not found in the cache.
+    /// On success, returns the exit code of the User VM. On failure, returns an error if the
+    /// User VM identifier was not found in the cache or if the shutdown did not complete.
     ///
-    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<()> {
-        let tag: &SandboxTag = self.sandbox_index.get(&user_vm_id).ok_or_else(|| {
-            let reason: &str = "user VM instance not found in cache";
-            error!("kill(): {reason} (user_vm_id={user_vm_id})");
-            anyhow::anyhow!("{reason}")
-        })?;
-
-        if let Some(sandbox) = self.running_sandboxes.remove(tag) {
-            self.sandbox_index.remove(&user_vm_id);
+    pub async fn kill(&mut self, user_vm_id: UserVmIdentifier) -> Result<i32> {
+        if let Some(sandbox) = self.running_sandboxes.remove(&user_vm_id) {
             match sandbox.shutdown().await {
                 Some(status) => {
+                    let exit_code: i32 = status.code().unwrap_or(DEFAULT_EXIT_CODE);
                     if status.success() {
                         debug!(
                             "kill(): sandbox exited successfully (user_vm_id={user_vm_id}, \
-                             status={status:?})"
+                             exit_code={exit_code})"
                         );
                     } else {
-                        warn!(
-                            "kill(): sandbox exited with failure (user_vm_id={user_vm_id}, \
-                             status={status:?})"
+                        debug!(
+                            "kill(): sandbox exited with non-zero exit code \
+                             (user_vm_id={user_vm_id}, exit_code={exit_code})"
                         );
                     }
+                    Ok(exit_code)
                 },
                 None => {
                     warn!(
                         "kill(): sandbox shutdown did not complete before timeout \
                          (user_vm_id={user_vm_id})"
                     );
+                    Ok(DEFAULT_EXIT_CODE)
                 },
             }
-
-            Ok(())
         } else {
-            // This is unlikely to happen because every time we insert a new sandbox tag in the
-            // cache index we also insert the corresponding running sandbox in the running sandboxes
-            // map. Conversely, every time we remove a running sandbox from the running sandboxes
-            // map we also remove the corresponding tag from the cache index. Instead of panicking,
-            // we log an error message and fail to maintain backward compatibility.
-            let reason: String =
-                format!("trying to kill user VM that is not in the cache (tag={tag:?})");
-            error!("kill(): {reason}");
-            Err(anyhow::anyhow!(reason))
+            let reason: &str = "user VM instance not found in cache";
+            error!("kill(): {reason} (user_vm_id={user_vm_id})");
+            Err(anyhow::anyhow!("{reason}"))
         }
     }
 
@@ -634,26 +690,25 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             }
         }
 
-        // After draining all running sandboxes, clear the index to keep it consistent.
-        self.sandbox_index.clear();
-
         // Shutdown all linuxd instances.
-        for (tenant_id, linuxd_instance) in self.linuxd_instances.iter_mut() {
-            debug!("cleaning linuxd instance (tenant_id={tenant_id:?})");
-            if let Some(linuxd_instance_mut) = Arc::get_mut(linuxd_instance) {
-                linuxd_instance_mut.shutdown().await;
-            } else {
-                error!("error cleaning-up linuxd instance: not found (tenant_id={tenant_id})");
+        for (tenant_id, linuxd_instance) in self.linuxd_instances.drain() {
+            debug!("cleanup(): cleaning linuxd instance (tenant_id={tenant_id:?})");
+            let strong_count: usize = Arc::strong_count(&linuxd_instance);
+            if strong_count > 1 {
+                warn!(
+                    "cleanup(): linuxd has {} outstanding Arc references (tenant_id={tenant_id})",
+                    strong_count - 1
+                );
             }
+            linuxd_instance.shutdown().await;
         }
 
         let summary: SandboxCacheStateSummary = self.state_summary();
         debug!(
-            "cleanup summary: running_sandboxes={}, linuxd_instances={}, \
-             sandbox_index_entries={}, control_plane_socket={}, l2_enabled={}",
+            "cleanup summary: running_sandboxes={}, linuxd_instances={}, control_plane_socket={}, \
+             l2_enabled={}",
             summary.running_sandboxes(),
             summary.linuxd_instances(),
-            summary.sandbox_index_entries(),
             summary.has_control_plane_bind_socket(),
             summary.l2_enabled()
         );
@@ -675,29 +730,91 @@ mod tests {
     ///
     /// # Description
     ///
+    /// RAII wrapper for temporary test directories that automatically cleans up on drop.
+    ///
+    struct TempTestDir {
+        /// Path to the temporary directory.
+        path: String,
+    }
+
+    impl TempTestDir {
+        ///
+        /// # Description
+        ///
+        /// Creates a new unique temporary directory for testing.
+        ///
+        /// # Returns
+        ///
+        /// A `TempTestDir` instance that will clean up the directory when dropped.
+        ///
+        fn new() -> Self {
+            use ::std::sync::atomic::{
+                AtomicU64,
+                Ordering,
+            };
+
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+            let base_tmp: String = ::std::env::temp_dir().to_string_lossy().to_string();
+            let unique_id: u64 = ::std::time::SystemTime::now()
+                .duration_since(::std::time::UNIX_EPOCH)
+                .expect("system time should be after UNIX_EPOCH")
+                .as_nanos() as u64;
+            let counter: u64 = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let unique_dir: String = format!("{}/nanvix-test-{}-{}", base_tmp, unique_id, counter);
+            ::std::fs::create_dir_all(&unique_dir).expect("failed to create test directory");
+            Self { path: unique_dir }
+        }
+
+        ///
+        /// # Description
+        ///
+        /// Returns the path to the temporary directory.
+        ///
+        fn path(&self) -> &str {
+            &self.path
+        }
+    }
+
+    impl Drop for TempTestDir {
+        fn drop(&mut self) {
+            // Best-effort cleanup; warn if removal fails.
+            if let Err(error) = ::std::fs::remove_dir_all(&self.path) {
+                error!("TempTestDir::drop(): failed to remove {} (error={})", self.path, error);
+            }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Creates a test configuration for single-process mode.
     ///
     /// # Returns
     ///
-    /// A sandbox cache configuration suitable for testing.
+    /// A tuple of the sandbox cache configuration and the temp directory handle.
+    /// The temp directory is automatically cleaned up when the handle is dropped.
     ///
     #[cfg(feature = "single-process")]
-    fn create_test_config() -> SandboxCacheConfig<()> {
-        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
-        SandboxCacheConfig::new(
+    fn create_test_config() -> (SandboxCacheConfig<()>, TempTestDir) {
+        let tmp_dir: TempTestDir = TempTestDir::new();
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
             SocketType::Unix,
             SocketType::Unix,
             SocketType::Unix,
             None,
             None,
-            &format!("{}/kernel.elf", tmp_dir),
             None,
-            &format!("{}/toolchain", tmp_dir),
-            &format!("{}/logs", tmp_dir),
+            128,
+            &format!("{}/kernel.elf", tmp_dir.path()),
+            None,
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
             false,
-            &format!("{}/snapshot", tmp_dir),
-            &tmp_dir,
-        )
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
+        (config, tmp_dir)
     }
 
     ///
@@ -707,26 +824,30 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// A sandbox cache configuration suitable for testing.
+    /// A tuple of the sandbox cache configuration and the temp directory handle.
+    /// The temp directory is automatically cleaned up when the handle is dropped.
     ///
     #[cfg(not(feature = "single-process"))]
-    fn create_test_config() -> SandboxCacheConfig<()> {
-        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
-        SandboxCacheConfig::new(
+    fn create_test_config() -> (SandboxCacheConfig<()>, TempTestDir) {
+        let tmp_dir: TempTestDir = TempTestDir::new();
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
             SocketType::Unix,
             SocketType::Unix,
             SocketType::Unix,
             None,
             None,
-            &format!("{}/kernel.elf", tmp_dir),
-            &format!("{}/linuxd.elf", tmp_dir),
-            &format!("{}/uservm.elf", tmp_dir),
-            &format!("{}/toolchain", tmp_dir),
-            &format!("{}/logs", tmp_dir),
+            None,
+            0,
+            &format!("{}/kernel.elf", tmp_dir.path()),
+            &format!("{}/linuxd.elf", tmp_dir.path()),
+            &format!("{}/uservm.elf", tmp_dir.path()),
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
             false,
-            &format!("{}/snapshot", tmp_dir),
-            &tmp_dir,
-        )
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
+        (config, tmp_dir)
     }
 
     ///
@@ -743,52 +864,57 @@ mod tests {
     ///
     /// # Returns
     ///
-    /// A sandbox cache configuration suitable for testing.
+    /// A tuple of the sandbox cache configuration and the temp directory handle.
+    /// The temp directory is automatically cleaned up when the handle is dropped.
     ///
     fn create_custom_test_config(
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
         socket_type: SocketType,
         l2: bool,
-    ) -> SandboxCacheConfig<()> {
-        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+    ) -> (SandboxCacheConfig<()>, TempTestDir) {
+        let tmp_dir: TempTestDir = TempTestDir::new();
 
         #[cfg(feature = "single-process")]
-        {
-            SandboxCacheConfig::new(
-                socket_type,
-                socket_type,
-                socket_type,
-                console_file,
-                hwloc,
-                &format!("{}/kernel.elf", tmp_dir),
-                None,
-                &format!("{}/toolchain", tmp_dir),
-                &format!("{}/logs", tmp_dir),
-                l2,
-                &format!("{}/snapshot", tmp_dir),
-                &tmp_dir,
-            )
-        }
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
+            socket_type,
+            socket_type,
+            socket_type,
+            console_file,
+            None,
+            hwloc,
+            0,
+            &format!("{}/kernel.elf", tmp_dir.path()),
+            None,
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
+            l2,
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
 
         #[cfg(not(feature = "single-process"))]
-        {
-            SandboxCacheConfig::new(
-                socket_type,
-                socket_type,
-                socket_type,
-                console_file,
-                hwloc,
-                &format!("{}/kernel.elf", tmp_dir),
-                &format!("{}/linuxd.elf", tmp_dir),
-                &format!("{}/uservm.elf", tmp_dir),
-                &format!("{}/toolchain", tmp_dir),
-                &format!("{}/logs", tmp_dir),
-                l2,
-                &format!("{}/snapshot", tmp_dir),
-                &tmp_dir,
-            )
-        }
+        let netns_pool_size: usize = 0;
+        #[cfg(not(feature = "single-process"))]
+        let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
+            socket_type,
+            socket_type,
+            socket_type,
+            console_file,
+            None,
+            hwloc,
+            netns_pool_size,
+            &format!("{}/kernel.elf", tmp_dir.path()),
+            &format!("{}/linuxd.elf", tmp_dir.path()),
+            &format!("{}/uservm.elf", tmp_dir.path()),
+            &format!("{}/toolchain", tmp_dir.path()),
+            &format!("{}/logs", tmp_dir.path()),
+            l2,
+            &format!("{}/snapshot", tmp_dir.path()),
+            tmp_dir.path(),
+        );
+
+        (config, tmp_dir)
     }
 
     ///
@@ -798,8 +924,8 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_new_creates_cache() {
-        let config: SandboxCacheConfig<()> = create_test_config();
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
     }
 
@@ -811,8 +937,8 @@ mod tests {
     #[tokio::test]
     #[cfg(feature = "single-process")]
     async fn test_new_single_process_mode() {
-        let config: SandboxCacheConfig<()> = create_test_config();
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
 
         let cache: Arc<Mutex<SandboxCache<()>>> = result.unwrap();
@@ -830,15 +956,14 @@ mod tests {
     #[tokio::test]
     #[cfg(not(feature = "single-process"))]
     async fn test_new_multi_process_mode() {
-        let config: SandboxCacheConfig<()> = create_test_config();
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
 
         let cache: Arc<Mutex<SandboxCache<()>>> = result.unwrap();
         let cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
         assert_eq!(cache_guard.running_sandboxes.len(), 0);
         assert_eq!(cache_guard.linuxd_instances.len(), 0);
-        assert_eq!(cache_guard.sandbox_index.len(), 0);
     }
 
     ///
@@ -849,9 +974,9 @@ mod tests {
     #[tokio::test]
     #[cfg(not(feature = "single-process"))]
     async fn test_new_l2_mode() {
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Unix, true);
-        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config);
+        let result: Result<Arc<Mutex<SandboxCache<()>>>> = SandboxCache::new(config).await;
         assert!(result.is_ok());
     }
 
@@ -862,8 +987,8 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_cleanup_empties_cache() {
-        let config: SandboxCacheConfig<()> = create_test_config();
-        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).unwrap();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
+        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).await.unwrap();
 
         {
             let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
@@ -879,12 +1004,12 @@ mod tests {
     ///
     #[tokio::test]
     async fn test_kill_nonexistent_sandbox_fails() {
-        let config: SandboxCacheConfig<()> = create_test_config();
-        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).unwrap();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
+        let cache: Arc<Mutex<SandboxCache<()>>> = SandboxCache::new(config).await.unwrap();
 
         let mut cache_guard: tokio::sync::MutexGuard<SandboxCache<()>> = cache.lock().await;
         let nonexistent_id: UserVmIdentifier = UserVmIdentifier::new(NONEXISTENT_USER_VM_ID);
-        let result: Result<()> = cache_guard.kill(nonexistent_id).await;
+        let result: Result<i32> = cache_guard.kill(nonexistent_id).await;
         assert!(result.is_err());
     }
 
@@ -942,17 +1067,16 @@ mod tests {
     #[test]
     #[cfg(feature = "single-process")]
     fn test_config_single_process() {
-        let config: SandboxCacheConfig<()> = create_test_config();
-        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.gateway_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.system_vm_sockaddr_type(), SocketType::Unix);
-        assert_eq!(config.kernel_binary_path(), format!("{}/kernel.elf", tmp_dir));
-        assert_eq!(config.toolchain_binary_directory(), format!("{}/toolchain", tmp_dir));
-        assert_eq!(config.log_directory(), format!("{}/logs", tmp_dir));
+        assert!(config.kernel_binary_path().ends_with("/kernel.elf"));
+        assert!(config.toolchain_binary_directory().ends_with("/toolchain"));
+        assert!(config.log_directory().ends_with("/logs"));
         assert!(!config.l2());
-        assert_eq!(config.l2_snapshot_path(), format!("{}/snapshot", tmp_dir));
-        assert_eq!(config.tmp_directory(), tmp_dir);
+        assert!(config.l2_snapshot_path().ends_with("/snapshot"));
+        assert!(config.tmp_directory().contains("nanvix-test"));
     }
 
     ///
@@ -963,19 +1087,18 @@ mod tests {
     #[test]
     #[cfg(not(feature = "single-process"))]
     fn test_config_multi_process() {
-        let config: SandboxCacheConfig<()> = create_test_config();
-        let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.gateway_sockaddr_type(), SocketType::Unix);
         assert_eq!(config.system_vm_sockaddr_type(), SocketType::Unix);
-        assert_eq!(config.kernel_binary_path(), format!("{}/kernel.elf", tmp_dir));
-        assert_eq!(config.linuxd_binary_path(), format!("{}/linuxd.elf", tmp_dir));
-        assert_eq!(config.uservm_binary_path(), format!("{}/uservm.elf", tmp_dir));
-        assert_eq!(config.toolchain_binary_directory(), format!("{}/toolchain", tmp_dir));
-        assert_eq!(config.log_directory(), format!("{}/logs", tmp_dir));
+        assert!(config.kernel_binary_path().ends_with("/kernel.elf"));
+        assert!(config.linuxd_binary_path().ends_with("/linuxd.elf"));
+        assert!(config.uservm_binary_path().ends_with("/uservm.elf"));
+        assert!(config.toolchain_binary_directory().ends_with("/toolchain"));
+        assert!(config.log_directory().ends_with("/logs"));
         assert!(!config.l2());
-        assert_eq!(config.l2_snapshot_path(), format!("{}/snapshot", tmp_dir));
-        assert_eq!(config.tmp_directory(), tmp_dir);
+        assert!(config.l2_snapshot_path().ends_with("/snapshot"));
+        assert!(config.tmp_directory().contains("nanvix-test"));
     }
 
     ///
@@ -987,7 +1110,7 @@ mod tests {
     fn test_config_with_console_file() {
         let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
         let console_file: String = format!("{}/console.log", tmp_dir);
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(Some(console_file.clone()), None, SocketType::Unix, false);
         assert_eq!(config.console_file(), Some(console_file.as_str()));
     }
@@ -999,7 +1122,7 @@ mod tests {
     ///
     #[test]
     fn test_config_without_hwloc() {
-        let config: SandboxCacheConfig<()> = create_test_config();
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) = create_test_config();
         assert!(config.hwloc().is_none());
     }
 
@@ -1011,7 +1134,7 @@ mod tests {
     #[test]
     #[cfg(not(feature = "single-process"))]
     fn test_config_with_l2_enabled() {
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Unix, true);
         assert!(config.l2());
     }
@@ -1023,7 +1146,7 @@ mod tests {
     ///
     #[test]
     fn test_config_socket_types() {
-        let config: SandboxCacheConfig<()> =
+        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
             create_custom_test_config(None, None, SocketType::Tcp, false);
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Tcp);
         assert_eq!(config.gateway_sockaddr_type(), SocketType::Tcp);

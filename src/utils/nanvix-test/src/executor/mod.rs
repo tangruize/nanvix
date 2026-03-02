@@ -9,7 +9,207 @@ pub mod empty;
 pub mod http;
 pub mod terminal;
 
+//==================================================================================================
+// Imports
+//==================================================================================================
+
 use ::anyhow::Result;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Exit code used when we failed to retrieve the exit code and need to skip validation.
+///
+const DEFAULT_EXIT_CODE_SKIP_VALIDATION: i32 = -2;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Describes workload metadata forwarded to Nanvix executors.
+///
+#[derive(Clone, Copy)]
+pub struct WorkloadSpec<'a> {
+    ///
+    /// # Description
+    ///
+    /// Path to the workload binary executed by an executor.
+    ///
+    program_path: &'a str,
+    ///
+    /// # Description
+    ///
+    /// Optional argument string forwarded to the workload entry point.
+    ///
+    program_args: Option<&'a str>,
+    ///
+    /// # Description
+    ///
+    /// Optional payload injected into the workload stdin or HTTP stream.
+    ///
+    input: Option<&'a str>,
+    ///
+    /// # Description
+    ///
+    /// Optional substring that must appear in the collected stdout payload.
+    ///
+    expected_output: Option<&'a str>,
+    ///
+    /// # Description
+    ///
+    /// Indicates whether the workload is expected to produce an empty stdout payload.
+    ///
+    expect_empty_output: bool,
+    ///
+    /// # Description
+    ///
+    /// Optional expected exit code that the workload must produce.
+    ///
+    expected_exit_code: Option<i32>,
+    ///
+    /// # Description
+    ///
+    /// Indicates whether exit code validation should be skipped. This is used on hyperlight where
+    /// the User VM is terminated via SIGKILL and cannot reliably report exit codes.
+    ///
+    /// FIXME (#1010): Remove this workaround once graceful hyperlight interrupt is implemented.
+    ///
+    skip_exit_code_validation: bool,
+}
+
+impl<'a> WorkloadSpec<'a> {
+    ///
+    /// # Description
+    ///
+    /// Creates a new workload specification used by Nanvix executors.
+    ///
+    /// # Parameters
+    ///
+    /// - `program_path`: Path to the workload binary executed by an executor.
+    /// - `program_args`: Optional argument string forwarded to the workload entry point.
+    /// - `input`: Optional payload injected into the workload stdin or HTTP stream.
+    /// - `expected_output`: Optional substring that must appear in the collected stdout payload.
+    /// - `expect_empty_output`: Indicates whether the workload should produce an empty stdout
+    ///   payload.
+    /// - `expected_exit_code`: Optional exit code that the workload must produce.
+    /// - `skip_exit_code_validation`: Indicates whether exit code validation should be skipped.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a workload specification containing the provided metadata.
+    pub const fn new(
+        program_path: &'a str,
+        program_args: Option<&'a str>,
+        input: Option<&'a str>,
+        expected_output: Option<&'a str>,
+        expect_empty_output: bool,
+        expected_exit_code: Option<i32>,
+        skip_exit_code_validation: bool,
+    ) -> Self {
+        Self {
+            program_path,
+            program_args,
+            input,
+            expected_output,
+            expect_empty_output,
+            expected_exit_code,
+            skip_exit_code_validation,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the path to the workload binary executed by an executor.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the workload binary path.
+    pub const fn program_path(&self) -> &'a str {
+        self.program_path
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the optional argument string forwarded to the workload entry point.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the optional argument string, when provided.
+    pub const fn program_args(&self) -> Option<&'a str> {
+        self.program_args
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the optional payload injected into the workload stdin or HTTP stream.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the optional payload, when provided.
+    pub const fn input(&self) -> Option<&'a str> {
+        self.input
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the optional substring that must appear in the collected stdout payload.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the optional expected stdout substring, when provided.
+    pub const fn expected_output(&self) -> Option<&'a str> {
+        self.expected_output
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Indicates whether the workload should produce an empty stdout payload.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when empty stdout is required; otherwise returns `false`.
+    pub const fn expect_empty_output(&self) -> bool {
+        self.expect_empty_output
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the optional expected exit code that the workload must produce.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the expected exit code when specified; otherwise returns `None`.
+    ///
+    pub const fn expected_exit_code(&self) -> Option<i32> {
+        self.expected_exit_code
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Indicates whether exit code validation should be skipped.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` if exit code validation should be skipped; otherwise returns `false`.
+    ///
+    pub const fn skip_exit_code_validation(&self) -> bool {
+        self.skip_exit_code_validation
+    }
+}
 
 //==================================================================================================
 // Enumerations
@@ -64,5 +264,50 @@ impl ExecutorName {
             Self::Http => "http",
             Self::Terminal => "terminal",
         }
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workload_spec_expected_exit_code_some() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), false);
+        assert_eq!(spec.expected_exit_code(), Some(0));
+    }
+
+    #[test]
+    fn workload_spec_expected_exit_code_none() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, false, None, false);
+        assert_eq!(spec.expected_exit_code(), None);
+    }
+
+    #[test]
+    fn workload_spec_expected_exit_code_nonzero() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(13), false);
+        assert_eq!(spec.expected_exit_code(), Some(13));
+    }
+
+    #[test]
+    fn workload_spec_skip_exit_code_validation() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, true, Some(0), true);
+        assert!(spec.skip_exit_code_validation());
+        assert_eq!(spec.expected_exit_code(), Some(0));
+    }
+
+    #[test]
+    fn workload_spec_expected_exit_code_negative() {
+        let spec: WorkloadSpec =
+            WorkloadSpec::new("./bin/test.elf", None, None, None, false, Some(-1), false);
+        assert_eq!(spec.expected_exit_code(), Some(-1));
     }
 }

@@ -20,9 +20,15 @@ use crate::{
     uservm::UserVm,
     RunningSandbox,
     SandboxConfig,
+    SandboxTag,
     UserVmArgs,
 };
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
 use ::std::sync::Arc;
@@ -30,11 +36,6 @@ use ::syscomm::{
     SocketListener,
     SocketType,
     UnboundSocket,
-};
-use ::syslog::{
-    debug,
-    error,
-    trace,
 };
 use ::tokio::{
     sync::{
@@ -69,6 +70,8 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     pub(super) kernel_binary_path: String,
     /// Optional command-line arguments for the program.
     pub(super) program_args: Option<String>,
+    /// Optional RAM filesystem image exposed to the guest program.
+    pub(super) ramfs_filename: Option<String>,
     /// Shared handle to the Linux Daemon instance managing this sandbox.
     pub(super) linuxd: Arc<LinuxDaemon>,
     /// Control plane listener socket, address, and socket type.
@@ -91,13 +94,17 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     /// Starts the sandbox by spawning a User VM instance and waiting for the gateway socket
     /// to become available. This transitions the sandbox from initialized to running state.
     ///
+    /// # Parameters
+    ///
+    /// - `tag`: The sandbox tag containing tenant, program, and application information.
+    ///
     /// # Returns
     ///
     /// On success, returns a running sandbox with an active User VM. On failure, returns an
     /// error describing what went wrong during startup.
     ///
     #[cfg_attr(feature = "single-process", allow(unused_mut))]
-    pub async fn start(mut self) -> Result<RunningSandbox> {
+    pub async fn start(mut self, tag: SandboxTag) -> Result<RunningSandbox> {
         // Extract gateway socket info parts for later use.
         let gateway_sockaddr: String = self.sandbox_config.gateway_socket_info().0.clone();
         let gateway_socket_type: SocketType = self.sandbox_config.gateway_socket_info().1;
@@ -137,6 +144,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                     system_vm_socket_info,
                     self.guest_binary_path.clone(),
                     self.program_args.clone(),
+                    self.ramfs_filename.clone(),
                     console_file,
                     hwloc,
                     self.kernel_binary_path.clone(),
@@ -171,6 +179,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         .await?;
 
         Ok(RunningSandbox {
+            tag,
             uservm,
             _linuxd: self.linuxd,
             _control_plane_socket_and_info: self.control_plane_bind_socket_and_info,

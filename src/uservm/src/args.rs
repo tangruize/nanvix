@@ -21,6 +21,7 @@ use ::std::{
     },
     process,
 };
+use ::syslog::DEFAULT_LOG_DIRECTORY;
 use ::user_vm_api::UserVmIdentifier;
 
 //==================================================================================================
@@ -39,6 +40,8 @@ pub struct Args {
     kernel_filename: String,
     /// Initrd filename.
     initrd_filename: Option<String>,
+    /// Ramfs filename.
+    ramfs_filename: Option<String>,
     /// Arguments to be passed to the initrd.
     initrd_args: Option<String>,
     /// Memory size.
@@ -61,6 +64,8 @@ pub struct Args {
     control_plane_socket_type: String,
     /// Socket address type of the gateway socket.
     gateway_socket_type: String,
+    /// Standalone mode: run without system VM, control-plane, or gateway connections.
+    standalone: bool,
 }
 
 //==================================================================================================
@@ -94,16 +99,17 @@ impl Args {
     pub const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-bind-socket-type";
     /// Command-line option for specifying arguments to be passed to the initrd.
     pub const OPT_INITRD_ARGS: &'static str = "-initrd_args";
+    /// Command-line option for the ramfs file.
+    pub const OPT_RAMFS: &'static str = "-ramfs";
     /// Log to file.
     pub const OPT_LOGFILE: &'static str = "-log-to-file";
     /// Log directory
     pub const OPT_LOGDIR: &'static str = "-log-dir";
+    /// Command-line option for standalone mode.
+    pub const OPT_STANDALONE: &'static str = "-standalone";
 
     /// Program name.
     const PROGRAM_NAME: &'static str = env!("CARGO_PKG_NAME");
-
-    /// Default log directory.
-    const DEFAULT_LOG_DIRECTORY: &'static str = "logs";
 
     /// Test log file name for validation.
     const TEST_LOG_FILENAME: &'static str = "test.log";
@@ -122,6 +128,7 @@ impl Args {
         let mut user_vm_id_raw: Option<u32> = None;
         let mut kernel_filename: String = String::new();
         let mut initrd_filename: Option<String> = None;
+        let mut ramfs_filename: Option<String> = None;
         let mut initrd_args: Option<String> = None;
         let mut memory_size: usize = ::config::kernel::MEMORY_SIZE;
         let mut vm_stderr: Option<String> = None;
@@ -133,6 +140,7 @@ impl Args {
         let mut system_vm_socket_type: String = String::new();
         let mut control_plane_socket_type: String = String::new();
         let mut gateway_socket_type: String = String::new();
+        let mut standalone: bool = false;
 
         // Parse command-line arguments.
         let mut i: usize = 1;
@@ -164,6 +172,11 @@ impl Args {
                 // Set initrd arguments.
                 Self::OPT_INITRD_ARGS if i + 1 < args.len() => {
                     initrd_args = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set ramfs file.
+                Self::OPT_RAMFS if i + 1 < args.len() => {
+                    ramfs_filename = Some(args[i + 1].clone());
                     i += 1;
                 },
                 // Set kernel file.
@@ -253,6 +266,10 @@ impl Args {
                     gateway_socket_type = args[i + 1].clone();
                     i += 1;
                 },
+                // Set standalone mode.
+                Self::OPT_STANDALONE => {
+                    standalone = true;
+                },
                 // Set log to file flag.
                 Self::OPT_LOGFILE => {
                     log_to_file = true;
@@ -272,10 +289,11 @@ impl Args {
             i += 1;
         }
 
-        // Parse user VM ID.
-        let user_vm_id: UserVmIdentifier = match user_vm_id_raw {
-            Some(id) => UserVmIdentifier::new(id),
-            None => {
+        // Parse user VM ID. In standalone mode, default to 0 when not provided.
+        let user_vm_id: UserVmIdentifier = match (user_vm_id_raw, standalone) {
+            (Some(id), _) => UserVmIdentifier::new(id),
+            (None, true) => UserVmIdentifier::new(0),
+            (None, false) => {
                 Self::usage();
                 anyhow::bail!("user vm id is missing");
             },
@@ -293,40 +311,43 @@ impl Args {
             anyhow::bail!("invalid memory size");
         }
 
-        // Check if gateway address is missing.
-        if gateway_addr.is_empty() {
-            Self::usage();
-            anyhow::bail!("gateway address is missing");
-        }
+        // In non-standalone mode, all socket addresses and types are required.
+        if !standalone {
+            // Check if gateway address is missing.
+            if gateway_addr.is_empty() {
+                Self::usage();
+                anyhow::bail!("gateway address is missing");
+            }
 
-        // Check if gateway socket type is missing.
-        if gateway_socket_type.is_empty() {
-            Self::usage();
-            anyhow::bail!("gateway socket type is missing");
-        }
+            // Check if gateway socket type is missing.
+            if gateway_socket_type.is_empty() {
+                Self::usage();
+                anyhow::bail!("gateway socket type is missing");
+            }
 
-        // Check if control-plane address is missing.
-        if control_plane_addr.is_empty() {
-            Self::usage();
-            anyhow::bail!("control-plane address is missing");
-        }
+            // Check if control-plane address is missing.
+            if control_plane_addr.is_empty() {
+                Self::usage();
+                anyhow::bail!("control-plane address is missing");
+            }
 
-        // Check if control-plane socket type is missing.
-        if control_plane_socket_type.is_empty() {
-            Self::usage();
-            anyhow::bail!("control-plane socket type is missing");
-        }
+            // Check if control-plane socket type is missing.
+            if control_plane_socket_type.is_empty() {
+                Self::usage();
+                anyhow::bail!("control-plane socket type is missing");
+            }
 
-        // Check if system VM address is missing.
-        if system_vm_addr.is_empty() {
-            Self::usage();
-            anyhow::bail!("system VM address is missing");
-        }
+            // Check if system VM address is missing.
+            if system_vm_addr.is_empty() {
+                Self::usage();
+                anyhow::bail!("system VM address is missing");
+            }
 
-        // Check if system VM socket type is missing.
-        if system_vm_socket_type.is_empty() {
-            Self::usage();
-            anyhow::bail!("system VM socket type is missing");
+            // Check if system VM socket type is missing.
+            if system_vm_socket_type.is_empty() {
+                Self::usage();
+                anyhow::bail!("system VM socket type is missing");
+            }
         }
 
         // Check if log file directory was set if logging to file is enabled. Set the default directory if not.
@@ -337,7 +358,7 @@ impl Args {
                 let mut abs_path: PathBuf = std::env::current_dir().map_err(|e| {
                     anyhow::anyhow!("failed to get current directory (error={:?})", e)
                 })?;
-                abs_path.push(Self::DEFAULT_LOG_DIRECTORY);
+                abs_path.push(DEFAULT_LOG_DIRECTORY);
                 abs_path.to_str().map(|s| s.to_string()).ok_or_else(|| {
                     anyhow::anyhow!("failed to convert log directory path to string")
                 })?
@@ -380,6 +401,7 @@ impl Args {
             user_vm_id,
             kernel_filename,
             initrd_filename,
+            ramfs_filename,
             initrd_args,
             memory_size,
             vm_stderr,
@@ -391,6 +413,7 @@ impl Args {
             system_vm_socket_type,
             control_plane_socket_type,
             gateway_socket_type,
+            standalone,
         })
     }
 
@@ -401,21 +424,23 @@ impl Args {
     ///
     pub fn usage() {
         eprintln!(
-            "Usage: {} {} <id> {} <kernel> [{} <size>] [{} <file>] [{} <file>]  [{} \
+            "Usage: {} [{} <id>] {} <kernel> [{} <size>] [{} <file>] [{} <file>] [{}] [{} \
              <system-vm-addr> {} <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} \
-             <args>]",
+             <args>] [{} <file>]",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
             Self::OPT_MEMORY_SIZE,
             Self::OPT_INITRD,
             Self::OPT_STDERR,
+            Self::OPT_STANDALONE,
             Self::OPT_SYSTEM_VM_SOCKADDR,
             Self::OPT_CONTROL_PLANE_SOCKADDR,
             Self::OPT_GATEWAY_SOCKADDR,
             Self::OPT_LOGFILE,
             Self::OPT_LOGDIR,
             Self::OPT_INITRD_ARGS,
+            Self::OPT_RAMFS,
         );
     }
 
@@ -444,6 +469,20 @@ impl Args {
     ///
     pub fn initrd_filename(&mut self) -> Option<String> {
         self.initrd_filename.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the ramfs filename that was passed as a command-line argument to the program.
+    ///
+    /// # Returns
+    ///
+    /// The ramfs filename that was passed as a command-line argument to the program. If no ramfs
+    /// filename was passed, this method returns `None`.
+    ///
+    pub fn ramfs_filename(&mut self) -> Option<String> {
+        self.ramfs_filename.take()
     }
 
     ///
@@ -609,6 +648,20 @@ impl Args {
     pub fn gateway_socket_type(&self) -> &str {
         &self.gateway_socket_type
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether the program was launched in standalone mode.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the user VM should run without connecting to a system VM, control-plane, or
+    /// gateway. `false` otherwise.
+    ///
+    pub fn standalone(&self) -> bool {
+        self.standalone
+    }
 }
 
 //==================================================================================================
@@ -616,6 +669,7 @@ impl Args {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::anyhow::Result as AnyResult;
@@ -676,6 +730,8 @@ mod tests {
         args_vec.push(String::from("initrd.img"));
         args_vec.push(Args::OPT_INITRD_ARGS.to_string());
         args_vec.push(String::from("--flag=value"));
+        args_vec.push(Args::OPT_RAMFS.to_string());
+        args_vec.push(String::from("ramfs.img"));
         args_vec.push(Args::OPT_STDERR.to_string());
         args_vec.push(String::from("stderr.log"));
         args_vec.push(Args::OPT_LOGFILE.to_string());
@@ -689,6 +745,8 @@ mod tests {
         assert_eq!(parsed_args.memory_size(), 64 * 1024 * 1024);
         let initrd: Option<String> = parsed_args.initrd_filename();
         assert!(matches!(initrd, Some(ref value) if value == "initrd.img"));
+        let ramfs: Option<String> = parsed_args.ramfs_filename();
+        assert!(matches!(ramfs, Some(ref value) if value == "ramfs.img"));
         let initrd_args: Option<String> = parsed_args.initrd_args();
         assert!(matches!(initrd_args, Some(ref value) if value == "--flag=value"));
         let stderr_path: Option<String> = parsed_args.take_vm_stderr();
@@ -710,17 +768,60 @@ mod tests {
     #[test]
     fn parse_detects_memory_overflow() {
         let mut args_vec: Vec<String> = build_base_args();
-        let overflow_arg: String = format!("{}K", ::std::usize::MAX);
+        let overflow_arg: String = format!("{}K", usize::MAX);
         args_vec.push(Args::OPT_MEMORY_SIZE.to_string());
         args_vec.push(overflow_arg);
 
-        match Args::parse(args_vec) {
-            Err(error) => {
-                assert!(error.to_string().contains("memory size overflow"));
-            },
-            Ok(_) => {
-                assert!(false, "expected memory size overflow to produce an error");
-            },
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "expected memory size overflow to produce an error");
+        if let Err(error) = result {
+            assert!(
+                error.to_string().contains("memory size overflow"),
+                "error should mention memory size overflow"
+            );
         }
+    }
+
+    #[test]
+    fn parse_standalone_skips_socket_validation() -> AnyResult<()> {
+        let args_vec: Vec<String> = vec![
+            String::from("uservm"),
+            Args::OPT_KERNEL.to_string(),
+            String::from("kernel.elf"),
+            Args::OPT_STANDALONE.to_string(),
+        ];
+
+        let parsed_args: Args = Args::parse(args_vec)?;
+
+        assert!(parsed_args.standalone(), "standalone flag should be true");
+        assert_eq!(format!("{}", parsed_args.user_vm_id()), "0");
+        assert_eq!(parsed_args.kernel_filename(), "kernel.elf");
+        assert!(parsed_args.system_vm_addr().is_empty());
+        assert!(parsed_args.control_plane_addr().is_empty());
+        assert!(parsed_args.gateway_addr().is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_non_standalone_requires_socket_addrs() {
+        let args_vec: Vec<String> = vec![
+            String::from("uservm"),
+            Args::OPT_USER_VM_ID.to_string(),
+            String::from("0"),
+            Args::OPT_KERNEL.to_string(),
+            String::from("kernel.elf"),
+        ];
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "non-standalone mode should require socket addresses");
+    }
+
+    #[test]
+    fn parse_standalone_is_false_by_default() -> AnyResult<()> {
+        let args_vec: Vec<String> = build_base_args();
+        let parsed_args: Args = Args::parse(args_vec)?;
+        assert!(!parsed_args.standalone(), "standalone should default to false");
+        Ok(())
     }
 }

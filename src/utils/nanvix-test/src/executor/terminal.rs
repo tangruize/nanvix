@@ -7,6 +7,10 @@
 
 use crate::{
     config::RunnerConfig,
+    executor::{
+        DEFAULT_EXIT_CODE_SKIP_VALIDATION,
+        WorkloadSpec,
+    },
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -18,7 +22,10 @@ use crate::{
     },
 };
 use ::anyhow::Result;
-use ::nanvix::log::error;
+use ::log::{
+    error,
+    warn,
+};
 use ::std::{
     fs::write,
     path::Path,
@@ -88,11 +95,9 @@ type StreamCollectors = (
 ///
 /// - `runner_config`: Configuration required to spawn the Nanvix Daemon.
 /// - `iterations`: Number of times to run the workflow.
-/// - `program_path`: Path to the program executed by the daemon.
-/// - `program_args`: Optional argument string passed to the workload.
-/// - `input`: Optional payload sent over stdin.
-/// - `expected_output`: Optional substring expected in stdout.
+/// - `workload`: Metadata that describes the workload path, arguments, and expectations.
 /// - `log_layout`: Layout that defines the target directory for stdout/stderr/program logs.
+/// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
 ///
 /// # Return Value
 ///
@@ -103,11 +108,9 @@ type StreamCollectors = (
 pub async fn test_with_terminal_executor(
     runner_config: &RunnerConfig,
     iterations: usize,
-    program_path: &str,
-    program_args: Option<&str>,
-    input: Option<&str>,
-    expected_output: Option<&str>,
+    workload: WorkloadSpec<'_>,
     log_layout: &TestLogLayout,
+    extra_nanvixd_args: &[String],
 ) -> Result<()> {
     if runner_config.l2_enabled {
         let reason: String = "terminal executor does not support L2 deployment".to_string();
@@ -116,7 +119,7 @@ pub async fn test_with_terminal_executor(
     }
 
     let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
-    let parsed_program_args: Vec<String> = match program_args {
+    let parsed_program_args: Vec<String> = match workload.program_args() {
         Some(args) => match shell_words::split(args) {
             Ok(values) => values,
             Err(error) => {
@@ -139,19 +142,20 @@ pub async fn test_with_terminal_executor(
             stderr: stderr_file_path,
         } = log_layout.allocate_runner_logs(Some(iteration));
 
-        let nanvixd_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
+        let nanvixd_terminal_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
             hwloc_file_path.clone(),
-            program_path,
+            workload.program_path(),
             parsed_program_args.as_slice(),
             log_layout.test_directory(),
+            extra_nanvixd_args,
         )?;
 
         let collection_timeout: Duration =
             Duration::from_millis(runner_config.stream_collection_timeout_ms);
 
-        let (_nanvixd, stream_collectors) = {
+        let (mut nanvixd, stream_collectors) = {
             let mut nanvixd: NanvixdTerminal =
-                NanvixdTerminal::spawn(runner_config, &nanvixd_args).await?;
+                NanvixdTerminal::spawn(runner_config, &nanvixd_terminal_args).await?;
 
             let stdout_pipe = nanvixd.take_stdout().ok_or_else(|| {
                 let reason: String =
@@ -183,7 +187,7 @@ pub async fn test_with_terminal_executor(
                 ::anyhow::anyhow!(reason)
             })?;
 
-            send_interactive_input(stdin_pipe, input).await?;
+            send_interactive_input(stdin_pipe, workload.input()).await?;
 
             (nanvixd, (stdout_handle, stdout_buffer, stderr_handle, stderr_buffer))
         };
@@ -208,6 +212,28 @@ pub async fn test_with_terminal_executor(
         )
         .await?;
 
+        // Wait for the nanvixd process to exit and get its exit code.
+        // FIXME (#1010): On hyperlight, SIGKILL terminates nanvixd without a clean exit, causing
+        // wait_exit_code() to fail. When skip_exit_code_validation is true, we tolerate this
+        // failure since we cannot reliably get the exit code anyway.
+        let exit_code: i32 = match nanvixd.wait_exit_code().await {
+            Ok(code) => code,
+            Err(error) => {
+                if workload.skip_exit_code_validation() {
+                    warn!(
+                        "test_with_terminal_executor(): wait_exit_code failed but skipping \
+                         validation (program={}, iteration={}, error={})",
+                        workload.program_path(),
+                        iteration,
+                        error
+                    );
+                    DEFAULT_EXIT_CODE_SKIP_VALIDATION
+                } else {
+                    return Err(error);
+                }
+            },
+        };
+
         if let Err(error) = write(&stdout_file_path, &stdout_bytes) {
             let reason: String = format!(
                 "failed to write interactive stdout log (path={}, error={error})",
@@ -228,13 +254,57 @@ pub async fn test_with_terminal_executor(
 
         log_layout.persist_program_output(iteration, stdout_bytes.as_slice())?;
 
-        if let Some(expected) = expected_output
+        if let Some(expected) = workload.expected_output()
             && !buffer_contains_pattern(stdout_bytes.as_slice(), expected.as_bytes())
         {
             let reason: String = format!(
                 "interactive output mismatch (expected='{}', log={}, iteration={iteration})",
                 expected,
                 stdout_file_path.display()
+            );
+            error!("test_with_terminal_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        if workload.expect_empty_output() && !stdout_bytes.is_empty() {
+            let reason: String = format!(
+                "interactive output is not empty as required (bytes={:?}, iteration={iteration})",
+                stdout_bytes
+            );
+            error!("test_with_terminal_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        // Validate exit code if expected_exit_code is specified and validation is not skipped.
+        // FIXME (#1010): Remove skip_exit_code_validation() once graceful hyperlight interrupt
+        // is implemented. Currently hyperlight uses SIGKILL which prevents clean exit.
+        if !workload.skip_exit_code_validation()
+            && let Some(expected) = workload.expected_exit_code()
+            && exit_code != expected
+        {
+            let reason: String = format!(
+                "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                expected,
+                exit_code,
+                workload.program_path(),
+                iteration
+            );
+            error!("test_with_terminal_executor(): {reason}");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        // When wait_exit_code succeeds on hyperlight, still validate the exit code.
+        if workload.skip_exit_code_validation()
+            && exit_code != DEFAULT_EXIT_CODE_SKIP_VALIDATION
+            && let Some(expected) = workload.expected_exit_code()
+            && exit_code != expected
+        {
+            let reason: String = format!(
+                "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                expected,
+                exit_code,
+                workload.program_path(),
+                iteration
             );
             error!("test_with_terminal_executor(): {reason}");
             return Err(::anyhow::anyhow!(reason));

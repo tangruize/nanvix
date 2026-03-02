@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::globset::GlobSet;
 use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use ::std::{
     fs,
@@ -23,28 +24,99 @@ use ::toml::{
 // Constants
 //==================================================================================================
 
-///
+// -------------------------------------------------------------------------------------------------
+// Nanvix Daemon Shutdown Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control how long the test harness waits for nanvixd to exit gracefully after
+// sending SIGINT. If the timeout is exceeded, SIGKILL is sent.
+//
+// Default (non-L2): 10 attempts × 100ms = 1 second total.
+// This is sufficient for nanvixd to propagate shutdown to linuxd (which has an internal 1-second
+// shutdown timeout) and perform basic cleanup.
+//
+// L2 mode uses higher values (60 attempts × 300ms = 18 seconds) because shutdown must propagate
+// through multiple layers: nanvixd → cloud-hypervisor → guest Linux VM. Each layer adds latency
+// and the nested VM may have pending I/O or cleanup work.
+// -------------------------------------------------------------------------------------------------
+
 /// Default number of Nanvix Daemon shutdown attempts when omitted in the TOML file.
-///
 const DEFAULT_NANVIXD_SHUTDOWN_ATTEMPTS_MAX: usize = 10;
 /// Default Nanvix Daemon shutdown retry interval (in milliseconds) when omitted in the TOML file.
 const DEFAULT_NANVIXD_SHUTDOWN_RETRY_INTERVAL_MS: u64 = 100;
-/// Default iteration count for the requested test case when not specified.
-const DEFAULT_TEST_ITERATIONS: usize = 1;
+
+// -------------------------------------------------------------------------------------------------
+// Nanvix Daemon Readiness Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control how long the test harness waits for nanvixd to become ready (accept HTTP
+// connections) after spawning. The daemon must bind its HTTP socket and initialize the sandbox
+// cache before accepting requests.
+//
+// Total timeout: 50 attempts × 100ms = 5 seconds.
+// -------------------------------------------------------------------------------------------------
+
 /// Default number of readiness probes issued before giving up on the Nanvix Daemon HTTP endpoint.
 const DEFAULT_NANVIXD_READY_ATTEMPTS_MAX: usize = 50;
 /// Default interval (in milliseconds) between Nanvix Daemon readiness probes.
 const DEFAULT_NANVIXD_READY_RETRY_INTERVAL_MS: u64 = 100;
+
+// -------------------------------------------------------------------------------------------------
+// Test Iteration Configuration
+// -------------------------------------------------------------------------------------------------
+
+/// Default iteration count for the requested test case when not specified.
+const DEFAULT_TEST_ITERATIONS: usize = 1;
+
+// -------------------------------------------------------------------------------------------------
+// User VM Cleanup Configuration
+// -------------------------------------------------------------------------------------------------
+// Brief pause between User VM teardowns to avoid resource contention (file descriptors, sockets,
+// network namespaces). L2 mode requires longer delays because cloud-hypervisor process teardown
+// and nested VM cleanup are slower.
+// -------------------------------------------------------------------------------------------------
+
 /// Default delay (in milliseconds) before launching another User VM.
 const DEFAULT_CLEANUP_USERVM_SLEEP_DURATION_MS: u64 = 10;
 /// Default delay (in milliseconds) before launching another User VM when L2 mode is enabled.
-const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 100;
+const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 500;
+
+// -------------------------------------------------------------------------------------------------
+// Stream Collection Configuration
+// -------------------------------------------------------------------------------------------------
+// Maximum time allowed for collecting stdout/stderr from interactive workloads. Set to 5 minutes
+// to accommodate long-running tests (stress tests, interpreter benchmarks like QuickJS test
+// suites) that may produce output over extended periods.
+// -------------------------------------------------------------------------------------------------
+
 /// Default timeout (in milliseconds) applied when collecting interactive stdout/stderr streams.
 const DEFAULT_STREAM_COLLECTION_TIMEOUT_MS: u64 = 300_000;
+
+// -------------------------------------------------------------------------------------------------
+// TCP TIME_WAIT Cleanup Configuration
+// -------------------------------------------------------------------------------------------------
+// After nanvixd exits, its HTTP port may linger in TCP TIME_WAIT state for up to 60 seconds
+// (Linux default: 2 × MSL where MSL = 30 seconds). The test harness waits for this state to
+// clear before the next test iteration to avoid "address already in use" errors.
+//
+// Max wait: 70 seconds (60s TIME_WAIT + 10s headroom).
+// Poll interval: 2 seconds balances responsiveness with avoiding excessive syscalls.
+// -------------------------------------------------------------------------------------------------
+
 /// Default maximum duration (in seconds) spent waiting for lingering TCP TIME_WAIT sockets.
 const DEFAULT_TCP_CLEANUP_MAX_WAIT_SECONDS: u64 = 70;
 /// Default polling interval (in seconds) used while monitoring TIME_WAIT sockets.
 const DEFAULT_TCP_CLEANUP_POLL_INTERVAL_SECONDS: u64 = 2;
+
+// -------------------------------------------------------------------------------------------------
+// Gateway Connection Configuration
+// -------------------------------------------------------------------------------------------------
+// These values control the client-side connection loop when connecting to a User VM gateway
+// socket. User VM startup time is variable (depends on kernel boot, linuxd initialization,
+// workload size), so exponential backoff is used.
+//
+// Max attempts: 100, with exponential backoff from 10ms to 500ms.
+// Total timeout: 15 seconds hard cap on the connection loop.
+// -------------------------------------------------------------------------------------------------
+
 /// Default maximum number of gateway connection attempts before failing a spawn.
 const DEFAULT_GATEWAY_CONNECT_MAX_ATTEMPTS: usize = 100;
 /// Default initial backoff (in milliseconds) between gateway connection retries.
@@ -53,6 +125,11 @@ const DEFAULT_GATEWAY_CONNECT_INITIAL_BACKOFF_MS: u64 = 10;
 const DEFAULT_GATEWAY_CONNECT_MAX_BACKOFF_MS: u64 = 500;
 /// Default timeout (in milliseconds) applied to the gateway connection loop.
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS: u64 = 15_000;
+
+// -------------------------------------------------------------------------------------------------
+// Miscellaneous
+// -------------------------------------------------------------------------------------------------
+
 /// Placeholder token replaced with the configured sysroot path inside test definitions.
 const SYSROOT_PATH_PLACEHOLDER: &str = "${sysroot_path}";
 
@@ -228,6 +305,8 @@ pub struct RunnerConfig {
     pub nanvixd_ready_attempts_max: usize,
     /// Interval (in milliseconds) between readiness probes for the Nanvix Daemon HTTP endpoint.
     pub nanvixd_ready_retry_interval_ms: u64,
+    /// Netns pool prefill size forwarded to the Nanvix Daemon.
+    pub netns_pool_size: usize,
     /// Milliseconds to wait after tearing down a User VM before spawning the next workload.
     pub cleanup_uservm_sleep_duration_ms: u64,
     /// Milliseconds to wait after tearing down a User VM when L2 mode is enabled.
@@ -318,6 +397,12 @@ impl RunnerConfig {
                 "nanvixd_ready_retry_interval_ms",
                 "runner.nanvixd_ready_retry_interval_ms",
                 default_nanvixd_ready_retry_interval_ms(),
+            )?,
+            netns_pool_size: read_usize_with_default(
+                table,
+                "netns_pool_size",
+                "runner.netns_pool_size",
+                default_netns_pool_size(),
             )?,
             cleanup_uservm_sleep_duration_ms: read_u64_with_default(
                 table,
@@ -468,6 +553,9 @@ impl RunnerConfig {
 pub struct TestCaseConfig {
     /// Executor identifier requested for the test case (e.g., `empty`, `http`, `terminal`).
     pub executor: String,
+    /// Name for the test case. If none specified, defaults to an autogenerated name
+    /// based on the executor and program path (e.g., http/echo-c.elf).
+    pub name: String,
     /// Number of times the test case should run.
     pub iterations: usize,
     /// Optional program path required by some test cases.
@@ -478,6 +566,14 @@ pub struct TestCaseConfig {
     pub input: Option<String>,
     /// Optional output payload used when validating the workload response.
     pub expected_output: Option<String>,
+    /// Flag indicating that the workload must not produce any stdout output.
+    pub expect_empty_output: bool,
+    /// Optional extra arguments passed directly to nanvixd.
+    pub extra_nanvixd_args: Option<String>,
+    /// Optional expected exit code that the workload must produce.
+    pub expected_exit_code: Option<i32>,
+    /// Optional list of machine types on which this test should run.
+    pub runs_on: Option<Vec<String>>,
 }
 
 impl TestCaseConfig {
@@ -499,12 +595,17 @@ impl TestCaseConfig {
     ///
     fn from_table(table: &Table, index: usize) -> Result<Self> {
         let entry_prefix: String = format!("tests[{index}]");
+        let name_field: String = format!("{entry_prefix}.name");
         let executor_field: String = format!("{entry_prefix}.executor");
         let iterations_field: String = format!("{entry_prefix}.iterations");
         let program_field: String = format!("{entry_prefix}.program");
         let program_args_field: String = format!("{entry_prefix}.program_args");
         let input_field: String = format!("{entry_prefix}.input");
         let expected_output_field: String = format!("{entry_prefix}.expected_output");
+        let expect_empty_output_field: String = format!("{entry_prefix}.expect_empty_output");
+        let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
+        let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
+        let runs_on_field: String = format!("{entry_prefix}.runs_on");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -516,12 +617,30 @@ impl TestCaseConfig {
             )?,
             program: read_optional_string(table, "program", program_field.as_str())?,
             program_args: read_optional_string(table, "program_args", program_args_field.as_str())?,
+            name: read_optional_name_field(table, "name", name_field.as_str())?,
             input: read_optional_string(table, "input", input_field.as_str())?,
             expected_output: read_optional_string(
                 table,
                 "expected_output",
                 expected_output_field.as_str(),
             )?,
+            expect_empty_output: read_bool_with_default(
+                table,
+                "expect_empty_output",
+                expect_empty_output_field.as_str(),
+                false,
+            )?,
+            extra_nanvixd_args: read_optional_string(
+                table,
+                "extra_nanvixd_args",
+                extra_nanvixd_args_field.as_str(),
+            )?,
+            expected_exit_code: read_optional_i32(
+                table,
+                "expected_exit_code",
+                expected_exit_code_field.as_str(),
+            )?,
+            runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
         })
     }
 
@@ -552,6 +671,20 @@ impl TestCaseConfig {
             let reason: String = format!(
                 "tests[{index}] requires the 'program' field when executor is '{}'",
                 self.executor
+            );
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        if self.expect_empty_output
+            && self
+                .expected_output
+                .as_ref()
+                .map(|output| !output.is_empty())
+                .unwrap_or(false)
+        {
+            let reason: String = format!(
+                "tests[{index}] cannot set 'expect_empty_output=true' while also providing a \
+                 non-empty expected_output"
             );
             return Err(::anyhow::anyhow!(reason));
         }
@@ -607,6 +740,45 @@ impl TestCaseConfig {
         }
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether this test case should run on the specified machine type.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: Machine type to check against.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when the test should run on the given machine; returns `false` when the
+    /// test is restricted to other machines.
+    ///
+    pub fn should_run_on(&self, machine: &str) -> bool {
+        match &self.runs_on {
+            // No filter specified in test config - run on all machines.
+            None => true,
+            // Filter specified - check if machine is in the list.
+            Some(allowed_machines) => allowed_machines.iter().any(|m| m == machine),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Compares the test case name against a glob filter to determine if it matches.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` if the test case name matches the filter; otherwise returns `false`.
+    ///
+    pub fn matches_filter(&self, filter: Option<&GlobSet>) -> bool {
+        match filter {
+            None => true,
+            Some(globset) => globset.is_match(self.name.as_str()),
+        }
     }
 }
 
@@ -665,6 +837,19 @@ fn default_nanvixd_ready_attempts_max() -> usize {
 ///
 fn default_nanvixd_ready_retry_interval_ms() -> u64 {
     DEFAULT_NANVIXD_READY_RETRY_INTERVAL_MS
+}
+
+///
+/// # Description
+///
+/// Returns the default netns pool prefill size for the Nanvix Daemon.
+///
+/// # Return Value
+///
+/// Returns the netns pool size applied when the field is omitted.
+///
+fn default_netns_pool_size() -> usize {
+    ::nanvixd::args::Args::DEFAULT_NETNS_POOL_SIZE
 }
 
 ///
@@ -1101,6 +1286,59 @@ where
 ///
 /// # Description
 ///
+/// Reads the name field for a test case. Autogenerates a default name based
+/// on the executor and program path when the field is absent.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the string.
+/// - `name_field`: Fully qualified field name (e.g., `tests[N].name`).
+///
+/// # Return Value
+///
+/// Returns the parsed string or the autogenerated default value when the field is absent.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not a string, or when required fields
+/// for generating the name are missing or invalid.
+///
+fn read_optional_name_field(table: &Table, key: &str, name_field: &str) -> Result<String> {
+    match read_optional_string(table, key, name_field)? {
+        Some(name) => Ok(name),
+        None => {
+            // name_field is test[N].name, split on the '.' and take the first part as the entry prefix for error messages
+            let entry_prefix = name_field.split('.').next().unwrap_or(name_field);
+            let executor: &str =
+                table
+                    .get("executor")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        ::anyhow::anyhow!(
+                            "cannot derive default name: missing 'executor' in {}",
+                            entry_prefix
+                        )
+                    })?;
+            let program: &str = table
+                .get("program")
+                .and_then(|v| v.as_str())
+                .and_then(|path| ::std::path::Path::new(path).file_name())
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| {
+                    ::anyhow::anyhow!(
+                        "cannot derive default name: missing or invalid 'program' in {}",
+                        entry_prefix
+                    )
+                })?;
+            Ok(format!("{executor}/{program}"))
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Reads an optional string field from the TOML table.
 ///
 /// # Parameters
@@ -1124,6 +1362,98 @@ fn read_optional_string(table: &Table, key: &str, field_name: &str) -> Result<Op
         Some(other) => {
             let reason: String =
                 format!("{field_name} must be a string (found={})", describe_toml_type(other));
+            Err(::anyhow::anyhow!(reason))
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
+/// Reads an optional 32-bit signed integer from a TOML table.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the integer.
+/// - `field_name`: Fully qualified field name used in error messages.
+///
+/// # Return Value
+///
+/// Returns `Some(i32)` when the field exists and is a valid integer; otherwise returns `None`.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not an integer or overflows `i32`.
+///
+fn read_optional_i32(table: &Table, key: &str, field_name: &str) -> Result<Option<i32>> {
+    match table.get(key) {
+        Some(Value::Integer(value)) => {
+            let converted: i32 = match i32::try_from(*value) {
+                Ok(v) => v,
+                Err(error) => {
+                    let reason: String =
+                        format!("{field_name} value overflows i32 (value={value}, error={error})");
+                    return Err(::anyhow::anyhow!(reason));
+                },
+            };
+            Ok(Some(converted))
+        },
+        Some(other) => {
+            let reason: String =
+                format!("{field_name} must be an integer (found={})", describe_toml_type(other));
+            Err(::anyhow::anyhow!(reason))
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
+/// Reads an optional array of strings from the TOML table.
+///
+/// # Parameters
+///
+/// - `table`: Table that stores the target field.
+/// - `key`: Key used to retrieve the array.
+/// - `field_name`: Fully qualified field name used in error messages.
+///
+/// # Return Value
+///
+/// Returns `Some(Vec<String>)` when the field exists and is a valid array of strings; otherwise
+/// returns `None` when the field is absent.
+///
+/// # Errors
+///
+/// Returns an error when the field exists but is not an array or contains non-string elements.
+///
+fn read_optional_string_array(
+    table: &Table,
+    key: &str,
+    field_name: &str,
+) -> Result<Option<Vec<String>>> {
+    match table.get(key) {
+        Some(Value::Array(values)) => {
+            let mut result: Vec<String> = Vec::with_capacity(values.len());
+            for (index, value) in values.iter().enumerate() {
+                match value {
+                    Value::String(s) => result.push(s.clone()),
+                    other => {
+                        let reason: String = format!(
+                            "{field_name}[{index}] must be a string (found={})",
+                            describe_toml_type(other)
+                        );
+                        return Err(::anyhow::anyhow!(reason));
+                    },
+                }
+            }
+            Ok(Some(result))
+        },
+        Some(other) => {
+            let reason: String =
+                format!("{field_name} must be an array (found={})", describe_toml_type(other));
             Err(::anyhow::anyhow!(reason))
         },
         None => Ok(None),
@@ -1373,4 +1703,179 @@ fn parse_non_negative_integer(value: &Value, field_name: &str) -> Result<u64> {
 ///
 fn read_hwloc_file_path(table: &Table) -> Result<Option<String>> {
     read_optional_non_empty_string(table, "hwloc_file_path", "runner.hwloc_file_path")
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::globset::{
+        Glob,
+        GlobSet,
+        GlobSetBuilder,
+    };
+
+    /// Builds a minimal TOML table for a test case entry with the given executor and optional
+    /// `expected_exit_code` value.
+    fn build_test_table(executor: &str, expected_exit_code: Option<Value>) -> Table {
+        let mut table: Table = Table::new();
+        table.insert("executor".to_string(), Value::String(executor.to_string()));
+        table.insert("iterations".to_string(), Value::Integer(1));
+        if let Some(exit_code) = expected_exit_code {
+            table.insert("expected_exit_code".to_string(), exit_code);
+        }
+        table
+    }
+
+    fn build_globset_with_pattern(pattern: &str) -> GlobSet {
+        let mut builder: GlobSetBuilder = GlobSetBuilder::new();
+        builder.add(Glob::new(pattern).expect("failed to compile glob pattern"));
+        builder.build().expect("failed to build glob set")
+    }
+
+    #[test]
+    fn from_table_parses_expected_exit_code() -> Result<()> {
+        let table: Table = build_test_table("empty", Some(Value::Integer(0)));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(config.expected_exit_code, Some(0));
+        Ok(())
+    }
+
+    #[test]
+    fn from_table_parses_negative_expected_exit_code() -> Result<()> {
+        let table: Table = build_test_table("empty", Some(Value::Integer(-1)));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(config.expected_exit_code, Some(-1));
+        Ok(())
+    }
+
+    #[test]
+    fn from_table_parses_absent_expected_exit_code() -> Result<()> {
+        let table: Table = build_test_table("empty", None);
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(config.expected_exit_code, None);
+        Ok(())
+    }
+
+    #[test]
+    fn from_table_rejects_string_expected_exit_code() {
+        let table: Table =
+            build_test_table("empty", Some(Value::String("not_a_number".to_string())));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_table_rejects_boolean_expected_exit_code() {
+        let table: Table = build_test_table("empty", Some(Value::Boolean(true)));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_table_rejects_overflowing_expected_exit_code() {
+        let overflow_value: i64 = i64::from(i32::MAX) + 1;
+        let table: Table = build_test_table("empty", Some(Value::Integer(overflow_value)));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_accepts_expected_exit_code() -> Result<()> {
+        let config: TestCaseConfig = TestCaseConfig {
+            executor: "empty".to_string(),
+            name: "empty/accepts_expected_exit_code".to_string(),
+            iterations: 1,
+            program: None,
+            program_args: None,
+            input: None,
+            expected_output: None,
+            expect_empty_output: true,
+            extra_nanvixd_args: None,
+            expected_exit_code: Some(0),
+            runs_on: None,
+        };
+        config.validate(0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn validate_accepts_absent_expected_exit_code() -> Result<()> {
+        let config: TestCaseConfig = TestCaseConfig {
+            executor: "empty".to_string(),
+            name: "empty/accepts_absent_expected_exit_code".to_string(),
+            iterations: 1,
+            program: None,
+            program_args: None,
+            input: None,
+            expected_output: None,
+            expect_empty_output: false,
+            extra_nanvixd_args: None,
+            expected_exit_code: None,
+            runs_on: None,
+        };
+        config.validate(0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn matches_filter_returns_true_for_no_filter() -> Result<()> {
+        let mut table: Table = build_test_table("empty", None);
+        table.insert("name".to_string(), Value::String("empty/wildcard".to_string()));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        let result: bool = config.matches_filter(None);
+        assert!(result, "matches_filter(None) must return true for any test case");
+        Ok(())
+    }
+
+    #[test]
+    fn matches_filter_valid_pattern_matches() -> Result<()> {
+        let mut table: Table = build_test_table("empty", None);
+        table.insert("name".to_string(), Value::String("empty/wildcard".to_string()));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        let globset: GlobSet = build_globset_with_pattern("empty/*");
+        let result: bool = config.matches_filter(Some(&globset));
+        assert!(
+            result,
+            "matches_filter() must return true when glob pattern matches the test name"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn matches_filter_valid_pattern_does_not_match() -> Result<()> {
+        let mut table: Table = build_test_table("empty", None);
+        table.insert("name".to_string(), Value::String("empty/wildcard".to_string()));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        let globset: GlobSet = build_globset_with_pattern("other/*");
+        let result: bool = config.matches_filter(Some(&globset));
+        assert!(
+            !result,
+            "matches_filter() must return false when glob pattern does not match the test name"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn auto_generated_name_executor_and_program() -> Result<()> {
+        let mut table: Table = build_test_table("test-executor", None);
+        table.insert("program".to_string(), Value::String("./bin/test-program".to_string()));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(
+            config.name, "test-executor/test-program",
+            "auto-generated test name must be in the format 'executor/program'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn auto_generated_name_executor_only() {
+        // No explicit name and no program; only executor is provided.
+        let table: Table = build_test_table("my-executor-only", None);
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err());
+    }
 }

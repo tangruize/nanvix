@@ -16,17 +16,17 @@ use crate::client::HttpClient;
 use ::anyhow::Result;
 use ::hyper::server::conn::http1;
 use ::hyper_util::rt::TokioIo;
+use ::log::{
+    debug,
+    error,
+    info,
+};
 use ::nanvix_sandbox_cache::{
     SandboxCache,
     SandboxCacheConfig,
     SandboxCacheStateSummary,
 };
 use ::std::sync::Arc;
-use ::syslog::{
-    debug,
-    error,
-    info,
-};
 use ::tokio::{
     net::{
         TcpListener,
@@ -110,9 +110,12 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     /// describing what went wrong during server operation.
     ///
     pub async fn run(&mut self) -> Result<()> {
+        // Initialize the sandbox cache before binding the socket, as some setups may use socket
+        // readiness to probe nanvixd's readiness.
+        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> =
+            SandboxCache::new(self.config.clone()).await?;
         let mut signals: Signal = signal(SignalKind::interrupt())?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
-        let sandbox_cache: Arc<Mutex<SandboxCache<T>>> = SandboxCache::new(self.config.clone())?;
 
         loop {
             tokio::select! {
@@ -152,11 +155,10 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                     let mut cache_guard = sandbox_cache_clone.lock().await;
                     let summary: SandboxCacheStateSummary = cache_guard.state_summary();
                     info!(
-                        "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, sandbox_index_entries={}, \
+                        "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, \
                          control_plane_socket={}, l2_enabled={}",
                         summary.running_sandboxes(),
                         summary.linuxd_instances(),
-                        summary.sandbox_index_entries(),
                         summary.has_control_plane_bind_socket(),
                         summary.l2_enabled()
                     );

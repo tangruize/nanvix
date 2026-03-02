@@ -8,8 +8,14 @@
 use crate::{
     deployment::Deployment,
     machine::Machine,
+    package::Package,
 };
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    info,
+};
 use ::serde::{
     Deserialize,
     Serialize,
@@ -20,11 +26,6 @@ use ::std::{
         Path,
         PathBuf,
     },
-};
-use ::syslog::{
-    debug,
-    error,
-    info,
 };
 use ::tokio::fs;
 
@@ -55,6 +56,19 @@ pub(crate) struct ReleaseEntry {
 ///
 /// # Description
 ///
+/// Metadata about an installed package for a specific machine-deployment configuration.
+///
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PackageEntry {
+    /// URL of the package tarball.
+    url: String,
+    /// Nanvix commit ID this package is built for.
+    nanvix_commit_id: String,
+}
+
+///
+/// # Description
+///
 /// Registry metadata tracking multiple machine-deployment configurations.
 ///
 /// This structure maintains a map where keys are in the format "<machine>-<deployment>"
@@ -66,6 +80,10 @@ pub(crate) struct ReleaseRegistry {
     /// Map of machine-deployment configurations to their release entries.
     /// Key format: "<machine>-<deployment>" (e.g., "microvm-single-process").
     releases: HashMap<String, ReleaseEntry>,
+    /// Map of installed packages to their entries.
+    /// Key format: "<machine>-<deployment>-<package>" (e.g., "microvm-single-process-openssl").
+    #[serde(default)]
+    packages: HashMap<String, PackageEntry>,
 }
 
 //==================================================================================================
@@ -119,6 +137,56 @@ impl ReleaseEntry {
     }
 }
 
+impl PackageEntry {
+    ///
+    /// # Description
+    ///
+    /// Creates a new package entry instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `url`: The URL of the package tarball.
+    /// - `nanvix_commit_id`: The Nanvix commit ID this package is built for.
+    ///
+    /// # Returns
+    ///
+    /// A new `PackageEntry` instance.
+    ///
+    pub(crate) fn new(url: String, nanvix_commit_id: String) -> Self {
+        Self {
+            url,
+            nanvix_commit_id,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the Nanvix commit ID this package is built for.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the Nanvix commit ID string.
+    ///
+    pub(crate) fn nanvix_commit_id(&self) -> &str {
+        &self.nanvix_commit_id
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the URL of the package tarball.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the URL string.
+    ///
+    #[cfg(test)]
+    pub(crate) fn url(&self) -> &str {
+        &self.url
+    }
+}
+
 impl ReleaseRegistry {
     ///
     /// # Description
@@ -132,6 +200,7 @@ impl ReleaseRegistry {
     pub(crate) fn new() -> Self {
         Self {
             releases: HashMap::new(),
+            packages: HashMap::new(),
         }
     }
 
@@ -213,6 +282,88 @@ impl ReleaseRegistry {
     ///
     /// # Description
     ///
+    /// Adds or updates a package entry for a specific machine-deployment-package configuration.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: The target machine type.
+    /// - `deployment`: The deployment type.
+    /// - `package`: The package being installed.
+    /// - `url`: The URL of the package tarball.
+    /// - `nanvix_commit_id`: The Nanvix commit ID this package is built for.
+    ///
+    pub(crate) fn set_package(
+        &mut self,
+        machine: Machine,
+        deployment: Deployment,
+        package: Package,
+        url: String,
+        nanvix_commit_id: String,
+    ) {
+        let key: String = format!("{}-{}-{}", machine, deployment, package);
+        let entry: PackageEntry = PackageEntry::new(url, nanvix_commit_id);
+        self.packages.insert(key, entry);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the package entry for a specific machine-deployment-package configuration.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: The target machine type.
+    /// - `deployment`: The deployment type.
+    /// - `package`: The package to look up.
+    ///
+    /// # Returns
+    ///
+    /// An `Option<&PackageEntry>` containing the package entry if found, or `None` otherwise.
+    ///
+    pub(crate) fn get_package(
+        &self,
+        machine: Machine,
+        deployment: Deployment,
+        package: Package,
+    ) -> Option<&PackageEntry> {
+        let key: String = format!("{}-{}-{}", machine, deployment, package);
+        self.packages.get(&key)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether a package is installed for a specific machine-deployment configuration
+    /// and matches the given Nanvix commit ID.
+    ///
+    /// # Parameters
+    ///
+    /// - `machine`: The target machine type.
+    /// - `deployment`: The deployment type.
+    /// - `package`: The package to check.
+    /// - `nanvix_commit_id`: The Nanvix commit ID to match.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the package is installed and matches the commit ID, `false` otherwise.
+    ///
+    pub(crate) fn is_package_installed(
+        &self,
+        machine: Machine,
+        deployment: Deployment,
+        package: Package,
+        nanvix_commit_id: &str,
+    ) -> bool {
+        if let Some(entry) = self.get_package(machine, deployment, package) {
+            entry.nanvix_commit_id() == nanvix_commit_id
+        } else {
+            false
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Saves the release registry to a file in the specified directory.
     ///
     /// # Parameters
@@ -229,14 +380,14 @@ impl ReleaseRegistry {
         let json: String = match serde_json::to_string_pretty(self) {
             Ok(json) => json,
             Err(error) => {
-                let reason: String = format!("Failed to serialize registry: {}", error);
+                let reason: String = format!("Failed to serialize registry: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },
         };
 
         if let Err(error) = fs::write(&metadata_path, json).await {
-            let reason: String = format!("Failed to write registry file: {}", error);
+            let reason: String = format!("Failed to write registry file: {error}");
             error!("{reason}");
             anyhow::bail!(reason)
         }
@@ -273,7 +424,7 @@ impl ReleaseRegistry {
         let json: String = match fs::read_to_string(&metadata_path).await {
             Ok(content) => content,
             Err(error) => {
-                let reason: String = format!("Failed to read registry file: {}", error);
+                let reason: String = format!("Failed to read registry file: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },
@@ -283,7 +434,7 @@ impl ReleaseRegistry {
         let registry: ReleaseRegistry = match serde_json::from_str(&json) {
             Ok(registry) => registry,
             Err(error) => {
-                let reason: String = format!("Failed to deserialize registry: {}", error);
+                let reason: String = format!("Failed to deserialize registry: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             },
@@ -330,7 +481,7 @@ impl ReleaseRegistry {
 
         if fs::metadata(&metadata_path).await.is_ok() {
             if let Err(error) = fs::remove_file(&metadata_path).await {
-                let reason: String = format!("Failed to delete metadata file: {}", error);
+                let reason: String = format!("Failed to delete metadata file: {error}");
                 error!("{reason}");
                 anyhow::bail!(reason)
             }
@@ -346,6 +497,7 @@ impl ReleaseRegistry {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use ::std::env;
@@ -400,7 +552,7 @@ mod tests {
             registry.get_release(Machine::Microvm, Deployment::SingleProcess);
         assert!(entry.is_some());
 
-        let entry: &ReleaseEntry = entry.unwrap();
+        let entry: &ReleaseEntry = entry.expect("failed");
         assert_eq!(entry.url(), url);
         assert_eq!(entry.commit_id(), commit_id);
     }
@@ -442,17 +594,17 @@ mod tests {
         // Verify each entry.
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::MultiProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Hyperlight, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc333def");
     }
 
@@ -488,7 +640,7 @@ mod tests {
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.url(), "https://test.com/new.tar.bz2");
         assert_eq!(entry.commit_id(), "abc222def");
     }
@@ -508,7 +660,7 @@ mod tests {
             "abc123def456".to_string(),
         );
 
-        let json: String = serde_json::to_string(&registry).unwrap();
+        let json: String = serde_json::to_string(&registry).expect("failed");
         assert!(json.contains("releases"));
         assert!(json.contains("microvm-single-process"));
         assert!(json.contains("https://example.com/release.tar.bz2"));
@@ -523,11 +675,11 @@ mod tests {
     #[test]
     fn test_deserialization() {
         let json: &str = r#"{"releases":{"microvm-single-process":{"url":"https://example.com/release.tar.bz2","commit_id":"abc123def456"}}}"#;
-        let registry: ReleaseRegistry = serde_json::from_str(json).unwrap();
+        let registry: ReleaseRegistry = serde_json::from_str(json).expect("failed");
 
         let entry: &ReleaseEntry = registry
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.url(), "https://example.com/release.tar.bz2");
         assert_eq!(entry.commit_id(), "abc123def456");
     }
@@ -565,17 +717,17 @@ mod tests {
         let load_result: Result<ReleaseRegistry> = ReleaseRegistry::load(&temp_dir).await;
         assert!(load_result.is_ok());
 
-        let loaded: ReleaseRegistry = load_result.unwrap();
+        let loaded: ReleaseRegistry = load_result.expect("failed");
         assert_eq!(loaded.len(), 2);
 
         let entry: &ReleaseEntry = loaded
             .get_release(Machine::Microvm, Deployment::SingleProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc111def");
 
         let entry: &ReleaseEntry = loaded
             .get_release(Machine::Hyperlight, Deployment::MultiProcess)
-            .unwrap();
+            .expect("failed");
         assert_eq!(entry.commit_id(), "abc222def");
 
         // Cleanup.
@@ -666,5 +818,185 @@ mod tests {
 
         let result: Result<ReleaseRegistry> = ReleaseRegistry::load(&temp_dir).await;
         assert!(result.is_err());
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests package entry creation.
+    ///
+    #[test]
+    fn test_package_entry_new() {
+        let url: String = "https://github.com/nanvix/openssl/release.tar.bz2".to_string();
+        let nanvix_commit_id: String = "abc123def456".to_string();
+        let entry: PackageEntry = PackageEntry::new(url.clone(), nanvix_commit_id.clone());
+        assert_eq!(entry.url(), url);
+        assert_eq!(entry.nanvix_commit_id(), nanvix_commit_id);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests setting and getting package entries.
+    ///
+    #[test]
+    fn test_set_and_get_package() {
+        let mut registry: ReleaseRegistry = ReleaseRegistry::new();
+
+        let url: String = "https://test.com/openssl.tar.bz2".to_string();
+        let nanvix_commit_id: String = "abc123def456".to_string();
+
+        // Set a package.
+        registry.set_package(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            url.clone(),
+            nanvix_commit_id.clone(),
+        );
+
+        // Get the package.
+        let entry: Option<&PackageEntry> =
+            registry.get_package(Machine::Microvm, Deployment::SingleProcess, Package::OpenSSL);
+        assert!(entry.is_some());
+
+        let entry: &PackageEntry = entry.expect("package entry should exist");
+        assert_eq!(entry.url(), url);
+        assert_eq!(entry.nanvix_commit_id(), nanvix_commit_id);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests is_package_installed returns true when package is installed with matching commit.
+    ///
+    #[test]
+    fn test_is_package_installed_true() {
+        let mut registry: ReleaseRegistry = ReleaseRegistry::new();
+        let nanvix_commit_id: String = "abc123def456".to_string();
+
+        registry.set_package(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            "https://test.com/openssl.tar.bz2".to_string(),
+            nanvix_commit_id.clone(),
+        );
+
+        assert!(registry.is_package_installed(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            &nanvix_commit_id
+        ));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests is_package_installed returns false when package is not installed.
+    ///
+    #[test]
+    fn test_is_package_installed_false_not_installed() {
+        let registry: ReleaseRegistry = ReleaseRegistry::new();
+
+        assert!(!registry.is_package_installed(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            "abc123def456"
+        ));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests is_package_installed returns false when commit ID does not match.
+    ///
+    #[test]
+    fn test_is_package_installed_false_different_commit() {
+        let mut registry: ReleaseRegistry = ReleaseRegistry::new();
+
+        registry.set_package(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            "https://test.com/openssl.tar.bz2".to_string(),
+            "abc123def456".to_string(),
+        );
+
+        // Check with different commit ID.
+        assert!(!registry.is_package_installed(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            "different_commit"
+        ));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Tests multiple packages in registry.
+    ///
+    #[test]
+    fn test_multiple_packages() {
+        let mut registry: ReleaseRegistry = ReleaseRegistry::new();
+        let nanvix_commit_id: String = "abc123def456".to_string();
+
+        // Add multiple packages.
+        registry.set_package(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            "https://test.com/openssl.tar.bz2".to_string(),
+            nanvix_commit_id.clone(),
+        );
+
+        registry.set_package(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::Zlib,
+            "https://test.com/zlib.tar.bz2".to_string(),
+            nanvix_commit_id.clone(),
+        );
+
+        registry.set_package(
+            Machine::Hyperlight,
+            Deployment::MultiProcess,
+            Package::CPython,
+            "https://test.com/cpython.tar.bz2".to_string(),
+            nanvix_commit_id.clone(),
+        );
+
+        // Verify all packages are installed.
+        assert!(registry.is_package_installed(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::OpenSSL,
+            &nanvix_commit_id
+        ));
+
+        assert!(registry.is_package_installed(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::Zlib,
+            &nanvix_commit_id
+        ));
+
+        assert!(registry.is_package_installed(
+            Machine::Hyperlight,
+            Deployment::MultiProcess,
+            Package::CPython,
+            &nanvix_commit_id
+        ));
+
+        // Verify non-installed package returns false.
+        assert!(!registry.is_package_installed(
+            Machine::Microvm,
+            Deployment::SingleProcess,
+            Package::QuickJS,
+            &nanvix_commit_id
+        ));
     }
 }

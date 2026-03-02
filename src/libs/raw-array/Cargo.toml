@@ -13,24 +13,18 @@ homepage.workspace = true
 [lib]
 crate-type = ["lib"]
 
+[package.metadata.verus]
+verify = true
+
 [dependencies]
 cfg-if = { workspace = true }
+error = { workspace = true, features = ["verus"] }
 sys = { workspace = true }
-verus_stub = { workspace = true }
-# Verus core libs needed for cargo-v to detect this crate as a verus target and for verification.
-verus_builtin = { workspace = true, optional = true }
-vstd = { workspace = true, optional = true }
+vstd = { workspace = true }
 
 [features]
 default = []
 std = ["sys/std"]
-# Enable Verus verification for this crate.
-verus = ["verus_stub/disable", "sys/verus", "verus_builtin", "vstd"]
-
-[build-dependencies]
-
-[package.metadata.verus]
-verify = true
 
 [lints]
 workspace = true

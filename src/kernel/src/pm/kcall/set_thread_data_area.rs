@@ -6,18 +6,18 @@
 //==================================================================================================
 
 use crate::{
-    kcall::{
-        KcallArgs,
-        KcallResult,
-    },
+    hal::arch::x86::mem::gdt::Gdt,
+    kcall::KcallResult,
     mm::Vmem,
     pm::ProcessManager,
 };
-use ::sys::pm::ProcessIdentifier;
+use ::sys::pm::{
+    ProcessIdentifier,
+    ThreadIdentifier,
+};
 use sys::{
     error::ErrorCode,
     mm::VirtualAddress,
-    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -31,8 +31,9 @@ use sys::{
 ///
 /// # Parameters
 ///
-/// - `pm`: A mutable reference to the process manager.
-/// - `args`: The kernel call arguments.
+/// - `pid`: The process identifier of the calling process.
+/// - `tid`: The thread identifier of the calling thread.
+/// - `arg0`: The user-space thread data area pointer.
 ///
 /// # Return Value
 ///
@@ -47,15 +48,20 @@ use sys::{
 /// - [`ErrorCode::NoSuchEntry`]: The specified process or thread does not exist.
 /// - [`ErrorCode::ResourceBusy`]: The process manager is busy and cannot handle the request.
 ///
-pub fn set_thread_data_area(pm: &mut ProcessManager, args: &KcallArgs) -> KcallResult {
+pub fn set_thread_data_area(
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    arg0: u32,
+) -> KcallResult {
+    // SAFETY: the process manager is initialized and access is synchronized.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+
     // Unpack arguments.
-    let pid: ProcessIdentifier = args.pid;
-    let tid: ThreadIdentifier = args.tid;
-    let user_tda: VirtualAddress = VirtualAddress::from_raw_value(args.arg0 as usize);
+    let user_tda: VirtualAddress = VirtualAddress::from_raw_value(arg0 as usize);
 
     trace!("pid={pid:?}, tid={tid:?}, user_tda={user_tda:?}");
 
-    // Check if tread-local storage does not lie within the user space.
+    // Check if thread-local storage does not lie within the user space.
     let user_tda: Option<VirtualAddress> = if user_tda != VirtualAddress::from_raw_value(0) {
         if !Vmem::is_user_addr(user_tda) {
             error!(
@@ -73,7 +79,25 @@ pub fn set_thread_data_area(pm: &mut ProcessManager, args: &KcallArgs) -> KcallR
     // Handle kernel call.
     match pm.set_thread_data_area(pid, tid, user_tda) {
         Ok(()) => {
-            trace!("success");
+            // Update the GDT entry immediately so the GS/FS base takes effect
+            // without waiting for a context switch. This is critical for
+            // thread_local variables (accessed via %gs on x86) to work in
+            // single-threaded processes.
+            //
+            // SAFETY: We are in the kcall dispatcher, running in privileged
+            // mode with interrupts disabled. Modifying the GDT is safe here.
+            if let Some(tda_addr) = user_tda {
+                unsafe {
+                    Gdt::set_thread_data_area(tda_addr.into());
+                }
+            } else {
+                // Clear %gs/%fs so they do not reference a stale TDA.
+                unsafe {
+                    Gdt::clear_thread_data_area_segments();
+                }
+            }
+
+            trace!("success (user_tda={user_tda:?})");
             KcallResult::ok()
         },
 

@@ -17,7 +17,6 @@
 
 mod args;
 mod benchmark;
-mod env;
 
 //==================================================================================================
 // Imports
@@ -31,18 +30,23 @@ use crate::{
         LinuxdDeployment,
         UserVmDeployment,
     },
-    env::get_proj_root,
 };
 use ::anyhow::Result;
 use ::indicatif::{
     ProgressBar,
     ProgressStyle,
 };
+use ::log::{
+    debug,
+    error,
+    warn,
+};
 use ::nanvix::{
     config::kernel::MEMORY_SIZE,
     http::{
         message,
         message::{
+            ErrorResponse,
             HTTP_HEADER_MESSAGE_TYPE,
             Kill,
             KillResponse,
@@ -52,15 +56,14 @@ use ::nanvix::{
     },
     hwloc,
     hwloc::HwLoc,
-    log,
-    log::{
-        debug,
-        error,
-        warn,
-    },
     sandbox::UserVmIdentifier,
     sys::{
-        ipc::Message,
+        ipc::{
+            DataChunk,
+            DataChunkHeader,
+            IkcFrame,
+            Message,
+        },
         pm::ThreadIdentifier,
     },
     syscall::{
@@ -89,9 +92,6 @@ use ::nanvix::{
         },
     },
 };
-// FIXME(#1128): We need to re-export this import for the profiler macros.
-#[cfg(feature = "timestamp-messages")]
-use ::nanvix::log as syslog;
 use ::reqwest::header::{
     CONTENT_TYPE,
     HeaderMap,
@@ -183,7 +183,7 @@ impl Benchmark {
         let new_msg = message::New {
             tenant_id: tenant_id.unwrap_or(DEFAULT_TENANT_ID.to_string()),
             app_name: app_name.unwrap_or(DEFAULT_APP_NAME.to_string()),
-            program: self.flavour.get_program(),
+            program: self.flavour.get_program(&self.workspace_root),
             program_args: "".to_string(),
         };
 
@@ -193,11 +193,13 @@ impl Benchmark {
     /// Start nanvixd and, optionally, configure it to deploy linuxd inside an L2 VM.
     fn start_nanvixd(&self, linuxd_deployment: &LinuxdDeployment) -> Result<Child> {
         let mut nanvixd_args: Vec<String> = vec![
-            format!("{}/bin/nanvixd.elf", get_proj_root()),
+            format!("{}/bin/nanvixd.elf", self.workspace_root.display()),
             ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
             NANVIXD_ADDRESS.to_string(),
             ::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY.to_string(),
             self.nanvixd_toolchain_bin_dir.clone(),
+            ::nanvixd::args::Args::OPT_TMP_DIRECTORY.to_string(),
+            self.nanvixd_tmp_dir.clone(),
         ];
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push(::nanvixd::args::Args::OPT_HWLOC.to_string());
@@ -212,7 +214,7 @@ impl Benchmark {
             .args(&nanvixd_args[1..])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .current_dir(get_proj_root())
+            .current_dir(&self.workspace_root)
             .spawn()?;
 
         Ok(nanvixd_cmd)
@@ -222,13 +224,13 @@ impl Benchmark {
     /// nanvixd.
     fn start_user_vm(&self, gateway_addr: Option<String>) -> Result<Child> {
         let mut user_vm_args: Vec<String> = vec![
-            format!("{}/bin/uservm.elf", get_proj_root()),
+            format!("{}/bin/uservm.elf", self.workspace_root.display()),
             uservm::args::Args::OPT_USER_VM_ID.to_string(),
             "1".to_string(),
             uservm::args::Args::OPT_KERNEL.to_string(),
-            format!("{}/bin/kernel.elf", get_proj_root()),
+            format!("{}/bin/kernel.elf", self.workspace_root.display()),
             uservm::args::Args::OPT_INITRD.to_string(),
-            self.flavour.get_program(),
+            self.flavour.get_program(&self.workspace_root),
         ];
         if let Some(gateway_addr) = gateway_addr {
             user_vm_args.push(uservm::args::Args::OPT_SYSTEM_VM_SOCKADDR.to_string());
@@ -248,7 +250,7 @@ impl Benchmark {
             .args(&user_vm_args[1..])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .current_dir(get_proj_root())
+            .current_dir(&self.workspace_root)
             .spawn()?;
 
         Ok(user_vm_cmd)
@@ -285,15 +287,37 @@ impl Benchmark {
         headers: HeaderMap,
         linuxd_deployment: &LinuxdDeployment,
     ) -> Result<(UserVmIdentifier, SocketStream)> {
-        let response: message::NewResponse = self
+        let http_response: ::reqwest::Response = self
             .nanvixd_client
             .post(format!("http://{}", NANVIXD_ADDRESS))
             .headers(headers)
             .json(&payload)
             .send()
-            .await?
-            .json()
             .await?;
+
+        // Check if the response is successful
+        let status: ::reqwest::StatusCode = http_response.status();
+        if !status.is_success() {
+            // Try to deserialize as ErrorResponse to get detailed error info
+            let error_msg: String = match http_response.json::<ErrorResponse>().await {
+                Ok(err_response) => {
+                    format!(
+                        "nanvixd returned error (status={}, code={:?}): {}",
+                        status, err_response.code, err_response.message
+                    )
+                },
+                Err(e) => {
+                    format!(
+                        "nanvixd returned error (status={}): failed to parse error response: {}",
+                        status, e
+                    )
+                },
+            };
+            error!("{}", error_msg);
+            anyhow::bail!(error_msg);
+        }
+
+        let response: message::NewResponse = http_response.json().await?;
 
         debug!("got: user vm ID={}, gw socket={}", response.user_vm_id, response.gateway_sockaddr);
 
@@ -344,28 +368,24 @@ impl Benchmark {
 
     /// Kill the different components in order.
     pub fn cleanup(&mut self) {
-        if self.nanvixd.is_some() {
+        if let Some(nanvixd) = self.nanvixd.as_mut() {
             debug!("Sending SIGINT to nanvixd");
-            let ret_code = unsafe {
-                libc::kill(self.nanvixd.as_mut().unwrap().id() as libc::pid_t, libc::SIGINT)
-            };
+            let ret_code: i32 = unsafe { libc::kill(nanvixd.id() as libc::pid_t, libc::SIGINT) };
 
             if ret_code < 0 {
                 error!("error sending SIGINT to nanvixd: {}", std::io::Error::last_os_error());
             }
 
-            if let Some(nanvixd) = self.nanvixd.as_mut() {
-                match nanvixd.wait() {
-                    Ok(exit_status) => {
-                        if !exit_status.success() {
-                            error!(
-                                "nanvixd returned with non-zero exit status: {:?}",
-                                exit_status.code()
-                            );
-                        }
-                    },
-                    Err(e) => error!("error waiting for nanvixd: {e:?}"),
-                }
+            match nanvixd.wait() {
+                Ok(exit_status) => {
+                    if !exit_status.success() {
+                        error!(
+                            "nanvixd returned with non-zero exit status: {:?}",
+                            exit_status.code()
+                        );
+                    }
+                },
+                Err(e) => error!("error waiting for nanvixd: {e:?}"),
             }
 
             self.nanvixd = None;
@@ -444,7 +464,7 @@ impl Benchmark {
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
             let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
-                mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
             let stdout_drain: JoinHandle<()> =
                 ::tokio::spawn(
                     async move { while vcpu_thread_stdout_rx.recv().await.is_some() {} },
@@ -460,10 +480,11 @@ impl Benchmark {
                 );
 
             let (io_thread_data_tx, memory_thread_data_rx) =
-                mpsc::channel::<Message>(CHANNEL_CAPACITY);
+                mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
 
-            let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
-            let initrd_filename: String = self.flavour.get_program();
+            let kernel_filename: String =
+                format!("{}/bin/kernel.elf", self.workspace_root.display());
+            let initrd_filename: String = self.flavour.get_program(&self.workspace_root);
 
             // Create shared counters for tracking message flow across threads.
             let counters: MessageCounters = MessageCounters::new();
@@ -474,6 +495,7 @@ impl Benchmark {
                 kernel_filename,
                 initrd_filename: Some(initrd_filename),
                 initrd_args: None,
+                ramfs_filename: None,
                 stderr: Some("/dev/null".to_string()),
                 vcpu_thread_stdout_tx,
                 memory_thread_data_rx,
@@ -548,6 +570,9 @@ impl Benchmark {
         linuxd_deployment: &LinuxdDeployment,
         user_vm_deployment: &UserVmDeployment,
     ) -> Result<()> {
+        // Start nanvixd once.
+        self.setup(linuxd_deployment);
+
         // Display a progress bar
         let pb: ProgressBar = ProgressBar::new(self.iterations.try_into().unwrap());
         pb.set_style(
@@ -557,9 +582,6 @@ impl Benchmark {
                 .progress_chars("#>-"),
         );
         pb.set_message("Benchmark progress:");
-
-        // Start nanvixd once.
-        self.setup(linuxd_deployment);
 
         // Work-out the cleanup sleep duration depending on the linuxd deployment mode.
         let cleanup_sleep_duration: Duration = if *linuxd_deployment == LinuxdDeployment::L2Vm {
@@ -895,18 +917,17 @@ impl Benchmark {
         let mut payload: Vec<u8> = Vec::with_capacity(mem::size_of::<u32>() + data.len());
         payload.extend_from_slice(&DEFAULT_PAYLOAD_SIZE.to_le_bytes());
         payload.extend_from_slice(&data);
-        let mut response_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-        response_buf[..payload.len()].copy_from_slice(&payload);
         let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
-            mpsc::channel::<Message>(CHANNEL_CAPACITY);
-        let (io_thread_data_tx, memory_thread_data_rx) = mpsc::channel::<Message>(CHANNEL_CAPACITY);
+            mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
+        let (io_thread_data_tx, memory_thread_data_rx) =
+            mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
         let (io_control_command_tx, io_control_rx) =
             mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
         let (io_control_tx, mut io_control_response_rx) =
             mpsc::channel::<IoControlResponse>(CHANNEL_CAPACITY);
 
-        let kernel_filename: String = format!("{}/bin/kernel.elf", get_proj_root());
-        let program: String = self.flavour.get_program();
+        let kernel_filename: String = format!("{}/bin/kernel.elf", self.workspace_root.display());
+        let program: String = self.flavour.get_program(&self.workspace_root);
 
         // Create shared counters for tracking message flow across threads.
         let counters: MessageCounters = MessageCounters::new();
@@ -916,6 +937,7 @@ impl Benchmark {
             kernel_filename,
             initrd_filename: Some(program),
             initrd_args: None,
+            ramfs_filename: None,
             stderr: Some("/dev/null".to_string()),
             vcpu_thread_stdout_tx,
             memory_thread_data_rx,
@@ -926,8 +948,16 @@ impl Benchmark {
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for _ in 0..self.iterations {
+            // Step 1: Receive the ReadRequest IKC message from the guest.
             let ipc_read_message: Message = match vcpu_thread_stdout_rx.recv().await {
-                Some(message) => message,
+                Some(IkcFrame::Message(message)) => message,
+                Some(IkcFrame::Bulk(_)) => {
+                    let reason: String = "unexpected data chunk transfer received while waiting \
+                                          for ReadRequest"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
                 None => {
                     let reason: String = "user VM channel closed unexpectedly while waiting for \
                                           ReadRequest"
@@ -950,15 +980,62 @@ impl Benchmark {
                 Ok(pid) => return Err(anyhow::anyhow!("unexpected message source: {pid:?}")),
             };
             let _read_request: ReadRequest = ReadRequest::from_bytes(linuxd_message.payload);
-            let read_response: Message =
-                ReadResponse::build(tid, payload.len() as i32, response_buf);
 
-            // Now we are ready to push the ReadResponse, and wait for a WriteRequest as a reply.
+            // Step 2: Receive the bulk pull request from the guest kernel.
+            let pull_header: DataChunkHeader = match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Bulk(bulk)) => *bulk.header(),
+                Some(IkcFrame::Message(_)) => {
+                    let reason: String = "unexpected IKC message received while waiting for bulk \
+                                          pull request"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+                None => {
+                    let reason: String = "user VM channel closed unexpectedly while waiting for \
+                                          bulk pull request"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            };
+
+            // Now we are ready to push bulk data and ReadResponse, and wait for a WriteRequest.
             let start = Instant::now();
-            io_thread_data_tx.send(read_response).await?;
 
+            // Step 3: Send the bulk data response back to the kernel buffer.
+            let bulk_response: DataChunk = DataChunk::new(
+                DataChunkHeader::new(
+                    pull_header.source_pid(),
+                    pull_header.source_tid(),
+                    pull_header.destination_pid(),
+                    pull_header.destination_tid(),
+                    pull_header.data_addr(),
+                    payload.len() as u32,
+                ),
+                payload.clone(),
+            );
+            io_thread_data_tx
+                .send(IkcFrame::Bulk(bulk_response))
+                .await?;
+
+            // Step 4: Send ReadResponse metadata (buffer is empty; data was sent via bulk).
+            let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
+            let read_response: Message = ReadResponse::build(tid, payload.len() as i32, empty_buf);
+            io_thread_data_tx
+                .send(IkcFrame::Message(read_response))
+                .await?;
+
+            // Step 5: Receive the WriteRequest IKC message from the guest.
             let _write_request: Message = match vcpu_thread_stdout_rx.recv().await {
-                Some(message) => message,
+                Some(IkcFrame::Message(message)) => message,
+                Some(IkcFrame::Bulk(_)) => {
+                    let reason: String = "unexpected data chunk transfer received while waiting \
+                                          for WriteRequest"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
                 None => {
                     let reason: String = "user VM channel closed unexpectedly while waiting for \
                                           WriteRequest"
@@ -968,11 +1045,32 @@ impl Benchmark {
                 },
             };
 
+            // Step 6: Receive the bulk push data from the guest.
+            let _push_data: DataChunk = match vcpu_thread_stdout_rx.recv().await {
+                Some(IkcFrame::Bulk(bulk)) => bulk,
+                Some(IkcFrame::Message(_)) => {
+                    let reason: String = "unexpected IKC message received while waiting for bulk \
+                                          push data"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+                None => {
+                    let reason: String = "user VM channel closed unexpectedly while waiting for \
+                                          bulk push data"
+                        .to_string();
+                    error!("run_warm_start_vmm(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            };
+
             latencies.push(start.elapsed().as_micros());
 
-            // After receiving the WriteRequest, we need to acknowledge it by sending a WriteResponse.
+            // Step 7: Send WriteResponse to acknowledge the write.
             let write_response: Message = WriteResponse::build(tid, payload.len() as i32);
-            io_thread_data_tx.send(write_response).await?;
+            io_thread_data_tx
+                .send(IkcFrame::Message(write_response))
+                .await?;
 
             sleep(Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
 
@@ -1169,7 +1267,7 @@ impl Benchmark {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    log::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
+    ::nanvix::log::init(false, DEFAULT_LOG_LEVEL, String::new(), None);
 
     // Check if RELEASE=yes was set at build time.
     match option_env!("RELEASE") {
@@ -1214,9 +1312,11 @@ async fn main() -> Result<()> {
         hwloc_file: args.hwloc_file(),
         hwloc,
         flavour: args.benchmark(),
+        workspace_root: build_utils::find_workspace_root(),
         nanvixd: None,
         nanvixd_client: reqwest::Client::new(),
         nanvixd_toolchain_bin_dir: args.toolchain_bin_dir(),
+        nanvixd_tmp_dir: args.tmp_dir(),
         user_vm_id: None,
     };
 

@@ -29,11 +29,9 @@ use crate::{
             AnyIoPort,
             IoMemoryRegion,
             IoPortWidth,
+            MmioTag,
         },
-        mem::{
-            PageAligned,
-            VirtualAddress,
-        },
+        mem::VirtualAddress,
     },
     ipc::Mailbox,
     mm::Vmem,
@@ -42,6 +40,10 @@ use crate::{
         sync::{
             condvar::Condvar,
             mutex::Mutex,
+        },
+        thread::{
+            ThreadRef,
+            ThreadRefMut,
         },
     },
 };
@@ -67,6 +69,7 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -101,6 +104,29 @@ impl ProcessRefMut<'_> {
             ProcessRefMut::Zombie(process) => process.state_mut(),
         }
     }
+
+    ///
+    /// # Description
+    ///
+    /// Finds a mutable reference to a thread by identifier, searching across all process states.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If found, returns `Some` with a mutable thread reference. Otherwise, returns `None`.
+    ///
+    pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut<'_>> {
+        match self {
+            ProcessRefMut::Runnable(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Running(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Sleeping(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Interrupted(process) => process.find_thread_mut(tid),
+            ProcessRefMut::Zombie(process) => process.find_thread_mut(tid),
+        }
+    }
 }
 
 pub enum ProcessRef<'a> {
@@ -119,6 +145,29 @@ impl ProcessRef<'_> {
             ProcessRef::Sleeping(process) => process.state(),
             ProcessRef::Interrupted(process) => process.state(),
             ProcessRef::Zombie(process) => process.state(),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Finds an immutable reference to a thread by identifier, searching across all process states.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to find.
+    ///
+    /// # Returns
+    ///
+    /// If found, returns `Some` with a thread reference. Otherwise, returns `None`.
+    ///
+    pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>> {
+        match self {
+            ProcessRef::Runnable(process) => process.find_thread(tid),
+            ProcessRef::Running(process) => process.find_thread(tid),
+            ProcessRef::Sleeping(process) => process.find_thread(tid),
+            ProcessRef::Interrupted(process) => process.find_thread(tid),
+            ProcessRef::Zombie(process) => process.find_thread(tid),
         }
     }
 }
@@ -151,6 +200,8 @@ pub struct ProcessState {
     mutexes: BTreeMap<MutexAddress, Mutex>,
     /// Condition variables.
     conditions: BTreeMap<ConditionAddress, Condvar>,
+    /// Pending exit status set when `exit()` is called with threads still running.
+    pending_exit_status: Option<ExitStatus>,
 }
 
 impl ProcessState {
@@ -165,11 +216,49 @@ impl ProcessState {
             pmio: LinkedList::new(),
             mutexes: BTreeMap::new(),
             conditions: BTreeMap::new(),
+            pending_exit_status: None,
         }
     }
 
     pub fn pid(&self) -> ProcessIdentifier {
         self.pid
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the pending exit status for the process if one is not already set. This is used
+    /// when a thread calls `exit()` to terminate the process, but there are other threads that
+    /// need to be terminated first. The exit status from the first thread that called `exit()`
+    /// is preserved and used as the final process exit status.
+    ///
+    /// If a pending exit status is already set (from an earlier `exit()` call), this function
+    /// does nothing, ensuring that the original exit status is not overwritten by subsequent
+    /// threads being terminated.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: The exit status to store (only if not already set).
+    ///
+    pub fn set_pending_exit_status(&mut self, status: ExitStatus) {
+        if self.pending_exit_status.is_none() {
+            self.pending_exit_status = Some(status);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes the pending exit status, if any. Returns the stored exit status and clears it.
+    /// This is called when the last thread in the process terminates to retrieve the exit
+    /// status that was set by the thread that originally called `exit()`.
+    ///
+    /// # Returns
+    ///
+    /// The pending exit status if one was set, otherwise `None`.
+    ///
+    pub fn take_pending_exit_status(&mut self) -> Option<ExitStatus> {
+        self.pending_exit_status.take()
     }
 
     pub fn set_capability(&mut self, capability: Capability) {
@@ -226,12 +315,58 @@ impl ProcessState {
         self.mailbox.receive(tid)
     }
 
+    /// # Description
+    ///
+    /// Adds an MMIO region to the process state.
+    ///
+    /// # Parameters
+    ///
+    /// - `region`: The I/O memory region to add.
+    ///
+    /// # Note
+    ///
+    /// Tag uniqueness is enforced by [`IoMemoryAllocator`], which guarantees that no two regions
+    /// with the same tag can be allocated simultaneously.
+    ///
     pub fn add_mmio(&mut self, region: IoMemoryRegion) {
         self.mmio.push_back(region)
     }
 
-    pub fn remove_mmio(&mut self, addr: PageAligned<VirtualAddress>) {
-        self.mmio.retain(|r| r.base() != addr)
+    ///
+    /// # Description
+    ///
+    /// Removes the MMIO region identified by the given tag from the process state.
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: Tag that uniquely identifies the region to remove.
+    ///
+    /// # Note
+    ///
+    /// Tag uniqueness is enforced by [`IoMemoryAllocator`], so at most one region will match.
+    ///
+    pub fn remove_mmio(&mut self, tag: MmioTag) {
+        if let Some(index) = self.mmio.iter().position(|r| r.tag() == tag) {
+            // Remove only the first region that matches the given tag.
+            self.mmio.remove(index);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves a reference to the MMIO region identified by the given tag.
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: Tag that uniquely identifies the region to look up.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`IoMemoryRegion`] if found, or `None` otherwise.
+    ///
+    pub fn mmio_info(&self, tag: MmioTag) -> Option<&IoMemoryRegion> {
+        self.mmio.iter().find(|r| r.tag() == tag)
     }
 
     pub fn add_pmio(&mut self, port: AnyIoPort) {

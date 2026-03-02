@@ -8,22 +8,9 @@
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
-#![cfg_attr(not(feature = "verus"), feature(never_type))]
+#![feature(never_type)] // exit() uses this.
+#![feature(likely_unlikely)] // Branch hints for unlikely error paths.
 #![cfg_attr(not(feature = "std"), no_std)]
-
-//==================================================================================================
-// Types
-//==================================================================================================
-
-/// Never type: a type that can never be constructed.
-/// Uses `!` on nightly Rust, `Infallible` when compiling with Verus (stable).
-#[cfg(not(feature = "verus"))]
-pub type Never = !;
-
-/// Never type: a type that can never be constructed.
-/// Uses `Infallible` when compiling with Verus (stable).
-#[cfg(feature = "verus")]
-pub type Never = ::core::convert::Infallible;
 
 //==================================================================================================
 // Modules

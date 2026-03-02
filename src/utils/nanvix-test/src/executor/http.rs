@@ -8,6 +8,10 @@
 use crate::{
     DEFAULT_TENANT_ID,
     config::RunnerConfig,
+    executor::{
+        DEFAULT_EXIT_CODE_SKIP_VALIDATION,
+        WorkloadSpec,
+    },
     log_layout::{
         GuestLogTracker,
         RunnerLogPaths,
@@ -17,21 +21,21 @@ use crate::{
         NanvixdHttp,
         NanvixdHttpArgs,
     },
+    port::resolve_http_port,
     uservm::{
         UserVm,
         UserVmArgs,
     },
 };
 use ::anyhow::Result;
-use ::nanvix::{
-    log::{
-        error,
-        trace,
-    },
-    syscomm::{
-        ReadExact,
-        WriteAll,
-    },
+use ::log::{
+    error,
+    trace,
+    warn,
+};
+use ::nanvix::syscomm::{
+    ReadExact,
+    WriteAll,
 };
 use ::std::{
     io::ErrorKind,
@@ -57,11 +61,9 @@ use ::tokio::time::timeout;
 ///
 /// - `runner_config`: Configuration required to spawn the Nanvix Daemon and User VMs.
 /// - `iterations`: Number of times the start/run/stop cycle should execute.
-/// - `program_path`: Absolute path to the executable launched inside the User VM.
-/// - `program_args`: Optional command-line arguments forwarded to the workload.
-/// - `input`: Optional payload forwarded to the workload.
-/// - `expected_output`: Optional payload that should be received back from the workload.
+/// - `workload`: Metadata that describes the workload path, arguments, and expectations.
 /// - `log_layout`: Layout that controls how runner/program logs are timestamped and stored.
+/// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
 ///
 /// # Return Value
 ///
@@ -72,16 +74,14 @@ use ::tokio::time::timeout;
 pub(crate) async fn test_with_http_executor(
     runner_config: &RunnerConfig,
     iterations: usize,
-    program_path: &str,
-    program_args: Option<&str>,
-    input: Option<&str>,
-    expected_output: Option<&str>,
+    workload: WorkloadSpec<'_>,
     log_layout: &TestLogLayout,
+    extra_nanvixd_args: &[String],
 ) -> Result<()> {
     let l2_enabled: bool = runner_config.l2_enabled;
     let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
-    let program_path: String = program_path.to_string();
-    let request_payload: Option<Vec<u8>> = input.map(|value| value.as_bytes().to_vec());
+    let program_path: String = workload.program_path().to_string();
+    let request_payload: Option<Vec<u8>> = workload.input().map(|value| value.as_bytes().to_vec());
     let response_timeout: Duration =
         Duration::from_millis(runner_config.stream_collection_timeout_ms);
     let log_root: &Path = Path::new(runner_config.log_directory.as_str());
@@ -103,14 +103,28 @@ pub(crate) async fn test_with_http_executor(
         stderr: stderr_file_path,
     } = log_layout.allocate_runner_logs(None);
 
+    // Resolve an available port, searching for alternatives if the configured port is in use.
+    // Run in a blocking task to avoid stalling the Tokio runtime with synchronous bind calls.
+    let ipv4_addr_clone: String = runner_config.ipv4_addr.clone();
+    let port_num: u16 = runner_config.port_num;
+    let resolved_port: u16 = ::tokio::task::spawn_blocking(move || {
+        resolve_http_port(ipv4_addr_clone.as_str(), port_num)
+    })
+    .await
+    .map_err(|e| {
+        let reason: String = format!("port resolution task failed (error={e})");
+        error!("test_with_http_executor(): {reason}");
+        ::anyhow::anyhow!(reason)
+    })??;
+
     let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
-        stdout_file_path.as_path(),
-        stderr_file_path.as_path(),
-        runner_config.ipv4_addr.as_str(),
-        runner_config.port_num,
+        (stdout_file_path.as_path(), stderr_file_path.as_path()),
+        (runner_config.ipv4_addr.as_str(), resolved_port),
         hwloc_file_path.clone(),
         l2_enabled,
+        runner_config.netns_pool_size,
         log_layout.test_directory(),
+        extra_nanvixd_args,
     )?;
 
     // Run tests within a scoped block to ensure logs are captured before moving them.
@@ -123,7 +137,7 @@ pub(crate) async fn test_with_http_executor(
                 DEFAULT_TENANT_ID,
                 app_name.as_str(),
                 program_path.as_str(),
-                program_args,
+                workload.program_args(),
                 l2_enabled,
             )?;
 
@@ -135,7 +149,7 @@ pub(crate) async fn test_with_http_executor(
 
             close_gateway_input(&mut user_vm).await?;
 
-            let expected_pattern: Option<&[u8]> = expected_output.and_then(|value| {
+            let expected_pattern: Option<&[u8]> = workload.expected_output().and_then(|value| {
                 if value.is_empty() {
                     None
                 } else {
@@ -143,9 +157,72 @@ pub(crate) async fn test_with_http_executor(
                 }
             });
 
-            let payload: Vec<u8> =
-                receive_payload(&mut user_vm, expected_pattern, response_timeout).await?;
+            let payload: Vec<u8> = receive_payload(
+                &mut user_vm,
+                expected_pattern,
+                response_timeout,
+                workload.expect_empty_output(),
+            )
+            .await?;
+            if workload.expect_empty_output() && !payload.is_empty() {
+                let reason: String = format!(
+                    "uservm produced unexpected stdout (bytes={:?}, len={})",
+                    payload,
+                    payload.len()
+                );
+                error!("test_with_http_executor(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
             log_layout.persist_program_output(iteration, payload.as_slice())?;
+
+            // Explicitly terminate the User VM to get the exit code.
+            // FIXME (#1010): On hyperlight, SIGKILL terminates nanvixd before we can send the kill
+            // request, causing a connection error. When skip_exit_code_validation is true, we
+            // tolerate termination failures since we cannot reliably get the exit code anyway.
+            let exit_code: i32 = match user_vm.terminate().await {
+                Ok(code) => code,
+                Err(error) => {
+                    if workload.skip_exit_code_validation() {
+                        warn!(
+                            "test_with_http_executor(): termination failed but skipping \
+                             validation (program={}, iteration={}, error={})",
+                            program_path, iteration, error
+                        );
+                        DEFAULT_EXIT_CODE_SKIP_VALIDATION
+                    } else {
+                        return Err(error);
+                    }
+                },
+            };
+
+            // Validate exit code if expected_exit_code is specified and validation is not skipped.
+            // FIXME (#1010): Remove skip_exit_code_validation() once graceful hyperlight interrupt
+            // is implemented. Currently hyperlight uses SIGKILL which prevents clean exit.
+            if !workload.skip_exit_code_validation()
+                && let Some(expected) = workload.expected_exit_code()
+                && exit_code != expected
+            {
+                let reason: String = format!(
+                    "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                    expected, exit_code, program_path, iteration
+                );
+                error!("test_with_http_executor(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
+
+            // When termination succeeds on hyperlight, still validate the exit code.
+            if workload.skip_exit_code_validation()
+                && exit_code != DEFAULT_EXIT_CODE_SKIP_VALIDATION
+                && let Some(expected) = workload.expected_exit_code()
+                && exit_code != expected
+            {
+                let reason: String = format!(
+                    "exit code mismatch (expected={}, actual={}, program={}, iteration={})",
+                    expected, exit_code, program_path, iteration
+                );
+                error!("test_with_http_executor(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            }
         }
     }
 
@@ -211,6 +288,7 @@ async fn close_gateway_input(user_vm: &mut UserVm) -> Result<()> {
 /// - `user_vm`: Handle to the running User VM gateway stream.
 /// - `expected_pattern`: Byte pattern that must appear in the payload.
 /// - `timeout_duration`: Maximum time allowed while waiting for the expected payload.
+/// - `expect_empty_output`: Indicates whether EOF/connection reset should map to an empty payload.
 ///
 /// # Return Value
 ///
@@ -221,8 +299,14 @@ async fn receive_payload(
     user_vm: &mut UserVm,
     expected_pattern: Option<&[u8]>,
     timeout_duration: Duration,
+    expect_empty_output: bool,
 ) -> Result<Vec<u8>> {
-    match timeout(timeout_duration, collect_uservm_payload(user_vm, expected_pattern)).await {
+    match timeout(
+        timeout_duration,
+        collect_uservm_payload(user_vm, expected_pattern, expect_empty_output),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(_elapsed) => {
             let reason: String = match expected_pattern {
@@ -251,6 +335,7 @@ async fn receive_payload(
 ///
 /// - `user_vm`: Handle to the running User VM gateway stream.
 /// - `expected_pattern`: Byte sequence that must appear in the collected payload.
+/// - `expect_empty_output`: Allows EOF/connection-reset to be treated as empty output when set.
 ///
 /// # Return Value
 ///
@@ -260,6 +345,7 @@ async fn receive_payload(
 async fn collect_uservm_payload(
     user_vm: &mut UserVm,
     expected_pattern: Option<&[u8]>,
+    expect_empty_output: bool,
 ) -> Result<Vec<u8>> {
     trace!(
         "collect_uservm_payload(): expected_len={}, expected_pattern={:?}",
@@ -275,12 +361,30 @@ async fn collect_uservm_payload(
             Ok(_) => {
                 response_payload.push(byte[0]);
             },
-            Err(error) => {
-                if error.kind() == ErrorKind::UnexpectedEof {
+            Err(error) => match error.kind() {
+                ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
+                    if expect_empty_output {
+                        if response_payload.is_empty() && expected_pattern.is_none() {
+                            warn!(
+                                "collect_uservm_payload(): gateway closed before emitting payload \
+                                 (error_kind={:?})",
+                                error.kind()
+                            );
+                        } else if !response_payload.is_empty() {
+                            warn!(
+                                "collect_uservm_payload(): gateway closed after emitting \
+                                 unexpected payload (error_kind={:?}, response_len={})",
+                                error.kind(),
+                                response_payload.len()
+                            );
+                        }
+                    }
                     break;
-                }
-                error!("collect_uservm_payload(): failed to read payload (error={error})");
-                return Err(error.into());
+                },
+                _ => {
+                    error!("collect_uservm_payload(): failed to read payload (error={error})");
+                    return Err(error.into());
+                },
             },
         }
 

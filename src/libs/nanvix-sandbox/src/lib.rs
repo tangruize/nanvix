@@ -50,9 +50,11 @@
 //! ## Basic Usage Example
 //!
 //! ```rust,no_run
-//! use ::nanvix_sandbox::{UninitializedSandbox, SandboxConfig};
-//! use ::syscomm::SocketType;
+//! use ::nanvix_sandbox::{UninitializedSandbox, SandboxConfig, SandboxTag};
+//! use ::syscomm::{SocketListener, SocketType, UnboundSocket};
 //! use ::user_vm_api::UserVmIdentifier;
+//! use ::std::sync::Arc;
+//! use ::tokio::sync::Mutex;
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! // Create configuration.
@@ -78,14 +80,27 @@
 //!     Some("/path/to/l2/snapshot".to_string()), // l2_snapshot_path
 //! );
 //!
+//! // Create and bind control plane socket.
+//! let control_plane_bind_sockaddr: String = "/tmp/nvx:cp.socket".to_string();
+//! let control_plane_socket: SocketListener =
+//!     UnboundSocket::new(SocketType::Unix).bind(&control_plane_bind_sockaddr).await?;
+//! let control_plane_bind_socket: Arc<Mutex<(SocketListener, String, SocketType)>> =
+//!     Arc::new(Mutex::new((control_plane_socket, control_plane_bind_sockaddr, SocketType::Unix)));
+//!
 //! // Create and initialize sandbox.
-//! let sandbox = UninitializedSandbox::new("/path/to/guest.elf", None)
+//! let sandbox = UninitializedSandbox::new(
+//!     "/path/to/guest.elf",
+//!     None,
+//!     None,
+//!     control_plane_bind_socket,
+//! )
 //!     .with_config(config)
 //!     .initialize()
 //!     .await?;
 //!
 //! // Start execution.
-//! let running = sandbox.start().await?;
+//! let tag: SandboxTag = SandboxTag::new("tenant-1", "/path/to/guest.elf", "my-app", None);
+//! let running = sandbox.start(tag).await?;
 //!
 //! // ... communicate with sandbox via gateway socket ...
 //!
@@ -119,6 +134,7 @@ mod initialized;
 mod linuxd_args;
 mod running;
 mod sandbox_config;
+mod tag;
 mod uninitialized;
 mod uservm_args;
 
@@ -156,6 +172,7 @@ pub use self::{
     linuxd_args::LinuxDaemonArgs,
     running::RunningSandbox,
     sandbox_config::SandboxConfig,
+    tag::SandboxTag,
     uninitialized::UninitializedSandbox,
     uservm_args::UserVmArgs,
 };

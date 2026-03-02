@@ -12,19 +12,19 @@
 //==================================================================================================
 
 #![deny(clippy::all)]
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
+#![forbid(clippy::unwrap_used)]
+// The following lints are allowed in tests to facilitate testing of error conditions.
+#![cfg_attr(not(test), forbid(clippy::expect_used))]
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use ::anyhow::Result;
+use ::log::error;
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
     http::HttpServer,
-    log,
-    log::error,
     registry::Registry,
     sandbox::NAMED_RESOURCE_PREFIX,
     sandbox_cache::SandboxCacheConfig,
@@ -32,11 +32,11 @@ use ::nanvix::{
 };
 use ::nanvixd::{
     args::Args,
-    config::DEFAULT_TMP_DIRECTORY,
     tempdir::TemporaryDirectory,
 };
 use ::std::{
     path::PathBuf,
+    process::ExitCode,
     sync::{
         Arc,
         OnceLock,
@@ -54,6 +54,10 @@ use ::tokio::fs;
 
 /// Default log-level (overridden by RUST_LOG environment variable if set).
 const DEFAULT_LOG_LEVEL: &str = "info";
+
+/// Maximum exit code value that can be represented as a process exit code.
+/// Exit codes are clamped to the range [0, 255] for compatibility with POSIX systems.
+const MAX_EXIT_CODE: i32 = 255;
 
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
@@ -91,7 +95,7 @@ macro_rules! log_info {
         if let Some(true) = $crate::INTERACTIVE_MODE.get().copied() {
             eprintln!($fmt $(, $($args)*)?);
         } else {
-            ::nanvix::log::info!($fmt $(, $($args)*)?);
+            ::log::info!($fmt $(, $($args)*)?);
         }
     };
 }
@@ -111,15 +115,32 @@ macro_rules! log_info {
 ///
 /// # Returns
 ///
-/// On success, returns an empty tuple after graceful shutdown. On failure, returns an error
-/// describing what went wrong during initialization or execution.
+/// On success, returns the exit code of the workload in interactive mode or `ExitCode::SUCCESS`
+/// in HTTP mode. On failure, returns an error describing what went wrong.
 ///
-#[tokio::main]
-pub async fn main() -> Result<()> {
+// # NOTES
+//
+// - We build the tokio runtime manually instead of using `#[tokio::main]` because the macro
+//   expansion emits `#[allow(clippy::expect_used)]`, which is incompatible with our crate-level
+//   `#![forbid(clippy::expect_used)]` lint configuration.
+///
+pub fn main() -> Result<ExitCode> {
+    let rt: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| ::anyhow::anyhow!("failed to build tokio runtime: {e}"))?;
+    rt.block_on(async_main())
+}
+
+/// # Description
+///
+/// Asynchronous entry point for the nanvixd daemon.
+///
+async fn async_main() -> Result<ExitCode> {
     let args: Arc<Args> =
         Arc::new(Args::parse(std::env::args().filter(|s| !s.trim().is_empty()).collect())?);
 
-    log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
+    ::nanvix::log::init(true, DEFAULT_LOG_LEVEL, args.log_directory().to_string(), None);
 
     // Set the global INTERACTIVE_MODE flag.
     let _: Result<(), bool> = INTERACTIVE_MODE.set(args.interactive_mode());
@@ -145,14 +166,16 @@ pub async fn main() -> Result<()> {
         ensure_all_binaries_available(&args, machine, deployment).await?;
 
     // Create temporary directory that will be automatically cleaned up on drop.
-    let tmp_directory: TemporaryDirectory = create_tmp_dir(DEFAULT_TMP_DIRECTORY).await?;
+    let tmp_directory: TemporaryDirectory = create_tmp_dir(args.tmp_directory()).await?;
 
     let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
         args.control_plane_socket_type(),
         args.gateway_socket_type(),
         args.system_vm_socket_type(),
         args.console_file().clone(),
+        args.ramfs_filename().map(|s| s.to_string()),
         args.hwloc().clone(),
+        args.netns_pool_size(),
         &kernel_binary_path,
         #[cfg(not(feature = "single-process"))]
         &linuxd_binary_path,
@@ -189,12 +212,19 @@ pub async fn main() -> Result<()> {
         };
 
         let mut terminal: Terminal<()> = Terminal::new(config);
-        if let Err(error) = terminal
+        let exit_code: i32 = terminal
             .run(None, None, &guest_binary_path, &guest_binary_args)
-            .await
-        {
-            error!("terminal failed: {error}");
-        }
+            .await?;
+
+        // Clamp exit code to valid range [0, 255] for POSIX compatibility.
+        // Negative values become 255 (error), values > 255 are clamped to 255.
+        let clamped_exit_code: u8 = if !(0..=MAX_EXIT_CODE).contains(&exit_code) {
+            MAX_EXIT_CODE as u8
+        } else {
+            exit_code as u8
+        };
+
+        Ok(ExitCode::from(clamped_exit_code))
     } else {
         let http_sockaddr: &str = match args.http_sockaddr() {
             None => {
@@ -209,9 +239,9 @@ pub async fn main() -> Result<()> {
         if let Err(error) = http_server.run().await {
             error!("http server failed: {error}");
         }
-    }
 
-    Ok(())
+        Ok(ExitCode::SUCCESS)
+    }
 }
 
 ///
@@ -307,7 +337,7 @@ async fn ensure_all_binaries_available(
 ///
 /// Prints startup information for the Nanvix Daemon.
 ///
-/// This function displays the version, deployment type, operation mode, and L2 status.
+/// This function displays the version, deployment type, operation mode, L2 status, and machine type.
 ///
 /// # Parameters
 ///
@@ -321,14 +351,20 @@ fn print_startup_info(args: &Args) {
     };
 
     #[cfg(feature = "single-process")]
-    log_info!("nanvixd {}, single-process deployment, {} mode", env!("CARGO_PKG_VERSION"), mode);
+    log_info!(
+        "nanvixd {}, single-process deployment, {} mode, machine {}",
+        env!("CARGO_PKG_VERSION"),
+        mode,
+        DEFAULT_MACHINE_NAME
+    );
 
     #[cfg(not(feature = "single-process"))]
     log_info!(
-        "nanvixd {}, multi-process deployment, {} mode, l2 {}",
+        "nanvixd {}, multi-process deployment, {} mode, l2 {}, machine {}",
         env!("CARGO_PKG_VERSION"),
         mode,
-        if args.l2() { "enabled" } else { "disabled" }
+        if args.l2() { "enabled" } else { "disabled" },
+        DEFAULT_MACHINE_NAME
     );
 }
 
@@ -428,6 +464,7 @@ fn encode_base64_filename(mut num: u128) -> String {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::needless_range_loop)]
 mod tests {
     use super::*;
 
@@ -485,19 +522,19 @@ mod tests {
         // First 26 should be A-Z.
         for i in 0..26 {
             assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'A' + i as u8);
+            assert_eq!(encodings[i].as_bytes()[0], b'A' + i as u8);
         }
 
         // Next 26 should be a-z.
         for i in 26..52 {
             assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'a' + (i - 26) as u8);
+            assert_eq!(encodings[i].as_bytes()[0], b'a' + (i - 26) as u8);
         }
 
         // Next 10 should be 0-9.
         for i in 52..62 {
             assert_eq!(encodings[i].len(), 1);
-            assert_eq!(encodings[i].chars().next().unwrap() as u8, b'0' + (i - 52) as u8);
+            assert_eq!(encodings[i].as_bytes()[0], b'0' + (i - 52) as u8);
         }
 
         // Last two should be - and _.

@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use crate::Bitmap;
-use ::rand::Rng;
+use ::rand::RngExt;
 use ::raw_array::RawArray;
 use ::sys::error::Error;
 
@@ -20,7 +20,7 @@ fn test_helper_create_bitmap_from_raw_array(data: &mut [u8]) -> Result<Bitmap, E
     let len: usize = data.len();
     let array = unsafe { RawArray::from_raw_parts(ptr, len)? };
 
-    Ok(Bitmap::from_raw_array(array))
+    Bitmap::from_raw_array(array)
 }
 
 /// Attempts to create a [`Bitmap`] from a raw array.
@@ -148,10 +148,8 @@ fn test_alloc_range_across_word_boundary() {
 
     // Set all bits that are not in the range.
     for i in 0..bitmap.number_of_bits() {
-        if i < start || i >= end {
-            if bitmap.set(i).is_err() {
-                panic!("failed to set bit at index {i}");
-            }
+        if (i < start || i >= end) && bitmap.set(i).is_err() {
+            panic!("failed to set bit at index {i}");
         }
     }
 
@@ -200,7 +198,7 @@ fn test_alloc_random_ranges() {
 
     // Allocate random ranges.
     for _ in 0..NUMBER_OF_ITERATIONS {
-        let size: usize = (::rand::thread_rng().gen::<usize>() % bitmap.number_of_bits()) + 1;
+        let size: usize = ::rand::rng().random_range(0..bitmap.number_of_bits()) + 1;
 
         let start: usize = bitmap.alloc_range(size).unwrap_or_else(|_| {
             panic!("failed to allocate range of size {}", size);
@@ -236,7 +234,7 @@ fn test_alloc_random_bits_in_partial_bitmap() {
 
     // Set some bits randomly.
     for _ in 0..data.len() / 2 {
-        let index: usize = ::rand::thread_rng().gen::<usize>() % bitmap.number_of_bits();
+        let index: usize = ::rand::rng().random_range(0..bitmap.number_of_bits());
         let _ = bitmap.set(index);
     }
 
@@ -272,16 +270,14 @@ fn test_alloc_random_ranges_in_partial_bitmap() {
 
     for _ in 0..NUMBER_OF_ITERATIONS {
         // Choose a range that crosses a byte (word) boundary, e.g., bits 6..10 (crosses from byte 0 to byte 1)
-        let start = ::rand::thread_rng().gen::<usize>() % bitmap.number_of_bits();
-        let end =
-            start + (::rand::thread_rng().gen::<usize>() % (bitmap.number_of_bits() - start)) + 1;
+        let start: usize = ::rand::rng().random_range(0..bitmap.number_of_bits());
+        let end: usize =
+            start + ::rand::rng().random_range(0..(bitmap.number_of_bits() - start)) + 1;
 
         // Set all bits that are not in the range.
         for i in 0..bitmap.number_of_bits() {
-            if i < start || i >= end {
-                if bitmap.set(i).is_err() {
-                    panic!("failed to set bit at index {i} {start} {end}");
-                }
+            if (i < start || i >= end) && bitmap.set(i).is_err() {
+                panic!("failed to set bit at index {i} {start} {end}");
             }
         }
 
@@ -304,4 +300,42 @@ fn test_alloc_random_ranges_in_partial_bitmap() {
             }
         }
     }
+}
+
+/// Tests that `alloc()` can find free bits that exist before `next_free`.
+///
+/// This reproduces a bug where `alloc_range(n)` skips free bits that don't
+/// form a contiguous range of size n, advancing `next_free` past them.
+/// Without wrap-around, those free bits become unreachable.
+#[test]
+fn test_alloc_wraparound_next_free() {
+    let mut data: [u8; 1] = [0; 1];
+    let mut bitmap: Bitmap =
+        test_helper_create_bitmap_from_raw_array(&mut data).expect("failed to create bitmap");
+
+    // Allocate bits 0, 1, 2 -> next_free = 3.
+    assert_eq!(bitmap.alloc().expect("alloc 0"), 0);
+    assert_eq!(bitmap.alloc().expect("alloc 1"), 1);
+    assert_eq!(bitmap.alloc().expect("alloc 2"), 2);
+
+    // Free bit 1 -> creates a hole at position 1, next_free = 1.
+    bitmap.clear(1).expect("clear 1");
+
+    // alloc_range(2): starts at 1, [1,2] won't work (bit 2 is set),
+    // skips to 3 and allocates [3,4]. next_free = 5.
+    assert_eq!(bitmap.alloc_range(2).expect("alloc_range 2"), 3);
+
+    // Fill remaining bits 5, 6, 7 -> next_free = 8 (past end).
+    assert_eq!(bitmap.alloc().expect("alloc 5"), 5);
+    assert_eq!(bitmap.alloc().expect("alloc 6"), 6);
+    assert_eq!(bitmap.alloc().expect("alloc 7"), 7);
+
+    // State: [set, FREE, set, set, set, set, set, set], usage=7, next_free=8.
+    // alloc() must find bit 1 via wrap-around, not return OutOfMemory.
+    assert_eq!(
+        bitmap
+            .alloc()
+            .expect("alloc should wrap around and find bit 1"),
+        1
+    );
 }

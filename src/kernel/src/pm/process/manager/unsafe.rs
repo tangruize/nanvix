@@ -21,10 +21,7 @@ use crate::{
     },
     pm::{
         process::{
-            manager::{
-                ProcessManager,
-                ProcessManagerInner,
-            },
+            manager::ProcessManager,
             state::RunningProcess,
         },
         sync::{
@@ -52,19 +49,16 @@ use crate::{
     PERF_SCHED_SOFT_CONTEXT_SWITCHES,
     PERF_SCHED_WAKEUP,
 };
-use ::alloc::rc::Rc;
 use ::arch::mem::PAGE_SIZE;
 use ::config::kernel::SCHEDULER_FREQ;
 use ::core::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
     hint::{
         cold_path,
         unlikely,
     },
+    mem::MaybeUninit,
     sync::atomic::{
+        AtomicBool,
         AtomicI32,
         AtomicUsize,
     },
@@ -86,8 +80,11 @@ use ::sys::{
 // Global Variables
 //==================================================================================================
 
-/// Process manager.
-static mut PROCESS_MANAGER: Option<ProcessManager> = None;
+/// Process manager storage.
+static mut PROCESS_MANAGER: MaybeUninit<ProcessManager> = MaybeUninit::uninit();
+
+/// Whether the process manager has been initialized.
+static PROCESS_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 
 /// ID of the current process.
 static CURRENT_PID: AtomicI32 = AtomicI32::new(ProcessIdentifier::KERNEL_RAW);
@@ -118,28 +115,21 @@ impl ProcessManager {
     /// - `root`: Root virtual memory.
     /// - `tm`: Thread manager.
     ///
-    /// # Returns
+    /// # Panics
     ///
-    /// A handle to the process manager is returned.
+    /// This function panics if the process manager is already initialized.
     ///
-    pub fn init(
-        interrupt_capable: bool,
-        kernel: ReadyThread,
-        root: Vmem,
-        tm: ThreadManager,
-    ) -> ProcessManager {
+    pub fn init(interrupt_capable: bool, kernel: ReadyThread, root: Vmem, tm: ThreadManager) {
         // Check if the process manager is already initialized.
-        if unlikely(unsafe { PROCESS_MANAGER.is_some() }) {
+        if unlikely(PROCESS_MANAGER_INIT.load(ORDER)) {
             panic!("process manager was already initialized");
         }
 
-        let pm: Rc<RefCell<ProcessManagerInner>> =
-            Rc::new(RefCell::new(ProcessManagerInner::new(interrupt_capable, kernel, root, tm)));
+        let pm: ProcessManager = ProcessManager::new(interrupt_capable, kernel, root, tm);
 
         // SAFETY: This happens during kernel initialization and no other threads are running.
-        unsafe { PROCESS_MANAGER = Some(ProcessManager(pm.clone())) };
-
-        ProcessManager(pm)
+        unsafe { PROCESS_MANAGER.write(pm) };
+        PROCESS_MANAGER_INIT.store(true, ORDER);
     }
 
     ///
@@ -158,12 +148,12 @@ impl ProcessManager {
     /// - The process manager is initialized.
     ///
     pub unsafe fn get<'a>() -> &'a ProcessManager {
-        if let Some(ref pm) = PROCESS_MANAGER {
-            pm
-        } else {
-            cold_path();
+        if unlikely(!PROCESS_MANAGER_INIT.load(ORDER)) {
             panic!("process manager is not initialized");
         }
+
+        // SAFETY: The process manager has been initialized, so the value is valid.
+        PROCESS_MANAGER.assume_init_ref()
     }
 
     ///
@@ -182,12 +172,12 @@ impl ProcessManager {
     /// - The process manager is initialized.
     ///
     pub unsafe fn get_mut<'a>() -> &'a mut ProcessManager {
-        if let Some(ref mut pm) = PROCESS_MANAGER {
-            pm
-        } else {
-            cold_path();
+        if unlikely(!PROCESS_MANAGER_INIT.load(ORDER)) {
             panic!("process manager is not initialized");
         }
+
+        // SAFETY: The process manager has been initialized, so the value is valid.
+        PROCESS_MANAGER.assume_init_mut()
     }
 
     ///
@@ -228,7 +218,7 @@ impl ProcessManager {
             *mut ContextInformation,
             *mut ContextInformation,
             Option<VirtualAddress>,
-        ) = Self::get_mut().try_borrow_mut()?.exit(status);
+        ) = Self::get_mut().do_exit(status);
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
@@ -289,7 +279,7 @@ impl ProcessManager {
                 *mut ContextInformation,
                 *mut ContextInformation,
                 Option<VirtualAddress>,
-            ) = Self::get_mut().try_borrow_mut()?.exit_thread(status);
+            ) = Self::get_mut().do_exit_thread(status);
 
             join_cond.notify_all()?;
 
@@ -345,10 +335,8 @@ impl ProcessManager {
         trace!("pid={:?}, tid={:?}", pid, tid);
 
         loop {
-            let result: Result<ZombieThread, Result<Condvar, Error>> = Self::get_mut()
-                .try_borrow_mut()
-                .map_err(SleepError::Generic)?
-                .try_join_thread(pid, tid);
+            let result: Result<ZombieThread, Result<Condvar, Error>> =
+                Self::get_mut().try_join_thread(pid, tid);
 
             match result {
                 Ok(zombie_thread) => {
@@ -373,8 +361,6 @@ impl ProcessManager {
                             // Attempt to unmap page
                             if let Err(error) = VirtMemoryManager::get_mut().unmap_upage(
                                 Self::get_mut()
-                                    .try_borrow_mut()
-                                    .map_err(SleepError::Generic)?
                                     .find_process_mut(pid)
                                     .map_err(SleepError::Generic)?
                                     .state_mut()
@@ -443,10 +429,7 @@ impl ProcessManager {
             *mut ContextInformation,
             *mut ContextInformation,
             Option<VirtualAddress>,
-        ) = Self::get_mut()
-            .try_borrow_mut()
-            .map_err(SleepError::Generic)?
-            .sleep(alarm);
+        ) = Self::get_mut().do_sleep(alarm);
 
         // SAFETY: `from` and `to` point to valid context information structures, and the processor
         // is running with interrupts disabled.
@@ -454,10 +437,7 @@ impl ProcessManager {
         Self::switch(next_pid, next_tid, from, to, user_tda);
 
         // Check the reason why the thread was woken up.
-        let interrupt_reason: Option<InterruptReason> = Self::get_mut()
-            .try_borrow_mut()
-            .map_err(SleepError::Generic)?
-            .interrupt_reason();
+        let interrupt_reason: Option<InterruptReason> = Self::get_mut().interrupt_reason();
 
         // Check if the thread was interrupted.
         if let Some(reason) = interrupt_reason {
@@ -471,7 +451,8 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Gives up the processor and schedules another ready thread to run.
+    /// Ticks the scheduler, performing a context switch if the current thread's quantum has
+    /// expired.
     ///
     /// # Returns
     ///
@@ -491,7 +472,7 @@ impl ProcessManager {
     /// - The processor is running with interrupts disabled.
     /// - The processor is running in privileged mode.
     ///
-    pub unsafe fn giveup() -> Result<(), Error> {
+    pub unsafe fn tick() -> Result<(), Error> {
         // Check the remaining quantum for the current thread to decide whether to perform a context switch.
         let remaining_ticks: usize = REMAINING_QUANTUM.load(ORDER);
         if remaining_ticks > 1 {
@@ -499,24 +480,53 @@ impl ProcessManager {
             REMAINING_QUANTUM.store(remaining_ticks - 1, ORDER);
         } else {
             // The current thread has no remaining quantum, perform a context switch.
-
             cold_path();
-
-            // Re-schedule the calling thread and select another thread to run next.
-            let (next_pid, next_tid, from, to, user_tda): (
-                ProcessIdentifier,
-                ThreadIdentifier,
-                *mut ContextInformation,
-                *mut ContextInformation,
-                Option<VirtualAddress>,
-            ) = Self::get_mut().try_borrow_mut()?.schedule();
-
-            // Switch to the next thread and updating the remaining quantum accordingly.
-            // SAFETY: `from` and `to` point to valid context information structures, and the
-            // processor is running with interrupts disabled.
-            PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
-            Self::switch(next_pid, next_tid, from, to, user_tda);
+            Self::giveup()?
         }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gives up the processor and schedules another ready thread to run.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    /// This function may not return immediately, as the scheduler algorithm may select another
+    /// thread to run before the calling thread.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a context switch, suspending the execution of
+    /// the current thread until it is re-scheduled for execution.
+    ///
+    /// It is safe to call this function if and only if the following conditions are met:
+    /// - The process manager is initialized.
+    /// - The calling thread does not hold a reference to the process manager.
+    /// - Access to the process manager is synchronized.
+    /// - The processor is running with interrupts disabled.
+    /// - The processor is running in privileged mode.
+    ///
+    pub unsafe fn giveup() -> Result<(), Error> {
+        REMAINING_QUANTUM.store(0, ORDER);
+
+        // Re-schedule the calling thread and select another thread to run next.
+        let (next_pid, next_tid, from, to, user_tda): (
+            ProcessIdentifier,
+            ThreadIdentifier,
+            *mut ContextInformation,
+            *mut ContextInformation,
+            Option<VirtualAddress>,
+        ) = Self::get_mut().schedule();
+
+        // Switch to the next thread and updating the remaining quantum accordingly.
+        // SAFETY: `from` and `to` point to valid context information structures, and the
+        // processor is running with interrupts disabled.
+        PERF_SCHED_GIVEUP_CONTEXT_SWITCHES.fetch_add(1, ORDER);
+        Self::switch(next_pid, next_tid, from, to, user_tda);
 
         Ok(())
     }
@@ -545,7 +555,7 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn get_mutex(addr: MutexAddress) -> Result<Mutex, Error> {
-        Self::get_mut().try_borrow_mut()?.get_mutex(addr)
+        Self::get_mut().lookup_mutex(addr)
     }
 
     ///
@@ -570,9 +580,7 @@ impl ProcessManager {
         mutex_addr: MutexAddress,
         guard: MutexGuard,
     ) -> Result<(), Error> {
-        Self::get_mut()
-            .try_borrow_mut()?
-            .put_mutex_guard(mutex_addr, guard);
+        Self::get_mut().store_mutex_guard(mutex_addr, guard);
         Ok(())
     }
 
@@ -600,7 +608,7 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn get_cond(cond_addr: ConditionAddress) -> Result<Condvar, Error> {
-        Self::get_mut().try_borrow_mut()?.get_cond(cond_addr)
+        Self::get_mut().lookup_cond(cond_addr)
     }
 
     ///
@@ -625,7 +633,7 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn put_cond(cond_addr: ConditionAddress) -> Result<(), Error> {
-        Self::get_mut().try_borrow_mut()?.put_cond(cond_addr)
+        Self::get_mut().release_cond(cond_addr)
     }
 
     ///
@@ -647,11 +655,11 @@ impl ProcessManager {
     /// - The calling process does not hold a reference to the process manager.
     ///
     pub unsafe fn try_recv(tid: ThreadIdentifier) -> Result<Option<Message>, Error> {
-        let mut pm: RefMut<ProcessManagerInner> = unsafe { Self::get_mut() }.try_borrow_mut()?;
+        let pm: &mut ProcessManager = unsafe { Self::get_mut() };
         let running: &mut RunningProcess = pm.get_running_mut();
         match running.state_mut().receive_message(tid) {
             Some(message) => {
-                pm.number_buffered_messages -= 1;
+                pm.note_message_received()?;
                 Ok(Some(message))
             },
             None => Ok(None),
@@ -677,7 +685,7 @@ impl ProcessManager {
     ///
     pub unsafe fn wakeup(tid: ThreadIdentifier) -> Result<(), Error> {
         PERF_SCHED_WAKEUP.fetch_add(1, ORDER);
-        Self::get_mut().try_borrow_mut()?.wakeup(tid)
+        Self::get_mut().do_wakeup(tid)
     }
 
     ///
@@ -709,9 +717,7 @@ impl ProcessManager {
         tid: ThreadIdentifier,
         mutex_addr: MutexAddress,
     ) -> Result<MutexGuard, Error> {
-        Self::get_mut()
-            .try_borrow_mut()?
-            .take_mutex_guard(pid, tid, mutex_addr)
+        Self::get_mut().remove_mutex_guard(pid, tid, mutex_addr)
     }
 
     ///

@@ -82,10 +82,35 @@ core::arch::global_asm!(
     .section .crt0, "ax"
 
     _do_start:
+        #
+        # Entry point for newly created processes.
+        #
+        # The kernel sets up a trap frame so that IRET "returns" to this function.
+        # The kernel passes the argument pointer in EDX and the environment pointer
+        # in ECX.
+        #
+        # This stub must satisfy the i386 SysV ABI calling convention before
+        # invoking _start(argp, envp):
+        #  - Arguments are pushed right-to-left (envp first, then argp).
+        #  - At the CALL instruction, ESP must be 0 mod 16, so the return address
+        #    push leaves the callee with ESP = 12 (mod 16).
+        #
+        # Stack alignment arithmetic:
+        #   and esp,-16 -> ESP = 0 (mod 16)   (force 16-byte alignment)
+        #   mov ebp,esp -> set frame pointer for the process root frame
+        #   sub esp, 8  -> ESP = 8 (mod 16)   (alignment padding)
+        #   push ecx    -> ESP = 4 (mod 16)   (push envp -- second parameter)
+        #   push edx    -> ESP = 0 (mod 16)   (push argp -- first parameter)
+        #   call        -> ESP = 12 (mod 16)  (return address pushed by CALL)
+        #
+        and esp, -16
         mov ebp, esp
+        sub esp, 8
         push ecx
         push edx
         call _start
+    # Safety net: _start() calls exit() and never returns.
+    # If it somehow does, spin forever rather than falling through.
     1:  jmp 1b
     "#
 );
@@ -269,8 +294,17 @@ fn c_trampoline(argc: i32, argv: *const *const u8) -> i32 {
 /// Initializes system runtime.
 fn init() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
-    if let Err(e) = sysalloc::init() {
-        panic!("failed to initialize memory manager: {:?}", e);
+    {
+        // Reserve virtual address space for the heap from the unified mmap region.
+        let heap_capacity: usize = ::config::memory_layout::USER_HEAP_CAPACITY;
+        let heap_base: ::sys::mm::VirtualAddress = match sysalloc::vaddr::reserve(heap_capacity) {
+            core::prelude::v1::Ok(base) => base,
+            Err(e) => panic!("failed to reserve virtual address space for heap: {:?}", e),
+        };
+
+        if let Err(e) = sysalloc::init(heap_base, heap_capacity) {
+            panic!("failed to initialize memory manager: {:?}", e);
+        }
     }
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
     match sysalloc::tda::alloc() {

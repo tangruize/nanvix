@@ -73,7 +73,7 @@ pub mod memory_layout {
     ///
     /// Provides the raw value for [`KPOOL_BASE`], which can be used in constant-value expressions.
     ///
-    pub const KPOOL_BASE_RAW: usize = 0x00400000;
+    pub const KPOOL_BASE_RAW: usize = crate::kernel::KPOOL_BASE_RAW;
 
     ///
     /// # Description
@@ -129,7 +129,10 @@ pub mod memory_layout {
     ///
     /// # Description
     ///
-    /// Base address for memory-mapped objects.
+    /// Base address for the unified mmap region.
+    ///
+    /// All dynamic memory allocations (heap, shared libraries, and explicit memory mappings) are
+    /// backed by this unified region.
     ///
     /// # Notes
     ///
@@ -137,58 +140,39 @@ pub mod memory_layout {
     ///
     pub const USER_MMAP_BASE_RAW: usize = 0x6000_0000;
 
+    ///
     /// # Description
     ///
-    /// End address for memory-mapped objects.
+    /// End address for the unified mmap region.
     ///
     /// # Notes
     ///
     /// - This should be aligned to page and page table boundaries.
     ///
-    pub const USER_MMAP_END_RAW: usize = 0xa000_0000;
+    pub const USER_MMAP_END_RAW: usize = 0xd000_0000;
 
     ///
     /// # Description
     ///
-    /// Base address for shared libraries.
+    /// Size of the unified mmap region in bytes.
     ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_LIBS_BASE_RAW: usize = USER_MMAP_END_RAW;
+    pub const USER_MMAP_SIZE: usize = USER_MMAP_END_RAW - USER_MMAP_BASE_RAW;
 
     ///
     /// # Description
     ///
-    /// End address for shared libraries.
+    /// Maximum capacity of the user heap in bytes. The heap is backed by the unified mmap region
+    /// and grows lazily on demand.
     ///
-    /// # Notes
-    ///
-    /// - This should be aligned to page and page table boundaries.
-    ///
-    pub const USER_LIBS_END_RAW: usize = 0xb0000000;
+    pub const USER_HEAP_CAPACITY: usize = 32 * crate::constants::MEGABYTE;
 
     ///
     /// # Description
     ///
-    /// Provides the raw value for [`USER_HEAP_BASE`], which can be used in constant-value expressions.
+    /// Maximum capacity of the C runtime heap (`sbrk`) in bytes. The sbrk heap is backed by the
+    /// unified mmap region and grows lazily on demand.
     ///
-    pub const USER_HEAP_BASE_RAW: usize = USER_LIBS_END_RAW;
-
-    ///
-    /// # Description
-    ///
-    /// Provides the raw value for [`USER_HEAP_END`], which can be used in constant-value expressions.
-    ///
-    pub const USER_HEAP_END_RAW: usize = USER_HEAP_BASE_RAW + USER_HEAP_SIZE;
-
-    ///
-    /// # Description
-    ///
-    /// Size of the user heap.
-    ///
-    pub const USER_HEAP_SIZE: usize = 32 * crate::constants::MEGABYTE;
+    pub const USER_SBRK_CAPACITY: usize = 32 * crate::constants::MEGABYTE;
 }
 
 //==================================================================================================
@@ -201,7 +185,7 @@ pub mod microvm {
     pub const DEFAULT_BOOT_MAGIC: u32 = 0x0c00ffee;
 
     /// Base address of the RAM disk.
-    pub const DEFAULT_INITRD_BASE: usize = 0x00800000;
+    pub const DEFAULT_INITRD_BASE: usize = 0x00c00000;
 
     /// I/O port that is connected to the standard output of the virtual machine.
     pub const DEFAULT_STDOUT_PORT: u16 = 0xe9;
@@ -230,6 +214,12 @@ pub mod microvm {
     /// Default base address for MicroVM pause-requested register (32-bit wide read-only register)
     pub const DEFAULT_MICROVM_CTRL_PAUSE_REQUESTED: usize = 0x00000008;
 
+    /// Default base address for RAMFS base register (32-bit wide read-only register)
+    pub const DEFAULT_MICROVM_CTRL_RAMFS_BASE: usize = 0x0000000c;
+
+    /// Default base address for RAMFS size register (32-bit wide read-only register)
+    pub const DEFAULT_MICROVM_CTRL_RAMFS_SIZE: usize = 0x00000010;
+
     /// Magic value that identifies the running state in the pause-requested register.
     pub const RUNNING: u32 = 0x00000000;
 
@@ -249,14 +239,6 @@ pub mod pc {
     pub const DEFAULT_VMM_SHUTDOWN_CMD: u16 = 0x2000;
 }
 
+// Hyperlight build-time constants are generated from hyperlight_config.toml.
 #[cfg(feature = "hyperlight")]
-pub mod hyperlight {
-    /// Magic value that identifies the virtual machine monitor.
-    pub const DEFAULT_BOOT_MAGIC: u32 = 0x0c00ffee;
-    /// Base address of the RAM disk.
-    pub const DEFAULT_INITRD_BASE: usize = 0x00802000;
-    /// Number of bytes used to store initrd's size.
-    pub const INITRD_SIZE_BYTES: usize = 8;
-    /// Default VMM shutdown command
-    pub const DEFAULT_VMM_SHUTDOWN_CMD: u8 = 0x20;
-}
+include!(concat!(env!("OUT_DIR"), "/hyperlight_config.rs"));

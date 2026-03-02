@@ -24,7 +24,6 @@ use ::spin::{
     MutexGuard,
 };
 use ::sys::{
-    config::memory_layout::USER_HEAP_BASE,
     error::{
         Error,
         ErrorCode,
@@ -38,27 +37,6 @@ use ::sys::{
     pm::ProcessIdentifier,
 };
 use ::talc::*;
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "staticlib")] {
-        /// Heap size for Rust runtime.
-        const RUST_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE/2;
-        /// Heap size for C runtime.
-        pub const C_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE/2;
-    } else  {
-        /// Heap size for Rust runtime.
-        const RUST_HEAP_SIZE: usize = config::memory_layout::USER_HEAP_SIZE;
-        /// Heap size for C runtime.
-        pub const C_HEAP_SIZE: usize = 0;
-    }
-}
-
-/// Based address for break address.
-pub const BREAK_BASE_RAW: usize = config::memory_layout::USER_HEAP_BASE_RAW + RUST_HEAP_SIZE;
 
 //==================================================================================================
 //  Allocator
@@ -124,26 +102,71 @@ impl NanvixOomHandler {
 
 impl OomHandler for NanvixOomHandler {
     fn handle_oom(talc: &mut Talc<Self>, layout: core::alloc::Layout) -> Result<(), ()> {
-        let increment: usize = mm::align_up(layout.size(), PAGE_ALIGNMENT);
-
         let old_heap: Span = talc
             .oom_handler
             .span
             .expect("heap should have an initial span");
 
-        // Check if we have to grow the heap.
-        if old_heap.size() + increment > talc.oom_handler.heap.size() {
-            // let increment: usize = mm::align_up(increment, PAGE_ALIGNMENT);
-            // Attempt to grow the heap.
-            if talc.oom_handler.heap.grow(increment).is_err() {
+        // If the Talc span does not yet cover all committed backing memory, extend the span
+        // without growing. This reclaims committed pages that are not yet visible to Talc and
+        // avoids unnecessary heap growth.
+        if old_heap.size() < talc.oom_handler.heap.size() {
+            let req_heap: Span = Span::from_base_size(
+                talc.oom_handler.heap.base().as_mut_ptr(),
+                talc.oom_handler.heap.size(),
+            );
+
+            unsafe {
+                let span: Span = talc.extend(old_heap, req_heap);
+                #[cfg(feature = "warn")]
+                if span.size() != req_heap.size() {
+                    let diff: usize = req_heap.size().abs_diff(span.size());
+                    let _ = writeln!(
+                        &mut Logger::get(module_path!(), LogLevel::Warn),
+                        "handle_oom(): span reclamation claimed {} fewer bytes",
+                        diff
+                    );
+                }
+                talc.oom_handler.span = Some(span);
+            }
+
+            return Ok(());
+        }
+
+        // The span already covers all committed memory — grow the backing heap.
+        //
+        // Round up to page alignment and add one extra page so that the allocator's per-chunk
+        // metadata overhead never causes the growth to fall just short of the required chunk
+        // size. Without this margin, a page-aligned layout.size() produces a growth of exactly
+        // layout.size() bytes, but the allocator needs layout.size() + TAG_SIZE for the chunk,
+        // triggering a redundant second OOM call that doubles heap consumption per allocation.
+        let aligned: usize = match mm::align_up(layout.size(), PAGE_ALIGNMENT) {
+            Some(v) => v,
+            None => {
                 #[cfg(feature = "warn")]
                 let _ = writeln!(
                     &mut Logger::get(module_path!(), LogLevel::Warn),
-                    "failed to grow heap by {} bytes",
-                    increment
+                    "handle_oom(): align_up overflow (layout_size={})",
+                    layout.size()
                 );
                 return Err(());
-            }
+            },
+        };
+        let increment: usize = aligned.saturating_add(PAGE_SIZE);
+
+        // Attempt to grow with the overhead page. If that fails (near capacity), fall back to
+        // the exact aligned increment — existing free space inside Talc may supply the missing
+        // metadata bytes.
+        if talc.oom_handler.heap.grow(increment).is_err()
+            && talc.oom_handler.heap.grow(aligned).is_err()
+        {
+            #[cfg(feature = "warn")]
+            let _ = writeln!(
+                &mut Logger::get(module_path!(), LogLevel::Warn),
+                "failed to grow heap by {} bytes",
+                increment
+            );
+            return Err(());
         }
 
         let req_heap: Span = Span::from_base_size(
@@ -152,7 +175,7 @@ impl OomHandler for NanvixOomHandler {
         );
 
         unsafe {
-            let span = talc.extend(old_heap, req_heap);
+            let span: Span = talc.extend(old_heap, req_heap);
             if span.size() != req_heap.size() {
                 let _diff: usize = req_heap.size().abs_diff(span.size());
                 #[cfg(feature = "warn")]
@@ -180,17 +203,21 @@ impl OomHandler for NanvixOomHandler {
 ///
 /// Initializes the heap.
 ///
+/// # Parameters
+///
+/// - `base`: Base virtual address for the heap. Must be page-aligned and reside within a
+///   valid mmap region.
+/// - `capacity`: Maximum size of the heap in bytes.
+///
 /// # Returns
 ///
-/// Upon success, empty is returned. Upon failure, an error is returned instead
+/// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
 #[allow(static_mut_refs)]
-pub fn init() -> Result<(), Error> {
+pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
     let pid: ProcessIdentifier = kcall::pm::getpid()?;
 
-    let addr: VirtualAddress = USER_HEAP_BASE;
     let size: usize = PAGE_SIZE;
-    let capacity: usize = RUST_HEAP_SIZE;
 
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     // Check if the heap was already initialized.
@@ -198,7 +225,7 @@ pub fn init() -> Result<(), Error> {
         return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
     }
 
-    *locked_heap = Some(NanvixOomHandler::new(pid, addr, size, capacity)?);
+    *locked_heap = Some(NanvixOomHandler::new(pid, base, size, capacity)?);
 
     Ok(())
 }

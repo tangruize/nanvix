@@ -48,6 +48,13 @@ use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
 };
+use ::config::hyperlight::{
+    HOST_FUNCTION_DEFINITIONS_SIZE,
+    INITRD_SIZE_BYTES,
+    INPUT_DATA_BUFFER_SIZE,
+    OUTPUT_DATA_BUFFER_SIZE,
+    PEB_SIZE,
+};
 use ::hyperlight_common::mem::HyperlightPEB;
 use ::sys::{
     config::memory_layout,
@@ -61,6 +68,16 @@ use ::sys::{
         VirtualAddress,
     },
 };
+
+//==================================================================================================
+// Global Variables
+//==================================================================================================
+
+/// Static array to force the kernel image to grow beyond 4 MB.
+/// FIXME (#1310): Remove this once memory layout of Hyperlight is fixed.
+#[unsafe(no_mangle)]
+#[used]
+static KERNEL_PADDING: [u8; 2 * 1024 * 1024] = [0u8; 2 * 1024 * 1024];
 
 //==================================================================================================
 // Structures
@@ -163,11 +180,35 @@ pub unsafe fn puts(message: &str) {
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_write(addr: *const u8) {
     use crate::PERF_VMBUS_WRITE;
+    use ::sys::ipc::{
+        DataChunkHeader,
+        VmBusMessage,
+    };
 
     PERF_VMBUS_WRITE.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-    let data = core::slice::from_raw_parts(addr, config::kernel::IPC_MESSAGE_SIZE);
-    let _ = ProcessEnvironmentBlock::vmbus_write(data);
+    // Read the vmbus message from the given address.
+    let vmbus_msg: VmBusMessage = core::ptr::read_unaligned(addr as *const VmBusMessage);
+
+    if vmbus_msg.is_ikc() {
+        // IKC message: read the message bytes from the address stored in the vmbus message and
+        // send them to the host via the VmbusWrite host function (unchanged protocol).
+        let message_data: &[u8] = core::slice::from_raw_parts(
+            vmbus_msg.message_addr() as *const u8,
+            vmbus_msg.size() as usize,
+        );
+        let _ = ProcessEnvironmentBlock::vmbus_write(message_data);
+    } else {
+        // Data chunk transfer: vmbus_msg.message_addr() points to a DataChunkHeader on the stack.
+        // Send only the header bytes (24 bytes) to the host via VmbusBulkWrite. The host
+        // function reads the actual bulk payload directly from guest shared memory using the
+        // GPA stored in header.data_addr(). This avoids allocating a large buffer on the
+        // kernel heap.
+        let header: DataChunkHeader =
+            core::ptr::read_unaligned(vmbus_msg.message_addr() as *const DataChunkHeader);
+        let header_bytes: [u8; DataChunkHeader::SIZE] = header.to_bytes();
+        let _ = ProcessEnvironmentBlock::vmbus_bulk_write(&header_bytes);
+    }
 }
 
 ///
@@ -189,13 +230,21 @@ pub unsafe fn vmbus_write(addr: *const u8) {
 #[cfg(feature = "stdio")]
 pub unsafe fn vmbus_read(addr: *mut u8) {
     use crate::PERF_VMBUS_READ;
+    use ::sys::ipc::VmBusMessage;
 
     PERF_VMBUS_READ.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 
-    let data = core::slice::from_raw_parts_mut(addr, config::kernel::IPC_MESSAGE_SIZE);
-    let bytes = ProcessEnvironmentBlock::vmbus_read();
+    // Read the vmbus message from the given address.
+    let vmbus_msg: VmBusMessage = core::ptr::read_unaligned(addr as *const VmBusMessage);
+
+    // Write received message bytes to the address stored in the vmbus message.
+    let bytes: Result<alloc::vec::Vec<u8>, _> = ProcessEnvironmentBlock::vmbus_read();
     if let Ok(bytes) = bytes {
-        data.copy_from_slice(&bytes);
+        let dest: &mut [u8] = core::slice::from_raw_parts_mut(
+            vmbus_msg.message_addr() as *mut u8,
+            vmbus_msg.size() as usize,
+        );
+        dest.copy_from_slice(&bytes);
     }
 }
 
@@ -206,14 +255,21 @@ pub unsafe fn vmbus_read(addr: *mut u8) {
 ///
 /// # Parameters
 ///
-/// - `status`: The shutdown status code.
+/// - `status`: The shutdown status code (low 8 bits are passed to the VMM).
 ///
 /// # Return
 ///
 /// This function never returns.
 ///
-pub fn shutdown(_status: usize) -> ! {
-    ::hyperlight_guest::exit::abort_with_code(&[::config::hyperlight::DEFAULT_VMM_SHUTDOWN_CMD]);
+pub fn shutdown(status: usize) -> ! {
+    // Pass the low 8 bits of status as the exit code to the VMM.
+    let code: u8 = (status & 0xFF) as u8;
+    // NOTE: We use abort_with_code() for all exit codes (including 0) rather than halt() because
+    // halt() takes longer to propagate through hyperlight's host machinery. Due to issue #1010,
+    // the orchestrator sends SIGKILL immediately upon receiving a shutdown command, which can
+    // kill the vCPU thread before halt() completes. Using abort_with_code() is faster and avoids
+    // this race condition.
+    ::hyperlight_guest::exit::abort_with_code(&[code]);
 }
 
 ///
@@ -237,8 +293,12 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         static __KERNEL_END: u8;
     }
 
-    let peb_base: usize =
-        unsafe { ::sys::mm::align_up(&__KERNEL_END as *const u8 as usize, PAGE_ALIGNMENT) };
+    let kernel_end: usize = unsafe { &__KERNEL_END as *const u8 as usize };
+    let peb_base: usize = ::sys::mm::align_up(kernel_end, PAGE_ALIGNMENT).ok_or_else(|| {
+        let reason: &str = "align_up overflow";
+        error!("parse_bootinfo(): {reason} (kernel_end={kernel_end:#x})");
+        Error::new(ErrorCode::BadAddress, reason)
+    })?;
     let peb_ptr: *mut HyperlightPEB = peb_base as *mut HyperlightPEB;
 
     unsafe {
@@ -274,10 +334,16 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         KernelModule::new(PhysicalAddress::from_raw_value(initrd_base)?, initrd_size, cmdline);
     kernel_modules.push_back(module);
 
-    Ok(BootInfo::new(None, None, LinkedList::new(), LinkedList::new(), kernel_modules))
+    Ok(BootInfo::new(
+        None,
+        None,
+        LinkedList::new(),
+        LinkedList::new(),
+        IoMemoryAllocator::new(),
+        kernel_modules,
+    ))
 }
 
-#[cfg(feature = "pic")]
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(::arch::cpu::pic::PIC_CTRL_MASTER as u16)?;
@@ -305,16 +371,19 @@ pub fn init(
     madt: &Option<MadtInfo>,
     _mem_lower: Option<usize>,
 ) -> Result<Platform, Error> {
-    #[cfg(feature = "pic")]
     register_pic_ioports(ioports)?;
 
     extern "C" {
         static __KERNEL_END: u8;
     }
     // Register PEB structure.
+    let kernel_end_addr: usize = unsafe { &__KERNEL_END } as *const u8 as usize;
     let peb_base: usize =
-        ::sys::mm::align_up(unsafe { &__KERNEL_END } as *const u8 as usize, PAGE_ALIGNMENT);
-    const PEB_SIZE: usize = mem::PAGE_SIZE;
+        ::sys::mm::align_up(kernel_end_addr, PAGE_ALIGNMENT).ok_or_else(|| {
+            let reason: &str = "align_up overflow";
+            error!("init(): {reason} (kernel_end_addr={kernel_end_addr:#x})");
+            Error::new(ErrorCode::BadAddress, reason)
+        })?;
     let peb: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "peb",
         VirtualAddress::from_raw_value(peb_base),
@@ -324,9 +393,13 @@ pub fn init(
     )?;
     memory_regions.push_back(peb);
 
-    // Register host function definitions
-    let host_function_definitions_base: usize = peb_base + PEB_SIZE;
-    const HOST_FUNCTION_DEFINITIONS_SIZE: usize = mem::PAGE_SIZE;
+    // Register host function definitions.
+    let host_function_definitions_base: usize =
+        peb_base.checked_add(PEB_SIZE).ok_or_else(|| {
+            let reason: &str = "host function definitions base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let host_function_definitions: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "host function definitions",
         VirtualAddress::from_raw_value(host_function_definitions_base),
@@ -337,8 +410,13 @@ pub fn init(
     memory_regions.push_back(host_function_definitions);
 
     // Register input data buffer.
-    let input_data_base: usize = host_function_definitions_base + HOST_FUNCTION_DEFINITIONS_SIZE;
-    const INPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
+    let input_data_base: usize = host_function_definitions_base
+        .checked_add(HOST_FUNCTION_DEFINITIONS_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "input data buffer base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let input_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "input data buffer",
         VirtualAddress::from_raw_value(input_data_base),
@@ -349,8 +427,13 @@ pub fn init(
     memory_regions.push_back(input_data_buffer);
 
     // Register output data buffer.
-    let output_data_base: usize = input_data_base + INPUT_DATA_BUFFER_SIZE;
-    const OUTPUT_DATA_BUFFER_SIZE: usize = 4 * mem::PAGE_SIZE;
+    let output_data_base: usize = input_data_base
+        .checked_add(INPUT_DATA_BUFFER_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "output data buffer base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let output_data_buffer: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "output data buffer",
         VirtualAddress::from_raw_value(output_data_base),
@@ -360,22 +443,48 @@ pub fn init(
     )?;
     memory_regions.push_back(output_data_buffer);
 
-    // Register reserved area for heap padding.
-    let heap_padding_base: usize = output_data_base + OUTPUT_DATA_BUFFER_SIZE;
+    // Compute heap padding between output data buffer and kernel pool.
+    let heap_padding_base: usize = output_data_base
+        .checked_add(OUTPUT_DATA_BUFFER_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "heap padding base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     debug!("heap_padding_base={:#010x}", heap_padding_base);
-    let heap_padding_size: usize = memory_layout::KPOOL_BASE.into_raw_value() - heap_padding_base;
-    let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
-        "heap padding",
-        VirtualAddress::from_raw_value(heap_padding_base),
-        heap_padding_size,
-        MemoryRegionType::Reserved,
-        AccessPermission::RDONLY,
-    )?;
-    memory_regions.push_back(heap_padding);
+    let kpool_base: usize = memory_layout::KPOOL_BASE.into_raw_value();
+    match kpool_base.checked_sub(heap_padding_base) {
+        None => {
+            let reason: &str = "kernel image exceeds KPOOL_BASE, memory regions overlap";
+            error!(
+                "init(): {} (heap_padding_base={:#010x}, kpool_base={:#010x})",
+                reason, heap_padding_base, kpool_base
+            );
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        },
+        Some(0) => {
+            debug!("init(): no heap padding needed");
+        },
+        Some(heap_padding_size) => {
+            let heap_padding: MemoryRegion<VirtualAddress> = MemoryRegion::new(
+                "heap padding",
+                VirtualAddress::from_raw_value(heap_padding_base),
+                heap_padding_size,
+                MemoryRegionType::Reserved,
+                AccessPermission::RDONLY,
+            )?;
+            memory_regions.push_back(heap_padding);
+        },
+    }
 
     // Register kpool guard page.
-    let kpool_guard_base: usize =
-        memory_layout::KPOOL_BASE.into_raw_value() + config::kernel::KPOOL_SIZE;
+    let kpool_guard_base: usize = kpool_base
+        .checked_add(config::kernel::KPOOL_SIZE)
+        .ok_or_else(|| {
+            let reason: &str = "kpool guard base address overflow";
+            error!("init(): {}", reason);
+            Error::new(ErrorCode::OutOfMemory, reason)
+        })?;
     let kpool_guard_size: usize = mem::PAGE_SIZE;
     let kpool_guard: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "kpool guard",
@@ -387,7 +496,14 @@ pub fn init(
     memory_regions.push_back(kpool_guard);
 
     // Register hyperlight guest user stack.
-    let guest_user_stack_base: usize = kpool_guard_base + kpool_guard_size;
+    let guest_user_stack_base: usize =
+        kpool_guard_base
+            .checked_add(kpool_guard_size)
+            .ok_or_else(|| {
+                let reason: &str = "guest user stack base address overflow";
+                error!("init(): {}", reason);
+                Error::new(ErrorCode::OutOfMemory, reason)
+            })?;
     let guest_user_stack_size: usize = mem::PAGE_SIZE;
     let guest_user_stack: MemoryRegion<VirtualAddress> = MemoryRegion::new(
         "guest user stack",
@@ -434,17 +550,15 @@ unsafe fn parse_initrd_image(
     total_allocation_size: usize,
 ) -> Result<(usize, usize, (u8, String)), Error> {
     // Check if allocation is too small to hold the initrd header.
-    if total_allocation_size < ::config::hyperlight::INITRD_SIZE_BYTES {
+    if total_allocation_size < INITRD_SIZE_BYTES {
         let reason: &str = "insufficient initrd allocation size";
         error!("parse_initrd_image(): {reason} (total_allocation_size={total_allocation_size})");
         return Err(Error::new(ErrorCode::BadFile, reason));
     }
 
     // Read actual size and relocate only that amount
-    let initrd_header: &[u8] = core::slice::from_raw_parts(
-        init_data_start as *const u8,
-        ::config::hyperlight::INITRD_SIZE_BYTES,
-    );
+    let initrd_header: &[u8] =
+        core::slice::from_raw_parts(init_data_start as *const u8, INITRD_SIZE_BYTES);
     let actual_initrd_size: usize = u64::from_le_bytes([
         initrd_header[0],
         initrd_header[1],
@@ -457,7 +571,7 @@ unsafe fn parse_initrd_image(
     ]) as usize;
 
     // Compute offsets and check for overflows.
-    let payload_offset: usize = ::config::hyperlight::INITRD_SIZE_BYTES;
+    let payload_offset: usize = INITRD_SIZE_BYTES;
     let current_initrd_start: usize = match init_data_start.checked_add(payload_offset) {
         Some(value) => value,
         None => {

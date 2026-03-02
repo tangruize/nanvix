@@ -128,6 +128,9 @@ impl Slab {
                 1
             };
         // info!("number of index blocks: {:?}", num_index_blocks);
+        if num_index_blocks > total_num_blocks {
+            return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
+        }
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
         // info!("number of data blocks: {:?}", num_data_blocks);
         let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
@@ -139,7 +142,7 @@ impl Slab {
 
         // Instantiate index.
         let storage: RawArray<u8> = RawArray::from_raw_parts(addr, index_len)?;
-        let mut index: Bitmap = Bitmap::from_raw_array(storage);
+        let mut index: Bitmap = Bitmap::from_raw_array(storage)?;
 
         // NOTE: The index is initialized with all blocks free, thus if we fail beyond this point
         // the memory region is left in a modified state.

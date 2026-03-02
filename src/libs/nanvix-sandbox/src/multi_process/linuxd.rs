@@ -58,7 +58,7 @@ use ::syscomm::{
     UnboundSocket,
     WriteAll,
 };
-use ::syslog::{
+use ::log::{
     debug,
     error,
     trace,
@@ -75,6 +75,7 @@ use ::tokio::{
         ChildStderr,
         Command,
     },
+    sync::Mutex,
     time::{
         sleep,
         timeout,
@@ -143,8 +144,20 @@ impl StdError for WaitForSocketError {
 }
 
 //==================================================================================================
-// LinuxDaemon
+// Structures
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Interior mutable state for a Linux Daemon instance.
+///
+struct LinuxDaemonInner {
+    /// Child process handle.
+    child: Child,
+    /// Control-plane socket stream.
+    control_plane_stream: SocketStream,
+}
 
 ///
 /// # Description
@@ -152,13 +165,15 @@ impl StdError for WaitForSocketError {
 /// Handle to a running Linux Daemon instance spawned as a separate process.
 ///
 pub struct LinuxDaemon {
-    /// Child process handle.
-    child: Child,
-    /// Control-plane socket stream.
-    control_plane_stream: SocketStream,
+    /// Interior mutable state.
+    inner: Mutex<Option<LinuxDaemonInner>>,
     /// RAII handle to the network namespace linuxd runs in (L2-mode only).
     netns_handle: Option<NetnsHandle>,
 }
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
 
 impl LinuxDaemon {
     ///
@@ -179,8 +194,6 @@ impl LinuxDaemon {
     ///
     /// On success, returns an empty tuple. On failure, returns an error.
     ///
-    // FIXME(#1171): we will be able to get rid of this method once we have a programmatic way to
-    // spawn a task inside a namespace without spawning a different process.
     async fn wait_for_unix_socket<P: AsRef<Path>>(
         path: P,
         timeout_duration: Duration,
@@ -476,7 +489,10 @@ impl LinuxDaemon {
                 args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
                 args.control_plane_connect_socket_info().0.clone(),
                 args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string(),
-                args.control_plane_connect_socket_info().1.to_str().to_string(),
+                args.control_plane_connect_socket_info()
+                    .1
+                    .to_str()
+                    .to_string(),
                 args::Args::OPT_USER_VM_BIND_SOCKADDR.to_string(),
                 args.system_vm_socket_info().0.clone(),
                 args::Args::OPT_USER_VM_BIND_SOCKET_TYPE.to_string(),
@@ -543,9 +559,13 @@ impl LinuxDaemon {
 
             child
         } else {
-            Command::new(&linuxd_args[0])
-                .args(&linuxd_args[1..])
-                .stdout(Stdio::inherit())
+            let mut cmd: Command = Command::new(&linuxd_args[0]);
+            cmd.args(&linuxd_args[1..]);
+            // Ensure the child process is killed if the Child handle is dropped without explicit
+            // cleanup. This acts as a best-effort safety net during normal unwinding and shutdown
+            // paths where drop handlers run, helping to prevent orphaned processes.
+            cmd.kill_on_drop(true);
+            cmd.stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .spawn()
                 .map_err(|e| {
@@ -588,8 +608,10 @@ impl LinuxDaemon {
         debug!("nanvixd received connection from linuxd's control-plane socket");
 
         Ok(Self {
-            child,
-            control_plane_stream,
+            inner: Mutex::new(Some(LinuxDaemonInner {
+                child,
+                control_plane_stream,
+            })),
             netns_handle,
         })
     }
@@ -599,8 +621,23 @@ impl LinuxDaemon {
     ///
     /// Shuts down the Linux Daemon instance.
     ///
-    pub async fn shutdown(&mut self) {
+    /// # Notes
+    ///
+    /// - The method is idempotent - calling it multiple times is safe and has no effect after the
+    ///   first successful shutdown.
+    ///
+    pub async fn shutdown(&self) {
         trace!("shutdown()");
+
+        // Proceed with shutdown if we have the inner state.
+        let Some(LinuxDaemonInner {
+            mut control_plane_stream,
+            mut child,
+        }) = self.inner.lock().await.take()
+        else {
+            warn!("shutdown(): inner state already taken, skipping shutdown");
+            return;
+        };
 
         // Prepare shutdown message.
         let msg_bytes: [u8; mem::size_of::<NanvixdControlMessage>()] = {
@@ -612,14 +649,14 @@ impl LinuxDaemon {
         };
 
         // Send shutdown command to Linux Daemon.
-        if let Err(error) = self.control_plane_stream.write_all(&msg_bytes).await {
+        if let Err(error) = control_plane_stream.write_all(&msg_bytes).await {
             if error.kind() != ErrorKind::BrokenPipe {
                 error!("shutdown(): failed to send shutdown command to linuxd (error={error:?})");
             }
         }
 
         // Wait for linuxd instance to finish.
-        match timeout(SHUTDOWN_TIMEOUT, self.child.wait()).await {
+        match timeout(SHUTDOWN_TIMEOUT, child.wait()).await {
             Ok(Ok(exit_status)) => {
                 if !exit_status.success() {
                     warn!(
@@ -630,11 +667,11 @@ impl LinuxDaemon {
             },
             Ok(Err(error)) => {
                 warn!("shutdown(): error waiting for linuxd (error={error:?})");
-                Self::send_sigkill_to_child(&self.child);
+                Self::send_sigkill_to_child(&child);
             },
             Err(elapsed) => {
                 warn!("shutdown(): timed-out waiting for linuxd (error={elapsed:?})");
-                Self::send_sigkill_to_child(&self.child);
+                Self::send_sigkill_to_child(&child);
             },
         }
     }

@@ -29,7 +29,7 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::libc;
-use ::nanvix::log::{
+use ::log::{
     debug,
     error,
     trace,
@@ -42,12 +42,20 @@ use ::std::{
     thread,
     time::Duration,
 };
-use ::tokio::process::{
-    Child,
-    ChildStderr,
-    ChildStdin,
-    ChildStdout,
-    Command,
+use ::tokio::{
+    process::{
+        Child,
+        ChildStderr,
+        ChildStdin,
+        ChildStdout,
+        Command,
+    },
+    runtime::{
+        Builder,
+        Handle,
+        RuntimeFlavor,
+    },
+    task::block_in_place,
 };
 
 //==================================================================================================
@@ -128,6 +136,10 @@ impl Nanvixd {
     ) -> Command {
         let mut command: Command = Command::new(config.nanvixd_binary_path.as_str());
         command.current_dir(&config.working_directory);
+        // Ensure the child process is killed if the Child handle is dropped without explicit
+        // cleanup.  This acts as a best-effort safety net during normal unwinding and shutdown
+        // paths where drop handlers run, helping to prevent orphaned processes.
+        command.kill_on_drop(true);
         command.arg(::nanvixd::args::Args::OPT_TOOLCHAIN_BIN_DIRECTORY);
         command.arg(format!("{}/bin", config.toolchain_path));
 
@@ -305,6 +317,42 @@ impl Nanvixd {
     fn take_stderr(&mut self) -> Option<ChildStderr> {
         self.cmd.stderr.take()
     }
+
+    ///
+    /// # Description
+    ///
+    /// Waits for the process to exit and returns its exit code.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the exit code of the process on success; returns an error if waiting fails or
+    /// the process was terminated by a signal.
+    ///
+    async fn wait_exit_code(&mut self) -> Result<i32> {
+        let context: String = self.context_label().to_string();
+        trace!("wait_exit_code(): context={context}");
+
+        match self.cmd.wait().await {
+            Ok(status) => {
+                if let Some(code) = status.code() {
+                    debug!("wait_exit_code(): process exited with code {code} (context={context})");
+                    Ok(code)
+                } else {
+                    let reason: String = format!(
+                        "process terminated by signal without exit code (context={context})"
+                    );
+                    error!("wait_exit_code(): {reason}");
+                    Err(::anyhow::anyhow!(reason))
+                }
+            },
+            Err(error) => {
+                let reason: String =
+                    format!("failed to wait for process exit (context={context}, error={error})");
+                error!("wait_exit_code(): {reason}");
+                Err(::anyhow::anyhow!(reason))
+            },
+        }
+    }
 }
 
 impl Drop for Nanvixd {
@@ -473,12 +521,82 @@ impl EnvironmentCleanupGuard {
 
 impl Drop for EnvironmentCleanupGuard {
     fn drop(&mut self) {
-        environment::cleanup_after_run(
-            self.l2_enabled,
-            self.http_port,
-            self.tmp_directory.as_path(),
-            self.tcp_cleanup_max_wait_seconds,
-            self.tcp_cleanup_poll_interval_seconds,
-        );
+        let l2_enabled: bool = self.l2_enabled;
+        let http_port: Option<u16> = self.http_port;
+        let tmp_directory: PathBuf = self.tmp_directory.clone();
+        let tcp_cleanup_max_wait_seconds: u64 = self.tcp_cleanup_max_wait_seconds;
+        let tcp_cleanup_poll_interval_seconds: u64 = self.tcp_cleanup_poll_interval_seconds;
+
+        if let Ok(handle) = Handle::try_current() {
+            match handle.runtime_flavor() {
+                RuntimeFlavor::MultiThread => {
+                    let tmp_clone: PathBuf = tmp_directory.clone();
+                    block_in_place(|| {
+                        handle.block_on(async {
+                            environment::cleanup_after_run(
+                                l2_enabled,
+                                http_port,
+                                tmp_clone.as_path(),
+                                tcp_cleanup_max_wait_seconds,
+                                tcp_cleanup_poll_interval_seconds,
+                            )
+                            .await;
+                        });
+                    });
+                },
+                RuntimeFlavor::CurrentThread => {
+                    let tmp_clone: PathBuf = tmp_directory.clone();
+                    handle.spawn(async move {
+                        environment::cleanup_after_run(
+                            l2_enabled,
+                            http_port,
+                            tmp_clone.as_path(),
+                            tcp_cleanup_max_wait_seconds,
+                            tcp_cleanup_poll_interval_seconds,
+                        )
+                        .await;
+                    });
+                },
+                _ => {
+                    let tmp_clone: PathBuf = tmp_directory.clone();
+                    warn_with_policy!(
+                        "EnvironmentCleanupGuard::drop(): unknown runtime flavor, running cleanup \
+                         synchronously"
+                    );
+                    block_in_place(|| {
+                        handle.block_on(async {
+                            environment::cleanup_after_run(
+                                l2_enabled,
+                                http_port,
+                                tmp_clone.as_path(),
+                                tcp_cleanup_max_wait_seconds,
+                                tcp_cleanup_poll_interval_seconds,
+                            )
+                            .await;
+                        });
+                    });
+                },
+            }
+            return;
+        }
+
+        match Builder::new_current_thread().enable_all().build() {
+            Ok(runtime) => {
+                runtime.block_on(async {
+                    environment::cleanup_after_run(
+                        l2_enabled,
+                        http_port,
+                        tmp_directory.as_path(),
+                        tcp_cleanup_max_wait_seconds,
+                        tcp_cleanup_poll_interval_seconds,
+                    )
+                    .await;
+                });
+            },
+            Err(error) => warn_with_policy!(
+                "EnvironmentCleanupGuard::drop(): failed to build cleanup runtime (error={})",
+                error
+            ),
+        }
     }
 }

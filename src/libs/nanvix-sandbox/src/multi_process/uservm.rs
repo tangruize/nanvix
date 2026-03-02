@@ -21,7 +21,7 @@ use crate::{
 #[cfg(not(feature = "single-process"))]
 use crate::{
     netns::NetnsHandle,
-    netns_exec::netns_command_args,
+    netns_exec::command_in_netns,
 };
 use ::anyhow::Result;
 use ::control_plane_api::{
@@ -40,7 +40,7 @@ use ::syscomm::{
     SocketStream,
     WriteAll,
 };
-use ::syslog::{
+use ::log::{
     debug,
     error,
     trace,
@@ -120,7 +120,10 @@ impl UserVm {
             ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKADDR.to_string(),
             args.control_plane_connect_socket_info().0.to_string(),
             ::uservm::args::Args::OPT_CONTROL_PLANE_SOCKET_TYPE.to_string(),
-            args.control_plane_connect_socket_info().1.to_str().to_string(),
+            args.control_plane_connect_socket_info()
+                .1
+                .to_str()
+                .to_string(),
             ::uservm::args::Args::OPT_GATEWAY_SOCKADDR.to_string(),
             args.gateway_socket_info().0.to_string(),
             ::uservm::args::Args::OPT_GATEWAY_SOCKET_TYPE.to_string(),
@@ -132,6 +135,11 @@ impl UserVm {
         if let Some(program_args) = args.program_args() {
             user_vm_args.push(::uservm::args::Args::OPT_INITRD_ARGS.to_string());
             user_vm_args.push(program_args.to_string());
+        }
+
+        if let Some(ramfs_filename) = args.ramfs_filename() {
+            user_vm_args.push(::uservm::args::Args::OPT_RAMFS.to_string());
+            user_vm_args.push(ramfs_filename.to_string());
         }
 
         if let Some(stderr_file) = args.console_file() {
@@ -148,19 +156,38 @@ impl UserVm {
             user_vm_args.splice(0..0, taskset);
         }
 
-        // In an L2-deployment, spawn the user VM inside a network namespace.
-        #[cfg(not(feature = "single-process"))]
-        if let Some(netns_handle) = &netns_handle {
-            user_vm_args = netns_command_args(
-                &netns_handle.netns_info()?,
-                &user_vm_args[0],
-                &user_vm_args[1..],
-            );
-        }
+        let mut cmd: Command = {
+            // In an L2-deployment, spawn the user VM inside a network namespace.
+            #[cfg(not(feature = "single-process"))]
+            if let Some(netns_handle) = &netns_handle {
+                command_in_netns(&netns_handle.netns_info()?, &user_vm_args[0], &user_vm_args[1..])
+            } else {
+                let mut cmd: Command = Command::new(&user_vm_args[0]);
+                cmd.args(&user_vm_args[1..]);
+                // Ensure the child process is killed if the Child handle is dropped without
+                // explicit cleanup. This acts as a best-effort safety net during normal unwinding
+                // and shutdown paths where drop handlers run, helping to prevent orphaned
+                // processes.
+                cmd.kill_on_drop(true);
+
+                cmd
+            }
+
+            #[cfg(feature = "single-process")]
+            {
+                let mut cmd: Command = Command::new(&user_vm_args[0]);
+                cmd.args(&user_vm_args[1..]);
+                // Ensure the child process is killed if the Child handle is dropped without
+                // explicit cleanup.  This acts as a best-effort safety net during normal unwinding
+                // and shutdown paths where drop handlers run, helping to prevent orphaned
+                // processes.
+                cmd.kill_on_drop(true);
+                cmd
+            }
+        };
 
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
-        let child = Command::new(&user_vm_args[0])
-            .args(&user_vm_args[1..])
+        let child: Child = cmd
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()?;

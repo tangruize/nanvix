@@ -14,12 +14,13 @@
 use crate::config::{
     self,
     DEFAULT_CONSOLE_FILENAME,
-    DEFAULT_LOG_DIRECTORY,
+    DEFAULT_TMP_DIRECTORY,
 };
 use ::anyhow::Result;
 use ::chrono::Local;
 use ::nanvix::{
     hwloc::HwLoc,
+    log::DEFAULT_LOG_DIRECTORY,
     syscomm::SocketType,
 };
 use ::std::{
@@ -50,8 +51,12 @@ pub struct Args {
     toolchain_binary_directory: String,
     /// Optional file path for redirecting console output.
     console_file: Option<String>,
+    /// Optional RAM filesystem image exposed to the guest.
+    ramfs_filename: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology.
     hwloc: Option<HwLoc>,
+    /// Number of network namespaces to prefill in the pool (0 enables lazy initialization).
+    netns_pool_size: usize,
     /// Directory path for writing log files when log_to_file is enabled.
     log_directory: String,
     /// Flag indicating whether to deploy linuxd inside an L2 VM.
@@ -68,6 +73,8 @@ pub struct Args {
     program_name: Option<String>,
     /// Program arguments for interactive mode (remaining words after `--` separator).
     program_args: Vec<String>,
+    /// Base directory path for creating temporary directories.
+    tmp_directory: String,
 }
 
 //==================================================================================================
@@ -91,6 +98,12 @@ impl Args {
     pub const OPT_HWLOC: &'static str = "-hwloc";
     /// Command-line option that sets the log directory path.
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
+    /// Command-line option that sets the network namespace pool size.
+    pub const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
+    /// Command-line option that sets the RAM filesystem image filename.
+    pub const OPT_RAMFS_FILENAME: &'static str = "-ramfs";
+    /// Default netns pool size for prefill mode.
+    pub const DEFAULT_NETNS_POOL_SIZE: usize = 128;
     /// Command-line flag that enables L2 deployment mode.
     pub const OPT_L2: &'static str = "-l2";
     /// Command-line option that sets the control plane socket type.
@@ -101,6 +114,8 @@ impl Args {
     pub const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
     /// Command-line separator for interactive mode program and arguments.
     pub const OPT_SEPARATOR: &'static str = "--";
+    /// Command-line option that sets the base temporary directory path.
+    pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
 
     ///
     /// # Description
@@ -131,7 +146,9 @@ impl Args {
             DEFAULT_CONSOLE_FILENAME,
             Local::now().format("%Y_%m_%d_%H_%M")
         ));
+        let mut ramfs_filename: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
+        let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
         let mut l2: bool = false;
         let mut l2_snapshot_path: String = String::new();
@@ -140,6 +157,7 @@ impl Args {
         let mut system_vm_socket_type: Option<SocketType> = None;
         let mut program_name: Option<String> = None;
         let mut program_args: Vec<String> = Vec::new();
+        let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -214,6 +232,25 @@ impl Args {
                     i += 1;
                     log_directory = args[i].clone();
                 },
+                Self::OPT_NETNS_POOL_SIZE => {
+                    i += 1;
+                    netns_pool_size = args[i].parse()?;
+                },
+                Self::OPT_RAMFS_FILENAME => {
+                    i += 1;
+                    ramfs_filename = Some(args[i].clone());
+                },
+                Self::OPT_TMP_DIRECTORY => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_TMP_DIRECTORY
+                        ));
+                    }
+                    tmp_directory = args[i].clone();
+                },
                 arg => {
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
                 },
@@ -286,7 +323,9 @@ impl Args {
             toolchain_binary_directory,
             l2_snapshot_path,
             console_file,
+            ramfs_filename,
             hwloc,
+            netns_pool_size,
             log_directory,
             l2,
             control_plane_socket_type,
@@ -294,6 +333,7 @@ impl Args {
             system_vm_socket_type,
             program_name,
             program_args,
+            tmp_directory,
         })
     }
 
@@ -319,6 +359,7 @@ Usage (Interactive mode):
 
 Options:
   {console_file} <file>                     Redirect console output to a file.
+  {ramfs_filename} <file>                   Attach a RAM filesystem image to spawned user VMs.
   {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
   {toolchain_bin_dir} <toolchain_bin_dir>   Directory containing toolchain binaries \
              (cloud-hypervisor, etc.).
@@ -326,6 +367,8 @@ Options:
              affinity/topology.
   {log_dir} <log_dir>                       Directory for log files (Default: \
              {DEFAULT_LOG_DIRECTORY}).
+  {netns_pool_size} <size>                  Netns pool prefill size (Default: \
+             {default_netns_pool_size}; 0 enables lazy initialization).
   {control_plane_socket_type} <socket_type> Socket type for control plane communication (nanvixd \
              <-> linuxd).
   {gateway_socket_type} <socket_type>       Socket type for gateway communication (client <-> \
@@ -334,20 +377,26 @@ Options:
              uservm).
   {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
   {l2_snapshot_path} <l2_snapshot_path>     Path to the L2 snapshot.
+  {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
+             {DEFAULT_TMP_DIRECTORY}).
 ",
             program_name = program_name,
             http_addr = Self::OPT_HTTP_SOCKADDR,
             separator = Self::OPT_SEPARATOR,
             console_file = Self::OPT_CONSOLE_FILE,
+            ramfs_filename = Self::OPT_RAMFS_FILENAME,
             bin_dir = Self::OPT_BIN_DIRECTORY,
             toolchain_bin_dir = Self::OPT_TOOLCHAIN_BIN_DIRECTORY,
             hwloc = Self::OPT_HWLOC,
             log_dir = Self::OPT_LOG_DIRECTORY,
+            netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
+            default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
             control_plane_socket_type = Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             gateway_socket_type = Self::OPT_GATEWAY_SOCKET_TYPE,
             system_vm_socket_type = Self::OPT_SYSTEM_VM_SOCKET_TYPE,
             l2 = Self::OPT_L2,
             l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
+            tmp_dir = Self::OPT_TMP_DIRECTORY,
         );
     }
 
@@ -419,6 +468,19 @@ Options:
     ///
     /// # Description
     ///
+    /// Returns the optional RAM filesystem filename.
+    ///
+    /// # Returns
+    ///
+    /// The RAM filesystem filename, if present.
+    ///
+    pub fn ramfs_filename(&self) -> Option<&str> {
+        self.ramfs_filename.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the CPU topology.
     ///
     /// # Returns
@@ -453,6 +515,19 @@ Options:
     ///
     pub fn log_directory(&self) -> &str {
         &self.log_directory
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the netns pool prefill size.
+    ///
+    /// # Returns
+    ///
+    /// The prefill size (0 for lazy initialization).
+    ///
+    pub fn netns_pool_size(&self) -> usize {
+        self.netns_pool_size
     }
 
     ///
@@ -531,5 +606,18 @@ Options:
     ///
     pub fn program_args(&self) -> &[String] {
         &self.program_args
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base temporary directory path.
+    ///
+    /// # Returns
+    ///
+    /// The base temporary directory path.
+    ///
+    pub fn tmp_directory(&self) -> &str {
+        &self.tmp_directory
     }
 }

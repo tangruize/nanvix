@@ -14,6 +14,11 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::log::{
+    debug,
+    error,
+    trace,
+};
 use ::serde::{
     Deserialize,
     Serialize,
@@ -23,11 +28,6 @@ use ::std::{
     ptr,
 };
 use arch::mem::PAGE_SIZE;
-use syslog::{
-    debug,
-    error,
-    trace,
-};
 
 //==================================================================================================
 // Structures
@@ -191,6 +191,19 @@ impl Guest {
         self.write_args(vmem, &args)?;
 
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the base address and size (in bytes) of the initrd currently loaded in memory.
+    ///
+    /// # Returns
+    ///
+    /// `Some((base, size))` if an initrd is present, or `None` otherwise.
+    ///
+    pub fn initrd_region(&self) -> Option<(usize, usize)> {
+        self.initrd
     }
 
     /// # Description

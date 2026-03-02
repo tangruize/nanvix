@@ -38,6 +38,7 @@ use sys::{
     mm::VirtualAddress,
     pm::ThreadIdentifier,
     time::SystemTime,
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -179,7 +180,13 @@ impl RunnableProcess {
         if let Some(interrupted_threads) = interrupted_threads {
             Ok(InterruptedProcess::new(self.state, interrupted_threads, Some(zombie_threads)))
         } else {
-            Err(ZombieProcess::new(self.state, zombie_threads, ErrorCode::Interrupted.into()))
+            // Use pending exit status if set (from a prior exit() call), otherwise use
+            // Interrupted error code.
+            let final_status: ExitStatus = self
+                .state
+                .take_pending_exit_status()
+                .unwrap_or_else(|| ErrorCode::Interrupted.into());
+            Err(ZombieProcess::new(self.state, zombie_threads, final_status))
         }
     }
 
@@ -205,12 +212,6 @@ impl RunnableProcess {
         } else {
             Err(self)
         }
-    }
-
-    pub fn add_thread(mut self, ready_thread: ReadyThread) -> Self {
-        trace!("self.pid={:?}, ready_thread={:?}", self.state.pid, ready_thread);
-        self.ready_threads.push_back(ready_thread);
-        self
     }
 
     pub fn earliest_admission_time(&self) -> SystemTime {

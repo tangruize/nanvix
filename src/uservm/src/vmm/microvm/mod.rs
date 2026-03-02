@@ -14,6 +14,7 @@
 pub mod emulator;
 pub mod guest;
 pub mod kvm;
+pub mod ramfs;
 
 //==================================================================================================
 // Imports
@@ -52,6 +53,11 @@ use ::libc::{
     sigaction,
     sigemptyset,
 };
+use ::log::{
+    error,
+    trace,
+    warn,
+};
 use ::std::{
     ffi::OsStr,
     fs::File,
@@ -69,11 +75,6 @@ use ::std::{
     },
 };
 use ::sys::error::ErrorCode;
-use ::syslog::{
-    error,
-    trace,
-    warn,
-};
 use ::tokio::{
     runtime::Handle,
     sync::{
@@ -88,6 +89,7 @@ use ::tokio::{
 };
 
 pub use kvm::vmem::VirtualMemory;
+pub use ramfs::RamFs;
 
 //==================================================================================================
 // Constants
@@ -167,7 +169,8 @@ struct InteriorMicroVmHandle {
 pub type StdinFn =
     dyn FnMut(&Arc<Mutex<Guest>>, &Arc<Mutex<VirtualMemory>>, u32, usize) -> Result<()> + Send;
 
-pub type StdoutFn = dyn FnMut(&Arc<Mutex<VirtualMemory>>, u32) -> Result<()> + Send;
+pub type StdoutFn =
+    dyn FnMut(&Arc<Mutex<VirtualMemory>>, &::sys::ipc::VmBusMessage) -> Result<()> + Send;
 
 pub type StderrFn = dyn Write + Send;
 
@@ -216,6 +219,33 @@ impl Vmm {
                 })
                 .transpose()?;
 
+            let ramfs_region: Option<(usize, usize)> =
+                if let Some(ramfs_filename) = args.ramfs_filename.as_deref() {
+                    let initrd_end: usize = match guest.initrd_region() {
+                        Some((base, size)) => match base.checked_add(size) {
+                            Some(end) => end,
+                            None => {
+                                let reason: String = "initrd region overflowed while computing \
+                                                      ramfs placement"
+                                    .to_string();
+                                error!("new(): {reason}");
+                                anyhow::bail!(reason)
+                            },
+                        },
+                        None => ::config::microvm::DEFAULT_INITRD_BASE,
+                    };
+
+                    let ramfs: RamFs = RamFs::open(Path::new(ramfs_filename))?;
+                    let (ramfs_base, ramfs_size) =
+                        ramfs.map_into_virtual_memory(&mut vmem, initrd_end)?;
+                    vmem.attach_ramfs(ramfs);
+                    Some((ramfs_base, ramfs_size))
+                } else {
+                    None
+                };
+
+            RamFs::write_registers(&mut vmem, ramfs_region)?;
+
             guest.reset(&mut vmem, &mut vcpu)?;
 
             Arc::new(Mutex::new(guest))
@@ -257,7 +287,7 @@ impl Vmm {
         // SAFETY: we install a signal handler that is a no-op so this is safe.
         let ret: c_int = unsafe {
             let sig_action: sigaction = sigaction {
-                sa_sigaction: vcpu_thread_signal_handler as usize,
+                sa_sigaction: vcpu_thread_signal_handler as *const () as usize,
                 // Empty set to not block any other signals that may happen during signal handling.
                 sa_mask: {
                     let mut set: libc::sigset_t = std::mem::zeroed();

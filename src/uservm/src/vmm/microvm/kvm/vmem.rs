@@ -5,9 +5,14 @@
 // Imports
 //==================================================================================================
 
+use crate::vmm::microvm::ramfs::RamFs;
 use ::anyhow::Result;
 use ::arch::mem::PAGE_SIZE;
 use ::kvm_bindings::kvm_userspace_memory_region;
+use ::log::{
+    error,
+    trace,
+};
 use ::std::{
     fs::File,
     io::{
@@ -20,10 +25,6 @@ use ::std::{
         self,
     },
     slice,
-};
-use ::syslog::{
-    error,
-    trace,
 };
 use kvm_ioctls::{
     Kvm,
@@ -44,6 +45,8 @@ pub struct VirtualMemory {
     ptr: *mut u8,
     /// Size of the virtual memory.
     size: usize,
+    /// Optional RAMFS descriptor that keeps metadata and the backing file alive.
+    ramfs: Option<RamFs>,
 }
 
 ///
@@ -122,7 +125,11 @@ impl VirtualMemory {
         }
 
         // Create virtual memory. If we fail, destructor will free memory.
-        let vmem: Self = Self { ptr, size };
+        let vmem: Self = Self {
+            ptr,
+            size,
+            ramfs: None,
+        };
 
         // Map memory into virtual machine.
         let mem_region: kvm_userspace_memory_region = kvm_userspace_memory_region {
@@ -144,6 +151,24 @@ impl VirtualMemory {
 
     pub fn get_size(&self) -> usize {
         self.size
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attaches a RAM filesystem descriptor to the virtual memory so the backing file remains
+    /// alive for the VM's lifetime.
+    ///
+    /// # Parameters
+    ///
+    /// - `ramfs`: RAM filesystem descriptor to keep alive.
+    ///
+    /// # Returns
+    ///
+    /// This method always succeeds.
+    ///
+    pub fn attach_ramfs(&mut self, ramfs: RamFs) {
+        self.ramfs = Some(ramfs);
     }
 
     ///

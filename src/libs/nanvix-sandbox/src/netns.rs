@@ -34,6 +34,11 @@ use crate::{
     },
 };
 use ::anyhow::Result;
+use ::log::{
+    error,
+    trace,
+    warn,
+};
 use ::std::{
     fmt,
     net::Ipv4Addr,
@@ -43,11 +48,6 @@ use ::std::{
         Mutex,
         MutexGuard,
     },
-};
-use ::syslog::{
-    error,
-    trace,
-    warn,
 };
 
 //==================================================================================================
@@ -526,9 +526,26 @@ impl NetnsPool {
 
         // Pre-initialize some namespaces if necessary.
         if let NetnsPoolInitStrategy::Prefill(count) = strategy {
+            // MAX_NAMESPACES is a u32, so we can safely cast to usize.
+            if count > (MAX_NAMESPACES as usize) {
+                let reason: String = format!(
+                    "requested prefilled netns pool size larger than max (req={count}, \
+                     max={MAX_NAMESPACES})"
+                );
+                error!("new(): {reason}");
+                anyhow::bail!(reason);
+            }
+
+            // Allocate all namespaces upfront but keep the handles to make sure we create distinct
+            // namespaces without reuse.
+            let mut handles: Vec<NetnsHandle> = Vec::new();
             for _ in 0..count {
                 let handle: NetnsHandle = inner.allocate_impl()?;
-                // Immediately drop the handle after allocation to return the netns to the pool.
+                handles.push(handle);
+            }
+
+            // Explicitly drop all handles to make sure we return the namespaces to the pool.
+            for handle in handles.drain(..) {
                 drop(handle);
             }
         }
@@ -957,6 +974,7 @@ fn init_namespace(info: &NetnsInfo) -> Result<()> {
             .arg("exec")
             .arg(info.ns_name())
             .arg("sysctl")
+            .arg("-q")
             .arg("-w")
             .arg("net.ipv4.ip_forward=1"),
     )?;
