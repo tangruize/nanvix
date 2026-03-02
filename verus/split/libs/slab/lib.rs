@@ -1,10 +1,9 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # Slab Allocator - Implementation
-//!
-//! This file contains the implementation code for the slab allocator.
-//! Specification functions are in `lib.spec.rs` and proofs are in `lib.proof.rs`.
+//==================================================================================================
+// Imports
+//==================================================================================================
 
 use crate::libs::{
     bitmap::Bitmap,
@@ -37,6 +36,10 @@ include!("lib.proof.rs");
 
 // Include verified tests.
 include!("lib.test.rs");
+
+//==================================================================================================
+// Structures
+//==================================================================================================
 
 verus! {
 
@@ -115,6 +118,10 @@ pub struct SlabView {
     /// Total length of the slab buffer in bytes.
     pub total_len: int,
 }
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
 
 impl Slab {
 
