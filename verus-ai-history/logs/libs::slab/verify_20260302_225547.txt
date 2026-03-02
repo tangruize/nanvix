@@ -1,0 +1,94 @@
+=== Verus Verification ===
+Timestamp: Mon Mar  2 22:55:47 CST 2026
+Module: libs::slab
+Command: verus --crate-type lib lib.rs --verify-module libs::slab
+Working dir: /home/ubuntu/nanvix/verus/split
+
+note: verifying module libs::slab
+
+error: postcondition not satisfied
+    --> libs/slab/lib.proof.rs:1116:13
+     |
+1083 |       proof fn lemma_from_raw_parts_post_loop(
+     |  ___________-
+1084 | |         slab: &Slab, addr: int, len: int, total_num_blocks: int,
+1085 | |     )
+     | |_____- at the end of the function body
+...
+1116 |               slab@.allocated_blocks =~= Set::<int>::empty(),
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+    --> libs/slab/lib.proof.rs:1274:11
+     |
+1274 |       proof fn lemma_alloc_establishes_postconditions(
+     |  ___________^
+1275 | |         slab: &Slab, old_slab: &Slab, block: int,
+1276 | |         block_idx: int, block_addr: int,
+1277 | |     )
+     | |_____^
+
+error: postcondition not satisfied
+    --> libs/slab/lib.proof.rs:1304:13
+     |
+1304 |             slab@.allocated_blocks =~= old_slab@.allocated_blocks.insert(block_idx),
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+1338 |         assert forall|i: int| 0 <= i < ndb && i != block_idx
+     |         ------ at the end of the function body
+
+error: assertion failed
+    --> libs/slab/lib.proof.rs:1339:21
+     |
+1339 |             implies slab@.is_allocated(i) == old_slab@.is_allocated(i) by {}
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
+
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+    --> libs/slab/lib.proof.rs:1407:11
+     |
+1407 |       proof fn lemma_dealloc_clear_ok_postconditions(
+     |  ___________^
+1408 | |         slab: &Slab, old_slab: &Slab, index: int, ptr: int,
+1409 | |     )
+     | |_____^
+
+error: postcondition not satisfied
+    --> libs/slab/lib.proof.rs:1430:13
+     |
+1407 |       proof fn lemma_dealloc_clear_ok_postconditions(
+     |  ___________-
+1408 | |         slab: &Slab, old_slab: &Slab, index: int, ptr: int,
+1409 | |     )
+     | |_____- at the end of the function body
+...
+1430 | /             ({
+1431 | |                 let block_idx_spec: int = old_slab@.addr_to_block_idx(ptr);
+1432 | |                 &&& !slab@.is_allocated(block_idx_spec)
+1433 | |                 &&& slab@.num_data_blocks == old_slab@.num_data_blocks
+...    |
+1438 | |                 &&& slab@.can_allocate()
+1439 | |             }),
+     | |______________^ failed this postcondition
+
+error: precondition not satisfied
+    --> libs/slab/lib.proof.rs:1453:9
+     |
+ 144 | /             forall|i: int| #![trigger slab.index@.set_bits.contains(i)]
+ 145 | |                 0 <= i < slab.num_index_blocks as int ==> slab.index@.set_bits.contains(i),
+     | |__________________________________________________________________________________________- failed precondition
+...
+1453 |           Self::lemma_inv_from_components(slab);
+     |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 89 verified, 3 errors (partial verification with `--verify-*`)
+error: aborting due to 5 previous errors
+
+
+Duration: 9s
+Exit code: 1
+
+=== Summary ===
+Verified: 89
+Errors: 3
+Status: FAILED
+Committed: [verus] Verification failed for libs::slab (verified:89, errors:3)
