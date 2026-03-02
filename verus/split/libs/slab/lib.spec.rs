@@ -186,7 +186,7 @@ impl Slab {
         &&& forall|i: int| #![trigger self.index@.set_bits.contains(i)]
             0 <= i < self.num_index_blocks as int ==> self.index@.set_bits.contains(i)
         // Data block indices start after index blocks.
-        &&& self.data_addr > 0
+        &&& self.data_addr as int > 0
         // Memory region bounds - ensures no overflow in address calculations.
         // Total size of data region fits in usize.
         &&& (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int

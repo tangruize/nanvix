@@ -43,27 +43,29 @@ include!("lib.test.rs");
 
 verus! {
 
-/// Constructs a `RawArray<u8>` from a raw address.
-///
-/// # Note
-///
-/// Verus does not support `usize` to `*mut T` casts. This `external_body` wrapper
-/// performs the cast and delegates to `RawArray::from_raw_parts`.
+/// Wrapper for `usize` to `*mut u8` cast (Verus cannot cast integers to pointers).
 #[verifier::external_body]
-unsafe fn raw_array_from_addr(addr: usize, len: usize) -> (result: Result<RawArray<u8>, Error>)
-    requires
-        len > 0,
-        len < i32::MAX as usize,
-        addr > 0,
-    ensures
-        result is Ok ==> {
-            &&& result->Ok_0.inv()
-            &&& result->Ok_0@.len() == len
-            &&& forall|i: int| 0 <= i < len ==> is_zero(#[trigger] result->Ok_0@[i])
-        },
-        result is Err ==> result->Err_0.code == ErrorCode::InvalidArgument,
+fn usize_to_ptr(addr: usize) -> (result: *mut u8)
+    ensures result as int == addr as int,
 {
-    RawArray::from_raw_parts(addr as *mut u8, len)
+    addr as *mut u8
+}
+
+/// Wrapper for unsafe `ptr.add(count)` with verified postcondition.
+#[verifier::external_body]
+fn ptr_add(ptr: *mut u8, count: usize) -> (result: *mut u8)
+    ensures result as int == ptr as int + count as int,
+{
+    unsafe { ptr.add(count) }
+}
+
+/// Wrapper for unsafe `ptr.offset_from_unsigned(origin)` with verified postcondition.
+#[verifier::external_body]
+fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
+    requires ptr as int >= origin as int,
+    ensures result as int == ptr as int - origin as int,
+{
+    unsafe { ptr.offset_from_unsigned(origin) }
 }
 
 
@@ -84,8 +86,8 @@ unsafe fn raw_array_from_addr(addr: usize, len: usize) -> (result: Result<RawArr
 pub struct Slab {
     /// An index that keeps track of free blocks.
     index: Bitmap,
-    /// Base address of data blocks (stored as `usize`; original uses `*mut u8`).
-    data_addr: usize,
+    /// Base address of data blocks.
+    data_addr: *mut u8,
     /// Number of index blocks in the slab.
     num_index_blocks: usize,
     /// Number of data blocks in the slab.
@@ -184,7 +186,7 @@ impl Slab {
     /// - Extra fields `base_addr`, `total_len` stored for invariant proofs.
     ///
     pub unsafe fn from_raw_parts(
-        addr: usize,
+        addr: *mut u8,
         len: usize,
         block_size: usize,
     ) -> (result: Result<Slab, Error>)
@@ -199,18 +201,14 @@ impl Slab {
             // Block size must be a power of two.
             Self::spec_is_power_of_two(block_size as int),
             // Start address must be aligned to block size.
-            addr % block_size == 0,
-            addr > 0,
+            (addr as usize) % block_size == 0,
+            (addr as usize) > 0,
             // Memory region must not wrap around and fit in address space.
             (addr as int) + (len as int) <= (usize::MAX as int),
             // Total number of blocks must be a multiple of 8.
             (len / block_size) % (u8::BITS as usize) == 0,
             // Ensure we have enough blocks for a valid slab (at least 8).
             len / block_size >= 8,
-            // Zero-initialization of the bitmap backing storage.
-            // `raw_array_from_addr` zeroes the region before returning and its
-            // postcondition exposes `is_zero` for every byte, which we rely on when
-            // constructing the bitmap. No caller-side zeroing precondition is required.
         ensures
             // If result is Ok, these properties hold.
             result is Ok ==> {
@@ -248,7 +246,7 @@ impl Slab {
         assert(Self::spec_is_power_of_two(block_size as int));
 
         // Check if `addr` is aligned to `block_size`.
-        if !addr.is_multiple_of(block_size) {
+        if !(addr as usize).is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
         }
 
@@ -324,15 +322,15 @@ impl Slab {
             assert((addr as int) + (num_index_blocks as int) * (block_size as int) <= (addr as int) + (len as int));
             assert((addr as int) + (len as int) <= usize::MAX as int);
         }
-        let data_addr: usize = addr + num_index_blocks * block_size;
+        let data_addr: *mut u8 = ptr_add(addr, num_index_blocks * block_size);
 
         // Check if `data_addr` is aligned to `block_size`.
-        if !data_addr.is_multiple_of(block_size) {
+        if !(data_addr as usize).is_multiple_of(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned data address"));
         }
 
         // Instantiate index.
-        let storage: RawArray<u8> = raw_array_from_addr(addr, index_len)?;
+        let storage: RawArray<u8> = RawArray::from_raw_parts(addr, index_len)?;
 
         // Prove that all bytes in storage are zero (required by Bitmap::from_raw_array).
         proof {
@@ -370,7 +368,7 @@ impl Slab {
                 num_index_blocks > 0,
                 num_data_blocks > 0,
                 block_size > 0,
-                data_addr > 0,
+                data_addr as int > 0,
                 num_index_blocks + num_data_blocks == total_num_blocks,
                 index@.number_of_bits() == total_num_blocks as int,
                 num_index_blocks as int + num_data_blocks as int == index@.number_of_bits(),
@@ -394,7 +392,7 @@ impl Slab {
             num_index_blocks,
             num_data_blocks,
             block_size,
-            base_addr: addr,
+            base_addr: addr as usize,
             total_len: len,
         };
 
@@ -452,7 +450,7 @@ impl Slab {
             // data_addr = addr + num_index_blocks * block_size > num_index_blocks * block_size.
             // Therefore: data_addr >= num_index_blocks * block_size.
             assert((data_addr as int) == (addr as int) + (num_index_blocks as int) * (block_size as int));
-            assert(addr > 0);
+            assert(addr as int > 0);
             assert((data_addr as int) > (num_index_blocks as int) * (block_size as int));
             assert((data_addr as int) >= (num_index_blocks as int) * (block_size as int));
 
@@ -489,83 +487,6 @@ impl Slab {
     ///
     /// A slab whose data region is within [base_addr + offset * slab_size, base_addr + (offset+1) * slab_size).
     ///
-    /// # Safety
-    ///
-    /// Caller must ensure the memory region is valid.
-    pub unsafe fn from_raw_parts_at_offset(
-        base_addr: usize,
-        slab_size: usize,
-        offset: usize,
-        block_size: usize,
-    ) -> (result: Result<Slab, Error>)
-        requires
-            base_addr > 0,
-            slab_size > 0,
-            slab_size < i32::MAX as usize,
-            offset < 8,
-            block_size > 0,
-            block_size < i32::MAX as usize,
-            block_size <= slab_size,
-            Self::spec_is_power_of_two(block_size as int),
-            // Alignment: base_addr + offset * slab_size must be aligned to block_size.
-            ((base_addr as int) + (offset as int) * (slab_size as int)) % (block_size as int) == 0,
-            // No overflow: the END of this slab region (base_addr + (offset+1) * slab_size) fits.
-            (base_addr as int) + ((offset as int) + 1) * (slab_size as int) <= (usize::MAX as int),
-            // Overflow check: offset * slab_size fits in usize.
-            (offset as int) * (slab_size as int) <= (usize::MAX as int),
-            // Overflow check: base_addr + offset * slab_size fits in usize.
-            (base_addr as int) + (offset as int) * (slab_size as int) <= (usize::MAX as int),
-            // Additional preconditions for from_raw_parts:
-            // Total number of blocks must be a multiple of 8.
-            (slab_size / block_size) % (u8::BITS as usize) == 0,
-            // Ensure we have enough blocks for a valid slab (at least 8).
-            slab_size / block_size >= 8,
-        ensures
-            result is Ok ==> {
-                let slab = result->Ok_0;
-                &&& slab.inv()
-                &&& slab@.block_size == block_size as int
-                &&& slab@.num_data_blocks > 0
-                // Freshly initialized: no blocks allocated (Set-based, no forall).
-                &&& slab@.allocated_blocks =~= Set::<int>::empty()
-                // Critical: data region is within the assigned slice.
-                &&& slab@.data_addr >= (base_addr as int) + (offset as int) * (slab_size as int)
-                &&& slab@.data_addr + slab@.num_data_blocks * slab@.block_size
-                    <= (base_addr as int) + ((offset as int) + 1) * (slab_size as int)
-                // Alignment: data_addr is aligned to block_size.
-                &&& slab@.is_aligned()
-            },
-    {
-        // Calculate the address for this slab region.
-        // Preconditions ensure no overflow.
-        let offset_times_slab: usize = offset * slab_size;
-        let addr: usize = base_addr + offset_times_slab;
-
-        // Prove the precondition for from_raw_parts: addr + slab_size <= usize::MAX.
-        proof {
-            // addr = base_addr + offset * slab_size.
-            assert((addr as int) == (base_addr as int) + (offset as int) * (slab_size as int));
-
-            // Use the distributive lemma: (offset + 1) * slab_size = offset * slab_size + slab_size.
-            Self::lemma_mul_distribute((offset as int), (slab_size as int));
-            assert(((offset as int) + 1int) * (slab_size as int)
-                   == (offset as int) * (slab_size as int) + (slab_size as int));
-
-            // addr + slab_size = base_addr + offset * slab_size + slab_size
-            //                  = base_addr + (offset + 1) * slab_size.
-            assert((addr as int) + (slab_size as int)
-                   == (base_addr as int) + (offset as int) * (slab_size as int) + (slab_size as int));
-            assert((addr as int) + (slab_size as int)
-                   == (base_addr as int) + ((offset as int) + 1int) * (slab_size as int));
-
-            // From precondition: base_addr + (offset + 1) * slab_size <= usize::MAX.
-            assert((base_addr as int) + ((offset as int) + 1int) * (slab_size as int) <= (usize::MAX as int));
-            assert((addr as int) + (slab_size as int) <= (usize::MAX as int));
-        }
-
-        // Use the existing from_raw_parts to create the slab.
-        Self::from_raw_parts(addr, slab_size, block_size)
-    }
 
 
     ///
@@ -585,7 +506,7 @@ impl Slab {
     /// Pointer arithmetic `data_addr.add(...)` → integer arithmetic `data_addr + ...`.
     /// Core logic is identical: alloc bitmap bit → compute block address → return.
     ///
-    pub fn allocate(&mut self) -> (result: Result<usize, Error>)
+    pub fn allocate(&mut self) -> (result: Result<*mut u8, Error>)
         requires
             old(self).inv(),
         ensures
@@ -605,7 +526,7 @@ impl Slab {
                 &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.insert(block_idx)
                 // Explicit postcondition that address is within buffer bounds.
                 &&& old(self)@.is_within_buffer(addr)
-                // Returned address is non-null (derivable from data_addr > 0 and is_valid_addr).
+                // Returned address is non-null (derivable from data_addr as int > 0 and is_valid_addr).
                 &&& addr > 0
             },
             // Error case: state unchanged and slab was full (no capacity).
@@ -720,7 +641,7 @@ impl Slab {
         }
 
         let product: usize = block_idx * self.block_size;
-        let block_addr: usize = self.data_addr + product;
+        let block_addr: *mut u8 = ptr_add(self.data_addr, product);
 
         proof {
             let block_idx_int: int = block_idx as int;
@@ -781,29 +702,28 @@ impl Slab {
     ///
     /// # Parameters
     ///
-    /// - `addr`: Address of the block to free.
+    /// - `ptr`: Pointer to the block to free.
     ///
     /// # Returns
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    /// # Verus Equivalence
+    /// # Safety
     ///
-    /// Compared to the original: parameter `ptr: *const u8` → `addr: usize` (no raw pointers).
-    /// `ptr.offset_from_unsigned(self.data_addr)` → `(addr - self.data_addr)` (integer subtraction).
-    /// `self.index.clear(index)?` → explicit `match` (required for proof blocks on both paths).
-    /// Bounds checks and free-check logic are identical in semantics.
+    /// This function is unsafe for the following reasons:
     ///
-    pub fn deallocate(&mut self, addr: usize) -> (result: Result<(), Error>)
+    /// - It dereferences the pointer `ptr`.
+    ///
+    pub unsafe fn deallocate(&mut self, ptr: *const u8) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
-            old(self)@.is_valid_addr(addr as int),
+            old(self)@.is_valid_addr(ptr as int),
             // Use can_deallocate for clearer specification.
-            old(self)@.can_deallocate(old(self)@.addr_to_block_idx(addr as int)),
+            old(self)@.can_deallocate(old(self)@.addr_to_block_idx(ptr as int)),
         ensures
             self.inv(),
             result is Ok ==> {
-                let block_idx = old(self)@.addr_to_block_idx(addr as int);
+                let block_idx = old(self)@.addr_to_block_idx(ptr as int);
                 &&& !self@.is_allocated(block_idx)
                 // Frame: static fields unchanged.
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
@@ -823,8 +743,8 @@ impl Slab {
         proof {
             assert((self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int);
         }
-        if addr < self.data_addr
-            || addr >= self.data_addr + self.num_data_blocks * self.block_size
+        if (ptr as usize) < (self.data_addr as usize)
+            || (ptr as usize) >= (self.data_addr as usize) + self.num_data_blocks * self.block_size
         {
             return Err(Error::new(ErrorCode::BadAddress, "pointer out of bounds"));
         }
@@ -834,12 +754,12 @@ impl Slab {
 
         proof {
             // From is_valid_addr:
-            assert(addr as int >= self.data_addr as int);
-            assert((addr as int) < (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int));
-            assert(((addr as int) - (self.data_addr as int)) % (self.block_size as int) == 0);
+            assert(ptr as int >= self.data_addr as int);
+            assert((ptr as int) < (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int));
+            assert(((ptr as int) - (self.data_addr as int)) % (self.block_size as int) == 0);
 
-            // Therefore (addr - self.data_addr) is non-negative and bounded.
-            let offset: int = (addr as int) - (self.data_addr as int);
+            // Therefore (ptr - self.data_addr) is non-negative and bounded.
+            let offset: int = (ptr as int) - (self.data_addr as int);
             assert(offset >= 0);
             assert(offset < (self.num_data_blocks as int) * (self.block_size as int));
 
@@ -851,7 +771,7 @@ impl Slab {
             assert((self.num_index_blocks as int) + block_idx < self.index@.number_of_bits());
 
             // Prove no overflow for usize computation.
-            // addr >= data_addr, so addr - data_addr >= 0 (no underflow).
+            // ptr >= data_addr, so ptr - data_addr >= 0 (no underflow).
             // block_idx < num_data_blocks, and num_index_blocks + num_data_blocks fits in usize (from inv).
             // From invariant: num_index_blocks + num_data_blocks == index@.number_of_bits().
             // Bitmap number_of_bits is bounded by usize (from Bitmap invariant).
@@ -866,18 +786,18 @@ impl Slab {
         }
 
         // The proof above establishes:
-        // 1. addr >= self.data_addr (from is_valid_addr precondition).
+        // 1. ptr >= self.data_addr (from is_valid_addr precondition).
         // 2. num_index_blocks + block_idx < usize::MAX (from invariant bounds).
 
-        let index: usize = self.num_index_blocks + (addr - self.data_addr) / self.block_size;
+        let index: usize = self.num_index_blocks + ptr_offset_from(ptr, self.data_addr) / self.block_size;
 
         proof {
             // Prove that index < number_of_bits.
             assert((index as int) < self.index@.number_of_bits());
 
             // Connect index with addr_to_block_idx.
-            let block_idx_spec: int = self@.addr_to_block_idx(addr as int);
-            assert(block_idx_spec == ((addr as int) - (self.data_addr as int)) / (self.block_size as int));
+            let block_idx_spec: int = self@.addr_to_block_idx(ptr as int);
+            assert(block_idx_spec == ((ptr as int) - (self.data_addr as int)) / (self.block_size as int));
             assert((index as int) == (self.num_index_blocks as int) + block_idx_spec);
 
             // From precondition: self@.is_allocated(block_idx_spec).
@@ -903,7 +823,7 @@ impl Slab {
                     // - Index blocks remain allocated.
 
                     // Prove index >= num_index_blocks (we're clearing a data block).
-                    let block_idx_spec: int = old(self)@.addr_to_block_idx(addr as int);
+                    let block_idx_spec: int = old(self)@.addr_to_block_idx(ptr as int);
                     assert(block_idx_spec >= 0);
                     assert((index as int) == (self.num_index_blocks as int) + block_idx_spec);
                     assert((index as int) >= (self.num_index_blocks as int));

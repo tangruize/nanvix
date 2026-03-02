@@ -29,7 +29,7 @@ fn test_slab_from_raw_parts_verified(
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(slab) = result {
         // Slab should satisfy invariant.
         assert(slab.inv());
@@ -64,7 +64,7 @@ fn test_slab_from_raw_parts_allocate_verified(
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         // Initially all data blocks are not allocated.
         assert(forall|i: int| 0 <= i < slab@.num_data_blocks ==> !slab@.is_allocated(i));
@@ -108,7 +108,7 @@ fn test_slab_creation_verified(addr: usize, len: usize, block_size: usize)
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let slab = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let slab = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(s) = slab {
         assert(s.inv());
         assert(forall|i: int| 0 <= i < s@.num_data_blocks ==> !s@.is_allocated(i));
@@ -132,7 +132,7 @@ fn test_allocate_deallocate_verified(addr: usize, len: usize, block_size: usize)
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         // Allocate a block.
         let block = slab.allocate();
@@ -173,7 +173,7 @@ fn test_double_deallocate_verified(addr: usize, len: usize, block_size: usize)
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         let block = slab.allocate();
         if let Ok(block_addr) = block {
@@ -209,7 +209,7 @@ fn test_allocate_out_of_bounds_verified(addr: usize, len: usize, block_size: usi
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(slab) = result {
         proof {
             // An out-of-bounds address would NOT satisfy is_valid_addr.
@@ -236,7 +236,7 @@ fn test_multiple_allocations_verified(addr: usize, len: usize, block_size: usize
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 16,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         let alloc1 = slab.allocate();
         if let Ok(addr1) = alloc1 {
@@ -274,7 +274,7 @@ fn test_address_computation_verified(addr: usize, len: usize, block_size: usize)
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         let alloc_result = slab.allocate();
         if let Ok(alloc_addr) = alloc_result {
@@ -308,7 +308,7 @@ fn test_allocation_reuse_verified(addr: usize, len: usize, block_size: usize)
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         // Allocate a block.
         let alloc1 = slab.allocate();
@@ -346,7 +346,7 @@ fn test_memory_block_alignment_verified(addr: usize, len: usize, block_size: usi
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 16,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         let alloc1 = slab.allocate();
         if let Ok(addr1) = alloc1 {
@@ -380,7 +380,7 @@ fn test_no_data_corruption_verified(addr: usize, len: usize, block_size: usize)
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 16,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         let alloc1 = slab.allocate();
         if let Ok(addr1) = alloc1 {
@@ -427,7 +427,7 @@ fn test_fresh_slab_all_free_verified(addr: usize, len: usize, block_size: usize)
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(slab) = result {
         proof {
             // All data blocks should be free in a fresh slab.
@@ -452,7 +452,7 @@ fn test_index_blocks_always_used_verified(addr: usize, len: usize, block_size: u
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
+    let result = unsafe { Slab::from_raw_parts(usize_to_ptr(addr), len, block_size) };
     if let Ok(mut slab) = result {
         proof {
             // The invariant guarantees index blocks are always marked used.
