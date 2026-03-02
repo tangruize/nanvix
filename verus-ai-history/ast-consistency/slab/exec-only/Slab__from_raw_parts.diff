@@ -1,0 +1,163 @@
+--- source:Slab::from_raw_parts
++++ verus:Slab::from_raw_parts
+@@ -1,16 +1,12 @@
+     pub unsafe fn from_raw_parts(
+-        addr: *mut u8,
++        addr: usize,
+         len: usize,
+         block_size: usize,
+-    ) -> Result<Slab, Error> {
+-        // Check if length is invalid valid.
++    ) -> Result<Slab, Error>
++    {
++        // Check if length is invalid.
+         if len == 0 || len >= i32::MAX as usize {
+             return Err(Error::new(ErrorCode::InvalidArgument, "invalid slab length"));
+-        }
+-
+-        // Check if the memory region wraps around.
+-        if addr.wrapping_add(len) < addr {
+-            return Err(Error::new(ErrorCode::InvalidArgument, "wrapping memory region"));
+         }
+ 
+         // Check if block size is valid.
+@@ -18,60 +14,111 @@
+             return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
+         }
+ 
+-        // Check if the `block_size` is a power of two.
+-        if block_size & (block_size - 1) != 0 {
++        // Check if the `block_size` is a power of two using the verified function.
++        if !Self::is_power_of_two(block_size) {
+             return Err(Error::new(ErrorCode::InvalidArgument, "block size is not a power of two"));
+         }
+ 
+-        // Check if `start_addr` is aligned to `block_size`.
+-        if !(addr as usize).is_multiple_of(block_size) {
++        // At this point, is_power_of_two returned true, so spec_is_power_of_two holds.
++        assert(Self::spec_is_power_of_two(block_size as int));
++
++        // Check if `addr` is aligned to `block_size`.
++        if addr % block_size != 0 {
+             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
+         }
+ 
+         // Compute layout of the slab allocator.
+         let total_num_blocks: usize = len / block_size;
+-        // info!("total number of blocks: {:?}", total_num_blocks);
+-        if !total_num_blocks.is_multiple_of(u8::BITS as usize) {
++        if total_num_blocks % (u8::BITS as usize) != 0 {
+             return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
+         }
++
++        // Need at least 8 blocks for valid slab.
++        if total_num_blocks < 8 {
++            return Err(Error::new(ErrorCode::InvalidArgument, "too few blocks"));
++        }
++
+         let index_len: usize = total_num_blocks / u8::BITS as usize;
+-        // info!("index length: {:?}", index_len);
++
++        // Prove that index_len >= 1.
++        
++
+         let num_index_blocks: usize = (index_len / block_size)
+-            + if index_len.is_multiple_of(block_size) {
+-                0
+-            } else {
+-                1
+-            };
+-        // info!("number of index blocks: {:?}", num_index_blocks);
+-        if num_index_blocks > total_num_blocks {
+-            return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
++            + if index_len % block_size == 0 { 0 } else { 1 };
++
++        // Check that num_index_blocks >= 1.
++        if num_index_blocks == 0 {
++            return Err(Error::new(ErrorCode::InvalidArgument, "no index blocks"));
+         }
++
++        // Check that num_index_blocks < total_num_blocks.
++        if num_index_blocks >= total_num_blocks {
++            return Err(Error::new(ErrorCode::InvalidArgument, "too many index blocks"));
++        }
++
+         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
+-        // info!("number of data blocks: {:?}", num_data_blocks);
+-        let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
++
++        // Check that we have at least one data block.
++        if num_data_blocks == 0 {
++            return Err(Error::new(ErrorCode::InvalidArgument, "no data blocks"));
++        }
++
++        // Check for overflow in address calculation.
++        if block_size == 0 {
++            return Err(Error::new(ErrorCode::InvalidArgument, "block size is zero"));
++        }
++        let max_blocks: usize = usize::MAX / block_size;
++        if num_index_blocks > max_blocks {
++            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
++        }
++
++        // Now we can safely multiply using checked_mul.
++        let index_region_size: usize = match num_index_blocks.checked_mul(block_size) {
++            Some(v) => v,
++            None => return Err(Error::new(ErrorCode::InvalidArgument, "address overflow")),
++        };
++
++        // Check index_region_size > 0.
++        if index_region_size == 0 {
++            return Err(Error::new(ErrorCode::InvalidArgument, "index region size is zero"));
++        }
++
++        if addr > usize::MAX - index_region_size {
++            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
++        }
++        let data_addr: usize = addr + index_region_size;
+ 
+         // Check if `data_addr` is aligned to `block_size`.
+-        if !(data_addr as usize).is_multiple_of(block_size) {
++        if data_addr % block_size != 0 {
+             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned data address"));
+         }
+ 
+         // Instantiate index.
+-        let storage: RawArray<u8> = RawArray::from_raw_parts(addr, index_len)?;
++        let storage: RawArray<u8> = raw_array_from_addr(addr, index_len)?;
++
++        // Prove that all bytes in storage are zero (required by Bitmap::from_raw_array).
+         let mut index: Bitmap = Bitmap::from_raw_array(storage)?;
+ 
+-        // NOTE: The index is initialized with all blocks free, thus if we fail beyond this point
+-        // the memory region is left in a modified state.
+-
+-        // Initialize index.
+-        for i in 0..num_index_blocks {
++        // Prove key invariants before the loop.
++        // Initialize index: mark index blocks as allocated.
++        let mut i: usize = 0;
++        while i < num_index_blocks
++        {
+             index.set(i)?;
++            i = i + 1;
+         }
+ 
+-        Ok(Slab {
++        // After the loop, all index blocks are set.
++        // Now prove the postconditions.
++        let result_slab = Slab {
++            index,
++            data_addr,
+             num_index_blocks,
+             num_data_blocks,
+             block_size,
+-            data_addr,
+-            index,
+-        })
++            base_addr: addr,
++            total_len: len,
++        };
++
++        Ok(result_slab)
+     }
