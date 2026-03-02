@@ -38,6 +38,8 @@ use crate::libs::{
     slab::{
         Slab,
         SlabView,
+        usize_to_ptr,
+        ptr_add,
     },
 };
 use vstd::prelude::*;
@@ -225,7 +227,7 @@ impl Kheap {
     /// (`heap_start_addr.add(i * slab_size)`). The Verus version:
     /// - Moves the runtime validation checks to preconditions (standard Verus
     ///   pattern; the checks are still enforced, just at the caller site).
-    /// - Uses `Slab::from_raw_parts_at_offset(addr, slab_size, i, block_size)`
+    /// - Uses `Slab::from_raw_parts(addr, slab_size, i, block_size)`
     ///   instead of pointer arithmetic, because Verus cannot reason about
     ///   `*mut u8` pointer operations. Both produce slabs at address
     ///   `addr + i * slab_size` with the same block size.
@@ -251,7 +253,7 @@ impl Kheap {
     ///
     /// # Verification Note
     ///
-    /// The slab construction uses `Slab::from_raw_parts_at_offset`.
+    /// The slab construction uses `Slab::from_raw_parts`.
     /// The disjointness property is proven from the memory layout: each slab occupies
     /// a contiguous region at offset `i * slab_size`, ensuring no overlap.
     pub unsafe fn from_raw_parts(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
@@ -364,7 +366,7 @@ impl Kheap {
             Self::lemma_mod_trans((addr as int) + 7int * (slab_size as int), 4096int, 4096int);
             assert(((addr as int) + 7int * (slab_size as int)) % 4096int == 0);
 
-            // Prove the new preconditions for from_raw_parts_at_offset.
+            // Prove the new preconditions for from_raw_parts.
             // slab_size >= MIN_SLAB_SIZE = 131072.
             assert(slab_size >= MIN_SLAB_SIZE);
             assert(MIN_SLAB_SIZE == 131072usize);
@@ -441,14 +443,14 @@ impl Kheap {
 
         // Create the 8 slabs at consecutive memory regions.
         // Each slab starts at addr + i * slab_size.
-        let slab_8: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 0, 8)?;
-        let slab_16: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 1, 16)?;
-        let slab_32: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 2, 32)?;
-        let slab_64: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 3, 64)?;
-        let slab_128: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 4, 128)?;
-        let slab_256: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 5, 256)?;
-        let slab_512: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 6, 512)?;
-        let slab_4096: Slab = Slab::from_raw_parts_at_offset(addr, slab_size, 7, 4096)?;
+        let slab_8: Slab = Slab::from_raw_parts(usize_to_ptr(addr), slab_size, 8)?;
+        let slab_16: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 1 * slab_size), slab_size, 16)?;
+        let slab_32: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 2 * slab_size), slab_size, 32)?;
+        let slab_64: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 3 * slab_size), slab_size, 64)?;
+        let slab_128: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 4 * slab_size), slab_size, 128)?;
+        let slab_256: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 5 * slab_size), slab_size, 256)?;
+        let slab_512: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 6 * slab_size), slab_size, 512)?;
+        let slab_4096: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 7 * slab_size), slab_size, 4096)?;
 
         let heap: Kheap = Kheap {
             slab_8_bytes: slab_8,
@@ -541,7 +543,7 @@ impl Kheap {
             assert(heap.inv());
 
             // Prove is_empty by using the lemma.
-            // from_raw_parts_at_offset gives us forall|i| !is_allocated(i).
+            // from_raw_parts gives us forall|i| !is_allocated(i).
             Slab::lemma_no_allocated_implies_empty(&heap.slab_8_bytes);
             Slab::lemma_no_allocated_implies_empty(&heap.slab_16_bytes);
             Slab::lemma_no_allocated_implies_empty(&heap.slab_32_bytes);
@@ -615,7 +617,7 @@ impl Kheap {
     /// # Safety
     ///
     /// The returned address is valid for writes up to the slab's block size.
-    pub unsafe fn allocate(&mut self, size: usize) -> (result: Result<usize, Error>)
+    pub unsafe fn allocate(&mut self, size: usize) -> (result: Result<*mut u8, Error>)
         requires
             old(self).inv(),
         ensures
@@ -678,7 +680,7 @@ impl Kheap {
         // reduce solver search space (prevents rlimit exhaustion with large enums).
         match slab_size {
             SlabSize::Slab8 => {
-                let result: Result<usize, Error> = self.slab_8_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_8_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab8);
                     assert(self.slab_8_bytes@.block_size == 8);
@@ -687,7 +689,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab16 => {
-                let result: Result<usize, Error> = self.slab_16_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_16_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab16);
                     assert(self.slab_16_bytes@.block_size == 16);
@@ -696,7 +698,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab32 => {
-                let result: Result<usize, Error> = self.slab_32_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_32_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab32);
                     assert(self.slab_32_bytes@.block_size == 32);
@@ -705,7 +707,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab64 => {
-                let result: Result<usize, Error> = self.slab_64_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_64_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab64);
                     assert(self.slab_64_bytes@.block_size == 64);
@@ -714,7 +716,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab128 => {
-                let result: Result<usize, Error> = self.slab_128_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_128_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab128);
                     assert(self.slab_128_bytes@.block_size == 128);
@@ -723,7 +725,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab256 => {
-                let result: Result<usize, Error> = self.slab_256_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_256_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab256);
                     assert(self.slab_256_bytes@.block_size == 256);
@@ -732,7 +734,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab512 => {
-                let result: Result<usize, Error> = self.slab_512_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_512_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab512);
                     assert(self.slab_512_bytes@.block_size == 512);
@@ -741,7 +743,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab4096 => {
-                let result: Result<usize, Error> = self.slab_4096_bytes.allocate();
+                let result: Result<*mut u8, Error> = self.slab_4096_bytes.allocate();
                 proof {
                     assert(slab_size == SlabSize::Slab4096);
                     assert(self.slab_4096_bytes@.block_size == 4096);
@@ -767,7 +769,7 @@ impl Kheap {
     /// `Result<(), AllocError>`. This version takes `(addr: usize, size:
     /// usize)` and returns `Result<(), Error>` for the same Verus type
     /// limitations as `allocate`. The dispatch logic is identical: determine
-    /// the slab via size-to-slab mapping, then call `slab.deallocate(addr)`.
+    /// the slab via size-to-slab mapping, then call `slab.deallocate(ptr)`.
     ///
     /// The original `dealloc` method (`GlobalAlloc::dealloc` on
     /// `ArenaAllocator`) is a thin wrapper that accesses `static mut HEAP`
@@ -787,16 +789,16 @@ impl Kheap {
     ///
     /// - `addr` must have been returned by a previous `allocate` call with the same `size`.
     /// - The block must not have been deallocated already.
-    pub unsafe fn deallocate(&mut self, addr: usize, size: usize) -> (result: Result<(), Error>)
+    pub unsafe fn deallocate(&mut self, ptr: *const u8, size: usize) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
-            addr > 0,
+            ptr as int > 0,
             spec_layout_to_slab_size(size as int).is_some(),
             ({
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
                 let slab = old(self)@.get_slab(slab_size);
-                &&& slab.is_valid_addr(addr as int)
-                &&& slab.is_allocated(slab.addr_to_block_idx(addr as int))
+                &&& slab.is_valid_addr(ptr as int)
+                &&& slab.is_allocated(slab.addr_to_block_idx(ptr as int))
             }),
         ensures
             self.inv(),
@@ -804,7 +806,7 @@ impl Kheap {
                 let slab_size = spec_layout_to_slab_size(size as int).unwrap();
                 let old_slab = old(self)@.get_slab(slab_size);
                 let new_slab = self@.get_slab(slab_size);
-                let block_idx = old_slab.addr_to_block_idx(addr as int);
+                let block_idx = old_slab.addr_to_block_idx(ptr as int);
                 &&& !new_slab.is_allocated(block_idx)
                 // Frame: base_addr and total_size are unchanged.
                 &&& self@.base_addr == old(self)@.base_addr
@@ -839,14 +841,14 @@ impl Kheap {
 
         // Deallocate from the appropriate slab.
         let dealloc_result: Result<(), Error> = match slab_size {
-            SlabSize::Slab8 => self.slab_8_bytes.deallocate(addr),
-            SlabSize::Slab16 => self.slab_16_bytes.deallocate(addr),
-            SlabSize::Slab32 => self.slab_32_bytes.deallocate(addr),
-            SlabSize::Slab64 => self.slab_64_bytes.deallocate(addr),
-            SlabSize::Slab128 => self.slab_128_bytes.deallocate(addr),
-            SlabSize::Slab256 => self.slab_256_bytes.deallocate(addr),
-            SlabSize::Slab512 => self.slab_512_bytes.deallocate(addr),
-            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(addr),
+            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr),
+            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr),
+            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr),
+            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr),
+            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr),
+            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr),
+            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr),
+            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr),
         };
 
         dealloc_result

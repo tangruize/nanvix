@@ -45,7 +45,7 @@ verus! {
 
 /// Wrapper for `usize` to `*mut u8` cast (Verus cannot cast integers to pointers).
 #[verifier::external_body]
-fn usize_to_ptr(addr: usize) -> (result: *mut u8)
+pub fn usize_to_ptr(addr: usize) -> (result: *mut u8)
     ensures result as int == addr as int,
 {
     addr as *mut u8
@@ -53,7 +53,7 @@ fn usize_to_ptr(addr: usize) -> (result: *mut u8)
 
 /// Wrapper for unsafe `ptr.add(count)` with verified postcondition.
 #[verifier::external_body]
-fn ptr_add(ptr: *mut u8, count: usize) -> (result: *mut u8)
+pub fn ptr_add(ptr: *mut u8, count: usize) -> (result: *mut u8)
     ensures result as int == ptr as int + count as int,
 {
     unsafe { ptr.add(count) }
@@ -61,7 +61,7 @@ fn ptr_add(ptr: *mut u8, count: usize) -> (result: *mut u8)
 
 /// Wrapper for unsafe `ptr.offset_from_unsigned(origin)` with verified postcondition.
 #[verifier::external_body]
-fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
+pub fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
     requires ptr as int >= origin as int,
     ensures result as int == ptr as int - origin as int,
 {
@@ -225,6 +225,9 @@ impl Slab {
                 // Buffer bounds are recorded.
                 &&& slab@.base_addr == addr as int
                 &&& slab@.total_len == len as int
+                // Data region fits within the buffer.
+                &&& slab@.data_addr + slab@.num_data_blocks * slab@.block_size
+                    <= addr as int + len as int
             },
     {
         // Check if length is invalid.
