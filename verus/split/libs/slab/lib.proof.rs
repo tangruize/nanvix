@@ -1095,13 +1095,11 @@ impl Slab {
             forall|i: int| slab.num_index_blocks as int <= i < slab.index@.number_of_bits()
                 ==> !slab.index.is_bit_set(i),
             // Layout relationships.
-            slab.num_index_blocks as int + slab.num_data_blocks as int
-                == slab.index@.number_of_bits(),
+            slab.num_index_blocks as int + slab.num_data_blocks as int == slab.index@.number_of_bits(),
             total_num_blocks == slab.index@.number_of_bits(),
             slab.num_data_blocks as int < total_num_blocks,
             // Address computation.
-            slab.data_addr as int
-                == addr + slab.num_index_blocks as int * slab.block_size as int,
+            slab.data_addr as int == addr + slab.num_index_blocks as int * slab.block_size as int,
             addr > 0,
             // Original preconditions.
             len > 0,
@@ -1119,8 +1117,7 @@ impl Slab {
             slab@.data_addr > addr,
             slab@.data_addr % slab.block_size as int == 0,
             slab@.num_data_blocks > 0,
-            slab@.data_addr + slab@.num_data_blocks * slab@.block_size
-                <= addr + len,
+            slab@.data_addr + slab@.num_data_blocks * slab@.block_size <= addr + len,
     {
         // Prove memory bounds.
         Self::lemma_div_mul_le(len, slab.block_size as int);
@@ -1264,11 +1261,9 @@ impl Slab {
             slab.inv(),
             0 <= block_idx < slab.num_data_blocks as int,
         ensures
-            block_idx * slab.block_size as int
-                < slab.num_data_blocks as int * slab.block_size as int,
+            block_idx * slab.block_size as int < slab.num_data_blocks as int * slab.block_size as int,
             block_idx * slab.block_size as int <= usize::MAX as int,
-            slab.data_addr as int + block_idx * slab.block_size as int
-                <= usize::MAX as int,
+            slab.data_addr as int + block_idx * slab.block_size as int <= usize::MAX as int,
     {
         Self::lemma_mul_inequality(
             block_idx, slab.num_data_blocks as int, slab.block_size as int,
