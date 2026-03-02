@@ -61,7 +61,7 @@
          }
  
          // Check if block size is valid.
-@@ -18,60 +54,221 @@
+@@ -18,60 +54,237 @@
              return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
          }
  
@@ -90,17 +90,10 @@
              return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
          }
 +
-+        // Need at least 8 blocks for valid slab.
-+        if total_num_blocks < 8 {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "too few blocks"));
-+        }
-+
          let index_len: usize = total_num_blocks / u8::BITS as usize;
 -        // info!("index length: {:?}", index_len);
-+
-+        // Prove that index_len >= 1.
-+        assert(index_len >= 1);
-+
++        // Verus note: source uses `index_len.is_multiple_of(block_size)`.
++        // `is_multiple_of()` is not available in Verus; `% == 0` is equivalent.
          let num_index_blocks: usize = (index_len / block_size)
 -            + if index_len.is_multiple_of(block_size) {
 -                0
@@ -108,54 +101,74 @@
 -                1
 -            };
 -        // info!("number of index blocks: {:?}", num_index_blocks);
--        if num_index_blocks > total_num_blocks {
--            return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
--        }
 +            + if index_len % block_size == 0 { 0 } else { 1 };
-+
-+        // Check that num_index_blocks >= 1.
-+        if num_index_blocks == 0 {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "no index blocks"));
-+        }
-+
-+        // Check that num_index_blocks < total_num_blocks.
-+        if num_index_blocks >= total_num_blocks {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "too many index blocks"));
-+        }
-+
+         if num_index_blocks > total_num_blocks {
+             return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
+         }
          let num_data_blocks: usize = total_num_blocks - num_index_blocks;
 -        // info!("number of data blocks: {:?}", num_data_blocks);
 -        let data_addr: *mut u8 = addr.add(num_index_blocks * block_size);
 +
-+        // Check that we have at least one data block.
-+        if num_data_blocks == 0 {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "no data blocks"));
-+        }
++        // Verus note: source uses `addr.add(num_index_blocks * block_size)` (pointer
++        // arithmetic). Verus uses integer arithmetic; overflow safety proven via
++        // preconditions. Prove num_index_blocks * block_size fits in usize.
++        proof {
++            // total_num_blocks >= 8 (from precondition), so index_len >= 1.
++            assert(total_num_blocks >= 8usize);
++            assert(index_len >= 1usize);
++            // Prove num_index_blocks >= 1: either index_len / block_size >= 1,
++            // or index_len < block_size so index_len % block_size > 0, adding 1.
++            if index_len >= block_size {
++                assert((index_len as int) / (block_size as int) >= 1) by(nonlinear_arith)
++                    requires index_len >= block_size, block_size > 0int;
++            } else {
++                // index_len < block_size, so index_len / block_size == 0.
++                // But index_len >= 1, so index_len % block_size == index_len > 0.
++                assert((index_len as int) % (block_size as int) == (index_len as int)) by(nonlinear_arith)
++                    requires 0 < index_len < block_size;
++                assert(index_len % block_size != 0usize);
++            }
++            assert(num_index_blocks >= 1usize);
++            // num_index_blocks <= total_num_blocks (from check above).
++            // Since total_num_blocks >= 8 and num_index_blocks <= total_num_blocks / 8 + 1
++            // (at most), we need to show num_index_blocks < total_num_blocks.
++            // Actually: index_len = total_num_blocks / 8.
++            // num_index_blocks = ceil(index_len / block_size) <= index_len (since block_size >= 1).
++            // But index_len = total_num_blocks / 8, so num_index_blocks <= total_num_blocks / 8.
++            // total_num_blocks / 8 < total_num_blocks (since total_num_blocks >= 8).
++            // So num_index_blocks < total_num_blocks, hence num_data_blocks >= 1.
++            assert(num_index_blocks <= total_num_blocks);
++            // Prove num_data_blocks > 0: we need num_index_blocks < total_num_blocks.
++            // index_len = total_num_blocks / 8 <= total_num_blocks / 8.
++            // num_index_blocks <= (index_len / block_size) + 1.
++            // block_size >= 1, so (index_len / block_size) <= index_len.
++            // num_index_blocks <= index_len + 1 = total_num_blocks / 8 + 1.
++            // For total_num_blocks >= 8: total_num_blocks / 8 + 1 <= total_num_blocks
++            //   iff total_num_blocks / 8 <= total_num_blocks - 1
++            //   iff total_num_blocks <= 8 * (total_num_blocks - 1) = 8*total_num_blocks - 8
++            //   iff 8 <= 7 * total_num_blocks
++            //   iff total_num_blocks >= 2 (true since >= 8).
++            assert(num_index_blocks as int <= (index_len as int) + 1) by {
++                assert((index_len as int) / (block_size as int) <= (index_len as int)) by(nonlinear_arith)
++                    requires block_size >= 1int, index_len >= 0int;
++            }
++            assert((index_len as int) + 1 <= (total_num_blocks as int)) by {
++                assert((total_num_blocks as int) / 8 + 1 <= (total_num_blocks as int)) by(nonlinear_arith)
++                    requires total_num_blocks >= 8int;
++            }
++            assert(num_index_blocks < total_num_blocks);
++            assert(num_data_blocks > 0usize);
 +
-+        // Check for overflow in address calculation.
-+        if block_size == 0 {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "block size is zero"));
++            // Prove num_index_blocks * block_size <= len.
++            Self::lemma_div_mul_le(len as int, block_size as int);
++            Self::lemma_mul_inequality(num_index_blocks as int, total_num_blocks as int, block_size as int);
++            // addr + num_index_blocks * block_size < addr + len <= usize::MAX.
++            assert((num_index_blocks as int) * (block_size as int) < (total_num_blocks as int) * (block_size as int));
++            assert((total_num_blocks as int) * (block_size as int) <= len as int);
++            assert((addr as int) + (num_index_blocks as int) * (block_size as int) <= (addr as int) + (len as int));
++            assert((addr as int) + (len as int) <= usize::MAX as int);
 +        }
-+        let max_blocks: usize = usize::MAX / block_size;
-+        if num_index_blocks > max_blocks {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
-+        }
-+
-+        // Now we can safely multiply using checked_mul.
-+        let index_region_size: usize = match num_index_blocks.checked_mul(block_size) {
-+            Some(v) => v,
-+            None => return Err(Error::new(ErrorCode::InvalidArgument, "address overflow")),
-+        };
-+
-+        // Check index_region_size > 0.
-+        if index_region_size == 0 {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "index region size is zero"));
-+        }
-+
-+        if addr > usize::MAX - index_region_size {
-+            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
-+        }
-+        let data_addr: usize = addr + index_region_size;
++        let data_addr: usize = addr + num_index_blocks * block_size;
  
          // Check if `data_addr` is aligned to `block_size`.
 -        if !(data_addr as usize).is_multiple_of(block_size) {

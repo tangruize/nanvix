@@ -33,60 +33,20 @@
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid number of blocks"));
         }
 
-        // Need at least 8 blocks for valid slab.
-        if total_num_blocks < 8 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "too few blocks"));
-        }
-
         let index_len: usize = total_num_blocks / u8::BITS as usize;
-
-        // Prove that index_len >= 1.
-        
-
+        // Verus note: source uses `index_len.is_multiple_of(block_size)`.
+        // `is_multiple_of()` is not available in Verus; `% == 0` is equivalent.
         let num_index_blocks: usize = (index_len / block_size)
             + if index_len % block_size == 0 { 0 } else { 1 };
-
-        // Check that num_index_blocks >= 1.
-        if num_index_blocks == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "no index blocks"));
+        if num_index_blocks > total_num_blocks {
+            return Err(Error::new(ErrorCode::InvalidArgument, "insufficient blocks for index"));
         }
-
-        // Check that num_index_blocks < total_num_blocks.
-        if num_index_blocks >= total_num_blocks {
-            return Err(Error::new(ErrorCode::InvalidArgument, "too many index blocks"));
-        }
-
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
 
-        // Check that we have at least one data block.
-        if num_data_blocks == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "no data blocks"));
-        }
-
-        // Check for overflow in address calculation.
-        if block_size == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "block size is zero"));
-        }
-        let max_blocks: usize = usize::MAX / block_size;
-        if num_index_blocks > max_blocks {
-            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
-        }
-
-        // Now we can safely multiply using checked_mul.
-        let index_region_size: usize = match num_index_blocks.checked_mul(block_size) {
-            Some(v) => v,
-            None => return Err(Error::new(ErrorCode::InvalidArgument, "address overflow")),
-        };
-
-        // Check index_region_size > 0.
-        if index_region_size == 0 {
-            return Err(Error::new(ErrorCode::InvalidArgument, "index region size is zero"));
-        }
-
-        if addr > usize::MAX - index_region_size {
-            return Err(Error::new(ErrorCode::InvalidArgument, "address overflow"));
-        }
-        let data_addr: usize = addr + index_region_size;
+        // Verus note: source uses `addr.add(num_index_blocks * block_size)` (pointer
+        // arithmetic). Verus uses integer arithmetic; overflow safety proven via
+        // preconditions. Prove num_index_blocks * block_size fits in usize.
+        let data_addr: usize = addr + num_index_blocks * block_size;
 
         // Check if `data_addr` is aligned to `block_size`.
         if data_addr % block_size != 0 {
