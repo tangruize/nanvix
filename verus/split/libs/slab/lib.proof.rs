@@ -1352,7 +1352,7 @@ impl Slab {
         }
         // Prove allocated_blocks =~= old_allocated_blocks.insert(block_idx).
         assert(slab@.allocated_blocks =~= old_slab@.allocated_blocks.insert(block_idx)) by {
-            assert forall|j: int| slab@.allocated_blocks.contains(j)
+            assert forall|j: int| #![auto] slab@.allocated_blocks.contains(j)
                 == old_slab@.allocated_blocks.insert(block_idx).contains(j) by {
                 if j == block_idx {
                     assert(slab@.is_allocated(block_idx));
@@ -1535,7 +1535,7 @@ impl Slab {
 
         // Prove allocated_blocks =~= old_allocated_blocks.remove(block_idx_spec).
         assert(slab@.allocated_blocks =~= old_slab@.allocated_blocks.remove(block_idx_spec)) by {
-            assert forall|j: int| slab@.allocated_blocks.contains(j)
+            assert forall|j: int| #![auto] slab@.allocated_blocks.contains(j)
                 == old_slab@.allocated_blocks.remove(block_idx_spec).contains(j) by {
                 if j == block_idx_spec {
                     assert(!slab@.is_allocated(block_idx_spec));
