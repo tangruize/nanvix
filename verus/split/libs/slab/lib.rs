@@ -96,13 +96,6 @@ pub struct Slab {
 
 impl Slab {
 
-    /// Trusted bridge: bitwise check `n & (n - 1) == 0` implies `is_pow2(n)`.
-    #[verifier::external_body]
-    proof fn lemma_bitwise_implies_is_pow2(n: usize)
-        requires n > 0, n & sub(n, 1) == 0,
-        ensures is_pow2(n as int),
-    {}
-
     //==============================================================================================
 
     ///
@@ -906,16 +899,7 @@ impl Slab {
             },
             Err(e) => {
                 proof {
-                    // On error, bitmap is unchanged (self.index@ == old(self).index@).
-                    // Since old(self).inv(), and bitmap is unchanged, self.inv() still holds.
-                    // is_bit_set is based on @, which is unchanged.
-                    assert forall|j: int| 0 <= j < self.num_index_blocks as int
-                        implies self.index.is_bit_set(j) by {
-                        assert(self.index@ == old(self).index@);
-                        assert(self.index.is_bit_set(j) == old(self).index.is_bit_set(j));
-                        assert(old(self).index.is_bit_set(j));
-                    }
-                    Self::lemma_inv_from_components(self);
+                    Self::lemma_dealloc_clear_err_preserves_inv(self, old(self));
                 }
                 Err(e)
             }

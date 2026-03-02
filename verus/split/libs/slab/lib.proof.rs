@@ -959,6 +959,34 @@ impl Slab {
         assert(a * b > 0) by(nonlinear_arith)
             requires a > 0, b > 0;
     }
+
+    /// Trusted bridge: bitwise check `n & (n - 1) == 0` implies `is_pow2(n)`.
+    #[verifier::external_body]
+    proof fn lemma_bitwise_implies_is_pow2(n: usize)
+        requires n > 0, n & sub(n, 1) == 0,
+        ensures is_pow2(n as int),
+    {}
+
+    /// Proves that after a failed clear, slab invariant is preserved.
+    proof fn lemma_dealloc_clear_err_preserves_inv(slab: &Slab, old_slab: &Slab)
+        requires
+            old_slab.inv(),
+            slab.index.inv(),
+            slab.index@.set_bits =~= old_slab.index@.set_bits,
+            slab.index@.number_of_bits() == old_slab.index@.number_of_bits(),
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+        ensures
+            slab.inv(),
+    {
+        assert forall|j: int| 0 <= j < slab.num_index_blocks as int
+            implies slab.index.is_bit_set(j) by {
+            assert(old_slab.index.is_bit_set(j));
+        }
+        Self::lemma_inv_from_components(slab);
+    }
 }
 
 /// Test: Error conditions are prevented by preconditions.
