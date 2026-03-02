@@ -1167,7 +1167,17 @@ impl Slab {
         Self::lemma_inv_from_components(slab);
         Self::lemma_view_fields(slab);
         Self::lemma_new_slab_is_empty(slab);
-        Self::lemma_no_allocated_implies_empty(slab);
+        // Prove allocated_blocks =~= Set::empty() from !is_allocated for all data blocks.
+        assert(slab@.allocated_blocks =~= Set::<int>::empty()) by {
+            assert forall|i: int| !slab@.allocated_blocks.contains(i) by {
+                if 0 <= i < slab@.num_data_blocks {
+                    assert(!slab@.is_allocated(i));
+                } else {
+                    assert(slab@.allocated_blocks_in_range());
+                    assert(!slab@.is_allocated(i));
+                }
+            }
+        }
         assert(slab.data_addr as int > addr);
         assert(slab.data_addr as int % slab.block_size as int == 0);
         assert(slab@.data_addr + slab@.num_data_blocks * slab@.block_size
@@ -1336,7 +1346,10 @@ impl Slab {
         }
         // Frame for allocated_blocks.
         assert forall|i: int| 0 <= i < ndb && i != block_idx
-            implies slab@.is_allocated(i) == old_slab@.is_allocated(i) by {}
+            implies slab@.is_allocated(i) == old_slab@.is_allocated(i) by {
+            let bitmap_idx: int = slab.num_index_blocks as int + i;
+            assert(slab.index.is_bit_set(bitmap_idx) == old_slab.index.is_bit_set(bitmap_idx));
+        }
     }
 
     /// Lemma: Proves offset and index bounds for deallocate.
@@ -1443,12 +1456,13 @@ impl Slab {
         assert(index == slab.num_index_blocks as int + block_idx_spec);
         assert(index >= slab.num_index_blocks as int);
 
-        // Prove all index blocks are still set.
+        // Prove all index blocks are still set (using set_bits trigger for lemma_inv_from_components).
         assert forall|j: int| 0 <= j < slab.num_index_blocks as int
-            implies slab.index.is_bit_set(j) by {
+            implies #[trigger] slab.index@.set_bits.contains(j) by {
             assert(j != index);
             assert(old_slab.index.is_bit_set(j));
             assert(slab.index.is_bit_set(j) == old_slab.index.is_bit_set(j));
+            assert(slab.index.is_bit_set(j));
         }
         Self::lemma_inv_from_components(slab);
 
@@ -1502,6 +1516,25 @@ impl Slab {
         assert(slab@.used() < slab@.capacity());
         assert(slab@.free() > 0);
         assert(slab@.can_allocate());
+
+        // Prove allocated_blocks =~= old_allocated_blocks.remove(block_idx_spec).
+        assert(slab@.allocated_blocks =~= old_slab@.allocated_blocks.remove(block_idx_spec)) by {
+            assert forall|j: int| slab@.allocated_blocks.contains(j)
+                == old_slab@.allocated_blocks.remove(block_idx_spec).contains(j) by {
+                if j == block_idx_spec {
+                    assert(!slab@.is_allocated(block_idx_spec));
+                } else if 0 <= j < slab@.num_data_blocks {
+                    let bitmap_idx: int = slab.num_index_blocks as int + j;
+                    assert(slab.index.is_bit_set(bitmap_idx)
+                        == old_slab.index.is_bit_set(bitmap_idx));
+                } else {
+                    assert(slab@.allocated_blocks_in_range());
+                    assert(!slab@.is_allocated(j));
+                    assert(old_slab@.allocated_blocks_in_range());
+                    assert(!old_slab@.is_allocated(j));
+                }
+            }
+        }
     }
 }
 
