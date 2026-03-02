@@ -1095,11 +1095,11 @@ impl Slab {
             forall|i: int| slab.num_index_blocks as int <= i < slab.index@.number_of_bits()
                 ==> !slab.index.is_bit_set(i),
             // Layout relationships.
-            slab.num_index_blocks as int + slab.num_data_blocks as int == slab.index@.number_of_bits(),
+            (slab.num_index_blocks as int) + (slab.num_data_blocks as int) == slab.index@.number_of_bits(),
             total_num_blocks == slab.index@.number_of_bits(),
-            slab.num_data_blocks as int < total_num_blocks,
+            (slab.num_data_blocks as int) < total_num_blocks,
             // Address computation.
-            slab.data_addr as int == addr + slab.num_index_blocks as int * slab.block_size as int,
+            (slab.data_addr as int) == addr + (slab.num_index_blocks as int) * (slab.block_size as int),
             addr > 0,
             // Original preconditions.
             len > 0,
