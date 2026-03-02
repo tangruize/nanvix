@@ -69,7 +69,6 @@ impl SlabView {
     //==============================================================================================
 
     /// Property: All allocated block indices are within valid range.
-    /// Issue 9 FIX: Added explicit trigger for quantifier.
     pub open spec fn allocated_blocks_in_range(&self) -> bool {
         forall|i: int|
             #![trigger self.is_allocated(i)]
@@ -88,7 +87,6 @@ impl SlabView {
     }
 
     /// Property: All allocated blocks have disjoint memory regions (no aliasing).
-    /// Issue 9 FIX: Added explicit trigger for quantifier.
     pub open spec fn no_memory_aliasing(&self) -> bool {
         forall|i: int, j: int|
             #![trigger self.is_allocated(i), self.is_allocated(j)]
@@ -194,18 +192,18 @@ impl Slab {
         &&& (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
         // data_addr + total data size fits in usize (no overflow when computing addresses).
         &&& (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
-        // Issue 2 FIX: Metadata/Data disjointness - index region ends before data region starts.
+        // Metadata/data disjointness - index region ends before data region starts.
         // index_end = base_addr + num_index_blocks * block_size (where index is stored).
         // data_addr >= index_end (data starts at or after index region).
         // Since data_addr = base_addr + num_index_blocks * block_size in from_raw_parts,
         // this is ensured by construction. The invariant captures that data_addr is correctly computed.
         &&& self.data_addr as int >= self.num_index_blocks as int * self.block_size as int
-        // Issue 3 FIX: Power-of-two and alignment requirements.
+        // Power-of-two and alignment requirements.
         // Block size must be a power of two (required for correct address arithmetic).
         &&& Self::spec_is_power_of_two(self.block_size as int)
         // Data address must be aligned to block size (required for aligned allocations).
         &&& self.data_addr as int % self.block_size as int == 0
-        // Issue 6 FIX: Buffer bounds - record and validate the overall slab buffer.
+        // Buffer bounds - record and validate the overall slab buffer.
         &&& self.base_addr > 0
         &&& self.total_len > 0
         // base_addr + total_len fits in usize (no overflow).

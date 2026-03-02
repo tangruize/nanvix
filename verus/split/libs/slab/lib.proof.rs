@@ -163,10 +163,10 @@ impl Slab {
             (slab.data_addr as int) + (slab.num_data_blocks as int) * (slab.block_size as int) <= usize::MAX as int,
             // Metadata/Data disjointness condition.
             slab.data_addr as int >= slab.num_index_blocks as int * slab.block_size as int,
-            // Issue 3 FIX: Power-of-two and alignment conditions.
+            // Power-of-two and alignment conditions.
             Self::spec_is_power_of_two(slab.block_size as int),
             slab.data_addr as int % slab.block_size as int == 0,
-            // Issue 6 FIX: Buffer bounds conditions.
+            // Buffer bounds conditions.
             slab.base_addr > 0,
             slab.total_len > 0,
             (slab.base_addr as int) + (slab.total_len as int) <= usize::MAX as int,
@@ -761,7 +761,7 @@ impl Slab {
 
     //==============================================================================================
 
-    /// Lemma (Issue 2): Metadata and Data regions are disjoint.
+    /// Lemma: Metadata and data regions are disjoint.
     /// This proves that writing to the index bitmap cannot corrupt data blocks.
     proof fn lemma_metadata_data_disjoint(&self, base_addr: int, index_bytes: int)
         requires

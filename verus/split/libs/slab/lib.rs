@@ -77,9 +77,7 @@ unsafe fn raw_array_from_addr(addr: usize, len: usize) -> (result: Result<RawArr
 pub struct Slab {
     /// An index that keeps track of free blocks.
     index: Bitmap,
-    /// Base address of data blocks.
-    /// Verus equivalence: original uses `*mut u8`; changed to `usize` because Verus
-    /// does not support raw pointers. Stores the same numeric address value.
+    /// Base address of data blocks (stored as `usize`; original uses `*mut u8`).
     data_addr: usize,
     /// Number of index blocks in the slab.
     num_index_blocks: usize,
@@ -87,11 +85,11 @@ pub struct Slab {
     num_data_blocks: usize,
     /// Size of blocks in the slab.
     block_size: usize,
-    // Issue 6 FIX: Store buffer base address and length for bounds checking.
-    // These fields are not in the original source; added for verification invariants.
     /// Base address of the entire slab buffer (including index region).
+    /// Not in the original source; added for verification invariants.
     base_addr: usize,
     /// Total length of the slab buffer in bytes.
+    /// Not in the original source; added for verification invariants.
     total_len: usize,
 }
 
@@ -107,7 +105,7 @@ pub struct SlabView {
     pub block_size: int,
     /// Base address of data region.
     pub data_addr: int,
-    // Issue 6 FIX: Track buffer bounds in view for spec-level bounds checking.
+    // Track buffer bounds in view for spec-level bounds checking.
     /// Base address of the entire slab buffer (including index region).
     pub base_addr: int,
     /// Total length of the slab buffer in bytes.
@@ -166,14 +164,13 @@ impl Slab {
     /// # Verus Equivalence
     ///
     /// Compared to the original `src/libs/slab/src/lib.rs`:
-    /// - Parameter `addr: *mut u8` → `addr: usize` (Verus limitation: no raw pointers).
+    /// - Parameter `addr: *mut u8` → `addr: usize` (Verus: no raw pointers).
     /// - Wrapping check replaced by precondition on address space bounds.
-    /// - `is_multiple_of()` → `% ... != 0` (Verus compatibility).
+    /// - `is_multiple_of()` → `% ... != 0` (not available in Verus).
     /// - Bitwise power-of-two check → `is_power_of_two()` verified helper.
-    /// - `RawArray::from_raw_parts` → `raw_array_from_addr` (Verus cannot cast usize to *mut T).
-    /// - `for` loop → `while` loop (Verus limitation).
+    /// - `RawArray::from_raw_parts` → `raw_array_from_addr` (Verus cannot cast `usize` to `*mut T`).
+    /// - `for` loop → `while` loop (Verus: no `for` loops).
     /// - Pointer arithmetic → integer arithmetic.
-    /// - Extra defensive checks added (do not change behavior for valid inputs).
     /// - Extra fields `base_addr`, `total_len` stored for invariant proofs.
     ///
     pub unsafe fn from_raw_parts(
@@ -200,7 +197,7 @@ impl Slab {
             (len / block_size) % (u8::BITS as usize) == 0,
             // Ensure we have enough blocks for a valid slab (at least 8).
             len / block_size >= 8,
-            // Issue 1 FIX: Zero-initialization of the bitmap backing storage.
+            // Zero-initialization of the bitmap backing storage.
             // `raw_array_from_addr` zeroes the region before returning and its
             // postcondition exposes `is_zero` for every byte, which we rely on when
             // constructing the bitmap. No caller-side zeroing precondition is required.
@@ -217,7 +214,7 @@ impl Slab {
                 &&& slab@.data_addr % (block_size as int) == 0
                 // Number of data blocks is positive.
                 &&& slab@.num_data_blocks > 0
-                // Issue 6 FIX: Buffer bounds are recorded.
+                // Buffer bounds are recorded.
                 &&& slab@.base_addr == addr as int
                 &&& slab@.total_len == len as int
             },
@@ -252,8 +249,7 @@ impl Slab {
         }
 
         let index_len: usize = total_num_blocks / u8::BITS as usize;
-        // Verus note: source uses `index_len.is_multiple_of(block_size)`.
-        // `is_multiple_of()` is not available in Verus; `% == 0` is equivalent.
+        // Source uses `is_multiple_of()`; replaced with `% == 0` (equivalent).
         let num_index_blocks: usize = (index_len / block_size)
             + if index_len % block_size == 0 { 0 } else { 1 };
         if num_index_blocks > total_num_blocks {
@@ -261,9 +257,8 @@ impl Slab {
         }
         let num_data_blocks: usize = total_num_blocks - num_index_blocks;
 
-        // Verus note: source uses `addr.add(num_index_blocks * block_size)` (pointer
-        // arithmetic). Verus uses integer arithmetic; overflow safety proven via
-        // preconditions. Prove num_index_blocks * block_size fits in usize.
+        // Source uses `addr.add(...)` (pointer arithmetic); Verus uses integer arithmetic.
+        // Prove num_index_blocks * block_size fits in usize.
         proof {
             // total_num_blocks >= 8 (from precondition), so index_len >= 1.
             assert(total_num_blocks >= 8usize);
@@ -442,7 +437,7 @@ impl Slab {
             assert((addr as int) + (len as int) <= (usize::MAX as int));
             assert((data_addr as int) + (num_data_blocks as int) * (block_size as int) <= (usize::MAX as int));
 
-            // Issue 2 FIX: Prove metadata/data disjointness condition for invariant.
+            // Prove metadata/data disjointness condition for invariant.
             // data_addr = addr + num_index_blocks * block_size.
             // Since addr > 0 (from precondition), we have:
             // data_addr = addr + num_index_blocks * block_size > num_index_blocks * block_size.
@@ -815,8 +810,7 @@ impl Slab {
             result is Ok,
     {
         // Check if the pointer lies in a memory region that is not managed by this allocator.
-        // Verus note: source uses `ptr < self.data_addr || ptr >= unsafe { self.data_addr.add(...) }`.
-        // Verus uses integer arithmetic since raw pointers are not supported.
+        // Source uses pointer comparisons; Verus uses integer arithmetic.
         proof {
             assert((self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int);
         }
@@ -827,8 +821,7 @@ impl Slab {
         }
 
         // Compute the block index.
-        // Verus note: source uses `ptr.offset_from_unsigned(self.data_addr)`.
-        // Verus uses integer subtraction since raw pointers are not supported.
+        // Source uses `ptr.offset_from_unsigned()`; Verus uses integer subtraction.
 
         proof {
             // From is_valid_addr:
