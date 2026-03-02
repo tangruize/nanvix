@@ -31,7 +31,7 @@ HISTORY_DIR = PROJECT_ROOT / "verus-ai-history"
 LOGS_DIR = HISTORY_DIR / "logs" / "fix_ghost_exec"
 
 # Model to use.
-MODEL = "claude-opus-4.6-fast"
+MODEL = "claude-opus-4.6"
 
 # Timeout for copilot (seconds).
 COPILOT_TIMEOUT = 2400  # 40 minutes per file.
