@@ -567,32 +567,6 @@ impl Slab {
     ///
     /// # Description
     ///
-    /// Returns the number of data blocks in the slab.
-    ///
-    pub fn num_data_blocks(&self) -> (result: usize)
-        requires self.inv(),
-        ensures result as int == self@.num_data_blocks,
-    {
-        self.num_data_blocks
-    }
-
-
-    ///
-    /// # Description
-    ///
-    /// Returns the block size.
-    ///
-    pub fn block_size(&self) -> (result: usize)
-        requires self.inv(),
-        ensures result as int == self@.block_size,
-    {
-        self.block_size
-    }
-
-
-    ///
-    /// # Description
-    ///
     /// Allocates a block of memory from the slab allocator.
     ///
     /// # Returns
