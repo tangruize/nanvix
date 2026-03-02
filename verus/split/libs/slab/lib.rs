@@ -229,7 +229,7 @@ impl Slab {
             return Err(Error::new(ErrorCode::InvalidArgument, "invalid block size"));
         }
 
-        // Check if the `block_size` is a power of two using the verified function.
+        // Check if the `block_size` is a power of two.
         if !Self::is_power_of_two(block_size) {
             return Err(Error::new(ErrorCode::InvalidArgument, "block size is not a power of two"));
         }
@@ -351,7 +351,7 @@ impl Slab {
             assert(num_index_blocks < total_num_blocks);
         }
 
-        // Initialize index: mark index blocks as allocated.
+        // Initialize index.
         let mut i: usize = 0;
         while i < num_index_blocks
             invariant
@@ -606,7 +606,7 @@ impl Slab {
     {
         let alloc_result = self.index.alloc();
 
-        // Handle error case explicitly.
+        // Allocate a free block from the bitmap (explicit match for proof on error path).
         let block: usize = match alloc_result {
             Ok(b) => b,
             Err(e) => {
@@ -880,13 +880,12 @@ impl Slab {
             assert(self.index.is_bit_set(index as int));
         }
 
-        // Since the block is allocated (precondition), test will return true.
-        // We don't need this check given the precondition, but it matches original code.
+        // Check if the block is already free.
         if !self.index.test(index)? {
             return Err(Error::new(ErrorCode::BadAddress, "block is already free"));
         }
 
-        // Clear the bit to deallocate.
+        // Free the block.
         match self.index.clear(index) {
             Ok(()) => {
                 proof {
