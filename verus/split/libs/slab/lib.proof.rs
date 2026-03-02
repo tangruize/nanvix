@@ -1350,6 +1350,22 @@ impl Slab {
             let bitmap_idx: int = slab.num_index_blocks as int + i;
             assert(slab.index.is_bit_set(bitmap_idx) == old_slab.index.is_bit_set(bitmap_idx));
         }
+        // Prove allocated_blocks =~= old_allocated_blocks.insert(block_idx).
+        assert(slab@.allocated_blocks =~= old_slab@.allocated_blocks.insert(block_idx)) by {
+            assert forall|j: int| slab@.allocated_blocks.contains(j)
+                == old_slab@.allocated_blocks.insert(block_idx).contains(j) by {
+                if j == block_idx {
+                    assert(slab@.is_allocated(block_idx));
+                } else if 0 <= j < ndb {
+                    assert(slab@.is_allocated(j) == old_slab@.is_allocated(j));
+                } else {
+                    assert(slab@.allocated_blocks_in_range());
+                    assert(!slab@.is_allocated(j));
+                    assert(old_slab@.allocated_blocks_in_range());
+                    assert(!old_slab@.is_allocated(j));
+                }
+            }
+        }
     }
 
     /// Lemma: Proves offset and index bounds for deallocate.
