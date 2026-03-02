@@ -203,7 +203,7 @@ impl Slab {
         // this is ensured by construction. The invariant captures that data_addr is correctly computed.
         // Power-of-two and alignment requirements.
         // Block size must be a power of two (required for correct address arithmetic).
-        &&& Self::spec_is_power_of_two(self.block_size as int)
+        &&& is_pow2(self.block_size as int)
         // Data address must be aligned to block size (required for aligned allocations).
         &&& self.data_addr as int % self.block_size as int == 0
         // data_addr >= num_index_blocks * block_size (data starts after index region).
@@ -219,22 +219,6 @@ impl Slab {
         // This is true by definition of allocated_blocks in view(), but needs to be explicit
         // because view() is closed.
         &&& self@.allocated_blocks_in_range()
-    }
-
-    /// Specification function: checks if a value is a power of two.
-    /// Uses recursive definition: 1, 2, 4, 8, 16, ... are powers of two.
-    pub open spec fn spec_is_power_of_two(n: int) -> bool
-        decreases n,
-    {
-        if n <= 0 {
-            false
-        } else if n == 1 {
-            true
-        } else if n % 2 != 0 {
-            false
-        } else {
-            Self::spec_is_power_of_two(n / 2)
-        }
     }
 
     //==============================================================================================

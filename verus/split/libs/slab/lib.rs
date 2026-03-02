@@ -19,6 +19,7 @@ use crate::libs::{
 };
 use vstd::{
     prelude::*,
+    arithmetic::power2::is_pow2,
     set::*,
     set_lib::{
         lemma_int_range,
@@ -95,28 +96,12 @@ pub struct Slab {
 
 impl Slab {
 
-    /// Executable function: checks if a usize is a power of two.
-    /// Uses iterative division to match the recursive spec definition.
-    pub fn is_power_of_two(n: usize) -> (result: bool)
-        requires n > 0,
-        ensures result == Self::spec_is_power_of_two(n as int),
-    {
-        let mut val: usize = n;
-
-        // Loop invariant: val > 0 and the result depends on whether val becomes 1.
-        // We divide by 2 as long as val is even and > 1.
-        while val > 1 && val % 2 == 0
-            invariant
-                val > 0,
-                Self::spec_is_power_of_two(n as int) == Self::spec_is_power_of_two(val as int),
-            decreases val,
-        {
-            val = val / 2;
-        }
-
-        // At this point: either val == 1 (power of two) or val > 1 && val % 2 != 0 (not power of two).
-        val == 1
-    }
+    /// Trusted bridge: bitwise check `n & (n - 1) == 0` implies `is_pow2(n)`.
+    #[verifier::external_body]
+    proof fn lemma_bitwise_implies_is_pow2(n: usize)
+        requires n > 0, n & sub(n, 1) == 0,
+        ensures is_pow2(n as int),
+    {}
 
     //==============================================================================================
 
@@ -167,7 +152,7 @@ impl Slab {
             block_size < i32::MAX as usize,
             block_size <= len,
             // Block size must be a power of two.
-            Self::spec_is_power_of_two(block_size as int),
+            is_pow2(block_size as int),
             // Start address must be aligned to block size.
             (addr as usize) % block_size == 0,
             (addr as usize) > 0,
@@ -212,12 +197,13 @@ impl Slab {
         }
 
         // Check if the `block_size` is a power of two.
-        if !Self::is_power_of_two(block_size) {
+        if block_size & (block_size - 1) != 0 {
             return Err(Error::new(ErrorCode::InvalidArgument, "block size is not a power of two"));
         }
 
-        // At this point, is_power_of_two returned true, so spec_is_power_of_two holds.
-        assert(Self::spec_is_power_of_two(block_size as int));
+        proof {
+            Self::lemma_bitwise_implies_is_pow2(block_size);
+        }
 
         // Check if `addr` is aligned to `block_size`.
         if !(addr as usize).is_multiple_of(block_size) {

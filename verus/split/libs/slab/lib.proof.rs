@@ -9,21 +9,19 @@ impl Slab {
 
     /// Lemma: If n == 1, then it's a power of two.
     proof fn lemma_one_is_power_of_two()
-        ensures Self::spec_is_power_of_two(1),
-    {
-        // By definition: spec_is_power_of_two(1) == true.
-    }
+        ensures is_pow2(1),
+    {}
 
     /// Lemma: If n > 1 and n % 2 == 0 and n/2 is power of two, then n is power of two.
     proof fn lemma_double_power_of_two(n: int)
         requires
             n > 1,
             n % 2 == 0,
-            Self::spec_is_power_of_two(n / 2),
+            is_pow2(n / 2),
         ensures
-            Self::spec_is_power_of_two(n),
+            is_pow2(n),
     {
-        // By definition: for n > 1 and n % 2 == 0, spec_is_power_of_two(n) == spec_is_power_of_two(n/2).
+        reveal(is_pow2);
     }
 
     /// Lemma: If n > 1 and n % 2 != 0, then n is not a power of two.
@@ -32,14 +30,14 @@ impl Slab {
             n > 1,
             n % 2 != 0,
         ensures
-            !Self::spec_is_power_of_two(n),
+            !is_pow2(n),
     {
-        // By definition: for n > 1 and n % 2 != 0, spec_is_power_of_two(n) == false.
+        reveal(is_pow2);
     }
 
     /// Lemma: 8 is a power of two.
     pub proof fn lemma_power_of_two_8()
-        ensures Self::spec_is_power_of_two(8),
+        ensures is_pow2(8),
     {
         Self::lemma_one_is_power_of_two();
         Self::lemma_double_power_of_two(2);
@@ -49,7 +47,7 @@ impl Slab {
 
     /// Lemma: 16 is a power of two.
     pub proof fn lemma_power_of_two_16()
-        ensures Self::spec_is_power_of_two(16),
+        ensures is_pow2(16),
     {
         Self::lemma_power_of_two_8();
         Self::lemma_double_power_of_two(16);
@@ -57,7 +55,7 @@ impl Slab {
 
     /// Lemma: 32 is a power of two.
     pub proof fn lemma_power_of_two_32()
-        ensures Self::spec_is_power_of_two(32),
+        ensures is_pow2(32),
     {
         Self::lemma_power_of_two_16();
         Self::lemma_double_power_of_two(32);
@@ -65,7 +63,7 @@ impl Slab {
 
     /// Lemma: 64 is a power of two.
     pub proof fn lemma_power_of_two_64()
-        ensures Self::spec_is_power_of_two(64),
+        ensures is_pow2(64),
     {
         Self::lemma_power_of_two_32();
         Self::lemma_double_power_of_two(64);
@@ -73,7 +71,7 @@ impl Slab {
 
     /// Lemma: 128 is a power of two.
     pub proof fn lemma_power_of_two_128()
-        ensures Self::spec_is_power_of_two(128),
+        ensures is_pow2(128),
     {
         Self::lemma_power_of_two_64();
         Self::lemma_double_power_of_two(128);
@@ -81,7 +79,7 @@ impl Slab {
 
     /// Lemma: 256 is a power of two.
     pub proof fn lemma_power_of_two_256()
-        ensures Self::spec_is_power_of_two(256),
+        ensures is_pow2(256),
     {
         Self::lemma_power_of_two_128();
         Self::lemma_double_power_of_two(256);
@@ -89,7 +87,7 @@ impl Slab {
 
     /// Lemma: 512 is a power of two.
     pub proof fn lemma_power_of_two_512()
-        ensures Self::spec_is_power_of_two(512),
+        ensures is_pow2(512),
     {
         Self::lemma_power_of_two_256();
         Self::lemma_double_power_of_two(512);
@@ -97,7 +95,7 @@ impl Slab {
 
     /// Lemma: 1024 is a power of two.
     pub proof fn lemma_power_of_two_1024()
-        ensures Self::spec_is_power_of_two(1024),
+        ensures is_pow2(1024),
     {
         Self::lemma_power_of_two_512();
         Self::lemma_double_power_of_two(1024);
@@ -105,7 +103,7 @@ impl Slab {
 
     /// Lemma: 2048 is a power of two.
     pub proof fn lemma_power_of_two_2048()
-        ensures Self::spec_is_power_of_two(2048),
+        ensures is_pow2(2048),
     {
         Self::lemma_power_of_two_1024();
         Self::lemma_double_power_of_two(2048);
@@ -113,7 +111,7 @@ impl Slab {
 
     /// Lemma: 4096 is a power of two.
     pub proof fn lemma_power_of_two_4096()
-        ensures Self::spec_is_power_of_two(4096),
+        ensures is_pow2(4096),
     {
         Self::lemma_power_of_two_2048();
         Self::lemma_double_power_of_two(4096);
@@ -152,7 +150,7 @@ impl Slab {
             // Metadata/Data disjointness condition.
             slab.data_addr as int >= slab.num_index_blocks as int * slab.block_size as int,
             // Power-of-two and alignment conditions.
-            Self::spec_is_power_of_two(slab.block_size as int),
+            is_pow2(slab.block_size as int),
             slab.data_addr as int % slab.block_size as int == 0,
         ensures
             slab.inv(),
