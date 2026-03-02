@@ -268,7 +268,18 @@ impl Slab {
             // total_num_blocks >= 8 (from precondition), so index_len >= 1.
             assert(total_num_blocks >= 8usize);
             assert(index_len >= 1usize);
-            // num_index_blocks >= 1.
+            // Prove num_index_blocks >= 1: either index_len / block_size >= 1,
+            // or index_len < block_size so index_len % block_size > 0, adding 1.
+            if index_len >= block_size {
+                assert((index_len as int) / (block_size as int) >= 1) by(nonlinear_arith)
+                    requires index_len >= block_size, block_size > 0int;
+            } else {
+                // index_len < block_size, so index_len / block_size == 0.
+                // But index_len >= 1, so index_len % block_size == index_len > 0.
+                assert((index_len as int) % (block_size as int) == (index_len as int)) by(nonlinear_arith)
+                    requires 0 < index_len < block_size;
+                assert(index_len % block_size != 0usize);
+            }
             assert(num_index_blocks >= 1usize);
             // num_index_blocks <= total_num_blocks (from check above).
             // Since total_num_blocks >= 8 and num_index_blocks <= total_num_blocks / 8 + 1
