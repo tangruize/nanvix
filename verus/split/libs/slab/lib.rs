@@ -43,15 +43,6 @@ include!("lib.test.rs");
 
 verus! {
 
-/// Wrapper for `usize` to `*mut u8` cast (Verus cannot cast integers to pointers).
-#[inline]
-#[verifier::external_body]
-pub fn usize_to_ptr(addr: usize) -> (result: *mut u8)
-    ensures result as int == addr as int,
-{
-    addr as *mut u8
-}
-
 /// Wrapper for unsafe `ptr.add(count)` with verified postcondition.
 #[inline]
 #[verifier::external_body]

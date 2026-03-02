@@ -36,10 +36,9 @@ use crate::libs::{
         ErrorCode,
     },
     slab::{
+        ptr_add,
         Slab,
         SlabView,
-        usize_to_ptr,
-        ptr_add,
     },
 };
 use vstd::prelude::*;
@@ -256,10 +255,10 @@ impl Kheap {
     /// The slab construction uses `Slab::from_raw_parts`.
     /// The disjointness property is proven from the memory layout: each slab occupies
     /// a contiguous region at offset `i * slab_size`, ensuring no overlap.
-    pub unsafe fn from_raw_parts(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
+    pub unsafe fn from_raw_parts(addr: *mut u8, size: usize) -> (result: Result<Kheap, Error>)
         requires
-            addr > 0,
-            addr % PAGE_SIZE as usize == 0,
+            addr as int > 0,
+            (addr as usize) % PAGE_SIZE as usize == 0,
             size >= MIN_HEAP_SIZE as usize,
             size % MIN_HEAP_SIZE as usize == 0,
             // Size is a multiple of 8 (NUM_OF_SLABS), so division is exact.
@@ -311,7 +310,7 @@ impl Kheap {
             // Therefore addr + i * slab_size is always 4096-aligned, which implies alignment to all smaller powers of 2.
 
             // From preconditions:
-            assert(addr % PAGE_SIZE == 0);
+            assert((addr as usize) % PAGE_SIZE == 0);
             assert(PAGE_SIZE == 4096);
             assert((addr as int) % 4096int == 0);
 
@@ -443,14 +442,14 @@ impl Kheap {
 
         // Create the 8 slabs at consecutive memory regions.
         // Each slab starts at addr + i * slab_size.
-        let slab_8: Slab = Slab::from_raw_parts(usize_to_ptr(addr), slab_size, 8)?;
-        let slab_16: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 1 * slab_size), slab_size, 16)?;
-        let slab_32: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 2 * slab_size), slab_size, 32)?;
-        let slab_64: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 3 * slab_size), slab_size, 64)?;
-        let slab_128: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 4 * slab_size), slab_size, 128)?;
-        let slab_256: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 5 * slab_size), slab_size, 256)?;
-        let slab_512: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 6 * slab_size), slab_size, 512)?;
-        let slab_4096: Slab = Slab::from_raw_parts(ptr_add(usize_to_ptr(addr), 7 * slab_size), slab_size, 4096)?;
+        let slab_8: Slab = Slab::from_raw_parts(addr, slab_size, 8)?;
+        let slab_16: Slab = Slab::from_raw_parts(ptr_add(addr, 1 * slab_size), slab_size, 16)?;
+        let slab_32: Slab = Slab::from_raw_parts(ptr_add(addr, 2 * slab_size), slab_size, 32)?;
+        let slab_64: Slab = Slab::from_raw_parts(ptr_add(addr, 3 * slab_size), slab_size, 64)?;
+        let slab_128: Slab = Slab::from_raw_parts(ptr_add(addr, 4 * slab_size), slab_size, 128)?;
+        let slab_256: Slab = Slab::from_raw_parts(ptr_add(addr, 5 * slab_size), slab_size, 256)?;
+        let slab_512: Slab = Slab::from_raw_parts(ptr_add(addr, 6 * slab_size), slab_size, 512)?;
+        let slab_4096: Slab = Slab::from_raw_parts(ptr_add(addr, 7 * slab_size), slab_size, 4096)?;
 
         let heap: Kheap = Kheap {
             slab_8_bytes: slab_8,
@@ -658,11 +657,7 @@ impl Kheap {
             result is Err ==> self@ == old(self)@,
     {
         // Hide vstd arithmetic broadcast lemmas to prevent solver slowdown.
-        hide(vstd::arithmetic::div_mod::lemma_fundamental_div_mod);
-        hide(vstd::arithmetic::div_mod::lemma_mod_multiples_basic);
-        hide(vstd::arithmetic::mul::lemma_mul_is_associative);
-        hide(vstd::arithmetic::mul::lemma_mul_is_commutative);
-        hide(vstd::arithmetic::mul::lemma_mul_is_distributive_add);
+        // Hide raw pointer specs to reduce quantifier instantiation.
 
         // Determine which slab to use.
         let slab_size: SlabSize = match layout_to_slab_size(size) {
@@ -684,6 +679,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab8);
                     assert(self.slab_8_bytes@.block_size == 8);
+                    assert(8int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -693,6 +689,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab16);
                     assert(self.slab_16_bytes@.block_size == 16);
+                    assert(16int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -702,6 +699,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab32);
                     assert(self.slab_32_bytes@.block_size == 32);
+                    assert(32int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -711,6 +709,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab64);
                     assert(self.slab_64_bytes@.block_size == 64);
+                    assert(64int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -720,6 +719,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab128);
                     assert(self.slab_128_bytes@.block_size == 128);
+                    assert(128int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -729,6 +729,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab256);
                     assert(self.slab_256_bytes@.block_size == 256);
+                    assert(256int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -738,6 +739,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab512);
                     assert(self.slab_512_bytes@.block_size == 512);
+                    assert(512int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -747,6 +749,7 @@ impl Kheap {
                 proof {
                     assert(slab_size == SlabSize::Slab4096);
                     assert(self.slab_4096_bytes@.block_size == 4096);
+                    assert(4096int >= size as int);
                     assert(self.inv());
                 }
                 result
@@ -884,10 +887,10 @@ impl Kheap {
 /// The original `init()` uses a static `HEAP_STORAGE` array. Since Verus
 /// does not support static mutable state, this function takes explicit
 /// parameters instead.
-pub unsafe fn init(addr: usize, size: usize) -> (result: Result<Kheap, Error>)
+pub unsafe fn init(addr: *mut u8, size: usize) -> (result: Result<Kheap, Error>)
     requires
-        addr > 0,
-        addr % PAGE_SIZE as usize == 0,
+        addr as int > 0,
+        (addr as usize) % PAGE_SIZE as usize == 0,
         size >= MIN_HEAP_SIZE as usize,
         size % MIN_HEAP_SIZE as usize == 0,
         size % NUM_OF_SLABS == 0,
