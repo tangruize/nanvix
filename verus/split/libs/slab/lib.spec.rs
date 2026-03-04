@@ -195,4 +195,53 @@ impl SlabView {
     //==============================================================================================
 }
 
+//==================================================================================================
+// Tracked Memory Permissions
+//==================================================================================================
+
+/// Tracked proof state for slab memory ownership.
+/// This struct is erased at compile time — it exists only for verification.
+/// It tracks per-block PointsToRaw permissions for the free data blocks
+/// and the index region permission (trust boundary with RawArray).
+pub tracked struct SlabPerms {
+    /// Per-block permissions for free data blocks.
+    pub free_perms: Map<int, PointsToRaw>,
+    /// Permission for the index region.
+    pub index_perm: PointsToRaw,
+}
+
+impl SlabPerms {
+    /// Well-formedness predicate linking permissions to a slab view.
+    pub open spec fn wf(&self, view: SlabView, prov: Provenance) -> bool {
+        view.perms_wf(self.free_perms, prov)
+        && self.index_perm.provenance() == prov
+    }
+
+    /// Removes a block's permission from free_perms and returns it.
+    pub proof fn take_block_perm(tracked &mut self, block_idx: int)
+        -> (tracked perm: PointsToRaw)
+        requires
+            old(self).free_perms.dom().contains(block_idx),
+        ensures
+            perm == old(self).free_perms[block_idx],
+            self.free_perms == old(self).free_perms.remove(block_idx),
+            self.index_perm == old(self).index_perm,
+    {
+        self.free_perms.tracked_remove(block_idx)
+    }
+
+    /// Inserts a block's permission back into free_perms.
+    pub proof fn put_block_perm(
+        tracked &mut self,
+        block_idx: int,
+        tracked perm: PointsToRaw,
+    )
+        ensures
+            self.free_perms == old(self).free_perms.insert(block_idx, perm),
+            self.index_perm == old(self).index_perm,
+    {
+        self.free_perms.tracked_insert(block_idx, perm);
+    }
+}
+
 } // verus!

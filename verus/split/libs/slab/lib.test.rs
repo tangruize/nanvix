@@ -15,6 +15,7 @@ fn test_slab_from_raw_parts_verified(
     addr: *mut u8,
     len: usize,
     block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
 )
     requires
         len > 0,
@@ -28,9 +29,11 @@ fn test_slab_from_raw_parts_verified(
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(slab) = result {
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((slab, tracked_perms)) = result {
+        let Tracked(slab_perms) = tracked_perms;
         // Slab should satisfy invariant.
         assert(slab.inv());
         // All data blocks are not allocated.
@@ -50,6 +53,7 @@ fn test_slab_from_raw_parts_allocate_verified(
     addr: *mut u8,
     len: usize,
     block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
 )
     requires
         len > 0,
@@ -63,13 +67,15 @@ fn test_slab_from_raw_parts_allocate_verified(
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
         // Initially all data blocks are not allocated.
         assert(forall|i: int| 0 <= i < slab@.num_data_blocks ==> !slab@.is_allocated(i));
 
-        let alloc_result = slab.allocate();
+        let alloc_result = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(alloc_addr) = alloc_result {
             proof {
                 // Allocated address should be valid.
@@ -94,7 +100,12 @@ fn test_slab_from_raw_parts_allocate_verified(
 //==================================================================================================
 
 /// Verifiable test: slab creation with valid parameters.
-fn test_slab_creation_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_slab_creation_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -107,9 +118,10 @@ fn test_slab_creation_verified(addr: *mut u8, len: usize, block_size: usize)
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let slab = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(s) = slab {
+    let slab = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((s, _tracked_perms)) = slab {
         assert(s.inv());
         assert(forall|i: int| 0 <= i < s@.num_data_blocks ==> !s@.is_allocated(i));
         assert(s@.block_size == block_size as int);
@@ -118,7 +130,12 @@ fn test_slab_creation_verified(addr: *mut u8, len: usize, block_size: usize)
 
 
 /// Verifiable test: allocating a block and then deallocating it.
-fn test_allocate_deallocate_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_allocate_deallocate_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -131,11 +148,13 @@ fn test_allocate_deallocate_verified(addr: *mut u8, len: usize, block_size: usiz
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
         // Allocate a block.
-        let block = slab.allocate();
+        let block = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(block_addr) = block {
             proof {
                 // Block should be allocated.
@@ -159,7 +178,12 @@ fn test_allocate_deallocate_verified(addr: *mut u8, len: usize, block_size: usiz
 
 /// Verifiable test: double deallocation requires the block to be allocated.
 /// In Verus, this is expressed as a precondition on deallocate.
-fn test_double_deallocate_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_double_deallocate_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -172,10 +196,12 @@ fn test_double_deallocate_verified(addr: *mut u8, len: usize, block_size: usize)
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
-        let block = slab.allocate();
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
+        let block = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(block_addr) = block {
             // First deallocation should succeed.
             let dealloc1 = slab.deallocate(block_addr);
@@ -195,7 +221,12 @@ fn test_double_deallocate_verified(addr: *mut u8, len: usize, block_size: usize)
 
 /// Verifiable test: deallocating an out-of-bounds address would violate preconditions.
 /// In Verus, this is expressed as: deallocate requires is_valid_addr(addr).
-fn test_allocate_out_of_bounds_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_allocate_out_of_bounds_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -208,9 +239,11 @@ fn test_allocate_out_of_bounds_verified(addr: *mut u8, len: usize, block_size: u
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(slab) = result {
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((slab, tracked_perms)) = result {
+        let Tracked(slab_perms) = tracked_perms;
         proof {
             // An out-of-bounds address would NOT satisfy is_valid_addr.
             let invalid_addr = slab@.data_addr + slab@.num_data_blocks * slab@.block_size;
@@ -222,7 +255,12 @@ fn test_allocate_out_of_bounds_verified(addr: *mut u8, len: usize, block_size: u
 
 
 /// Verifiable test: multiple allocations return different addresses.
-fn test_multiple_allocations_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_multiple_allocations_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -235,12 +273,14 @@ fn test_multiple_allocations_verified(addr: *mut u8, len: usize, block_size: usi
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 16,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
-        let alloc1 = slab.allocate();
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
+        let alloc1 = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(addr1) = alloc1 {
-            let alloc2 = slab.allocate();
+            let alloc2 = slab.allocate(Tracked(&mut slab_perms));
             if let Ok(addr2) = alloc2 {
                 // Two allocations return different addresses.
                 assert(addr1 != addr2);
@@ -260,7 +300,12 @@ fn test_multiple_allocations_verified(addr: *mut u8, len: usize, block_size: usi
 
 
 /// Verifiable test: address computation properties.
-fn test_address_computation_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_address_computation_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -273,10 +318,12 @@ fn test_address_computation_verified(addr: *mut u8, len: usize, block_size: usiz
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
-        let alloc_result = slab.allocate();
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
+        let alloc_result = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(alloc_addr) = alloc_result {
             proof {
                 // Verify is_valid_addr holds for allocated address.
@@ -294,7 +341,12 @@ fn test_address_computation_verified(addr: *mut u8, len: usize, block_size: usiz
 //==================================================================================================
 
 /// Verifiable test: after deallocation, the same block can be reallocated.
-fn test_allocation_reuse_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_allocation_reuse_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -307,17 +359,19 @@ fn test_allocation_reuse_verified(addr: *mut u8, len: usize, block_size: usize)
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
         // Allocate a block.
-        let alloc1 = slab.allocate();
+        let alloc1 = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(addr1) = alloc1 {
             // Deallocate.
             let dealloc = slab.deallocate(addr1);
             if let Ok(()) = dealloc {
                 // Allocate again - should succeed.
-                let alloc2 = slab.allocate();
+                let alloc2 = slab.allocate(Tracked(&mut slab_perms));
                 if let Ok(addr2) = alloc2 {
                     proof {
                         // The second allocation should be valid.
@@ -332,7 +386,12 @@ fn test_allocation_reuse_verified(addr: *mut u8, len: usize, block_size: usize)
 
 
 /// Verifiable test: all allocated addresses are aligned to block_size.
-fn test_memory_block_alignment_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_memory_block_alignment_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -345,12 +404,14 @@ fn test_memory_block_alignment_verified(addr: *mut u8, len: usize, block_size: u
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 16,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
-        let alloc1 = slab.allocate();
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
+        let alloc1 = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(addr1) = alloc1 {
-            let alloc2 = slab.allocate();
+            let alloc2 = slab.allocate(Tracked(&mut slab_perms));
             if let Ok(addr2) = alloc2 {
                 proof {
                     // All allocated addresses are valid and within the data region.
@@ -366,7 +427,12 @@ fn test_memory_block_alignment_verified(addr: *mut u8, len: usize, block_size: u
 
 
 /// Verifiable test: deallocating one block doesn't affect other allocated blocks.
-fn test_no_data_corruption_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_no_data_corruption_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -379,12 +445,14 @@ fn test_no_data_corruption_verified(addr: *mut u8, len: usize, block_size: usize
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 16,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
-        let alloc1 = slab.allocate();
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
+        let alloc1 = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(addr1) = alloc1 {
-            let alloc2 = slab.allocate();
+            let alloc2 = slab.allocate(Tracked(&mut slab_perms));
             if let Ok(addr2) = alloc2 {
                 proof {
                     let idx1 = slab@.addr_to_block_idx(addr1 as int);
@@ -413,7 +481,12 @@ fn test_no_data_corruption_verified(addr: *mut u8, len: usize, block_size: usize
 
 
 /// Verifiable test: fresh slab has all data blocks free.
-fn test_fresh_slab_all_free_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_fresh_slab_all_free_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -426,9 +499,11 @@ fn test_fresh_slab_all_free_verified(addr: *mut u8, len: usize, block_size: usiz
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(slab) = result {
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((slab, tracked_perms)) = result {
+        let Tracked(slab_perms) = tracked_perms;
         proof {
             // All data blocks should be free in a fresh slab.
             assert(forall|i: int| 0 <= i < slab@.num_data_blocks ==> !slab@.is_allocated(i));
@@ -438,7 +513,12 @@ fn test_fresh_slab_all_free_verified(addr: *mut u8, len: usize, block_size: usiz
 
 
 /// Verifiable test: index blocks are always marked as used.
-fn test_index_blocks_always_used_verified(addr: *mut u8, len: usize, block_size: usize)
+fn test_index_blocks_always_used_verified(
+    addr: *mut u8,
+    len: usize,
+    block_size: usize,
+    Tracked(mem): Tracked<PointsToRaw>,
+)
     requires
         len > 0,
         len < i32::MAX as usize,
@@ -451,16 +531,18 @@ fn test_index_blocks_always_used_verified(addr: *mut u8, len: usize, block_size:
         (addr as int) + (len as int) <= (usize::MAX as int),
         (len / block_size) % (u8::BITS as usize) == 0,
         len / block_size >= 8,
+        mem.is_range(addr as int, len as int),
 {
-    let result = unsafe { Slab::from_raw_parts(addr, len, block_size) };
-    if let Ok(mut slab) = result {
+    let result = unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) };
+    if let Ok((mut slab, mut tracked_perms)) = result {
+        let Tracked(mut slab_perms) = tracked_perms;
         proof {
             // The invariant guarantees index blocks are always marked used.
             slab.lemma_index_blocks_always_set();
         }
 
         // After allocation, index blocks remain used (invariant preserved).
-        let alloc = slab.allocate();
+        let alloc = slab.allocate(Tracked(&mut slab_perms));
         if let Ok(_) = alloc {
             proof {
                 // Invariant still holds after allocation.

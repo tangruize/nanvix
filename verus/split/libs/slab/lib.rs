@@ -185,7 +185,8 @@ impl Slab {
         addr: *mut u8,
         len: usize,
         block_size: usize,
-    ) -> (result: Result<Slab, Error>)
+        Tracked(mem): Tracked<PointsToRaw>,
+    ) -> (result: Result<(Slab, Tracked<SlabPerms>), Error>)
         requires
             // Length must be valid and non-zero.
             len > 0,
@@ -205,10 +206,12 @@ impl Slab {
             (len / block_size) % (u8::BITS as usize) == 0,
             // Ensure we have enough blocks for a valid slab (at least 8).
             len / block_size >= 8,
+            // Memory permission covers the entire region.
+            mem.is_range(addr as int, len as int),
         ensures
             // If result is Ok, these properties hold.
             result is Ok ==> {
-                let slab = result->Ok_0;
+                let (slab, perms) = result->Ok_0;
                 &&& slab.inv()
                 &&& slab@.block_size == block_size as int
                 // Freshly initialized: no blocks allocated (Set-based, no forall).
@@ -221,6 +224,8 @@ impl Slab {
                 // Data region fits within the buffer.
                 &&& slab@.data_addr + slab@.num_data_blocks * slab@.block_size
                     <= addr as int + len as int
+                // Memory permissions are well-formed.
+                &&& perms@.wf(slab@, mem.provenance())
             },
     {
         // Check if length is invalid.
@@ -322,13 +327,66 @@ impl Slab {
             index,
         };
 
+        // Split the memory permission into index and per-block data permissions.
+        let tracked index_perm_val;
+        let tracked free_perms_val;
+        proof {
+            // Split: [addr, addr+used) vs padding.
+            let used_size: int = total_num_blocks as int * block_size as int;
+            let used_range: Set<int> = set_int_range(addr as int, addr as int + used_size);
+            Self::lemma_div_mul_le(len as int, block_size as int);
+            assert forall|x: int| used_range.contains(x) implies mem.dom().contains(x) by {
+                assert(x < addr as int + len as int);
+            }
+            let tracked (used_perm, _padding) = mem.split(used_range);
+
+            // Split: index region [addr, data_addr) vs data region.
+            let idx_size: int = num_index_blocks as int * block_size as int;
+            let index_range: Set<int> = set_int_range(addr as int, addr as int + idx_size);
+            Self::lemma_distributive(
+                num_index_blocks as int, num_data_blocks as int, block_size as int);
+            assert(idx_size <= used_size) by {
+                Self::lemma_mul_inequality(
+                    num_index_blocks as int, total_num_blocks as int, block_size as int);
+            }
+            assert forall|x: int| index_range.contains(x) implies used_perm.dom().contains(x) by {
+                assert(x < addr as int + used_size);
+            }
+            let tracked (idx_perm, data_perm) = used_perm.split(index_range);
+
+            // Prove data_perm covers the data region.
+            assert(data_perm.dom() =~= set_int_range(
+                data_addr as int,
+                data_addr as int + num_data_blocks as int * block_size as int)) by {
+                assert forall|x: int| used_perm.dom().difference(index_range).contains(x) <==>
+                    set_int_range(data_addr as int,
+                        data_addr as int + num_data_blocks as int * block_size as int)
+                    .contains(x) by {}
+            }
+
+            // Split data region into per-block permissions.
+            let tracked fp = split_into_blocks(
+                data_perm, data_addr as int, block_size as int, num_data_blocks as int);
+
+            index_perm_val = idx_perm;
+            free_perms_val = fp;
+        }
+
+        let tracked result_perms = SlabPerms {
+            free_perms: free_perms_val,
+            index_perm: index_perm_val,
+        };
+
         proof {
             Self::lemma_from_raw_parts_post_loop(
                 &result_slab, addr as int, len as int, total_num_blocks as int,
             );
+            // Prove perms are well-formed for the fresh slab.
+            lemma_fresh_slab_perms_wf(&result_slab@, result_perms.free_perms,
+                mem.provenance());
         }
 
-        Ok(result_slab)
+        Ok((result_slab, Tracked(result_perms)))
     }
 
     ///
@@ -341,13 +399,18 @@ impl Slab {
     /// Upon success, a pointer to the allocated block is returned. Upon failure, an error is
     /// returned instead.
     ///
-    pub fn allocate(&mut self) -> (result: Result<*mut u8, Error>)
+    pub fn allocate(
+        &mut self,
+        Tracked(perms): Tracked<&mut SlabPerms>,
+    ) -> (result: Result<(*mut u8, Tracked<PointsToRaw>), Error>)
         requires
             old(self).inv(),
+            old(perms).wf(old(self)@, old(perms).index_perm.provenance()),
         ensures
             self.inv(),
             result is Ok ==> {
-                let addr = result->Ok_0 as int;
+                let (ptr, block_perm) = result->Ok_0;
+                let addr = ptr as int;
                 let block_idx = old(self)@.addr_to_block_idx(addr);
                 &&& old(self)@.is_valid_addr(addr)
                 &&& 0 <= block_idx < self@.num_data_blocks
@@ -357,10 +420,14 @@ impl Slab {
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
                 &&& self@.block_size == old(self)@.block_size
                 &&& self@.data_addr == old(self)@.data_addr
-                // Frame: allocated_blocks is old plus the new block (Set-based, no forall).
+                // Frame: allocated_blocks is old plus the new block.
                 &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.insert(block_idx)
-                // Returned address is non-null (derivable from data_addr as int > 0 and is_valid_addr).
+                // Returned address is non-null.
                 &&& addr > 0
+                // Memory permission for the allocated block.
+                &&& block_perm@.is_range(addr, self@.block_size)
+                // Permissions remain well-formed.
+                &&& perms.wf(self@, old(perms).index_perm.provenance())
             },
             // Error case: state unchanged and slab was full (no capacity).
             result is Err ==> (self@ == old(self)@ && !old(self)@.can_allocate()),
@@ -394,12 +461,16 @@ impl Slab {
             self.data_addr.with_addr(self.data_addr.addr() + block_idx * self.block_size)
         };
 
+        // Extract the block's permission from the tracked perms.
+        let tracked block_perm;
         proof {
+            let block_idx: int = block as int - self.num_index_blocks as int;
             Self::lemma_alloc_establishes_postconditions(self, old(self), block as int,
-                block as int - self.num_index_blocks as int, block_addr as int);
+                block_idx, block_addr as int);
+            block_perm = perms.take_block_perm(block_idx);
         }
 
-        Ok(block_addr)
+        Ok((block_addr, Tracked(block_perm)))
     }
 
     ///
@@ -421,12 +492,19 @@ impl Slab {
     ///
     /// - It dereferences the pointer `ptr`.
     ///
-    pub unsafe fn deallocate(&mut self, ptr: *const u8) -> (result: Result<(), Error>)
+    pub unsafe fn deallocate(
+        &mut self,
+        ptr: *const u8,
+        Tracked(block_perm): Tracked<PointsToRaw>,
+        Tracked(perms): Tracked<&mut SlabPerms>,
+    ) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
             old(self)@.is_valid_addr(ptr as int),
-            // Use can_deallocate for clearer specification.
             old(self)@.can_deallocate(old(self)@.addr_to_block_idx(ptr as int)),
+            // The caller returns the block's memory permission.
+            block_perm.is_range(ptr as int, old(self)@.block_size),
+            old(perms).wf(old(self)@, old(perms).index_perm.provenance()),
         ensures
             self.inv(),
             result is Ok ==> {
@@ -436,13 +514,14 @@ impl Slab {
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
                 &&& self@.block_size == old(self)@.block_size
                 &&& self@.data_addr == old(self)@.data_addr
-                // Frame: allocated_blocks is old minus the freed block (Set-based, no forall).
+                // Frame: allocated_blocks is old minus the freed block.
                 &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.remove(block_idx)
-                // Liveness: after deallocation, allocation is possible (at least one free block).
+                // Liveness: after deallocation, allocation is possible.
                 &&& self@.can_allocate()
+                // Permissions remain well-formed.
+                &&& perms.wf(self@, old(perms).index_perm.provenance())
             },
             result is Err ==> self@ == old(self)@,
-            // Liveness: if preconditions are met (block is valid and allocated), deallocation succeeds.
             result is Ok,
     {
         // Check if the pointer lies in a memory region that is not managed by this allocator.
@@ -481,6 +560,9 @@ impl Slab {
                     Self::lemma_dealloc_clear_ok_postconditions(
                         self, old(self), index as int, ptr as int,
                     );
+                    // Insert the block's permission back into the tracked perms.
+                    let block_idx: int = old(self)@.addr_to_block_idx(ptr as int);
+                    perms.put_block_perm(block_idx, block_perm);
                 }
                 Ok(())
             },
