@@ -1499,13 +1499,15 @@ impl Slab {
         Self::lemma_mul_inequality(num_index_blocks, total_num_blocks, block_size);
         Self::lemma_distributive(num_index_blocks, num_data_blocks, block_size);
 
-        assert forall|x: int| #![auto]
+        assert forall|x: int|
+            #![trigger set_int_range(addr, addr + total_num_blocks * block_size).contains(x)]
             set_int_range(addr, addr + total_num_blocks * block_size).contains(x)
             implies set_int_range(addr, addr + len).contains(x) by {
             assert(x < addr + len);
         }
 
-        assert forall|x: int| #![auto]
+        assert forall|x: int|
+            #![trigger set_int_range(addr, addr + num_index_blocks * block_size).contains(x)]
             set_int_range(addr, addr + num_index_blocks * block_size).contains(x)
             implies set_int_range(addr, addr + total_num_blocks * block_size).contains(x) by {
             assert(x < addr + total_num_blocks * block_size);
