@@ -426,6 +426,7 @@ impl Slab {
                 &&& addr > 0
                 // Memory permission for the allocated block.
                 &&& block_perm@.is_range(addr, self@.block_size)
+                &&& block_perm@.provenance() == old(perms).index_perm.provenance()
                 // Permissions remain well-formed.
                 &&& perms.wf(self@, old(perms).index_perm.provenance())
             },
@@ -504,6 +505,7 @@ impl Slab {
             old(self)@.can_deallocate(old(self)@.addr_to_block_idx(ptr as int)),
             // The caller returns the block's memory permission.
             block_perm.is_range(ptr as int, old(self)@.block_size),
+            block_perm.provenance() == old(perms).index_perm.provenance(),
             old(perms).wf(old(self)@, old(perms).index_perm.provenance()),
         ensures
             self.inv(),
@@ -564,6 +566,8 @@ impl Slab {
                     let block_idx: int = old(self)@.addr_to_block_idx(ptr as int);
                     perms.put_block_perm(block_idx, block_perm);
                     // Prove perms remain well-formed.
+                    // Connect: ptr == block_addr(block_idx) via inverse lemma.
+                    Self::lemma_block_addr_inverse(&old(self)@, ptr as int);
                     lemma_dealloc_perms_wf(
                         old(self)@, self@, old(perms).free_perms,
                         block_idx, block_perm, old(perms).index_perm.provenance(),
