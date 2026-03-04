@@ -340,14 +340,8 @@ impl Kheap {
 
         // Prove power-of-two properties for block sizes.
         proof {
-            Slab::lemma_power_of_two_8();
-            Slab::lemma_power_of_two_16();
-            Slab::lemma_power_of_two_32();
-            Slab::lemma_power_of_two_64();
-            Slab::lemma_power_of_two_128();
-            Slab::lemma_power_of_two_256();
-            Slab::lemma_power_of_two_512();
-            Slab::lemma_power_of_two_4096();
+            reveal_with_fuel(is_pow2, 13);
+            // is_pow2(8), is_pow2(16), ..., is_pow2(4096) are now available.
 
             // Prove alignment preconditions for all slabs.
             // addr is page-aligned (addr % PAGE_SIZE == 0, PAGE_SIZE = 4096).
