@@ -1516,13 +1516,14 @@ impl Slab {
         assert(set_int_range(addr, addr + total_num_blocks * block_size)
             .difference(set_int_range(addr, addr + num_index_blocks * block_size))
             =~= set_int_range(data_addr, data_addr + num_data_blocks * block_size)) by {
+            let used: Set<int> = set_int_range(addr, addr + total_num_blocks * block_size);
+            let idx: Set<int> = set_int_range(addr, addr + num_index_blocks * block_size);
+            let data: Set<int> = set_int_range(data_addr,
+                data_addr + num_data_blocks * block_size);
             assert forall|x: int|
-                set_int_range(addr, addr + total_num_blocks * block_size)
-                    .difference(set_int_range(addr, addr + num_index_blocks * block_size))
-                    .contains(x)
-                <==>
-                set_int_range(data_addr, data_addr + num_data_blocks * block_size)
-                    .contains(x) by {}
+                #![trigger used.difference(idx).contains(x)]
+                #![trigger data.contains(x)]
+                used.difference(idx).contains(x) <==> data.contains(x) by {}
         }
     }
 
