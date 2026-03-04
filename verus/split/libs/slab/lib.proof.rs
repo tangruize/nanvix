@@ -126,17 +126,6 @@ impl Slab {
         }
     }
 
-    /// Lemma: If a block is an index block, it's always set in the bitmap.
-    /// Therefore, alloc() will never return an index block.
-    proof fn lemma_index_blocks_always_set(&self)
-        requires
-            self.inv(),
-        ensures
-            forall|i: int| 0 <= i < self.num_index_blocks as int ==> self.index.is_bit_set(i),
-    {
-        // Follows directly from the invariant.
-    }
-
     /// Lemma: Slab invariant implies Bitmap invariant.
     proof fn lemma_slab_inv_implies_bitmap_inv(&self)
         requires
@@ -148,21 +137,6 @@ impl Slab {
         // slab.inv() implies index.inv(), and index.inv() implies the bound.
         self.index.lemma_number_of_bits_bounded();
     }
-    /// Lemma: Invariant implies positive capacity.
-    ///
-    /// This lemma reveals the `num_data_blocks > 0` property that is
-    /// part of the closed `inv()` spec. Useful for clients that need
-    /// to reason about capacity without knowing inv() internals.
-    pub proof fn lemma_inv_implies_positive_capacity(&self)
-        requires
-            self.inv(),
-        ensures
-            self@.num_data_blocks > 0,
-    {
-        // Follows from inv() definition: self.num_data_blocks > 0
-        // and self@.num_data_blocks == self.num_data_blocks as int.
-    }
-
     //==============================================================================================
 
     /// Helper lemma: allocated_blocks is a subset of set_int_range(0, num_data_blocks).

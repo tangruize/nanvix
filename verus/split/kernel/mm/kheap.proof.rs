@@ -353,15 +353,7 @@ impl Kheap {
             heap@.slab_512.num_data_blocks > 0,
             heap@.slab_4096.num_data_blocks > 0,
     {
-        // Call the Slab lemma for each slab to reveal the property.
-        heap.slab_8_bytes.lemma_inv_implies_positive_capacity();
-        heap.slab_16_bytes.lemma_inv_implies_positive_capacity();
-        heap.slab_32_bytes.lemma_inv_implies_positive_capacity();
-        heap.slab_64_bytes.lemma_inv_implies_positive_capacity();
-        heap.slab_128_bytes.lemma_inv_implies_positive_capacity();
-        heap.slab_256_bytes.lemma_inv_implies_positive_capacity();
-        heap.slab_512_bytes.lemma_inv_implies_positive_capacity();
-        heap.slab_4096_bytes.lemma_inv_implies_positive_capacity();
+        // inv() is open and directly exposes num_data_blocks > 0.
     }
 
 

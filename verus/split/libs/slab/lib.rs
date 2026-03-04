@@ -104,12 +104,16 @@ impl View for Slab {
 #[cfg(verus_keep_ghost)]
 impl Slab {
     /// Invariant for the slab allocator.
-    pub closed spec fn inv(&self) -> bool {
-        self.internal_inv()
+    pub open spec fn inv(&self) -> bool {
+        &&& self.internal_inv()
+        // Exposed properties: callers can use these without additional lemmas.
+        &&& self@.num_data_blocks > 0
+        &&& self@.block_size > 0
+        &&& self@.allocated_blocks_in_range()
     }
 
     /// Internal invariant — implementation details hidden from external callers.
-    closed spec fn internal_inv(&self) -> bool {
+    pub closed spec fn internal_inv(&self) -> bool {
         &&& self.index.inv()
         &&& self.block_size > 0
         &&& self.num_data_blocks > 0

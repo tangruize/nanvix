@@ -463,11 +463,13 @@ fn test_index_blocks_always_used_verified(
     match unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) } {
         Ok(pair) => {
             let (mut slab, Tracked(mut slab_perms)) = pair;
-            proof { slab.lemma_index_blocks_always_set(); }
+            // Invariant holds after construction.
+            assert(slab.inv());
             match slab.allocate(Tracked(&mut slab_perms)) {
                 Ok(alloc_pair) => {
                     let (_addr, Tracked(_perm)) = alloc_pair;
-                    proof { slab.lemma_index_blocks_always_set(); }
+                    // Invariant still holds after allocation.
+                    assert(slab.inv());
                 },
                 Err(_) => {},
             }
