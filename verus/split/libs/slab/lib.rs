@@ -296,42 +296,20 @@ impl Slab {
         let tracked index_perm_val;
         let tracked free_perms_val;
         proof {
-            // Split: [addr, addr+used) vs padding.
-            let used_size: int = total_num_blocks as int * block_size as int;
-            let used_range: Set<int> = set_int_range(addr as int, addr as int + used_size);
-            Self::lemma_div_mul_le(len as int, block_size as int);
-            assert forall|x: int| #![auto] used_range.contains(x) implies mem.dom().contains(x) by {
-                assert(x < addr as int + len as int);
-            }
-            // M2: The _padding permission (tail bytes when len > total_blocks * block_size)
-            // is intentionally dropped. These bytes are not managed by the slab allocator.
+            Self::lemma_from_raw_parts_mem_split_properties(
+                addr as int, len as int, block_size as int,
+                total_num_blocks as int, num_index_blocks as int,
+                num_data_blocks as int, data_addr as int);
+
+            let used_range: Set<int> = set_int_range(
+                addr as int, addr as int + total_num_blocks as int * block_size as int);
+            // M2: _padding (tail bytes) is intentionally dropped.
             let tracked (used_perm, _padding) = mem.split(used_range);
 
-            // Split: index region [addr, data_addr) vs data region.
-            let idx_size: int = num_index_blocks as int * block_size as int;
-            let index_range: Set<int> = set_int_range(addr as int, addr as int + idx_size);
-            Self::lemma_distributive(
-                num_index_blocks as int, num_data_blocks as int, block_size as int);
-            assert(idx_size <= used_size) by {
-                Self::lemma_mul_inequality(
-                    num_index_blocks as int, total_num_blocks as int, block_size as int);
-            }
-            assert forall|x: int| #![auto] index_range.contains(x) implies used_perm.dom().contains(x) by {
-                assert(x < addr as int + used_size);
-            }
+            let index_range: Set<int> = set_int_range(
+                addr as int, addr as int + num_index_blocks as int * block_size as int);
             let tracked (idx_perm, data_perm) = used_perm.split(index_range);
 
-            // Prove data_perm covers the data region.
-            assert(data_perm.dom() =~= set_int_range(
-                data_addr as int,
-                data_addr as int + num_data_blocks as int * block_size as int)) by {
-                assert forall|x: int| used_perm.dom().difference(index_range).contains(x) <==>
-                    set_int_range(data_addr as int,
-                        data_addr as int + num_data_blocks as int * block_size as int)
-                    .contains(x) by {}
-            }
-
-            // Split data region into per-block permissions.
             let tracked fp = split_into_blocks(
                 data_perm, data_addr as int, block_size as int, num_data_blocks as int);
 
@@ -345,12 +323,9 @@ impl Slab {
         };
 
         proof {
-            Self::lemma_from_raw_parts_post_loop(
+            Self::lemma_from_raw_parts_finalize(
                 &result_slab, addr as int, len as int, total_num_blocks as int,
-            );
-            // Prove perms are well-formed for the fresh slab.
-            lemma_fresh_slab_perms_wf(result_slab@, result_perms.free_perms,
-                mem.provenance());
+                result_perms.free_perms, mem.provenance());
         }
 
         Ok((result_slab, Tracked(result_perms)))
@@ -433,10 +408,8 @@ impl Slab {
         // Extract the block's permission from the tracked perms.
         let tracked block_perm;
         proof {
-            let block_idx: int = block as int - self.num_index_blocks as int;
-            Self::lemma_alloc_establishes_postconditions(self, old(self), block as int,
-                block_idx, block_addr as int);
-            block_perm = perms.take_block_perm(block_idx);
+            block_perm = Self::lemma_alloc_take_block_perm(
+                self, old(self), block as int, block_addr as int, perms);
         }
 
         Ok((block_addr, Tracked(block_perm)))
@@ -524,19 +497,9 @@ impl Slab {
         match self.index.clear(index) {
             Ok(()) => {
                 proof {
-                    Self::lemma_dealloc_clear_ok_postconditions(
+                    Self::lemma_dealloc_ok_finalize(
                         self, old(self), index as int, ptr as int,
-                    );
-                    // Insert the block's permission back into the tracked perms.
-                    let block_idx: int = old(self)@.addr_to_block_idx(ptr as int);
-                    perms.put_block_perm(block_idx, block_perm);
-                    // Prove perms remain well-formed.
-                    // Connect: ptr == block_addr(block_idx) via inverse lemma.
-                    Self::lemma_block_addr_inverse(&old(self)@, ptr as int);
-                    lemma_dealloc_perms_wf(
-                        old(self)@, self@, old(perms).free_perms,
-                        block_idx, block_perm, old(perms).index_perm.provenance(),
-                    );
+                        perms, block_perm);
                 }
                 Ok(())
             },

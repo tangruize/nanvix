@@ -1072,6 +1072,46 @@ impl Slab {
         }
     }
 
+    /// Combined lemma: dealloc clear postconditions + permission well-formedness.
+    /// Wraps lemma_dealloc_clear_ok_postconditions, lemma_block_addr_inverse,
+    /// and lemma_dealloc_perms_wf into a single call for proof block extraction.
+    proof fn lemma_dealloc_clear_ok_with_perms(
+        slab: &Slab, old_slab: &Slab, index: int, ptr: int,
+        old_free_perms: Map<int, PointsToRaw>, prov: Provenance,
+    )
+        requires
+            old_slab.inv(),
+            slab.index.inv(),
+            slab.index@.number_of_bits() == old_slab.index@.number_of_bits(),
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+            !slab.index.is_bit_set(index),
+            old_slab.index.is_bit_set(index),
+            forall|j: int| j != index && 0 <= j < slab.index@.number_of_bits() ==>
+                slab.index.is_bit_set(j) == old_slab.index.is_bit_set(j),
+            index == (old_slab.num_index_blocks as int) + old_slab@.addr_to_block_idx(ptr),
+            old_slab@.is_valid_addr(ptr),
+            old_slab@.can_deallocate(old_slab@.addr_to_block_idx(ptr)),
+            old_slab@.perms_wf(old_free_perms, prov),
+        ensures
+            slab.inv(),
+            ({
+                let block_idx_spec: int = old_slab@.addr_to_block_idx(ptr);
+                &&& !slab@.is_allocated(block_idx_spec)
+                &&& slab@.num_data_blocks == old_slab@.num_data_blocks
+                &&& slab@.block_size == old_slab@.block_size
+                &&& slab@.data_addr == old_slab@.data_addr
+                &&& slab@.allocated_blocks =~=
+                        old_slab@.allocated_blocks.remove(block_idx_spec)
+                &&& slab@.can_allocate()
+            }),
+    {
+        Self::lemma_dealloc_clear_ok_postconditions(slab, old_slab, index, ptr);
+        Self::lemma_block_addr_inverse(&old_slab@, ptr);
+    }
+
     //==================================================================================================
     // Verified Safety Properties (not called by exec code, but prove key allocator properties)
     //==================================================================================================
@@ -1411,6 +1451,239 @@ impl Slab {
                 }
             }
         }
+
+    //==============================================================================================
+    // Extracted proof-block lemmas (proof extraction pass)
+    //==============================================================================================
+
+    /// Lemma: Proves set-theoretic properties needed for memory permission splitting
+    /// in `from_raw_parts`. Establishes that the used region is a subset of the memory
+    /// region, the index region is a subset of the used region, and the data region
+    /// equals the difference of the used and index regions.
+    proof fn lemma_from_raw_parts_mem_split_properties(
+        addr: int, len: int, block_size: int,
+        total_num_blocks: int, num_index_blocks: int,
+        num_data_blocks: int, data_addr: int,
+    )
+        requires
+            len > 0,
+            block_size > 0,
+            total_num_blocks == len / block_size,
+            num_index_blocks + num_data_blocks == total_num_blocks,
+            num_index_blocks >= 1,
+            num_index_blocks < total_num_blocks,
+            num_data_blocks > 0,
+            data_addr == addr + num_index_blocks * block_size,
+        ensures
+            // Used region is a subset of the full memory region.
+            total_num_blocks * block_size <= len,
+            forall|x: int|
+                #![trigger set_int_range(addr, addr + total_num_blocks * block_size).contains(x)]
+                set_int_range(addr, addr + total_num_blocks * block_size).contains(x)
+                ==> set_int_range(addr, addr + len).contains(x),
+            // Index region is a subset of the used region.
+            num_index_blocks * block_size < total_num_blocks * block_size,
+            forall|x: int|
+                #![trigger set_int_range(addr, addr + num_index_blocks * block_size).contains(x)]
+                set_int_range(addr, addr + num_index_blocks * block_size).contains(x)
+                ==> set_int_range(addr, addr + total_num_blocks * block_size).contains(x),
+            // Distributive property for the layout arithmetic.
+            (num_index_blocks + num_data_blocks) * block_size
+                == num_index_blocks * block_size + num_data_blocks * block_size,
+            // Data region equals the difference of used and index regions.
+            set_int_range(addr, addr + total_num_blocks * block_size)
+                .difference(set_int_range(addr, addr + num_index_blocks * block_size))
+                =~= set_int_range(data_addr, data_addr + num_data_blocks * block_size),
+    {
+        Self::lemma_div_mul_le(len, block_size);
+        Self::lemma_mul_inequality(num_index_blocks, total_num_blocks, block_size);
+        Self::lemma_distributive(num_index_blocks, num_data_blocks, block_size);
+
+        assert forall|x: int| #![auto]
+            set_int_range(addr, addr + total_num_blocks * block_size).contains(x)
+            implies set_int_range(addr, addr + len).contains(x) by {
+            assert(x < addr + len);
+        }
+
+        assert forall|x: int| #![auto]
+            set_int_range(addr, addr + num_index_blocks * block_size).contains(x)
+            implies set_int_range(addr, addr + total_num_blocks * block_size).contains(x) by {
+            assert(x < addr + total_num_blocks * block_size);
+        }
+
+        assert(set_int_range(addr, addr + total_num_blocks * block_size)
+            .difference(set_int_range(addr, addr + num_index_blocks * block_size))
+            =~= set_int_range(data_addr, data_addr + num_data_blocks * block_size)) by {
+            assert forall|x: int|
+                set_int_range(addr, addr + total_num_blocks * block_size)
+                    .difference(set_int_range(addr, addr + num_index_blocks * block_size))
+                    .contains(x)
+                <==>
+                set_int_range(data_addr, data_addr + num_data_blocks * block_size)
+                    .contains(x) by {}
+        }
+    }
+
+    /// Lemma: Proves slab invariant and permission well-formedness after
+    /// `from_raw_parts` initialization. Combines the post-loop invariant proof
+    /// with the freshly initialized permission well-formedness proof.
+    proof fn lemma_from_raw_parts_finalize(
+        slab: &Slab, addr: int, len: int, total_num_blocks: int,
+        free_perms: Map<int, PointsToRaw>, prov: Provenance,
+    )
+        requires
+            slab.index.inv(),
+            slab.block_size > 0,
+            slab.num_data_blocks > 0,
+            slab.num_index_blocks > 0,
+            forall|i: int| #![trigger slab.index@.set_bits.contains(i)]
+                0 <= i < slab.num_index_blocks as int ==> slab.index@.set_bits.contains(i),
+            forall|i: int| slab.num_index_blocks as int <= i < slab.index@.number_of_bits()
+                ==> !slab.index.is_bit_set(i),
+            (slab.num_index_blocks as int) + (slab.num_data_blocks as int)
+                == slab.index@.number_of_bits(),
+            total_num_blocks == slab.index@.number_of_bits(),
+            (slab.num_data_blocks as int) < total_num_blocks,
+            (slab.data_addr as int)
+                == addr + (slab.num_index_blocks as int) * (slab.block_size as int),
+            addr > 0,
+            len > 0,
+            len < i32::MAX as int,
+            slab.block_size as int <= len,
+            addr + len <= usize::MAX as int,
+            total_num_blocks == len / slab.block_size as int,
+            is_pow2(slab.block_size as int),
+            slab.data_addr as int % slab.block_size as int == 0,
+            // Permission properties from split_into_blocks.
+            forall|i: int|
+                0 <= i < slab.num_data_blocks as int <==> free_perms.dom().contains(i),
+            forall|i: int| #![trigger free_perms[i]]
+                0 <= i < slab.num_data_blocks as int ==>
+                    free_perms[i].is_range(
+                        slab.data_addr as int + i * slab.block_size as int,
+                        slab.block_size as int)
+                    && free_perms[i].provenance() == prov,
+        ensures
+            slab.inv(),
+            slab@.block_size == slab.block_size as int,
+            slab@.allocated_blocks =~= Set::<int>::empty(),
+            slab@.data_addr > addr,
+            slab@.data_addr % slab.block_size as int == 0,
+            slab@.num_data_blocks > 0,
+            slab@.data_addr + slab@.num_data_blocks * slab@.block_size <= addr + len,
+            slab@.perms_wf(free_perms, prov),
+    {
+        Self::lemma_from_raw_parts_post_loop(slab, addr, len, total_num_blocks);
+        Self::lemma_view_fields(slab);
+        // Bridge raw field values to view-level values.
+        assert forall|i: int| #![trigger free_perms[i]]
+            0 <= i < slab@.num_data_blocks
+            implies free_perms[i].is_range(slab@.block_addr(i), slab@.block_size)
+                && free_perms[i].provenance() == prov
+        by {
+            assert(slab@.block_addr(i)
+                == slab.data_addr as int + i * slab.block_size as int);
+        }
+        lemma_fresh_slab_perms_wf(slab@, free_perms, prov);
+    }
+
+    /// Lemma: Establishes allocation postconditions and extracts the block's
+    /// permission from the tracked permission map.
+    proof fn lemma_alloc_take_block_perm(
+        slab: &Slab, old_slab: &Slab, block: int, block_addr: int,
+        tracked perms: &mut SlabPerms,
+    ) -> (tracked result: PointsToRaw)
+        requires
+            old_slab.inv(),
+            slab.inv(),
+            block >= slab.num_index_blocks as int,
+            block < (slab.num_index_blocks + slab.num_data_blocks) as int,
+            slab.index.is_bit_set(block),
+            !old_slab.index.is_bit_set(block),
+            forall|k: int| k != block && 0 <= k < slab.index@.number_of_bits() ==>
+                slab.index.is_bit_set(k) == old_slab.index.is_bit_set(k),
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+            slab.index@.number_of_bits() == old_slab.index@.number_of_bits(),
+            block_addr == (slab.data_addr as int)
+                + (block - slab.num_index_blocks as int) * (slab.block_size as int),
+            old(perms).wf(old_slab@, old(perms).index_perm.provenance()),
+        ensures
+            ({
+                let block_idx: int = block - slab.num_index_blocks as int;
+                &&& old_slab@.is_valid_addr(block_addr)
+                &&& old_slab@.addr_to_block_idx(block_addr) == block_idx
+                &&& !old_slab@.is_allocated(block_idx)
+                &&& slab@.is_allocated(block_idx)
+                &&& slab@.num_data_blocks == old_slab@.num_data_blocks
+                &&& slab@.block_size == old_slab@.block_size
+                &&& slab@.data_addr == old_slab@.data_addr
+                &&& slab@.allocated_blocks =~= old_slab@.allocated_blocks.insert(block_idx)
+                &&& block_addr > 0
+                &&& result.is_range(block_addr, old_slab@.block_size)
+                &&& result.provenance() == old(perms).index_perm.provenance()
+                &&& perms.wf(slab@, old(perms).index_perm.provenance())
+                &&& perms.index_perm == old(perms).index_perm
+            }),
+    {
+        let block_idx: int = block - slab.num_index_blocks as int;
+        Self::lemma_alloc_establishes_postconditions(
+            slab, old_slab, block, block_idx, block_addr);
+        perms.take_block_perm(block_idx)
+    }
+
+    /// Lemma: Proves deallocation postconditions and restores the block's
+    /// permission to the tracked permission map after a successful bitmap clear.
+    proof fn lemma_dealloc_ok_finalize(
+        slab: &Slab, old_slab: &Slab, index: int, ptr: int,
+        tracked perms: &mut SlabPerms,
+        tracked block_perm: PointsToRaw,
+    )
+        requires
+            old_slab.inv(),
+            slab.index.inv(),
+            slab.index@.number_of_bits() == old_slab.index@.number_of_bits(),
+            slab.num_index_blocks == old_slab.num_index_blocks,
+            slab.num_data_blocks == old_slab.num_data_blocks,
+            slab.block_size == old_slab.block_size,
+            slab.data_addr == old_slab.data_addr,
+            !slab.index.is_bit_set(index),
+            old_slab.index.is_bit_set(index),
+            forall|j: int| j != index && 0 <= j < slab.index@.number_of_bits() ==>
+                slab.index.is_bit_set(j) == old_slab.index.is_bit_set(j),
+            index == (old_slab.num_index_blocks as int) + old_slab@.addr_to_block_idx(ptr),
+            old_slab@.is_valid_addr(ptr),
+            old_slab@.can_deallocate(old_slab@.addr_to_block_idx(ptr)),
+            block_perm.is_range(ptr, old_slab@.block_size),
+            block_perm.provenance() == old(perms).index_perm.provenance(),
+            old(perms).wf(old_slab@, old(perms).index_perm.provenance()),
+        ensures
+            slab.inv(),
+            ({
+                let block_idx: int = old_slab@.addr_to_block_idx(ptr);
+                &&& !slab@.is_allocated(block_idx)
+                &&& slab@.num_data_blocks == old_slab@.num_data_blocks
+                &&& slab@.block_size == old_slab@.block_size
+                &&& slab@.data_addr == old_slab@.data_addr
+                &&& slab@.allocated_blocks =~=
+                        old_slab@.allocated_blocks.remove(block_idx)
+                &&& slab@.can_allocate()
+                &&& perms.wf(slab@, old(perms).index_perm.provenance())
+                &&& perms.index_perm == old(perms).index_perm
+            }),
+    {
+        Self::lemma_dealloc_clear_ok_with_perms(
+            slab, old_slab, index, ptr,
+            old(perms).free_perms, old(perms).index_perm.provenance());
+        let block_idx: int = old_slab@.addr_to_block_idx(ptr);
+        perms.put_block_perm(block_idx, block_perm);
+        lemma_dealloc_perms_wf(
+            old_slab@, slab@, old(perms).free_perms,
+            block_idx, block_perm, old(perms).index_perm.provenance(),
+        );
+    }
 }
 //==================================================================================================
 // PointsToRaw Memory Permission Proof Helpers
