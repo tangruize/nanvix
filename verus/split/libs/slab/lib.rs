@@ -123,32 +123,6 @@ impl Slab {
         &&& self@.data_addr == self.data_addr as int
         &&& self@.allocated_blocks_in_range()
     }
-
-    /// Loop invariant for the index initialization loop in `from_raw_parts`.
-    pub open spec fn from_raw_parts_init_loop_invariant(
-        index: Bitmap,
-        i: usize,
-        num_index_blocks: usize,
-        num_data_blocks: usize,
-        total_num_blocks: usize,
-        block_size: usize,
-        data_addr: *mut u8,
-    ) -> bool {
-        &&& index.inv()
-        &&& i <= num_index_blocks
-        &&& num_index_blocks < total_num_blocks
-        &&& num_index_blocks > 0
-        &&& num_data_blocks > 0
-        &&& block_size > 0
-        &&& data_addr as int > 0
-        &&& num_index_blocks + num_data_blocks == total_num_blocks
-        &&& index@.number_of_bits() == total_num_blocks as int
-        &&& num_index_blocks as int + num_data_blocks as int == index@.number_of_bits()
-        &&& forall|j: int| #![trigger index@.set_bits.contains(j)]
-            0 <= j < i as int ==> index@.set_bits.contains(j)
-        &&& forall|j: int| #![trigger index@.set_bits.contains(j)]
-            i as int <= j < index@.number_of_bits() ==> !index@.set_bits.contains(j)
-    }
 }
 
 //==================================================================================================
