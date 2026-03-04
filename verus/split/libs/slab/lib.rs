@@ -20,6 +20,10 @@ use crate::libs::{
 use vstd::{
     prelude::*,
     arithmetic::power2::is_pow2,
+    raw_ptr::{
+        PointsToRaw,
+        Provenance,
+    },
     set::*,
     set_lib::{
         lemma_int_range,

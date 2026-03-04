@@ -1739,4 +1739,328 @@ proof fn test_fresh_initialization_property(view: SlabView)
     // ==> free() = capacity - 0 = capacity
 }
 
+//==================================================================================================
+// PointsToRaw Memory Permission Proof Helpers
+//==================================================================================================
+
+/// Lemma: The last block's range is a subset of the full range.
+proof fn lemma_range_subset_last_block(base: int, block_size: int, n: int)
+    requires
+        block_size > 0,
+        n >= 1,
+    ensures
+        set_int_range(base + (n - 1) * block_size, base + n * block_size)
+            .subset_of(set_int_range(base, base + n * block_size)),
+{
+    let last: Set<int> = set_int_range(base + (n - 1) * block_size, base + n * block_size);
+    let full: Set<int> = set_int_range(base, base + n * block_size);
+    assert forall|x: int| last.contains(x) implies full.contains(x) by {
+        assert(base + (n - 1) * block_size <= x < base + n * block_size);
+        assert((n - 1) * block_size >= 0) by(nonlinear_arith)
+            requires n >= 1, block_size > 0;
+        assert(x >= base);
+        assert(x < base + n * block_size);
+    }
+}
+
+/// Lemma: Removing the last block from the full range gives the prefix range.
+proof fn lemma_range_difference_last_block(base: int, block_size: int, n: int)
+    requires
+        block_size > 0,
+        n >= 1,
+    ensures
+        set_int_range(base, base + n * block_size)
+            .difference(set_int_range(base + (n - 1) * block_size, base + n * block_size))
+            =~= set_int_range(base, base + (n - 1) * block_size),
+{
+    let full: Set<int> = set_int_range(base, base + n * block_size);
+    let last: Set<int> = set_int_range(base + (n - 1) * block_size, base + n * block_size);
+    let prefix: Set<int> = set_int_range(base, base + (n - 1) * block_size);
+    let diff: Set<int> = full.difference(last);
+
+    assert forall|x: int| diff.contains(x) <==> prefix.contains(x) by {
+        if diff.contains(x) {
+            assert(full.contains(x) && !last.contains(x));
+            assert(base <= x < base + n * block_size);
+            assert(!(base + (n - 1) * block_size <= x < base + n * block_size));
+            assert(x < base + (n - 1) * block_size);
+        }
+        if prefix.contains(x) {
+            assert(base <= x < base + (n - 1) * block_size);
+            assert((n - 1) * block_size <= n * block_size) by(nonlinear_arith)
+                requires block_size > 0, n >= 1;
+            assert(x < base + n * block_size);
+            assert(full.contains(x));
+            assert((n - 1) * block_size < n * block_size) by(nonlinear_arith)
+                requires block_size > 0, n >= 1;
+            assert(!last.contains(x));
+        }
+    }
+}
+
+/// Splits a contiguous PointsToRaw into per-block permissions.
+/// Given a permission for [base, base + n * block_size), returns a Map mapping
+/// block index i to a permission for [base + i * block_size, base + (i+1) * block_size).
+proof fn split_into_blocks(
+    tracked perm: PointsToRaw,
+    base: int,
+    block_size: int,
+    n: int,
+) -> (tracked result: Map<int, PointsToRaw>)
+    requires
+        perm.is_range(base, n * block_size),
+        block_size > 0,
+        n >= 0,
+    ensures
+        forall|i: int| 0 <= i < n <==> result.dom().contains(i),
+        forall|i: int| #![trigger result[i]]
+            0 <= i < n ==>
+                result[i].is_range(base + i * block_size, block_size)
+                && result[i].provenance() == perm.provenance(),
+    decreases n,
+{
+    if n == 0 {
+        let tracked _padding = perm;
+        Map::<int, PointsToRaw>::tracked_empty()
+    } else {
+        // Split off the last block (index n-1).
+        let last_start: int = base + (n - 1) * block_size;
+        let last_range: Set<int> = set_int_range(last_start, last_start + block_size);
+
+        assert((n - 1) * block_size + block_size == n * block_size) by(nonlinear_arith)
+            requires block_size > 0, n >= 1;
+
+        lemma_range_subset_last_block(base, block_size, n);
+
+        let tracked (last_perm, rest_perm) = perm.split(last_range);
+
+        lemma_range_difference_last_block(base, block_size, n);
+
+        let tracked mut result = split_into_blocks(rest_perm, base, block_size, n - 1);
+        result.tracked_insert(n - 1, last_perm);
+        result
+    }
+}
+
+/// Joins per-block permissions back into a contiguous PointsToRaw.
+/// Inverse of split_into_blocks.
+proof fn join_block_perms(
+    tracked perms: Map<int, PointsToRaw>,
+    base: int,
+    block_size: int,
+    n: int,
+    prov: Provenance,
+) -> (tracked result: PointsToRaw)
+    requires
+        block_size > 0,
+        n >= 0,
+        forall|i: int| 0 <= i < n <==> perms.dom().contains(i),
+        forall|i: int| #![trigger perms[i]]
+            0 <= i < n ==>
+                perms[i].is_range(base + i * block_size, block_size)
+                && perms[i].provenance() == prov,
+    ensures
+        result.is_range(base, n * block_size),
+        result.provenance() == prov,
+    decreases n,
+{
+    if n == 0 {
+        assert(n * block_size == 0) by(nonlinear_arith)
+            requires n == 0;
+        PointsToRaw::empty(prov)
+    } else {
+        let tracked mut perms = perms;
+        let tracked last_perm = perms.tracked_remove(n - 1);
+        let tracked prefix_perm = join_block_perms(perms, base, block_size, n - 1, prov);
+        let tracked result = prefix_perm.join(last_perm);
+
+        let last_start: int = base + (n - 1) * block_size;
+        assert((n - 1) * block_size + block_size == n * block_size) by(nonlinear_arith)
+            requires block_size > 0, n >= 1;
+
+        assert(set_int_range(base, base + (n - 1) * block_size)
+            + set_int_range(last_start, last_start + block_size)
+            =~= set_int_range(base, base + n * block_size)) by {
+            let prefix_set: Set<int> = set_int_range(base, base + (n - 1) * block_size);
+            let last_set: Set<int> = set_int_range(last_start, last_start + block_size);
+            let full_set: Set<int> = set_int_range(base, base + n * block_size);
+            assert forall|x: int|
+                #![trigger full_set.contains(x)]
+                (prefix_set + last_set).contains(x)
+                <==> full_set.contains(x) by {
+                assert((n - 1) * block_size >= 0) by(nonlinear_arith)
+                    requires n >= 1, block_size > 0;
+            }
+        }
+
+        result
+    }
+}
+
+/// Lemma: After allocating block_idx from a well-formed permission map,
+/// removing the block's permission yields a map that is well-formed for the new slab state.
+proof fn lemma_alloc_perms_wf(
+    old_view: SlabView,
+    new_view: SlabView,
+    perms: Map<int, PointsToRaw>,
+    block_idx: int,
+    prov: Provenance,
+)
+    requires
+        old_view.block_size > 0,
+        old_view.num_data_blocks > 0,
+        old_view.perms_wf(perms, prov),
+        0 <= block_idx < old_view.num_data_blocks,
+        !old_view.is_allocated(block_idx),
+        new_view.num_data_blocks == old_view.num_data_blocks,
+        new_view.block_size == old_view.block_size,
+        new_view.data_addr == old_view.data_addr,
+        new_view.allocated_blocks =~= old_view.allocated_blocks.insert(block_idx),
+    ensures
+        perms.dom().contains(block_idx),
+        perms[block_idx].is_range(
+            old_view.block_addr(block_idx), old_view.block_size),
+        perms[block_idx].provenance() == prov,
+        new_view.perms_wf(perms.remove(block_idx), prov),
+{
+    // The removed permission has the right range (from old perms_wf).
+    assert(perms.dom().contains(block_idx));
+
+    let new_perms: Map<int, PointsToRaw> = perms.remove(block_idx);
+
+    // Prove new_view.perms_wf(new_perms, prov).
+    // For free blocks in new_view:
+    assert forall|i: int| #![trigger new_perms.dom().contains(i)]
+        (0 <= i < new_view.num_data_blocks && !new_view.is_allocated(i))
+        implies new_perms.dom().contains(i)
+            && (#[trigger] new_perms[i]).is_range(
+                new_view.block_addr(i), new_view.block_size)
+            && new_perms[i].provenance() == prov
+    by {
+        // i is free in new_view, so i != block_idx (block_idx is now allocated).
+        assert(i != block_idx);
+        // i was also free in old_view (since only block_idx changed).
+        assert(!old_view.is_allocated(i));
+        // From old perms_wf, perms has the right permission for i.
+        assert(perms.dom().contains(i));
+        // new_perms = perms.remove(block_idx), and i != block_idx, so new_perms[i] == perms[i].
+        assert(new_perms.dom().contains(i));
+        assert(new_perms[i] == perms[i]);
+    }
+    // For allocated blocks in new_view:
+    assert forall|i: int| #![trigger new_perms.dom().contains(i)]
+        (0 <= i < new_view.num_data_blocks && new_view.is_allocated(i))
+        implies !new_perms.dom().contains(i)
+    by {
+        if i == block_idx {
+            // block_idx was removed from perms.
+            assert(!new_perms.dom().contains(block_idx));
+        } else {
+            // i was allocated in old_view too.
+            assert(old_view.is_allocated(i));
+            assert(!perms.dom().contains(i));
+            assert(!new_perms.dom().contains(i));
+        }
+    }
+}
+
+/// Lemma: After deallocating block_idx and inserting its permission back,
+/// the map is well-formed for the new slab state.
+proof fn lemma_dealloc_perms_wf(
+    old_view: SlabView,
+    new_view: SlabView,
+    perms: Map<int, PointsToRaw>,
+    block_idx: int,
+    block_perm: PointsToRaw,
+    prov: Provenance,
+)
+    requires
+        old_view.block_size > 0,
+        old_view.num_data_blocks > 0,
+        old_view.perms_wf(perms, prov),
+        0 <= block_idx < old_view.num_data_blocks,
+        old_view.is_allocated(block_idx),
+        block_perm.is_range(old_view.block_addr(block_idx), old_view.block_size),
+        block_perm.provenance() == prov,
+        new_view.num_data_blocks == old_view.num_data_blocks,
+        new_view.block_size == old_view.block_size,
+        new_view.data_addr == old_view.data_addr,
+        new_view.allocated_blocks =~= old_view.allocated_blocks.remove(block_idx),
+    ensures
+        new_view.perms_wf(perms.insert(block_idx, block_perm), prov),
+{
+    let new_perms: Map<int, PointsToRaw> = perms.insert(block_idx, block_perm);
+
+    // Prove new_view.perms_wf(new_perms, prov).
+    // For free blocks in new_view:
+    assert forall|i: int| #![trigger new_perms.dom().contains(i)]
+        (0 <= i < new_view.num_data_blocks && !new_view.is_allocated(i))
+        implies new_perms.dom().contains(i)
+            && (#[trigger] new_perms[i]).is_range(
+                new_view.block_addr(i), new_view.block_size)
+            && new_perms[i].provenance() == prov
+    by {
+        if i == block_idx {
+            // The inserted permission covers this block.
+            assert(new_perms.dom().contains(i));
+            assert(new_perms[i] == block_perm);
+        } else {
+            // i was free in old_view too.
+            assert(!old_view.is_allocated(i));
+            assert(perms.dom().contains(i));
+            assert(new_perms.dom().contains(i));
+            assert(new_perms[i] == perms[i]);
+        }
+    }
+    // For allocated blocks in new_view:
+    assert forall|i: int| #![trigger new_perms.dom().contains(i)]
+        (0 <= i < new_view.num_data_blocks && new_view.is_allocated(i))
+        implies !new_perms.dom().contains(i)
+    by {
+        assert(i != block_idx);
+        assert(old_view.is_allocated(i));
+        assert(!perms.dom().contains(i));
+        assert(!new_perms.dom().contains(i));
+    }
+}
+
+/// Lemma: For a freshly initialized slab, split_into_blocks produces a well-formed permission map.
+proof fn lemma_fresh_slab_perms_wf(
+    view: SlabView,
+    perms: Map<int, PointsToRaw>,
+    prov: Provenance,
+)
+    requires
+        view.block_size > 0,
+        view.num_data_blocks > 0,
+        view.is_freshly_initialized(),
+        forall|i: int| 0 <= i < view.num_data_blocks <==> perms.dom().contains(i),
+        forall|i: int| #![trigger perms[i]]
+            0 <= i < view.num_data_blocks ==>
+                perms[i].is_range(view.block_addr(i), view.block_size)
+                && perms[i].provenance() == prov,
+    ensures
+        view.perms_wf(perms, prov),
+{
+    // All blocks are free in a freshly initialized slab.
+    // So perms_wf reduces to: every block has a permission, and no block is allocated.
+    assert forall|i: int| #![trigger perms.dom().contains(i)]
+        (0 <= i < view.num_data_blocks && !view.is_allocated(i))
+        implies perms.dom().contains(i)
+            && (#[trigger] perms[i]).is_range(view.block_addr(i), view.block_size)
+            && perms[i].provenance() == prov
+    by {
+        // i is free (all blocks are free in fresh slab).
+        assert(!view.is_allocated(i));
+    }
+    assert forall|i: int| #![trigger perms.dom().contains(i)]
+        (0 <= i < view.num_data_blocks && view.is_allocated(i))
+        implies !perms.dom().contains(i)
+    by {
+        // No block is allocated in a fresh slab.
+        assert(view.allocated_blocks =~= Set::<int>::empty());
+        assert(!view.is_allocated(i));
+    }
+}
+
 } // verus!

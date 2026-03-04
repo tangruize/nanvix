@@ -150,6 +150,53 @@ impl SlabView {
     }
 
     //==============================================================================================
+    // PointsToRaw Memory Permission Properties
+    //==============================================================================================
+
+    /// Returns the memory domain (set of addresses) for a given block index.
+    pub open spec fn block_dom(&self, block_idx: int) -> Set<int> {
+        set_int_range(
+            self.block_addr(block_idx),
+            self.block_addr(block_idx) + self.block_size,
+        )
+    }
+
+    /// Returns the memory domain for the entire data region.
+    pub open spec fn data_region_dom(&self) -> Set<int> {
+        set_int_range(
+            self.data_addr,
+            self.data_addr + self.num_data_blocks * self.block_size,
+        )
+    }
+
+    /// Returns the union of all free block domains.
+    pub open spec fn free_region_dom(&self) -> Set<int> {
+        Set::new(|addr: int|
+            exists|i: int|
+                #![trigger self.block_dom(i)]
+                0 <= i < self.num_data_blocks
+                && !self.is_allocated(i)
+                && self.block_dom(i).contains(addr)
+        )
+    }
+
+    /// Property: A permission map is well-formed for this slab view.
+    /// Every free block i has a permission in the map covering [block_addr(i), block_addr(i) + block_size).
+    /// Every allocated block has no permission in the map.
+    pub open spec fn perms_wf(&self, perms: Map<int, PointsToRaw>, prov: Provenance) -> bool {
+        &&& forall|i: int| #![trigger perms.dom().contains(i)]
+            (0 <= i < self.num_data_blocks && !self.is_allocated(i))
+            ==> perms.dom().contains(i)
+                && (#[trigger] perms[i]).is_range(
+                    self.block_addr(i),
+                    self.block_size)
+                && perms[i].provenance() == prov
+        &&& forall|i: int| #![trigger perms.dom().contains(i)]
+            (0 <= i < self.num_data_blocks && self.is_allocated(i))
+            ==> !perms.dom().contains(i)
+    }
+
+    //==============================================================================================
 }
 
 impl View for Slab {
