@@ -335,7 +335,7 @@ impl Slab {
             let used_size: int = total_num_blocks as int * block_size as int;
             let used_range: Set<int> = set_int_range(addr as int, addr as int + used_size);
             Self::lemma_div_mul_le(len as int, block_size as int);
-            assert forall|x: int| used_range.contains(x) implies mem.dom().contains(x) by {
+            assert forall|x: int| #![auto] used_range.contains(x) implies mem.dom().contains(x) by {
                 assert(x < addr as int + len as int);
             }
             let tracked (used_perm, _padding) = mem.split(used_range);
@@ -349,7 +349,7 @@ impl Slab {
                 Self::lemma_mul_inequality(
                     num_index_blocks as int, total_num_blocks as int, block_size as int);
             }
-            assert forall|x: int| index_range.contains(x) implies used_perm.dom().contains(x) by {
+            assert forall|x: int| #![auto] index_range.contains(x) implies used_perm.dom().contains(x) by {
                 assert(x < addr as int + used_size);
             }
             let tracked (idx_perm, data_perm) = used_perm.split(index_range);
