@@ -5,6 +5,11 @@
 // Imports
 //==================================================================================================
 
+#[cfg(verus_keep_ghost)]
+use crate::libs::raw_array::{
+    axiom_u8_zero_is_0,
+    is_zero,
+};
 use crate::libs::{
     bitmap::Bitmap,
     error::{
@@ -13,14 +18,9 @@ use crate::libs::{
     },
     raw_array::RawArray,
 };
-#[cfg(verus_keep_ghost)]
-use crate::libs::raw_array::{
-    axiom_u8_zero_is_0,
-    is_zero,
-};
 use vstd::{
-    prelude::*,
     arithmetic::power2::is_pow2,
+    prelude::*,
     raw_ptr::{
         PointsToRaw,
         Provenance,
@@ -156,9 +156,6 @@ impl Slab {
 //==================================================================================================
 
 impl Slab {
-
-    //==============================================================================================
-
     ///
     /// # Description
     ///
@@ -209,24 +206,18 @@ impl Slab {
             // Memory permission covers the entire region.
             mem.is_range(addr as int, len as int),
         ensures
-            // If result is Ok, these properties hold.
-            result is Ok ==> {
+            result is Ok ==> ({
                 let (slab, perms) = result->Ok_0;
                 &&& slab.inv()
                 &&& slab@.block_size == block_size as int
-                // Freshly initialized: no blocks allocated (Set-based, no forall).
                 &&& slab@.allocated_blocks =~= Set::<int>::empty()
-                // The data address is at an offset from addr.
                 &&& slab@.data_addr > addr as int
                 &&& slab@.data_addr % (block_size as int) == 0
-                // Number of data blocks is positive.
                 &&& slab@.num_data_blocks > 0
-                // Data region fits within the buffer.
                 &&& slab@.data_addr + slab@.num_data_blocks * slab@.block_size
                     <= addr as int + len as int
-                // Memory permissions are well-formed.
                 &&& perms@.wf(slab@, mem.provenance())
-            },
+            }),
     {
         // Check if length is invalid.
         if len == 0 || len >= i32::MAX as usize {
@@ -410,37 +401,31 @@ impl Slab {
             old(perms).wf(old(self)@, old(perms).index_perm.provenance()),
         ensures
             self.inv(),
-            result is Ok ==> {
-                let (ptr, block_perm) = result->Ok_0;
-                let addr = ptr as int;
-                let block_idx = old(self)@.addr_to_block_idx(addr);
-                &&& old(self)@.is_valid_addr(addr)
-                &&& 0 <= block_idx < self@.num_data_blocks
-                &&& !old(self)@.is_allocated(block_idx)
-                &&& self@.is_allocated(block_idx)
-                // Frame: static fields unchanged.
-                &&& self@.num_data_blocks == old(self)@.num_data_blocks
-                &&& self@.block_size == old(self)@.block_size
-                &&& self@.data_addr == old(self)@.data_addr
-                // Frame: allocated_blocks is old plus the new block.
-                &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.insert(block_idx)
-                // Returned address is non-null.
-                &&& addr > 0
-                // Memory permission for the allocated block.
-                &&& block_perm@.is_range(addr, self@.block_size)
-                &&& block_perm@.provenance() == old(perms).index_perm.provenance()
-                // Permissions remain well-formed.
-                &&& perms.wf(self@, old(perms).index_perm.provenance())
-                // H2: index_perm is unchanged.
-                &&& perms.index_perm == old(perms).index_perm
+            match result {
+                Ok((ptr, block_perm)) => {
+                    let addr = ptr as int;
+                    let block_idx = old(self)@.addr_to_block_idx(addr);
+                    &&& old(self)@.is_valid_addr(addr)
+                    &&& 0 <= block_idx < self@.num_data_blocks
+                    &&& !old(self)@.is_allocated(block_idx)
+                    &&& self@.is_allocated(block_idx)
+                    &&& self@.num_data_blocks == old(self)@.num_data_blocks
+                    &&& self@.block_size == old(self)@.block_size
+                    &&& self@.data_addr == old(self)@.data_addr
+                    &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.insert(block_idx)
+                    &&& addr > 0
+                    &&& block_perm@.is_range(addr, self@.block_size)
+                    &&& block_perm@.provenance() == old(perms).index_perm.provenance()
+                    &&& perms.wf(self@, old(perms).index_perm.provenance())
+                    &&& perms.index_perm == old(perms).index_perm
+                },
+                Err(_) => {
+                    &&& self@ == old(self)@
+                    &&& !old(self)@.can_allocate()
+                    &&& perms.free_perms == old(perms).free_perms
+                    &&& perms.index_perm == old(perms).index_perm
+                },
             },
-            // M3: Error case: state and permissions unchanged, slab was full.
-            result is Err ==> (
-                self@ == old(self)@
-                && !old(self)@.can_allocate()
-                && perms.free_perms == old(perms).free_perms
-                && perms.index_perm == old(perms).index_perm
-            ),
             // Liveness: if there's free capacity, allocation succeeds.
             old(self)@.can_allocate() ==> result is Ok,
     {
@@ -518,23 +503,18 @@ impl Slab {
             old(perms).wf(old(self)@, old(perms).index_perm.provenance()),
         ensures
             self.inv(),
-            result is Ok ==> {
+            result is Ok ==> ({
                 let block_idx = old(self)@.addr_to_block_idx(ptr as int);
                 &&& !self@.is_allocated(block_idx)
-                // Frame: static fields unchanged.
                 &&& self@.num_data_blocks == old(self)@.num_data_blocks
                 &&& self@.block_size == old(self)@.block_size
                 &&& self@.data_addr == old(self)@.data_addr
-                // Frame: allocated_blocks is old minus the freed block.
                 &&& self@.allocated_blocks =~= old(self)@.allocated_blocks.remove(block_idx)
-                // Liveness: after deallocation, allocation is possible.
                 &&& self@.can_allocate()
-                // Permissions remain well-formed.
                 &&& perms.wf(self@, old(perms).index_perm.provenance())
-                // H2: index_perm is unchanged.
                 &&& perms.index_perm == old(perms).index_perm
-            },
-            result is Err ==> self@ == old(self)@,
+            }),
+            // Liveness: preconditions guarantee success.
             result is Ok,
     {
         // Check if the pointer lies in a memory region that is not managed by this allocator.
