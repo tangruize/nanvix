@@ -36,7 +36,6 @@ use crate::libs::{
         ErrorCode,
     },
     slab::{
-        ptr_add,
         Slab,
         SlabView,
     },
@@ -440,13 +439,13 @@ impl Kheap {
         // Create the 8 slabs at consecutive memory regions.
         // Each slab starts at addr + i * slab_size.
         let slab_8: Slab = Slab::from_raw_parts(addr, slab_size, 8)?;
-        let slab_16: Slab = Slab::from_raw_parts(ptr_add(addr, 1 * slab_size), slab_size, 16)?;
-        let slab_32: Slab = Slab::from_raw_parts(ptr_add(addr, 2 * slab_size), slab_size, 32)?;
-        let slab_64: Slab = Slab::from_raw_parts(ptr_add(addr, 3 * slab_size), slab_size, 64)?;
-        let slab_128: Slab = Slab::from_raw_parts(ptr_add(addr, 4 * slab_size), slab_size, 128)?;
-        let slab_256: Slab = Slab::from_raw_parts(ptr_add(addr, 5 * slab_size), slab_size, 256)?;
-        let slab_512: Slab = Slab::from_raw_parts(ptr_add(addr, 6 * slab_size), slab_size, 512)?;
-        let slab_4096: Slab = Slab::from_raw_parts(ptr_add(addr, 7 * slab_size), slab_size, 4096)?;
+        let slab_16: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 1 * slab_size), slab_size, 16)?;
+        let slab_32: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 2 * slab_size), slab_size, 32)?;
+        let slab_64: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 3 * slab_size), slab_size, 64)?;
+        let slab_128: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 4 * slab_size), slab_size, 128)?;
+        let slab_256: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 5 * slab_size), slab_size, 256)?;
+        let slab_512: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 6 * slab_size), slab_size, 512)?;
+        let slab_4096: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 7 * slab_size), slab_size, 4096)?;
 
         let heap: Kheap = Kheap {
             slab_8_bytes: slab_8,

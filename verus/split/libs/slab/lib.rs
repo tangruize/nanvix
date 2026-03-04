@@ -52,25 +52,6 @@ include!("lib.test.rs");
 
 verus! {
 
-/// Wrapper for unsafe `ptr.add(count)` with verified postcondition.
-#[inline]
-#[verifier::external_body]
-pub fn ptr_add(ptr: *mut u8, count: usize) -> (result: *mut u8)
-    ensures result as int == ptr as int + count as int,
-{
-    unsafe { ptr.add(count) }
-}
-
-/// Wrapper for unsafe `ptr.offset_from_unsigned(origin)` with verified postcondition.
-#[inline]
-#[verifier::external_body]
-pub fn ptr_offset_from(ptr: *const u8, origin: *const u8) -> (result: usize)
-    requires ptr as int >= origin as int,
-    ensures result as int == ptr as int - origin as int,
-{
-    unsafe { ptr.offset_from_unsigned(origin) }
-}
-
 ///
 /// # Description
 ///
@@ -272,7 +253,7 @@ impl Slab {
                 addr as int,
             );
         }
-        let data_addr: *mut u8 = ptr_add(addr, num_index_blocks * block_size);
+        let data_addr: *mut u8 = addr.with_addr(addr.addr() + num_index_blocks * block_size);
 
         // Check if `data_addr` is aligned to `block_size`.
         if !(data_addr as usize).is_multiple_of(block_size) {
@@ -401,7 +382,7 @@ impl Slab {
                 Self::lemma_alloc_product_in_bounds(self, block_idx as int);
             }
 
-            ptr_add(self.data_addr, block_idx * self.block_size)
+            self.data_addr.with_addr(self.data_addr.addr() + block_idx * self.block_size)
         };
 
         proof {
@@ -476,7 +457,7 @@ impl Slab {
             Self::lemma_dealloc_offset_bounds(self, ptr as int);
         }
 
-        let index: usize = self.num_index_blocks + ptr_offset_from(ptr, self.data_addr) / self.block_size;
+        let index: usize = self.num_index_blocks + ((ptr as usize) - (self.data_addr as usize)) / self.block_size;
 
         proof {
             Self::lemma_dealloc_index_is_allocated(self, ptr as int, index as int);
