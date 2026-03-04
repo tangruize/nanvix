@@ -43,7 +43,7 @@ use crate::libs::{
 };
 use vstd::prelude::*;
 use vstd::arithmetic::power2::is_pow2;
-use vstd::raw_ptr::PointsToRaw;
+use vstd::raw_ptr::{PointsToRaw, Provenance};
 
 // Include specifications.
 include!("kheap.spec.rs");
@@ -68,15 +68,29 @@ pub tracked struct KheapPerms {
 
 impl KheapPerms {
     /// Well-formedness: each slab's permissions are well-formed for the corresponding slab view.
-    pub open spec fn wf(&self, heap: &Kheap) -> bool {
-        &&& self.perms_8.wf(heap.slab_8_bytes@, self.perms_8.index_perm.provenance())
-        &&& self.perms_16.wf(heap.slab_16_bytes@, self.perms_16.index_perm.provenance())
-        &&& self.perms_32.wf(heap.slab_32_bytes@, self.perms_32.index_perm.provenance())
-        &&& self.perms_64.wf(heap.slab_64_bytes@, self.perms_64.index_perm.provenance())
-        &&& self.perms_128.wf(heap.slab_128_bytes@, self.perms_128.index_perm.provenance())
-        &&& self.perms_256.wf(heap.slab_256_bytes@, self.perms_256.index_perm.provenance())
-        &&& self.perms_512.wf(heap.slab_512_bytes@, self.perms_512.index_perm.provenance())
-        &&& self.perms_4096.wf(heap.slab_4096_bytes@, self.perms_4096.index_perm.provenance())
+    pub open spec fn wf(&self, heap_view: KheapView) -> bool {
+        &&& self.perms_8.wf(heap_view.slab_8, self.perms_8.index_perm.provenance())
+        &&& self.perms_16.wf(heap_view.slab_16, self.perms_16.index_perm.provenance())
+        &&& self.perms_32.wf(heap_view.slab_32, self.perms_32.index_perm.provenance())
+        &&& self.perms_64.wf(heap_view.slab_64, self.perms_64.index_perm.provenance())
+        &&& self.perms_128.wf(heap_view.slab_128, self.perms_128.index_perm.provenance())
+        &&& self.perms_256.wf(heap_view.slab_256, self.perms_256.index_perm.provenance())
+        &&& self.perms_512.wf(heap_view.slab_512, self.perms_512.index_perm.provenance())
+        &&& self.perms_4096.wf(heap_view.slab_4096, self.perms_4096.index_perm.provenance())
+    }
+
+    /// Get the provenance for the slab of a given size.
+    pub open spec fn slab_provenance(&self, size: SlabSize) -> Provenance {
+        match size {
+            SlabSize::Slab8 => self.perms_8.index_perm.provenance(),
+            SlabSize::Slab16 => self.perms_16.index_perm.provenance(),
+            SlabSize::Slab32 => self.perms_32.index_perm.provenance(),
+            SlabSize::Slab64 => self.perms_64.index_perm.provenance(),
+            SlabSize::Slab128 => self.perms_128.index_perm.provenance(),
+            SlabSize::Slab256 => self.perms_256.index_perm.provenance(),
+            SlabSize::Slab512 => self.perms_512.index_perm.provenance(),
+            SlabSize::Slab4096 => self.perms_4096.index_perm.provenance(),
+        }
     }
 }
 
@@ -679,7 +693,7 @@ impl Kheap {
     ) -> (result: Result<(*mut u8, Tracked<PointsToRaw>), Error>)
         requires
             old(self).inv(),
-            old(heap_perms).wf(old(self)),
+            old(heap_perms).wf(old(self)@),
         ensures
             self.inv(),
             result is Ok ==> ({
@@ -863,7 +877,7 @@ impl Kheap {
     ) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
-            old(heap_perms).wf(old(self)),
+            old(heap_perms).wf(old(self)@),
             ptr as int > 0,
             spec_layout_to_slab_size(size as int).is_some(),
             ({
@@ -871,6 +885,9 @@ impl Kheap {
                 let slab = old(self)@.get_slab(slab_size);
                 &&& slab.is_valid_addr(ptr as int)
                 &&& slab.is_allocated(slab.addr_to_block_idx(ptr as int))
+                // The returned block permission must cover the block and have correct provenance.
+                &&& block_perm.is_range(ptr as int, slab.block_size)
+                &&& block_perm.provenance() == old(heap_perms).slab_provenance(slab_size)
             }),
         ensures
             self.inv(),

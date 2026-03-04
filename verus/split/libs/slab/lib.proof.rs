@@ -961,6 +961,12 @@ impl Slab {
     }
 
     /// Trusted bridge: bitwise check `n & (n - 1) == 0` implies `is_pow2(n)`.
+    ///
+    /// # Trust Justification
+    ///
+    /// Verus does not natively support bitwise operation reasoning.
+    /// This is a well-known mathematical property: for n > 0,
+    /// n & (n - 1) == 0 iff n is a power of two. See Hacker's Delight, Chapter 2.
     #[verifier::external_body]
     proof fn lemma_bitwise_implies_is_pow2(n: usize)
         requires n > 0, n & sub(n, 1) == 0,
@@ -1844,6 +1850,7 @@ proof fn split_into_blocks(
 
 /// Joins per-block permissions back into a contiguous PointsToRaw.
 /// Inverse of split_into_blocks.
+/// NOTE: Currently unused. Reserved for future slab destruction / memory reclamation.
 proof fn join_block_perms(
     tracked perms: Map<int, PointsToRaw>,
     base: int,

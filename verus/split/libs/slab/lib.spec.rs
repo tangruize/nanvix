@@ -179,6 +179,7 @@ impl SlabView {
     /// Property: A permission map is well-formed for this slab view.
     /// Every free block i has a permission in the map covering [block_addr(i), block_addr(i) + block_size).
     /// Every allocated block has no permission in the map.
+    /// The map domain is exactly the set of free block indices.
     pub open spec fn perms_wf(&self, perms: Map<int, PointsToRaw>, prov: Provenance) -> bool {
         &&& forall|i: int| #![trigger perms.dom().contains(i)]
             (0 <= i < self.num_data_blocks && !self.is_allocated(i))
@@ -190,6 +191,9 @@ impl SlabView {
         &&& forall|i: int| #![trigger perms.dom().contains(i)]
             (0 <= i < self.num_data_blocks && self.is_allocated(i))
             ==> !perms.dom().contains(i)
+        // M1: domain is exactly the free block set (no extra entries).
+        &&& forall|i: int| #![trigger perms.dom().contains(i)]
+            perms.dom().contains(i) ==> (0 <= i < self.num_data_blocks && !self.is_allocated(i))
     }
 
     //==============================================================================================
@@ -212,9 +216,11 @@ pub tracked struct SlabPerms {
 
 impl SlabPerms {
     /// Well-formedness predicate linking permissions to a slab view.
+    /// The `index_perm` covers the index region (its range is established by `from_raw_parts`
+    /// and preserved by `take_block_perm`/`put_block_perm` which guarantee `index_perm` invariance).
     pub open spec fn wf(&self, view: SlabView, prov: Provenance) -> bool {
-        view.perms_wf(self.free_perms, prov)
-        && self.index_perm.provenance() == prov
+        &&& view.perms_wf(self.free_perms, prov)
+        &&& self.index_perm.provenance() == prov
     }
 
     /// Removes a block's permission from free_perms and returns it.

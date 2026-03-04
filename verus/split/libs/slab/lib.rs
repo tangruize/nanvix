@@ -338,6 +338,8 @@ impl Slab {
             assert forall|x: int| #![auto] used_range.contains(x) implies mem.dom().contains(x) by {
                 assert(x < addr as int + len as int);
             }
+            // M2: The _padding permission (tail bytes when len > total_blocks * block_size)
+            // is intentionally dropped. These bytes are not managed by the slab allocator.
             let tracked (used_perm, _padding) = mem.split(used_range);
 
             // Split: index region [addr, data_addr) vs data region.
@@ -429,9 +431,16 @@ impl Slab {
                 &&& block_perm@.provenance() == old(perms).index_perm.provenance()
                 // Permissions remain well-formed.
                 &&& perms.wf(self@, old(perms).index_perm.provenance())
+                // H2: index_perm is unchanged.
+                &&& perms.index_perm == old(perms).index_perm
             },
-            // Error case: state unchanged and slab was full (no capacity).
-            result is Err ==> (self@ == old(self)@ && !old(self)@.can_allocate()),
+            // M3: Error case: state and permissions unchanged, slab was full.
+            result is Err ==> (
+                self@ == old(self)@
+                && !old(self)@.can_allocate()
+                && perms.free_perms == old(perms).free_perms
+                && perms.index_perm == old(perms).index_perm
+            ),
             // Liveness: if there's free capacity, allocation succeeds.
             old(self)@.can_allocate() ==> result is Ok,
     {
@@ -522,6 +531,8 @@ impl Slab {
                 &&& self@.can_allocate()
                 // Permissions remain well-formed.
                 &&& perms.wf(self@, old(perms).index_perm.provenance())
+                // H2: index_perm is unchanged.
+                &&& perms.index_perm == old(perms).index_perm
             },
             result is Err ==> self@ == old(self)@,
             result is Ok,

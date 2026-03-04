@@ -89,32 +89,6 @@ fn test_slab_from_raw_parts_allocate_verified(
 
 //==================================================================================================
 
-/// Verifiable test: slab creation with valid parameters.
-fn test_slab_creation_verified(
-    addr: *mut u8, len: usize, block_size: usize,
-    Tracked(mem): Tracked<PointsToRaw>,
-)
-    requires
-        len > 0, len < i32::MAX as usize,
-        block_size > 0, block_size < i32::MAX as usize, block_size <= len,
-        is_pow2(block_size as int),
-        (addr as usize) % block_size == 0, addr as int > 0,
-        (addr as int) + (len as int) <= (usize::MAX as int),
-        (len / block_size) % (u8::BITS as usize) == 0,
-        len / block_size >= 8,
-        mem.is_range(addr as int, len as int),
-{
-    match unsafe { Slab::from_raw_parts(addr, len, block_size, Tracked(mem)) } {
-        Ok(pair) => {
-            let (s, Tracked(_perms)) = pair;
-            assert(s.inv());
-            assert(forall|i: int| 0 <= i < s@.num_data_blocks ==> !s@.is_allocated(i));
-            assert(s@.block_size == block_size as int);
-        },
-        Err(_) => {},
-    }
-}
-
 /// Verifiable test: allocating a block and then deallocating it.
 fn test_allocate_deallocate_verified(
     addr: *mut u8, len: usize, block_size: usize,
