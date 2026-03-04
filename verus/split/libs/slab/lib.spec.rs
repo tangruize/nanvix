@@ -120,7 +120,6 @@ impl SlabView {
     //==============================================================================================
 
     /// Property (Liveness): If there's free capacity, allocation can succeed.
-    /// This ensures the allocator is "live" - it can make progress when resources are available.
     pub open spec fn can_allocate(&self) -> bool {
         self.free() > 0
     }
@@ -131,11 +130,9 @@ impl SlabView {
     }
 
     /// Property (Liveness): After deallocation, allocation becomes possible.
-    /// This is crucial for allocator liveness - freed resources become available.
     pub open spec fn dealloc_enables_alloc(&self, freed_view: &SlabView) -> bool
-        recommends self.used() == self.capacity()  // self is full
+        recommends self.used() == self.capacity()
     {
-        // If we were full and deallocated one block, now we can allocate.
         freed_view.used() < freed_view.capacity()
     }
 
@@ -144,7 +141,6 @@ impl SlabView {
     //==============================================================================================
 
     /// Property: A freshly initialized slab has no allocated data blocks.
-    /// This is the initial condition for a new slab.
     pub open spec fn is_freshly_initialized(&self) -> bool {
         self.allocated_blocks =~= Set::<int>::empty()
     }
@@ -197,79 +193,6 @@ impl SlabView {
     }
 
     //==============================================================================================
-}
-
-impl View for Slab {
-    type V = SlabView;
-
-    closed spec fn view(&self) -> SlabView {
-        // Performance optimization: directly use bitmap's set_bits with offset.
-        // Instead of is_bit_set(num_index_blocks + i), we use:
-        // set_bits.contains(num_index_blocks + i).
-        // The bounds check is implicit: by slab invariant, all set bits in the
-        // data block range [num_index_blocks, num_index_blocks + num_data_blocks)
-        // correspond to allocated data blocks.
-        let offset: int = self.num_index_blocks as int;
-        SlabView {
-            allocated_blocks: Set::new(|i: int|
-                0 <= i < self.num_data_blocks as int &&
-                self.index@.set_bits.contains(offset + i)
-            ),
-            num_data_blocks: self.num_data_blocks as int,
-            block_size: self.block_size as int,
-            data_addr: self.data_addr as int,
-        }
-    }
-}
-
-impl Slab {
-    //==============================================================================================
-
-    /// Invariant for the slab allocator.
-    pub closed spec fn inv(&self) -> bool {
-        &&& self.index.inv()
-        &&& self.block_size > 0
-        &&& self.num_data_blocks > 0
-        &&& self.num_index_blocks > 0
-        &&& self.num_index_blocks + self.num_data_blocks == self.index@.number_of_bits()
-        // Index blocks are always marked as allocated in the bitmap.
-        // Performance: use set_bits.contains directly instead of is_bit_set.
-        &&& forall|i: int| #![trigger self.index@.set_bits.contains(i)]
-            0 <= i < self.num_index_blocks as int ==> self.index@.set_bits.contains(i)
-        // Data block indices start after index blocks.
-        &&& self.data_addr as int > 0
-        // Memory region bounds - ensures no overflow in address calculations.
-        // Total size of data region fits in usize.
-        &&& (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
-        // data_addr + total data size fits in usize (no overflow when computing addresses).
-        &&& (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
-        // Metadata/data disjointness - index region ends before data region starts.
-        // index_end = base_addr + num_index_blocks * block_size (where index is stored).
-        // data_addr >= index_end (data starts at or after index region).
-        // Since data_addr = base_addr + num_index_blocks * block_size in from_raw_parts,
-        // this is ensured by construction. The invariant captures that data_addr is correctly computed.
-        // Power-of-two and alignment requirements.
-        // Block size must be a power of two (required for correct address arithmetic).
-        &&& is_pow2(self.block_size as int)
-        // Data address must be aligned to block size (required for aligned allocations).
-        &&& self.data_addr as int % self.block_size as int == 0
-        // data_addr >= num_index_blocks * block_size (data starts after index region).
-        &&& self.data_addr as int >= self.num_index_blocks as int * self.block_size as int
-        // All data blocks fit within usize range.
-        &&& (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
-        // View consistency: connect concrete fields to the view.
-        // This is needed because view() is closed.
-        &&& self@.num_data_blocks == self.num_data_blocks as int
-        &&& self@.block_size == self.block_size as int
-        &&& self@.data_addr == self.data_addr as int
-        // Allocated blocks are in range: all allocated indices are valid data block indices.
-        // This is true by definition of allocated_blocks in view(), but needs to be explicit
-        // because view() is closed.
-        &&& self@.allocated_blocks_in_range()
-    }
-
-    //==============================================================================================
-
 }
 
 } // verus!

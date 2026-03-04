@@ -11,11 +11,12 @@ use crate::libs::{
         Error,
         ErrorCode,
     },
-    raw_array::{
-        axiom_u8_zero_is_0,
-        is_zero,
-        RawArray,
-    },
+    raw_array::RawArray,
+};
+#[cfg(verus_keep_ghost)]
+use crate::libs::raw_array::{
+    axiom_u8_zero_is_0,
+    is_zero,
 };
 use vstd::{
     prelude::*,
@@ -34,12 +35,15 @@ use vstd::{
 };
 
 // Include specifications.
+#[cfg(verus_keep_ghost)]
 include!("lib.spec.rs");
 
 // Include proofs.
+#[cfg(verus_keep_ghost)]
 include!("lib.proof.rs");
 
 // Include verified tests.
+#[cfg(verus_keep_ghost)]
 include!("lib.test.rs");
 
 //==================================================================================================
@@ -95,6 +99,52 @@ pub struct Slab {
 }
 
 //==================================================================================================
+// View Implementation for Slab
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+impl View for Slab {
+    type V = SlabView;
+
+    closed spec fn view(&self) -> SlabView {
+        let offset: int = self.num_index_blocks as int;
+        SlabView {
+            allocated_blocks: Set::new(|i: int|
+                0 <= i < self.num_data_blocks as int &&
+                self.index@.set_bits.contains(offset + i)
+            ),
+            num_data_blocks: self.num_data_blocks as int,
+            block_size: self.block_size as int,
+            data_addr: self.data_addr as int,
+        }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+impl Slab {
+    /// Invariant for the slab allocator.
+    pub closed spec fn inv(&self) -> bool {
+        &&& self.index.inv()
+        &&& self.block_size > 0
+        &&& self.num_data_blocks > 0
+        &&& self.num_index_blocks > 0
+        &&& self.num_index_blocks + self.num_data_blocks == self.index@.number_of_bits()
+        &&& forall|i: int| #![trigger self.index@.set_bits.contains(i)]
+            0 <= i < self.num_index_blocks as int ==> self.index@.set_bits.contains(i)
+        &&& self.data_addr as int > 0
+        &&& (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
+        &&& (self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int
+        &&& is_pow2(self.block_size as int)
+        &&& self.data_addr as int % self.block_size as int == 0
+        &&& self.data_addr as int >= self.num_index_blocks as int * self.block_size as int
+        &&& self@.num_data_blocks == self.num_data_blocks as int
+        &&& self@.block_size == self.block_size as int
+        &&& self@.data_addr == self.data_addr as int
+        &&& self@.allocated_blocks_in_range()
+    }
+}
+
+//==================================================================================================
 // Implementations
 //==================================================================================================
 
@@ -123,17 +173,6 @@ impl Slab {
     ///
     /// This function is unsafe for the following reasons:
     /// - It assumes that the memory region starting at `addr` with `len` bytes is valid.
-    ///
-    /// # Verus Equivalence
-    ///
-    /// Compared to the original `src/libs/slab/src/lib.rs`:
-    /// - Parameter `addr: *mut u8` → `addr: usize` (Verus: no raw pointers).
-    /// - Wrapping check replaced by precondition on address space bounds.
-    /// - Bitwise power-of-two check → `is_power_of_two()` verified helper.
-    /// - `RawArray::from_raw_parts` → `raw_array_from_addr` (Verus cannot cast `usize` to `*mut T`).
-    /// - `for` loop → `while` loop (Verus: no `for` loops).
-    /// - Pointer arithmetic → integer arithmetic.
-
     ///
     pub unsafe fn from_raw_parts(
         addr: *mut u8,
@@ -258,9 +297,11 @@ impl Slab {
             );
         }
 
+        // NOTE: The index is initialized with all blocks free, thus if we fail beyond this point
+        // the memory region is left in a modified state.
+
         // Initialize index.
-        let mut i: usize = 0;
-        while i < num_index_blocks
+        for i in 0..num_index_blocks
             invariant
                 index.inv(),
                 i <= num_index_blocks,
@@ -278,20 +319,17 @@ impl Slab {
                 // All bits from i to end are not set (from initial state).
                 forall|j: int| #![trigger index@.set_bits.contains(j)]
                     i as int <= j < index@.number_of_bits() ==> !index@.set_bits.contains(j),
-            decreases num_index_blocks - i,
         {
             index.set(i)?;
-            i = i + 1;
         }
 
         // After the loop, all index blocks are set.
-        // Now prove the postconditions.
-        let result_slab = Slab {
-            index,
-            data_addr,
+        let result_slab: Slab = Slab {
             num_index_blocks,
             num_data_blocks,
             block_size,
+            data_addr,
+            index,
         };
 
         proof {
@@ -306,37 +344,12 @@ impl Slab {
     ///
     /// # Description
     ///
-    /// Creates a slab allocator at a specific offset within a larger memory region.
-    /// This is used by Kheap to create multiple slabs in contiguous memory regions.
-    ///
-    /// # Parameters
-    ///
-    /// - `base_addr`: Base address of the entire memory region.
-    /// - `slab_size`: Size of each slab region in bytes.
-    /// - `offset`: Offset index (0-7) indicating which slab region.
-    /// - `block_size`: Block size for this slab.
-    ///
-    /// # Returns
-    ///
-    /// A slab whose data region is within [base_addr + offset * slab_size, base_addr + (offset+1) * slab_size).
-    ///
-
-    ///
-    /// # Description
-    ///
     /// Allocates a block of memory from the slab allocator.
     ///
     /// # Returns
     ///
-    /// Upon success, the address of the allocated block is returned.
-    /// Upon failure, an error is returned instead.
-    ///
-    /// # Verus Equivalence
-    ///
-    /// Compared to the original: return type `*mut u8` → `usize` (no raw pointers in Verus).
-    /// `self.index.alloc()?` → explicit `match` (required for proof blocks on error path).
-    /// Pointer arithmetic `data_addr.add(...)` → integer arithmetic `data_addr + ...`.
-    /// Core logic is identical: alloc bitmap bit → compute block address → return.
+    /// Upon success, a pointer to the allocated block is returned. Upon failure, an error is
+    /// returned instead.
     ///
     pub fn allocate(&mut self) -> (result: Result<*mut u8, Error>)
         requires
@@ -364,10 +377,7 @@ impl Slab {
             // Liveness: if there's free capacity, allocation succeeds.
             old(self)@.can_allocate() ==> result is Ok,
     {
-        let alloc_result = self.index.alloc();
-
-        // Allocate a free block from the bitmap (explicit match for proof on error path).
-        let block: usize = match alloc_result {
+        let block: usize = match self.index.alloc() {
             Ok(b) => b,
             Err(e) => {
                 proof {
@@ -383,20 +393,22 @@ impl Slab {
             );
         }
 
-        let block_idx: usize = block - self.num_index_blocks;
+        // Safety: the start and resulting addresses are valid.
+        let block_addr: *mut u8 = {
+            let block_idx: usize = block - self.num_index_blocks;
 
-        // Prove bounds for safe multiplication.
+            proof {
+                Self::lemma_alloc_product_in_bounds(self, block_idx as int);
+            }
+
+            ptr_add(self.data_addr, block_idx * self.block_size)
+        };
+
         proof {
-            Self::lemma_alloc_product_in_bounds(self, block_idx as int);
-        }
-
-        let product: usize = block_idx * self.block_size;
-        let block_addr: *mut u8 = ptr_add(self.data_addr, product);
-
-        proof {
+            let block_idx: int = block as int - self.num_index_blocks as int;
             Self::lemma_alloc_establishes_postconditions(
                 self, old(self), block as int,
-                block_idx as int, block_addr as int,
+                block_idx, block_addr as int,
             );
         }
 
@@ -447,7 +459,7 @@ impl Slab {
             result is Ok,
     {
         // Check if the pointer lies in a memory region that is not managed by this allocator.
-        // Source uses pointer comparisons; Verus uses integer arithmetic.
+        // Safety: the start and resulting addresses are valid.
         proof {
             assert((self.data_addr as int) + (self.num_data_blocks as int) * (self.block_size as int) <= usize::MAX as int);
         }
@@ -458,15 +470,11 @@ impl Slab {
         }
 
         // Compute the block index.
-        // Source uses `ptr.offset_from_unsigned()`; Verus uses integer subtraction.
+        // Safety: we have already checked that ptr is within the bounds of the slab.
 
         proof {
             Self::lemma_dealloc_offset_bounds(self, ptr as int);
         }
-
-        // The proof above establishes:
-        // 1. ptr >= self.data_addr (from is_valid_addr precondition).
-        // 2. num_index_blocks + block_idx < usize::MAX (from invariant bounds).
 
         let index: usize = self.num_index_blocks + ptr_offset_from(ptr, self.data_addr) / self.block_size;
 
