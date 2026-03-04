@@ -1681,6 +1681,8 @@ impl Slab {
             slab, old_slab, index, ptr,
             old(perms).free_perms, old(perms).index_perm.provenance());
         let block_idx: int = old_slab@.addr_to_block_idx(ptr);
+        // Prove ptr == old_slab@.block_addr(block_idx) for lemma_dealloc_perms_wf.
+        Self::lemma_block_addr_inverse(&old_slab@, ptr);
         perms.put_block_perm(block_idx, block_perm);
         lemma_dealloc_perms_wf(
             old_slab@, slab@, old(perms).free_perms,
