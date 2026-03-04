@@ -382,7 +382,7 @@ impl Slab {
                 &result_slab, addr as int, len as int, total_num_blocks as int,
             );
             // Prove perms are well-formed for the fresh slab.
-            lemma_fresh_slab_perms_wf(&result_slab@, result_perms.free_perms,
+            lemma_fresh_slab_perms_wf(result_slab@, result_perms.free_perms,
                 mem.provenance());
         }
 
@@ -563,6 +563,11 @@ impl Slab {
                     // Insert the block's permission back into the tracked perms.
                     let block_idx: int = old(self)@.addr_to_block_idx(ptr as int);
                     perms.put_block_perm(block_idx, block_perm);
+                    // Prove perms remain well-formed.
+                    lemma_dealloc_perms_wf(
+                        old(self)@, self@, old(perms).free_perms,
+                        block_idx, block_perm, old(perms).index_perm.provenance(),
+                    );
                 }
                 Ok(())
             },

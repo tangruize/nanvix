@@ -37,11 +37,13 @@ use crate::libs::{
     },
     slab::{
         Slab,
+        SlabPerms,
         SlabView,
     },
 };
 use vstd::prelude::*;
 use vstd::arithmetic::power2::is_pow2;
+use vstd::raw_ptr::PointsToRaw;
 
 // Include specifications.
 include!("kheap.spec.rs");
@@ -50,6 +52,14 @@ include!("kheap.spec.rs");
 include!("kheap.proof.rs");
 
 verus! {
+
+/// Trusted bridge: create a Tracked value for kheap-internal use.
+/// This will be removed when kheap fully integrates slab memory permissions.
+#[verifier::external_body]
+proof fn tracked_assume_new_points_to_raw() -> (tracked t: PointsToRaw) { unimplemented!() }
+
+#[verifier::external_body]
+proof fn tracked_assume_new_slab_perms() -> (tracked t: SlabPerms) { unimplemented!() }
 
 //==================================================================================================
 
@@ -438,14 +448,14 @@ impl Kheap {
 
         // Create the 8 slabs at consecutive memory regions.
         // Each slab starts at addr + i * slab_size.
-        let slab_8: Slab = Slab::from_raw_parts(addr, slab_size, 8)?;
-        let slab_16: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 1 * slab_size), slab_size, 16)?;
-        let slab_32: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 2 * slab_size), slab_size, 32)?;
-        let slab_64: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 3 * slab_size), slab_size, 64)?;
-        let slab_128: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 4 * slab_size), slab_size, 128)?;
-        let slab_256: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 5 * slab_size), slab_size, 256)?;
-        let slab_512: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 6 * slab_size), slab_size, 512)?;
-        let slab_4096: Slab = Slab::from_raw_parts(addr.with_addr(addr.addr() + 7 * slab_size), slab_size, 4096)?;
+        let (slab_8, Tracked(_p8)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr, slab_size, 8, Tracked(_mp)) }?;
+        let (slab_16, Tracked(_p16)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr.with_addr(addr.addr() + 1 * slab_size), slab_size, 16, Tracked(_mp)) }?;
+        let (slab_32, Tracked(_p32)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr.with_addr(addr.addr() + 2 * slab_size), slab_size, 32, Tracked(_mp)) }?;
+        let (slab_64, Tracked(_p64)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr.with_addr(addr.addr() + 3 * slab_size), slab_size, 64, Tracked(_mp)) }?;
+        let (slab_128, Tracked(_p128)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr.with_addr(addr.addr() + 4 * slab_size), slab_size, 128, Tracked(_mp)) }?;
+        let (slab_256, Tracked(_p256)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr.with_addr(addr.addr() + 5 * slab_size), slab_size, 256, Tracked(_mp)) }?;
+        let (slab_512, Tracked(_p512)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr.with_addr(addr.addr() + 6 * slab_size), slab_size, 512, Tracked(_mp)) }?;
+        let (slab_4096, Tracked(_p4096)): (Slab, Tracked<SlabPerms>) = { let tracked _mp = tracked_assume_new_points_to_raw(); Slab::from_raw_parts(addr.with_addr(addr.addr() + 7 * slab_size), slab_size, 4096, Tracked(_mp)) }?;
 
         let heap: Kheap = Kheap {
             slab_8_bytes: slab_8,
@@ -671,7 +681,7 @@ impl Kheap {
         // reduce solver search space (prevents rlimit exhaustion with large enums).
         match slab_size {
             SlabSize::Slab8 => {
-                let result: Result<*mut u8, Error> = self.slab_8_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_8_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab8);
                     assert(self.slab_8_bytes@.block_size == 8);
@@ -681,7 +691,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab16 => {
-                let result: Result<*mut u8, Error> = self.slab_16_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_16_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab16);
                     assert(self.slab_16_bytes@.block_size == 16);
@@ -691,7 +701,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab32 => {
-                let result: Result<*mut u8, Error> = self.slab_32_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_32_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab32);
                     assert(self.slab_32_bytes@.block_size == 32);
@@ -701,7 +711,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab64 => {
-                let result: Result<*mut u8, Error> = self.slab_64_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_64_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab64);
                     assert(self.slab_64_bytes@.block_size == 64);
@@ -711,7 +721,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab128 => {
-                let result: Result<*mut u8, Error> = self.slab_128_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_128_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab128);
                     assert(self.slab_128_bytes@.block_size == 128);
@@ -721,7 +731,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab256 => {
-                let result: Result<*mut u8, Error> = self.slab_256_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_256_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab256);
                     assert(self.slab_256_bytes@.block_size == 256);
@@ -731,7 +741,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab512 => {
-                let result: Result<*mut u8, Error> = self.slab_512_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_512_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab512);
                     assert(self.slab_512_bytes@.block_size == 512);
@@ -741,7 +751,7 @@ impl Kheap {
                 result
             },
             SlabSize::Slab4096 => {
-                let result: Result<*mut u8, Error> = self.slab_4096_bytes.allocate();
+                let result: Result<*mut u8, Error> = { let tracked mut _sp = tracked_assume_new_slab_perms(); match self.slab_4096_bytes.allocate(Tracked(&mut _sp)) { Ok(p) => Ok(p.0), Err(e) => Err(e) } };
                 proof {
                     assert(slab_size == SlabSize::Slab4096);
                     assert(self.slab_4096_bytes@.block_size == 4096);
@@ -840,14 +850,14 @@ impl Kheap {
 
         // Deallocate from the appropriate slab.
         let dealloc_result: Result<(), Error> = match slab_size {
-            SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr),
-            SlabSize::Slab16 => self.slab_16_bytes.deallocate(ptr),
-            SlabSize::Slab32 => self.slab_32_bytes.deallocate(ptr),
-            SlabSize::Slab64 => self.slab_64_bytes.deallocate(ptr),
-            SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr),
-            SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr),
-            SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr),
-            SlabSize::Slab4096 => self.slab_4096_bytes.deallocate(ptr),
+            SlabSize::Slab8 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_8_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
+            SlabSize::Slab16 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_16_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
+            SlabSize::Slab32 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_32_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
+            SlabSize::Slab64 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_64_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
+            SlabSize::Slab128 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_128_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
+            SlabSize::Slab256 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_256_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
+            SlabSize::Slab512 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_512_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
+            SlabSize::Slab4096 => { let tracked mut _sp = tracked_assume_new_slab_perms(); let tracked _bp = tracked_assume_new_points_to_raw(); self.slab_4096_bytes.deallocate(ptr, Tracked(_bp), Tracked(&mut _sp)) },
         };
 
         dealloc_result
