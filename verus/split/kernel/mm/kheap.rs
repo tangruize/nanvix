@@ -341,7 +341,6 @@ impl Kheap {
         // Prove power-of-two properties for block sizes.
         proof {
             reveal_with_fuel(is_pow2, 13);
-            // is_pow2(8), is_pow2(16), ..., is_pow2(4096) are now available.
 
             // Prove alignment preconditions for all slabs.
             // addr is page-aligned (addr % PAGE_SIZE == 0, PAGE_SIZE = 4096).
@@ -750,7 +749,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab8);
                     assert(self.slab_8_bytes@.block_size == 8);
                     assert(8int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
@@ -760,7 +758,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab16);
                     assert(self.slab_16_bytes@.block_size == 16);
                     assert(16int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
@@ -770,7 +767,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab32);
                     assert(self.slab_32_bytes@.block_size == 32);
                     assert(32int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
@@ -780,7 +776,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab64);
                     assert(self.slab_64_bytes@.block_size == 64);
                     assert(64int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
@@ -790,7 +785,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab128);
                     assert(self.slab_128_bytes@.block_size == 128);
                     assert(128int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
@@ -800,7 +794,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab256);
                     assert(self.slab_256_bytes@.block_size == 256);
                     assert(256int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
@@ -810,7 +803,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab512);
                     assert(self.slab_512_bytes@.block_size == 512);
                     assert(512int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
@@ -820,7 +812,6 @@ impl Kheap {
                     assert(slab_size == SlabSize::Slab4096);
                     assert(self.slab_4096_bytes@.block_size == 4096);
                     assert(4096int >= size as int);
-                    assert(self.inv());
                 }
                 result
             },
