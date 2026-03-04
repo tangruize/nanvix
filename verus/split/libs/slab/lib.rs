@@ -123,6 +123,32 @@ impl Slab {
         &&& self@.data_addr == self.data_addr as int
         &&& self@.allocated_blocks_in_range()
     }
+
+    /// Loop invariant for the index initialization loop in `from_raw_parts`.
+    pub open spec fn from_raw_parts_init_loop_invariant(
+        index: Bitmap,
+        i: usize,
+        num_index_blocks: usize,
+        num_data_blocks: usize,
+        total_num_blocks: usize,
+        block_size: usize,
+        data_addr: *mut u8,
+    ) -> bool {
+        &&& index.inv()
+        &&& i <= num_index_blocks
+        &&& num_index_blocks < total_num_blocks
+        &&& num_index_blocks > 0
+        &&& num_data_blocks > 0
+        &&& block_size > 0
+        &&& data_addr as int > 0
+        &&& num_index_blocks + num_data_blocks == total_num_blocks
+        &&& index@.number_of_bits() == total_num_blocks as int
+        &&& num_index_blocks as int + num_data_blocks as int == index@.number_of_bits()
+        &&& forall|j: int| #![trigger index@.set_bits.contains(j)]
+            0 <= j < i as int ==> index@.set_bits.contains(j)
+        &&& forall|j: int| #![trigger index@.set_bits.contains(j)]
+            i as int <= j < index@.number_of_bits() ==> !index@.set_bits.contains(j)
+    }
 }
 
 //==================================================================================================
@@ -246,13 +272,9 @@ impl Slab {
         // info!("number of data blocks: {:?}", num_data_blocks);
 
         // Prove layout bounds for slab construction.
-        proof {
-            Self::lemma_from_raw_parts_layout_bounds(
-                len as int, block_size as int, total_num_blocks as int,
-                index_len as int, num_index_blocks as int, num_data_blocks as int,
-                addr as int,
-            );
-        }
+        proof { Self::lemma_from_raw_parts_layout_bounds(
+            len, block_size, total_num_blocks, index_len,
+            num_index_blocks, num_data_blocks, addr as usize); }
         let data_addr: *mut u8 = addr.with_addr(addr.addr() + num_index_blocks * block_size);
 
         // Check if `data_addr` is aligned to `block_size`.
@@ -272,10 +294,9 @@ impl Slab {
 
         // Prove key invariants before the loop.
         proof {
-            Self::lemma_from_raw_parts_pre_loop(
-                index@.number_of_bits(), index_len as int, total_num_blocks as int,
-                num_index_blocks as int, num_data_blocks as int,
-            );
+            Self::lemma_from_raw_parts_pre_loop(index@.number_of_bits(),
+                index_len as int, total_num_blocks as int,
+                num_index_blocks as int, num_data_blocks as int);
         }
 
         // NOTE: The index is initialized with all blocks free, thus if we fail beyond this point
@@ -284,22 +305,10 @@ impl Slab {
         // Initialize index.
         for i in 0..num_index_blocks
             invariant
-                index.inv(),
-                i <= num_index_blocks,
-                num_index_blocks < total_num_blocks,
-                num_index_blocks > 0,
-                num_data_blocks > 0,
-                block_size > 0,
-                data_addr as int > 0,
-                num_index_blocks + num_data_blocks == total_num_blocks,
-                index@.number_of_bits() == total_num_blocks as int,
-                num_index_blocks as int + num_data_blocks as int == index@.number_of_bits(),
-                // All bits from 0 to i are set (using set_bits directly).
-                forall|j: int| #![trigger index@.set_bits.contains(j)]
-                    0 <= j < i as int ==> index@.set_bits.contains(j),
-                // All bits from i to end are not set (from initial state).
-                forall|j: int| #![trigger index@.set_bits.contains(j)]
-                    i as int <= j < index@.number_of_bits() ==> !index@.set_bits.contains(j),
+                Self::from_raw_parts_init_loop_invariant(
+                    index, i, num_index_blocks, num_data_blocks,
+                    total_num_blocks, block_size, data_addr,
+                ),
         {
             index.set(i)?;
         }
@@ -386,11 +395,8 @@ impl Slab {
         };
 
         proof {
-            let block_idx: int = block as int - self.num_index_blocks as int;
-            Self::lemma_alloc_establishes_postconditions(
-                self, old(self), block as int,
-                block_idx, block_addr as int,
-            );
+            Self::lemma_alloc_establishes_postconditions(self, old(self), block as int,
+                block as int - self.num_index_blocks as int, block_addr as int);
         }
 
         Ok(block_addr)

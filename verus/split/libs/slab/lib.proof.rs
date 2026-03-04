@@ -996,30 +996,30 @@ impl Slab {
     /// Establishes that num_index_blocks >= 1, num_data_blocks > 0,
     /// and the product num_index_blocks * block_size is bounded.
     proof fn lemma_from_raw_parts_layout_bounds(
-        len: int, block_size: int, total_num_blocks: int, index_len: int,
-        num_index_blocks: int, num_data_blocks: int, addr: int,
+        len: usize, block_size: usize, total_num_blocks: usize, index_len: usize,
+        num_index_blocks: usize, num_data_blocks: usize, addr: usize,
     )
         requires
             len > 0,
-            len < i32::MAX as int,
+            len < i32::MAX as usize,
             block_size > 0,
             block_size <= len,
             addr > 0,
-            addr + len <= usize::MAX as int,
+            addr as int + len as int <= usize::MAX as int,
             total_num_blocks == len / block_size,
             total_num_blocks >= 8,
             index_len == total_num_blocks / 8,
             num_index_blocks == index_len / block_size
-                + (if index_len % block_size == 0 { 0int } else { 1int }),
+                + (if index_len % block_size == 0 { 0usize } else { 1usize }),
             num_index_blocks <= total_num_blocks,
             num_data_blocks == total_num_blocks - num_index_blocks,
         ensures
             num_index_blocks >= 1,
             num_data_blocks > 0,
-            num_index_blocks * block_size < total_num_blocks * block_size,
-            total_num_blocks * block_size <= len,
-            addr + num_index_blocks * block_size <= addr + len,
-            addr + num_index_blocks * block_size <= usize::MAX as int,
+            (num_index_blocks as int) * (block_size as int) < (total_num_blocks as int) * (block_size as int),
+            (total_num_blocks as int) * (block_size as int) <= len as int,
+            (addr as int) + (num_index_blocks as int) * (block_size as int) <= (addr as int) + (len as int),
+            (addr as int) + (num_index_blocks as int) * (block_size as int) <= usize::MAX as int,
     {
         // index_len >= 1 since total_num_blocks >= 8.
         assert(index_len >= 1);
@@ -1045,8 +1045,8 @@ impl Slab {
         assert(num_index_blocks < total_num_blocks);
         assert(num_data_blocks > 0);
         // Prove product bounds.
-        Self::lemma_div_mul_le(len, block_size);
-        Self::lemma_mul_inequality(num_index_blocks, total_num_blocks, block_size);
+        Self::lemma_div_mul_le(len as int, block_size as int);
+        Self::lemma_mul_inequality(num_index_blocks as int, total_num_blocks as int, block_size as int);
     }
 
     /// Lemma: Converts is_zero properties on a byte sequence to concrete equality with 0u8.
