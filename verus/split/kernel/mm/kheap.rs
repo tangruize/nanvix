@@ -66,6 +66,20 @@ pub tracked struct KheapPerms {
     pub perms_4096: SlabPerms,
 }
 
+impl KheapPerms {
+    /// Well-formedness: each slab's permissions are well-formed for the corresponding slab view.
+    pub open spec fn wf(&self, heap: &Kheap) -> bool {
+        &&& self.perms_8.wf(heap.slab_8_bytes@, self.perms_8.index_perm.provenance())
+        &&& self.perms_16.wf(heap.slab_16_bytes@, self.perms_16.index_perm.provenance())
+        &&& self.perms_32.wf(heap.slab_32_bytes@, self.perms_32.index_perm.provenance())
+        &&& self.perms_64.wf(heap.slab_64_bytes@, self.perms_64.index_perm.provenance())
+        &&& self.perms_128.wf(heap.slab_128_bytes@, self.perms_128.index_perm.provenance())
+        &&& self.perms_256.wf(heap.slab_256_bytes@, self.perms_256.index_perm.provenance())
+        &&& self.perms_512.wf(heap.slab_512_bytes@, self.perms_512.index_perm.provenance())
+        &&& self.perms_4096.wf(heap.slab_4096_bytes@, self.perms_4096.index_perm.provenance())
+    }
+}
+
 //==================================================================================================
 
 /// Number of slabs in the heap.
@@ -665,6 +679,7 @@ impl Kheap {
     ) -> (result: Result<(*mut u8, Tracked<PointsToRaw>), Error>)
         requires
             old(self).inv(),
+            old(heap_perms).wf(old(self)),
         ensures
             self.inv(),
             result is Ok ==> ({
@@ -848,6 +863,7 @@ impl Kheap {
     ) -> (result: Result<(), Error>)
         requires
             old(self).inv(),
+            old(heap_perms).wf(old(self)),
             ptr as int > 0,
             spec_layout_to_slab_size(size as int).is_some(),
             ({
