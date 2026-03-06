@@ -72,6 +72,54 @@ def is_spec_or_proof_fn(fn_node: Node) -> bool:
                 return c.children[0].type in ("spec", "proof")
     return False
 
+
+# Clause types NOT supported in #[verus_spec] on loops (must stay in verus!{})
+_UNSUPPORTED_LOOP_CLAUSES = {
+    "invariant_except_break_clause",
+    "invariant_ensures_clause",
+    "ensures_clause",  # loop-level ensures not supported in verus_spec attr
+}
+
+
+def _has_unsupported_loop_clauses(node: Node) -> bool:
+    """Recursively check if any loop in the subtree has unsupported clauses."""
+    if node.type in ("for_expression", "while_expression", "loop_expression"):
+        for c in node.children:
+            if c.type in _UNSUPPORTED_LOOP_CLAUSES:
+                return True
+    for c in node.children:
+        if c.type in ("function_item", "proof_block"):
+            continue  # Don't cross function/proof boundaries
+        if _has_unsupported_loop_clauses(c):
+            return True
+    return False
+
+
+def _has_tracked_params_or_return(fn_node: Node, src: bytes) -> bool:
+    """Check if a function has Tracked/Ghost params or return elements.
+
+    Functions with Tracked params/returns must stay in verus!{} because:
+    1. Tracked outputs: proof_with!(|= ...) doesn't handle early returns
+    2. Tracked inputs: callers in verus!{} blocks still use old call convention
+    """
+    # Check parameters
+    params = fc(fn_node, "parameters")
+    if params:
+        for p in params.children:
+            if p.type == "parameter":
+                pat = fc(p, "tuple_struct_pattern")
+                if pat:
+                    pat_text = nt(pat, src)
+                    if pat_text.startswith("Tracked(") or pat_text.startswith("Ghost("):
+                        return True
+    # Check return type
+    named_ret = fc(fn_node, "named_return_type")
+    if named_ret:
+        ret_text = nt(named_ret, src)
+        if "Tracked<" in ret_text or "Ghost<" in ret_text:
+            return True
+    return False
+
 # ==============================================================================
 # Data structures
 # ==============================================================================
@@ -117,23 +165,26 @@ class VerusTranslator:
 
         output = result.decode("utf-8")
 
-        # Add required feature flags for loop annotations (proc_macro_hygiene
-        # allows #[verus_spec] on for/while/loop expressions).
-        if "#[verus_spec(" in output:
-            needed_features = [
-                "#![feature(stmt_expr_attributes)]",
-                "#![feature(proc_macro_hygiene)]",
-            ]
-            for feat in needed_features:
-                if feat not in output:
-                    # Insert after the first #![...] attribute
-                    lines = output.split("\n")
-                    insert_idx = 0
-                    for i, line in enumerate(lines):
-                        if line.strip().startswith("#!["):
-                            insert_idx = i + 1
-                    lines.insert(insert_idx, feat)
-                    output = "\n".join(lines)
+        # Add proc_macro_hygiene feature flag (gated on verus_keep_ghost) for
+        # loop-level #[verus_spec] annotations, following SVSM pattern.
+        feat = '#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]'
+        if "cfg_attr(verus_keep_ghost_body, verus_spec(" in output and feat not in output:
+            lines = output.split("\n")
+            # Find the last #![...] crate attribute at the TOP of the file
+            # (stop at first non-comment, non-attribute, non-blank line)
+            insert_idx = 0
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.startswith("#!["):
+                    insert_idx = i + 1
+                elif stripped == "" or stripped.startswith("//"):
+                    continue
+                elif insert_idx > 0:
+                    break  # Past the header section
+            if insert_idx == 0:
+                insert_idx = 2  # Fallback: after copyright header
+            lines.insert(insert_idx, feat)
+            output = "\n".join(lines)
 
         # Clean excessive blank lines
         output = re.sub(r"\n{4,}", "\n\n\n", output)
@@ -205,7 +256,14 @@ class VerusTranslator:
                 if exec_impl:
                     exec_parts.append(exec_impl)
             elif k == "exec_fn":
-                exec_parts.append(item)
+                # Check if function has unsupported features for annotation style
+                if item["inner"] and (
+                    _has_unsupported_loop_clauses(item["inner"]) or
+                    _has_tracked_params_or_return(item["inner"], self.src)
+                ):
+                    ghost_parts.append(item)
+                else:
+                    exec_parts.append(item)
             else:
                 ghost_parts.append(item)
 
@@ -373,8 +431,13 @@ class VerusTranslator:
                 ghost_methods.append(nt(child, src))
                 continue
             if is_exec_fn(fn_item):
-                sub_attrs = [c for c in child.children if c.type == "attribute_item"]
-                methods.append(self._transform_exec_fn(fn_item, sub_attrs, method_indent))
+                # Check if function has unsupported features for annotation style
+                if _has_unsupported_loop_clauses(fn_item) or \
+                   _has_tracked_params_or_return(fn_item, src):
+                    ghost_methods.append(nt(child, src))
+                else:
+                    sub_attrs = [c for c in child.children if c.type == "attribute_item"]
+                    methods.append(self._transform_exec_fn(fn_item, sub_attrs, method_indent))
             else:
                 ghost_methods.append(nt(child, src))
 
@@ -397,11 +460,13 @@ class VerusTranslator:
             parts.append(f"{ind}}} // verus!")
             parts.append("")
 
-        # Exec methods
-        parts.append(f"{ind}{header} {{")
-        for m in methods:
-            parts.append(m)
-        parts.append(f"{ind}}}")
+        # Exec methods — need #[verus_verify] on the impl block
+        if methods:
+            parts.append(f"{ind}#[verus_verify]")
+            parts.append(f"{ind}{header} {{")
+            for m in methods:
+                parts.append(m)
+            parts.append(f"{ind}}}")
 
         return "\n".join(parts)
 
@@ -438,18 +503,32 @@ class VerusTranslator:
         # 2. Extract parameters
         self_param, normal_params, tracked_params = self._extract_params(fn_node)
 
-        # 3. Extract return type info
-        ret_name, exec_ret_type, tracked_outputs, ensures_text_original = \
-            self._extract_return_info(fn_node)
+        # 3. Extract return type info — do NOT extract tracked outputs from return type.
+        # The `with -> tracked_output` pattern is not well-supported in current verus
+        # versions. Keep the original return type including Tracked elements.
+        ret_name, exec_ret_type, _unused_outputs, _ = self._extract_return_info(fn_node)
+        tracked_outputs = []  # Don't use tracked output extraction
+
+        # If return type has tracked elements, use the ORIGINAL return type
+        # (not the stripped one) to maintain API compatibility
+        if _unused_outputs:
+            # Keep full return type with Tracked elements
+            named_ret = fc(fn_node, "named_return_type")
+            if named_ret:
+                past_colon = False
+                type_parts = []
+                for c in named_ret.children:
+                    if c.type == ":":
+                        past_colon = True
+                        continue
+                    if past_colon and c.type != ")":
+                        type_parts.append(nt(c, src))
+                exec_ret_type = " ".join(type_parts).strip() if type_parts else exec_ret_type
 
         # 4. Extract specifications
         requires, ensures, decreases = self._extract_specs(fn_node)
 
-        # 5. If there are tracked outputs, derive names from ensures pattern
-        if tracked_outputs and ensures:
-            tracked_outputs, ensures = self._resolve_tracked_output_names(
-                tracked_outputs, ensures, ret_name
-            )
+        # 5. No tracked output name resolution needed (outputs kept in return type)
 
         # 6. Build #[verus_spec(...)] attribute
         spec_attr = self._build_verus_spec_attr(
@@ -1003,19 +1082,34 @@ class VerusTranslator:
         return clauses
 
     def _transform_loop(self, loop_node: Node, clauses, transforms, offset):
-        """Add #[verus_spec(...)] annotation before loop and remove clauses."""
+        """Add loop annotation before loop and remove clauses.
+
+        Uses #[cfg_attr(verus_keep_ghost_body, verus_spec(...))] so the
+        annotation is only active during verus verification builds.
+        """
         src = self.src
         ind = indent_at(src, loop_node.start_byte)
 
-        # Build annotation
-        spec_parts = []
-        for kind, body, _ in clauses:
-            # Keep the original formatting with body as-is
-            spec_parts.append(f"{kind}\n{ind}        {body}")
+        # Build annotation content — each clause on its own line(s)
+        spec_lines = []
+        for i_clause, (kind, body, _) in enumerate(clauses):
+            # Indent the body relative to the clause keyword
+            body_lines = body.split("\n")
+            # First line stays with keyword
+            first_line = f"{kind} {body_lines[0].strip()}" if body_lines else kind
+            remaining = "\n".join(body_lines[1:]) if len(body_lines) > 1 else ""
+            if remaining:
+                # Add comma at end of clause (before next clause keyword)
+                clause_text = first_line + "\n" + remaining
+            else:
+                clause_text = first_line
+            # Add trailing comma between clauses
+            if i_clause < len(clauses) - 1:
+                clause_text = clause_text.rstrip(",") + ","
+            spec_lines.append(clause_text)
 
-        spec_attr = f"#[verus_spec(\n{ind}    " + \
-                    f",\n{ind}    ".join(spec_parts) + \
-                    f"\n{ind})]"
+        spec_body = f"\n{ind}    ".join(spec_lines)
+        spec_attr = f"#[cfg_attr(verus_keep_ghost_body, verus_spec(\n{ind}    {spec_body}\n{ind}))]"
 
         # Insert annotation before the loop
         transforms.append((
