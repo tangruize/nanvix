@@ -32,8 +32,20 @@ where verified code blends more naturally with standard Rust.
 ### Prerequisites
 
 ```bash
-pip install tree-sitter tree-sitter-verus   # or: cd ~/nanvix/tree-sitter-verus && pip install -e .
+# tree-sitter (from PyPI)
+pip install tree-sitter --break-system-packages
+
+# tree-sitter-verus (NOT on PyPI — clone and install from source, dev branch)
+git clone https://github.com/q5438722/tree-sitter-verus.git
+cd tree-sitter-verus
+git checkout dev
+pip install -e . --break-system-packages
 ```
+
+The script uses the tree-sitter-verus Python bindings (`import tree_sitter_verus`)
+which provide the compiled Verus grammar via `tree_sitter_verus.language()`.
+It does **not** use `static/verus_parser.py` from the same repo — that file is
+a separate utility with different APIs.
 
 ### Basic usage
 

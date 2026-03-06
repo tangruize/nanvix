@@ -8,9 +8,16 @@ Translate verus!{} macro-style Verus code to annotation-style
 
 Uses tree-sitter-verus for robust parsing.
 
+Dependencies:
+    pip install tree-sitter
+    git clone https://github.com/q5438722/tree-sitter-verus.git
+    cd tree-sitter-verus && git checkout dev && pip install -e .
+
 Usage:
     python3 translate_verus_to_annotation.py input.rs [-o output.rs]
     python3 translate_verus_to_annotation.py input.rs --in-place
+
+See TRANSLATOR.md for full documentation.
 """
 
 import argparse
