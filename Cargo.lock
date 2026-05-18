@@ -87,6 +87,7 @@ dependencies = [
  "rustc-std-workspace-core",
  "static_assert",
  "sys",
+ "vstd",
 ]
 
 [[package]]
@@ -1495,6 +1496,7 @@ dependencies = [
  "static_assert",
  "sys",
  "type-safe",
+ "vstd",
 ]
 
 [[package]]
