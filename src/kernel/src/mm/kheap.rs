@@ -354,7 +354,7 @@ impl Kheap {
                 },
             },
     )]
-    pub fn layout_to_allocator(layout: &Layout) -> Result<SlabSize, AllocError> {
+    fn layout_to_allocator(layout: &Layout) -> Result<SlabSize, AllocError> {
         let r = match layout.size() {
             1..=8 => Ok(SlabSize::Slab8),
             9..=16 => Ok(SlabSize::Slab16),

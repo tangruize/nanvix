@@ -1222,6 +1222,11 @@ proof fn lemma_from_raw_parts_ptr_preconditions(addr: usize, size: usize, slab_s
             size as int % NUM_OF_SLABS as int == 0;
 }
 
+/// Whether `t` is one of the supported slab tier sizes.
+closed spec fn is_supported_tier(t: usize) -> bool {
+    t == 8 || t == 16 || t == 32 || t == 64 || t == 128 || t == 256 || t == 512
+}
+
 /// Derives per-tier size bounds from the declarative spec of layout_to_allocator.
 proof fn lemma_tier_size_bounds(tier: SlabSize, size: usize)
     requires

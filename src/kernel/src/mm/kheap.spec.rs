@@ -114,9 +114,4 @@ impl KheapView {
     }
 }
 
-/// Whether `t` is one of the supported slab tier sizes.
-pub open spec fn is_supported_tier(t: usize) -> bool {
-    t == 8 || t == 16 || t == 32 || t == 64 || t == 128 || t == 256 || t == 512
-}
-
 } // verus!
