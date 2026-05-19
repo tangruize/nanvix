@@ -126,10 +126,6 @@ impl Kheap {
     /// # Failure
     /// Returns `InvalidArgument` on alignment or sizing violations.
     #[verus_spec(result =>
-        requires
-            addr + size <= usize::MAX,
-            size <= isize::MAX as usize,
-            addr > 0,
         ensures
             match result {
                 Ok(kheap) => {
@@ -140,6 +136,21 @@ impl Kheap {
             },
     )]
     unsafe fn from_raw_parts(addr: usize, size: usize) -> Result<Kheap, Error> {
+        // Check if start address is zero.
+        if addr == 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "null start address"));
+        }
+
+        // Check if the region wraps around.
+        if addr.checked_add(size).is_none() {
+            return Err(Error::new(ErrorCode::InvalidArgument, "address space overflow"));
+        }
+
+        // Check if size exceeds isize::MAX.
+        if size > isize::MAX as usize {
+            return Err(Error::new(ErrorCode::InvalidArgument, "size exceeds isize::MAX"));
+        }
+
         // Check if start address is not page aligned.
         if !addr.is_multiple_of(mem::PAGE_SIZE) {
             return Err(Error::new(ErrorCode::InvalidArgument, "unaligned start address"));
