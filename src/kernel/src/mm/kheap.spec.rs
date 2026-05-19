@@ -64,23 +64,6 @@ pub assume_specification[ core::alloc::Layout::align ](layout: &core::alloc::Lay
         valid_layout(spec_layout_size(*layout), result),
 ;
 
-/// Caller-facing contract for `Kheap::allocate`.
-///
-/// Strictly what the caller must guarantee — no implementation detail
-/// about slab tiers or enumerated alignments:
-///   * `size` is nonzero and within the allocator's supported range;
-///   * `align` does not exceed `size` (the allocator picks a block whose
-///     size is ≥ `size`, and that block's alignment equals its size; so
-///     `align ≤ size` is sufficient for the returned pointer to be
-///     `align`-aligned). `align` being a power of two comes from `Layout`'s
-///     own type invariant, modeled by `vstd::layout::valid_layout`.
-pub open spec fn layout_ok_for_kheap(layout: core::alloc::Layout) -> bool {
-    let s = spec_layout_size(layout);
-    let a = spec_layout_align(layout);
-    &&& 0 < s <= 512
-    &&& a <= s
-}
-
 // --------------------------------------------------------------------------------------------------
 // KheapView — abstract state exposed to callers
 //

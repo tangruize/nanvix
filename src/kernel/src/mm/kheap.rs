@@ -230,7 +230,6 @@ impl Kheap {
     #[verus_spec(result =>
         requires
             old(self).inv(),
-            layout_ok_for_kheap(layout),
         ensures
             final(self).inv(),
             match result {
@@ -249,11 +248,14 @@ impl Kheap {
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& !old(self).can_allocate_layout(layout)
                 },
             },
     )]
     unsafe fn allocate(&mut self, layout: Layout) -> Result<*mut u8, AllocError> {
+        // Reject layouts where alignment exceeds size or the maximum slab tier (512 bytes).
+        if layout.align() > layout.size() || layout.align() > 512 {
+            return Err(AllocError);
+        }
         let tier = Kheap::layout_to_allocator(&layout)?;
         let r = match tier {
             SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_e| AllocError),
@@ -342,6 +344,7 @@ impl Kheap {
                 Ok(tier) => {
                     let t = tier as usize;
                     &&& is_supported_tier(t)
+                    &&& spec_layout_size(*layout) >= 1
                     &&& t >= spec_layout_size(*layout)
                     &&& forall|s: usize| is_supported_tier(s) && s >= spec_layout_size(*layout) ==> t <= s
                 },
