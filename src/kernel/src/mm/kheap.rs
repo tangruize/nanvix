@@ -309,7 +309,6 @@ impl Kheap {
     #[verus_spec(result =>
         requires
             old(self).inv(),
-            spec_layout_size(layout) > 0,
         ensures
             final(self).inv(),
             match result {
