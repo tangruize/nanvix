@@ -415,7 +415,6 @@ proof fn lemma_no_overlap_case(
 ///     into its allocated_addrs,
 ///   * all OTHER slab tiers are frame-unchanged,
 ///   * alloc_map' == alloc_map.insert(ptr, size).
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_preserves_internal_inv(
     pre: &Kheap,
     post: &Kheap,
@@ -516,7 +515,6 @@ proof fn lemma_alloc_preserves_internal_inv(
 }
 
 /// View-level invariant preservation for `allocate` Ok.
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_preserves_view_inv(
     pre: &Kheap,
     post: &Kheap,
@@ -621,7 +619,6 @@ proof fn lemma_alloc_forward(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usi
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_reverse_8(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
     requires
         pre.inv(),
@@ -642,7 +639,6 @@ proof fn lemma_alloc_reverse_8(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: u
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_reverse_16(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
     requires
         pre.inv(),
@@ -663,7 +659,6 @@ proof fn lemma_alloc_reverse_16(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: 
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_reverse_32(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
     requires
         pre.inv(),
@@ -684,7 +679,6 @@ proof fn lemma_alloc_reverse_32(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: 
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_reverse_64(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
     requires
         pre.inv(),
@@ -705,7 +699,6 @@ proof fn lemma_alloc_reverse_64(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: 
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_reverse_128(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
     requires
         pre.inv(),
@@ -726,7 +719,6 @@ proof fn lemma_alloc_reverse_128(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr:
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_reverse_256(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
     requires
         pre.inv(),
@@ -747,7 +739,6 @@ proof fn lemma_alloc_reverse_256(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr:
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_alloc_reverse_512(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
     requires
         pre.inv(),
@@ -966,7 +957,6 @@ proof fn lemma_alloc_err_preserves_inv(pre: &Kheap, post: &Kheap, tier: SlabSize
 }
 
 /// Post-deallocate inv preservation (split into internal + view parts).
-#[verifier::spinoff_prover]
 proof fn lemma_dealloc_preserves_internal_inv(
     pre: &Kheap,
     post: &Kheap,
@@ -1111,7 +1101,6 @@ proof fn lemma_dealloc_preserves_internal_inv(
     };
 }
 
-#[verifier::spinoff_prover]
 proof fn lemma_dealloc_preserves_view_inv(pre: &Kheap, post: &Kheap, ptr: usize)
     requires
         pre@.inv(),
