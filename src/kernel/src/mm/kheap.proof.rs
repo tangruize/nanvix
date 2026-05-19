@@ -1238,7 +1238,6 @@ proof fn lemma_tier_size_bounds(tier: SlabSize, size: usize)
         (tier == SlabSize::Slab256 ==> size > 128 && size <= 256),
         (tier == SlabSize::Slab512 ==> size > 256 && size <= 512),
 {
-    let t = tier as usize;
     assert(is_supported_tier(8usize));
     assert(is_supported_tier(16usize));
     assert(is_supported_tier(32usize));
