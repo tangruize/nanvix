@@ -46,19 +46,6 @@ impl Kheap {
         &&& self.internal_inv()
     }
 
-    /// Liveness precondition for allocation: the slab tier selected for `layout`
-    /// still has at least one free block. This is intentionally layout-specific;
-    /// a smaller or larger slab having capacity does not make this request live.
-    closed spec fn can_allocate_layout(&self, layout: core::alloc::Layout) -> bool {
-        let size = spec_layout_size(layout);
-        ||| (1 <= size <= 8 && self.slab_8_bytes@.free_addrs.len() > 0)
-        ||| (9 <= size <= 16 && self.slab_16_bytes@.free_addrs.len() > 0)
-        ||| (17 <= size <= 32 && self.slab_32_bytes@.free_addrs.len() > 0)
-        ||| (33 <= size <= 64 && self.slab_64_bytes@.free_addrs.len() > 0)
-        ||| (65 <= size <= 128 && self.slab_128_bytes@.free_addrs.len() > 0)
-        ||| (129 <= size <= 256 && self.slab_256_bytes@.free_addrs.len() > 0)
-        ||| (257 <= size <= 512 && self.slab_512_bytes@.free_addrs.len() > 0)
-    }
 
     /// Slab-level invariants kept internal to the module. These bridge the
     /// concrete slab state to the abstract `KheapView`.

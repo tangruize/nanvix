@@ -114,4 +114,18 @@ impl KheapView {
     }
 }
 
+impl Kheap {
+    /// Whether the slab tier for `layout` has at least one free block.
+    pub closed spec fn can_allocate_layout(&self, layout: core::alloc::Layout) -> bool {
+        let size = spec_layout_size(layout);
+        ||| (1 <= size <= 8 && self.slab_8_bytes@.free_addrs.len() > 0)
+        ||| (9 <= size <= 16 && self.slab_16_bytes@.free_addrs.len() > 0)
+        ||| (17 <= size <= 32 && self.slab_32_bytes@.free_addrs.len() > 0)
+        ||| (33 <= size <= 64 && self.slab_64_bytes@.free_addrs.len() > 0)
+        ||| (65 <= size <= 128 && self.slab_128_bytes@.free_addrs.len() > 0)
+        ||| (129 <= size <= 256 && self.slab_256_bytes@.free_addrs.len() > 0)
+        ||| (257 <= size <= 512 && self.slab_512_bytes@.free_addrs.len() > 0)
+    }
+}
+
 } // verus!

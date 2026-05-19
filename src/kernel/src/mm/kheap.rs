@@ -248,6 +248,9 @@ impl Kheap {
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
+                    &&& !old(self).can_allocate_layout(layout)
+                        || spec_layout_align(layout) > spec_layout_size(layout)
+                        || spec_layout_align(layout) > 512
                 },
             },
     )]
