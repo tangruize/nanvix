@@ -99,11 +99,6 @@ static mut ALLOCATOR: ArenaAllocator = ArenaAllocator;
 // VERUS DEVIATION: `addr as *mut u8` is unsupported in verified bodies.
 // Keep the executable cast isolated behind a specified helper.
 #[inline]
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        result as usize == addr,
-)]
 fn usize_to_mut_ptr(addr: usize) -> *mut u8 {
     addr as *mut u8
 }

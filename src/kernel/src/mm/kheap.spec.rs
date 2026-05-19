@@ -64,6 +64,12 @@ pub assume_specification[ core::alloc::Layout::align ](layout: &core::alloc::Lay
         valid_layout(spec_layout_size(*layout), result),
 ;
 
+// Trusted spec for usize_to_mut_ptr — external_body helper.
+pub assume_specification[ usize_to_mut_ptr ](addr: usize) -> (result: *mut u8)
+    ensures
+        result as usize == addr,
+;
+
 // --------------------------------------------------------------------------------------------------
 // KheapView — abstract state exposed to callers
 //
