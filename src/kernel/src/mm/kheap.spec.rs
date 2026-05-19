@@ -116,7 +116,7 @@ impl KheapView {
     }
 
     /// Abstract state of a freshly constructed heap: no live allocations.
-    pub open spec fn spec_new() -> KheapView {
+    pub open spec fn new() -> KheapView {
         KheapView { allocations: Map::empty() }
     }
 

@@ -138,7 +138,7 @@ impl Kheap {
             match result {
                 Ok(kheap) => {
                     &&& kheap.inv()
-                    &&& kheap@ =~= KheapView::spec_new()
+                    &&& kheap@ =~= KheapView::new()
                 },
                 Err(e) => e.code == ErrorCode::InvalidArgument,
             },
