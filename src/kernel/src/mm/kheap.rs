@@ -378,7 +378,6 @@ impl Kheap {
 // GlobalAlloc
 //==================================================================================================
 
-#[verus_verify(external)]
 unsafe impl GlobalAlloc for ArenaAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let heap = ptr::addr_of_mut!(HEAP);
@@ -425,7 +424,6 @@ unsafe impl GlobalAlloc for ArenaAllocator {
 /// - `size`: Size of the backing buffer in bytes. Must be a multiple of [`MIN_HEAP_SIZE`].
 ///
 #[allow(dead_code)]
-#[verus_verify(external)]
 pub unsafe fn set_backing_storage(ptr: *mut u8, size: usize) -> Result<(), Error> {
     if ptr.is_null() {
         let reason: &str = "null backing storage pointer";
@@ -452,7 +450,6 @@ pub unsafe fn set_backing_storage(ptr: *mut u8, size: usize) -> Result<(), Error
     Ok(())
 }
 
-#[verus_verify(external)]
 pub unsafe fn init() -> Result<(), Error> {
     info!("initializing the kernel heap...");
 
