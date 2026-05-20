@@ -73,7 +73,7 @@ struct Kheap {
     slab_512_bytes: Slab,
     // Ghost state — alloc_map is the ground truth for abstract KheapView.
     // Ghost<T> is zero-sized; it costs nothing at runtime.
-    #[allow(dead_code)]
+    #[cfg(verus_keep_ghost_body)]
     alloc_map: Ghost<Map<int, nat>>,
 }
 
@@ -101,16 +101,6 @@ static mut ALLOCATOR: ArenaAllocator = ArenaAllocator;
 #[inline]
 fn usize_to_mut_ptr(addr: usize) -> *mut u8 {
     addr as *mut u8
-}
-
-// Ghost-state constructor for the zero-sized allocation map used by the proof.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        result@ =~= Map::empty(),
-)]
-fn empty_alloc_map() -> Ghost<Map<int, nat>> {
-    Ghost::assume_new()
 }
 
 #[verus_verify]
@@ -185,7 +175,8 @@ impl Kheap {
         info!("heap size: {} MB", size / constants::MEGABYTE);
         #[cfg(not(verus_keep_ghost))]
         info!("slab size: {} KB", slab_size / constants::KILOBYTE);
-        Ok(Kheap {
+        proof_with! {alloc_map: Ghost(Map::<int, nat>::empty())};
+        let kheap = Kheap {
             slab_8_bytes: Slab::from_raw_parts(
                 heap_start_addr,
                 slab_size,
@@ -221,8 +212,8 @@ impl Kheap {
                 slab_size,
                 SlabSize::Slab512 as usize,
             )?,
-            alloc_map: empty_alloc_map(),
-        })
+        };
+        Ok(kheap)
     }
 
     /// Allocates a block that fits the requested `layout`.
