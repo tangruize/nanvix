@@ -8,23 +8,13 @@ use ::vstd::layout::valid_layout;
 //
 // Abstract view of the kernel heap allocator as seen by its callers:
 //   KheapView { allocations: Map<base_addr, size> }
-//
-// External items Verus cannot see directly (types/methods from `core::alloc`,
-// `sys::error`) are declared via `external_type_specification` /
-// `assume_specification`. No cfg-gated duplication of exec code.
 // ==================================================================================================
 
 verus! {
 
 // --------------------------------------------------------------------------------------------------
-// External type specifications
+// External specifications (core::alloc)
 // --------------------------------------------------------------------------------------------------
-
-#[verifier::external_type_specification]
-pub struct ExError(sys::error::Error);
-
-#[verifier::external_type_specification]
-pub struct ExErrorCode(sys::error::ErrorCode);
 
 // Layout is opaque — Verus must treat its contents as abstract.
 #[verifier::external_body]
@@ -33,21 +23,6 @@ pub struct ExLayout(core::alloc::Layout);
 
 #[verifier::external_type_specification]
 pub struct ExAllocError(core::alloc::AllocError);
-
-// --------------------------------------------------------------------------------------------------
-// External function specifications
-// --------------------------------------------------------------------------------------------------
-
-
-// Error constructor — preserves its `code`/`reason` arguments.
-pub assume_specification[ sys::error::Error::new ](
-    code: sys::error::ErrorCode,
-    reason: &'static str,
-) -> (result: sys::error::Error)
-    ensures
-        result.code == code,
-        result.reason == reason,
-;
 
 // Logical projections of Layout — uninterpreted so we can refer to them in specs.
 pub uninterp spec fn spec_layout_size(layout: core::alloc::Layout) -> usize;

@@ -1486,6 +1486,7 @@ dependencies = [
  "cmdline",
  "config",
  "elf",
+ "error",
  "koptions",
  "mmio-tag",
  "multibin",

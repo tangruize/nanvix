@@ -23,6 +23,7 @@ vstd = { workspace = true }
 bitmap = { workspace = true }
 bump-allocator = { workspace = true }
 cfg-if = { workspace = true }
+error = { workspace = true, features = ["verus"] }
 cmdline = { workspace = true }
 config = { workspace = true, optional = true }
 koptions = { workspace = true }
