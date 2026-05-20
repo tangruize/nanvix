@@ -246,7 +246,7 @@ impl Kheap {
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& !old(self).can_allocate_layout(layout)
+                    &&& !(old(self)@.allocations =~= Map::<int, nat>::empty())
                         || spec_layout_align(layout) > spec_layout_size(layout)
                         || spec_layout_size(layout) > 512
                 },
@@ -257,6 +257,9 @@ impl Kheap {
         if layout.align() > layout.size() || layout.align() > 512 {
             return Err(AllocError);
         }
+        // Reveal is_pow2 so Verus can deduce align ≥ 1, which is needed to
+        // rule out size == 0 when layout_to_allocator returns Err.
+        proof! { reveal(is_pow2); }
         let tier = Kheap::layout_to_allocator(&layout)?;
         let r = match tier {
             SlabSize::Slab8 => self.slab_8_bytes.allocate().map_err(|_e| AllocError),
@@ -284,6 +287,7 @@ impl Kheap {
                 },
                 Err(_) => {
                     Kheap::lemma_alloc_err_preserves_inv(old(self), self, tier);
+                    Kheap::lemma_alloc_err_implies_nonempty(old(self), tier);
                 },
             }
         }

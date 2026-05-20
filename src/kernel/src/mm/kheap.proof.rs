@@ -956,7 +956,98 @@ proof fn lemma_alloc_err_preserves_inv(pre: &Kheap, post: &Kheap, tier: SlabSize
     }
 }
 
-/// Post-deallocate inv preservation (split into internal + view parts).
+/// When a slab tier's allocation fails (free_addrs empty), the abstract
+/// alloc_map must contain at least one entry.
+proof fn lemma_alloc_err_implies_nonempty(pre: &Kheap, tier: SlabSize)
+    requires
+        pre.inv(),
+        (tier == SlabSize::Slab8 ==> pre.slab_8_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab16 ==> pre.slab_16_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab32 ==> pre.slab_32_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab64 ==> pre.slab_64_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab128 ==> pre.slab_128_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab256 ==> pre.slab_256_bytes@.free_addrs =~= Set::<usize>::empty())
+            && (tier == SlabSize::Slab512 ==> pre.slab_512_bytes@.free_addrs =~= Set::<usize>::empty()),
+    ensures
+        !(pre.alloc_map@ =~= Map::<int, nat>::empty()),
+{
+    // For the failing tier, start_addr is block-aligned and in [start, end).
+    // Completeness + free_addrs empty → start_addr ∈ allocated_addrs.
+    // Reverse internal_inv → start_addr ∈ alloc_map.
+    match tier {
+        SlabSize::Slab8 => {
+            assert(pre.slab_8_bytes@.inv());
+            let a = pre.slab_8_bytes@.start_addr;
+            assert(pre.slab_8_bytes@.free_addrs =~= Set::<usize>::empty());
+            assert(!pre.slab_8_bytes@.free_addrs.contains(a));
+            assert(pre.slab_8_bytes@.allocated_addrs.contains(a)
+                || pre.slab_8_bytes@.free_addrs.contains(a));
+            assert(pre.slab_8_bytes@.allocated_addrs.contains(a));
+            assert(pre.internal_inv());
+            assert(pre.alloc_map@.dom().contains(a as int));
+        },
+        SlabSize::Slab16 => {
+            let a = pre.slab_16_bytes@.start_addr;
+            assert(pre.slab_16_bytes@.free_addrs =~= Set::<usize>::empty());
+            assert(!pre.slab_16_bytes@.free_addrs.contains(a));
+            assert(pre.slab_16_bytes@.allocated_addrs.contains(a)
+                || pre.slab_16_bytes@.free_addrs.contains(a));
+            assert(pre.slab_16_bytes@.allocated_addrs.contains(a));
+            assert(pre.internal_inv());
+            assert(pre.alloc_map@.dom().contains(a as int));
+        },
+        SlabSize::Slab32 => {
+            let a = pre.slab_32_bytes@.start_addr;
+            assert(pre.slab_32_bytes@.free_addrs =~= Set::<usize>::empty());
+            assert(!pre.slab_32_bytes@.free_addrs.contains(a));
+            assert(pre.slab_32_bytes@.allocated_addrs.contains(a)
+                || pre.slab_32_bytes@.free_addrs.contains(a));
+            assert(pre.slab_32_bytes@.allocated_addrs.contains(a));
+            assert(pre.internal_inv());
+            assert(pre.alloc_map@.dom().contains(a as int));
+        },
+        SlabSize::Slab64 => {
+            let a = pre.slab_64_bytes@.start_addr;
+            assert(pre.slab_64_bytes@.free_addrs =~= Set::<usize>::empty());
+            assert(!pre.slab_64_bytes@.free_addrs.contains(a));
+            assert(pre.slab_64_bytes@.allocated_addrs.contains(a)
+                || pre.slab_64_bytes@.free_addrs.contains(a));
+            assert(pre.slab_64_bytes@.allocated_addrs.contains(a));
+            assert(pre.internal_inv());
+            assert(pre.alloc_map@.dom().contains(a as int));
+        },
+        SlabSize::Slab128 => {
+            let a = pre.slab_128_bytes@.start_addr;
+            assert(pre.slab_128_bytes@.free_addrs =~= Set::<usize>::empty());
+            assert(!pre.slab_128_bytes@.free_addrs.contains(a));
+            assert(pre.slab_128_bytes@.allocated_addrs.contains(a)
+                || pre.slab_128_bytes@.free_addrs.contains(a));
+            assert(pre.slab_128_bytes@.allocated_addrs.contains(a));
+            assert(pre.internal_inv());
+            assert(pre.alloc_map@.dom().contains(a as int));
+        },
+        SlabSize::Slab256 => {
+            let a = pre.slab_256_bytes@.start_addr;
+            assert(pre.slab_256_bytes@.free_addrs =~= Set::<usize>::empty());
+            assert(!pre.slab_256_bytes@.free_addrs.contains(a));
+            assert(pre.slab_256_bytes@.allocated_addrs.contains(a)
+                || pre.slab_256_bytes@.free_addrs.contains(a));
+            assert(pre.slab_256_bytes@.allocated_addrs.contains(a));
+            assert(pre.internal_inv());
+            assert(pre.alloc_map@.dom().contains(a as int));
+        },
+        SlabSize::Slab512 => {
+            let a = pre.slab_512_bytes@.start_addr;
+            assert(pre.slab_512_bytes@.free_addrs =~= Set::<usize>::empty());
+            assert(!pre.slab_512_bytes@.free_addrs.contains(a));
+            assert(pre.slab_512_bytes@.allocated_addrs.contains(a)
+                || pre.slab_512_bytes@.free_addrs.contains(a));
+            assert(pre.slab_512_bytes@.allocated_addrs.contains(a));
+            assert(pre.internal_inv());
+            assert(pre.alloc_map@.dom().contains(a as int));
+        },
+    }
+}
 proof fn lemma_dealloc_preserves_internal_inv(
     pre: &Kheap,
     post: &Kheap,
