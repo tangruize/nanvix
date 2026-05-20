@@ -1290,7 +1290,7 @@ proof fn lemma_from_raw_parts_ptr_preconditions(addr: usize, size: usize, slab_s
 }
 
 /// Whether `t` is one of the supported slab tier sizes.
-closed spec fn is_supported_tier(t: usize) -> bool {
+spec fn is_supported_tier(t: usize) -> bool {
     t == 8 || t == 16 || t == 32 || t == 64 || t == 128 || t == 256 || t == 512
 }
 
