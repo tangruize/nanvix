@@ -234,13 +234,10 @@ impl Kheap {
                 Ok(ptr) => {
                     &&& ptr as usize != 0
                     &&& !old(self)@.allocations.dom().contains(ptr as int)
-                    // Caller got at least `request` bytes at `ptr`; the
-                    // actual reserved size (hidden from the caller) is
-                    // `final(self)@.allocations[ptr]`.
-                    &&& final(self)@.allocations[ptr as int] >= spec_layout_size(layout) as nat
+                    &&& final(self)@.allocations[ptr as int] == spec_layout_size(layout) as nat
                     &&& final(self)@ =~= old(self)@.spec_allocate(
                         ptr as int,
-                        final(self)@.allocations[ptr as int],
+                        spec_layout_size(layout) as nat,
                     )
                     &&& (ptr as int) % (spec_layout_align(layout) as int) == 0
                 },
@@ -273,15 +270,14 @@ impl Kheap {
         #[allow(unused_variables)]
         let align = layout.align();
         proof! {
-            let blk_size = spec_tier_size(tier);
             let size = spec_layout_size(layout);
             lemma_tier_size_bounds(tier, size);
             match r {
                 Ok(ptr) => {
-                    *self.alloc_map = self.alloc_map@.insert(ptr as int, blk_size as nat);
-                    Kheap::lemma_alloc_preserves_internal_inv(old(self), self, tier, ptr as usize, blk_size);
-                    Kheap::lemma_alloc_overlap_with_new(old(self), tier, ptr as usize, blk_size);
-                    Kheap::lemma_alloc_preserves_view_inv(old(self), self, ptr as usize, blk_size);
+                    *self.alloc_map = self.alloc_map@.insert(ptr as int, size as nat);
+                    Kheap::lemma_alloc_preserves_internal_inv(old(self), self, tier, ptr as usize, size);
+                    Kheap::lemma_alloc_overlap_with_new(old(self), tier, ptr as usize, size);
+                    Kheap::lemma_alloc_preserves_view_inv(old(self), self, ptr as usize, size);
                     Kheap::lemma_pow2_le_512_supported(align);
                     Kheap::lemma_tier_align(ptr as usize, size, align, tier);
                 },
@@ -311,10 +307,20 @@ impl Kheap {
                     &&& old(self)@.allocations.dom().contains(ptr as int)
                     &&& final(self)@ =~= old(self)@.spec_deallocate(ptr as int)
                 },
-                Err(_) => final(self)@ == old(self)@,
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& !old(self)@.allocations.dom().contains(ptr as int)
+                        || old(self)@.allocations[ptr as int] != spec_layout_size(layout) as nat
+                },
             },
     )]
     unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) -> Result<(), AllocError> {
+        proof! {
+            let size = spec_layout_size(layout);
+            if size == 0 || size > 512 {
+                lemma_dealloc_layout_to_allocator_err(self, ptr as usize, size);
+            }
+        }
         let tier = Kheap::layout_to_allocator(&layout)?;
         let r = match tier {
             SlabSize::Slab8 => self.slab_8_bytes.deallocate(ptr).map_err(|_e| AllocError),
@@ -326,6 +332,8 @@ impl Kheap {
             SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_e| AllocError),
         };
         proof! {
+            let size = spec_layout_size(layout);
+            lemma_tier_size_bounds(tier, size);
             match r {
                 Ok(()) => {
                     *self.alloc_map = self.alloc_map@.remove(ptr as int);
@@ -334,6 +342,7 @@ impl Kheap {
                 },
                 Err(_) => {
                     Kheap::lemma_dealloc_err_preserves_inv(old(self), self);
+                    Kheap::lemma_dealloc_err_reason(old(self), tier, ptr as usize, size);
                 },
             }
         }

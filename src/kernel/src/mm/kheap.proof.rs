@@ -97,20 +97,28 @@ impl Kheap {
             }
 
         // Live slab block ⇒ abstract allocation map (reverse direction).
+        // The stored layout_size must fall in the tier's band.
         &&& forall|a: usize| #[trigger] self.slab_8_bytes@.allocated_addrs.contains(a)
                 ==> self.alloc_map@.dom().contains(a as int)
+                    && 1 <= self.alloc_map@[a as int] <= 8
         &&& forall|a: usize| #[trigger] self.slab_16_bytes@.allocated_addrs.contains(a)
                 ==> self.alloc_map@.dom().contains(a as int)
+                    && 9 <= self.alloc_map@[a as int] <= 16
         &&& forall|a: usize| #[trigger] self.slab_32_bytes@.allocated_addrs.contains(a)
                 ==> self.alloc_map@.dom().contains(a as int)
+                    && 17 <= self.alloc_map@[a as int] <= 32
         &&& forall|a: usize| #[trigger] self.slab_64_bytes@.allocated_addrs.contains(a)
                 ==> self.alloc_map@.dom().contains(a as int)
+                    && 33 <= self.alloc_map@[a as int] <= 64
         &&& forall|a: usize| #[trigger] self.slab_128_bytes@.allocated_addrs.contains(a)
                 ==> self.alloc_map@.dom().contains(a as int)
+                    && 65 <= self.alloc_map@[a as int] <= 128
         &&& forall|a: usize| #[trigger] self.slab_256_bytes@.allocated_addrs.contains(a)
                 ==> self.alloc_map@.dom().contains(a as int)
+                    && 129 <= self.alloc_map@[a as int] <= 256
         &&& forall|a: usize| #[trigger] self.slab_512_bytes@.allocated_addrs.contains(a)
                 ==> self.alloc_map@.dom().contains(a as int)
+                    && 257 <= self.alloc_map@[a as int] <= 512
     }
 }
 
@@ -505,13 +513,13 @@ proof fn lemma_alloc_preserves_internal_inv(
         ==> post.alloc_map@.dom().contains(a));
 
     Self::lemma_alloc_forward(pre, post, tier, ptr, size);
-    Self::lemma_alloc_reverse_8(pre, post, tier, ptr);
-    Self::lemma_alloc_reverse_16(pre, post, tier, ptr);
-    Self::lemma_alloc_reverse_32(pre, post, tier, ptr);
-    Self::lemma_alloc_reverse_64(pre, post, tier, ptr);
-    Self::lemma_alloc_reverse_128(pre, post, tier, ptr);
-    Self::lemma_alloc_reverse_256(pre, post, tier, ptr);
-    Self::lemma_alloc_reverse_512(pre, post, tier, ptr);
+    Self::lemma_alloc_reverse_8(pre, post, tier, ptr, size);
+    Self::lemma_alloc_reverse_16(pre, post, tier, ptr, size);
+    Self::lemma_alloc_reverse_32(pre, post, tier, ptr, size);
+    Self::lemma_alloc_reverse_64(pre, post, tier, ptr, size);
+    Self::lemma_alloc_reverse_128(pre, post, tier, ptr, size);
+    Self::lemma_alloc_reverse_256(pre, post, tier, ptr, size);
+    Self::lemma_alloc_reverse_512(pre, post, tier, ptr, size);
 }
 
 /// View-level invariant preservation for `allocate` Ok.
@@ -619,7 +627,7 @@ proof fn lemma_alloc_forward(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usi
     };
 }
 
-proof fn lemma_alloc_reverse_8(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
+proof fn lemma_alloc_reverse_8(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
         post.slab_8_bytes@.allocated_addrs == if tier == SlabSize::Slab8 {
@@ -627,19 +635,24 @@ proof fn lemma_alloc_reverse_8(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: u
         } else { pre.slab_8_bytes@.allocated_addrs },
         forall|a: int| pre.alloc_map@.dom().contains(a) ==> post.alloc_map@.dom().contains(a),
         post.alloc_map@.dom().contains(ptr as int),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        tier == SlabSize::Slab8 ==> 1 <= size <= 8,
     ensures
         forall|a: usize| #[trigger] post.slab_8_bytes@.allocated_addrs.contains(a)
-            ==> post.alloc_map@.dom().contains(a as int),
+            ==> post.alloc_map@.dom().contains(a as int)
+                && 1 <= post.alloc_map@[a as int] <= 8,
 {
     assert forall|a: usize| #[trigger] post.slab_8_bytes@.allocated_addrs.contains(a)
         implies post.alloc_map@.dom().contains(a as int)
+            && 1 <= post.alloc_map@[a as int] <= 8
     by {
         if tier == SlabSize::Slab8 && a == ptr { }
         else { assert(pre.slab_8_bytes@.allocated_addrs.contains(a)); }
     };
 }
 
-proof fn lemma_alloc_reverse_16(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
+proof fn lemma_alloc_reverse_16(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
         post.slab_16_bytes@.allocated_addrs == if tier == SlabSize::Slab16 {
@@ -647,19 +660,24 @@ proof fn lemma_alloc_reverse_16(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: 
         } else { pre.slab_16_bytes@.allocated_addrs },
         forall|a: int| pre.alloc_map@.dom().contains(a) ==> post.alloc_map@.dom().contains(a),
         post.alloc_map@.dom().contains(ptr as int),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        tier == SlabSize::Slab16 ==> 9 <= size <= 16,
     ensures
         forall|a: usize| #[trigger] post.slab_16_bytes@.allocated_addrs.contains(a)
-            ==> post.alloc_map@.dom().contains(a as int),
+            ==> post.alloc_map@.dom().contains(a as int)
+                && 9 <= post.alloc_map@[a as int] <= 16,
 {
     assert forall|a: usize| #[trigger] post.slab_16_bytes@.allocated_addrs.contains(a)
         implies post.alloc_map@.dom().contains(a as int)
+            && 9 <= post.alloc_map@[a as int] <= 16
     by {
         if tier == SlabSize::Slab16 && a == ptr { }
         else { assert(pre.slab_16_bytes@.allocated_addrs.contains(a)); }
     };
 }
 
-proof fn lemma_alloc_reverse_32(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
+proof fn lemma_alloc_reverse_32(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
         post.slab_32_bytes@.allocated_addrs == if tier == SlabSize::Slab32 {
@@ -667,19 +685,24 @@ proof fn lemma_alloc_reverse_32(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: 
         } else { pre.slab_32_bytes@.allocated_addrs },
         forall|a: int| pre.alloc_map@.dom().contains(a) ==> post.alloc_map@.dom().contains(a),
         post.alloc_map@.dom().contains(ptr as int),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        tier == SlabSize::Slab32 ==> 17 <= size <= 32,
     ensures
         forall|a: usize| #[trigger] post.slab_32_bytes@.allocated_addrs.contains(a)
-            ==> post.alloc_map@.dom().contains(a as int),
+            ==> post.alloc_map@.dom().contains(a as int)
+                && 17 <= post.alloc_map@[a as int] <= 32,
 {
     assert forall|a: usize| #[trigger] post.slab_32_bytes@.allocated_addrs.contains(a)
         implies post.alloc_map@.dom().contains(a as int)
+            && 17 <= post.alloc_map@[a as int] <= 32
     by {
         if tier == SlabSize::Slab32 && a == ptr { }
         else { assert(pre.slab_32_bytes@.allocated_addrs.contains(a)); }
     };
 }
 
-proof fn lemma_alloc_reverse_64(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
+proof fn lemma_alloc_reverse_64(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
         post.slab_64_bytes@.allocated_addrs == if tier == SlabSize::Slab64 {
@@ -687,19 +710,24 @@ proof fn lemma_alloc_reverse_64(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: 
         } else { pre.slab_64_bytes@.allocated_addrs },
         forall|a: int| pre.alloc_map@.dom().contains(a) ==> post.alloc_map@.dom().contains(a),
         post.alloc_map@.dom().contains(ptr as int),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        tier == SlabSize::Slab64 ==> 33 <= size <= 64,
     ensures
         forall|a: usize| #[trigger] post.slab_64_bytes@.allocated_addrs.contains(a)
-            ==> post.alloc_map@.dom().contains(a as int),
+            ==> post.alloc_map@.dom().contains(a as int)
+                && 33 <= post.alloc_map@[a as int] <= 64,
 {
     assert forall|a: usize| #[trigger] post.slab_64_bytes@.allocated_addrs.contains(a)
         implies post.alloc_map@.dom().contains(a as int)
+            && 33 <= post.alloc_map@[a as int] <= 64
     by {
         if tier == SlabSize::Slab64 && a == ptr { }
         else { assert(pre.slab_64_bytes@.allocated_addrs.contains(a)); }
     };
 }
 
-proof fn lemma_alloc_reverse_128(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
+proof fn lemma_alloc_reverse_128(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
         post.slab_128_bytes@.allocated_addrs == if tier == SlabSize::Slab128 {
@@ -707,19 +735,24 @@ proof fn lemma_alloc_reverse_128(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr:
         } else { pre.slab_128_bytes@.allocated_addrs },
         forall|a: int| pre.alloc_map@.dom().contains(a) ==> post.alloc_map@.dom().contains(a),
         post.alloc_map@.dom().contains(ptr as int),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        tier == SlabSize::Slab128 ==> 65 <= size <= 128,
     ensures
         forall|a: usize| #[trigger] post.slab_128_bytes@.allocated_addrs.contains(a)
-            ==> post.alloc_map@.dom().contains(a as int),
+            ==> post.alloc_map@.dom().contains(a as int)
+                && 65 <= post.alloc_map@[a as int] <= 128,
 {
     assert forall|a: usize| #[trigger] post.slab_128_bytes@.allocated_addrs.contains(a)
         implies post.alloc_map@.dom().contains(a as int)
+            && 65 <= post.alloc_map@[a as int] <= 128
     by {
         if tier == SlabSize::Slab128 && a == ptr { }
         else { assert(pre.slab_128_bytes@.allocated_addrs.contains(a)); }
     };
 }
 
-proof fn lemma_alloc_reverse_256(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
+proof fn lemma_alloc_reverse_256(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
         post.slab_256_bytes@.allocated_addrs == if tier == SlabSize::Slab256 {
@@ -727,19 +760,24 @@ proof fn lemma_alloc_reverse_256(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr:
         } else { pre.slab_256_bytes@.allocated_addrs },
         forall|a: int| pre.alloc_map@.dom().contains(a) ==> post.alloc_map@.dom().contains(a),
         post.alloc_map@.dom().contains(ptr as int),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        tier == SlabSize::Slab256 ==> 129 <= size <= 256,
     ensures
         forall|a: usize| #[trigger] post.slab_256_bytes@.allocated_addrs.contains(a)
-            ==> post.alloc_map@.dom().contains(a as int),
+            ==> post.alloc_map@.dom().contains(a as int)
+                && 129 <= post.alloc_map@[a as int] <= 256,
 {
     assert forall|a: usize| #[trigger] post.slab_256_bytes@.allocated_addrs.contains(a)
         implies post.alloc_map@.dom().contains(a as int)
+            && 129 <= post.alloc_map@[a as int] <= 256
     by {
         if tier == SlabSize::Slab256 && a == ptr { }
         else { assert(pre.slab_256_bytes@.allocated_addrs.contains(a)); }
     };
 }
 
-proof fn lemma_alloc_reverse_512(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize)
+proof fn lemma_alloc_reverse_512(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr: usize, size: usize)
     requires
         pre.inv(),
         post.slab_512_bytes@.allocated_addrs == if tier == SlabSize::Slab512 {
@@ -747,12 +785,17 @@ proof fn lemma_alloc_reverse_512(pre: &Kheap, post: &Kheap, tier: SlabSize, ptr:
         } else { pre.slab_512_bytes@.allocated_addrs },
         forall|a: int| pre.alloc_map@.dom().contains(a) ==> post.alloc_map@.dom().contains(a),
         post.alloc_map@.dom().contains(ptr as int),
+        post.alloc_map@ == pre.alloc_map@.insert(ptr as int, size as nat),
+        !pre.alloc_map@.dom().contains(ptr as int),
+        tier == SlabSize::Slab512 ==> 257 <= size <= 512,
     ensures
         forall|a: usize| #[trigger] post.slab_512_bytes@.allocated_addrs.contains(a)
-            ==> post.alloc_map@.dom().contains(a as int),
+            ==> post.alloc_map@.dom().contains(a as int)
+                && 257 <= post.alloc_map@[a as int] <= 512,
 {
     assert forall|a: usize| #[trigger] post.slab_512_bytes@.allocated_addrs.contains(a)
         implies post.alloc_map@.dom().contains(a as int)
+            && 257 <= post.alloc_map@[a as int] <= 512
     by {
         if tier == SlabSize::Slab512 && a == ptr { }
         else { assert(pre.slab_512_bytes@.allocated_addrs.contains(a)); }
@@ -1231,7 +1274,72 @@ proof fn lemma_dealloc_err_preserves_inv(pre: &Kheap, post: &Kheap)
     }
 }
 
+/// When slab.deallocate fails for a given tier, either ptr is not in
+/// alloc_map, or the stored layout_size differs from the current one.
+///
+/// Proof sketch: if ptr IS in alloc_map with stored size == current size,
+/// then both map to the same tier (layout_to_allocator is deterministic
+/// on size). The forward internal_inv places ptr in that tier's
+/// allocated_addrs. But slab.deallocate only fails when ptr is NOT in
+/// allocated_addrs — contradiction.
+proof fn lemma_dealloc_err_reason(pre: &Kheap, tier: SlabSize, ptr: usize, size: usize)
+    requires
+        pre.inv(),
+        // size routes to tier
+        (tier == SlabSize::Slab8 && 1 <= size <= 8)
+            || (tier == SlabSize::Slab16 && 9 <= size <= 16)
+            || (tier == SlabSize::Slab32 && 17 <= size <= 32)
+            || (tier == SlabSize::Slab64 && 33 <= size <= 64)
+            || (tier == SlabSize::Slab128 && 65 <= size <= 128)
+            || (tier == SlabSize::Slab256 && 129 <= size <= 256)
+            || (tier == SlabSize::Slab512 && 257 <= size <= 512),
+        // The chosen tier's slab rejected ptr (ptr not in allocated_addrs,
+        // or ptr out of bounds — in either case, ptr is not currently
+        // allocated in this slab).
+        (tier == SlabSize::Slab8 ==> !pre.slab_8_bytes@.allocated_addrs.contains(ptr))
+            && (tier == SlabSize::Slab16 ==> !pre.slab_16_bytes@.allocated_addrs.contains(ptr))
+            && (tier == SlabSize::Slab32 ==> !pre.slab_32_bytes@.allocated_addrs.contains(ptr))
+            && (tier == SlabSize::Slab64 ==> !pre.slab_64_bytes@.allocated_addrs.contains(ptr))
+            && (tier == SlabSize::Slab128 ==> !pre.slab_128_bytes@.allocated_addrs.contains(ptr))
+            && (tier == SlabSize::Slab256 ==> !pre.slab_256_bytes@.allocated_addrs.contains(ptr))
+            && (tier == SlabSize::Slab512 ==> !pre.slab_512_bytes@.allocated_addrs.contains(ptr)),
+    ensures
+        !pre.alloc_map@.dom().contains(ptr as int)
+            || pre.alloc_map@[ptr as int] != size as nat,
+{
+    // By contradiction: assume ptr is in alloc_map with stored value == size.
+    // Then internal_inv forward says ptr is in the slab for size's tier band.
+    // But size maps to `tier`, and we know ptr is NOT in tier's allocated_addrs.
+    // So the stored value must differ from size.
+    if pre.alloc_map@.dom().contains(ptr as int) && pre.alloc_map@[ptr as int] == size as nat {
+        assert(pre.internal_inv());
+        let stored = pre.alloc_map@[ptr as int];
+        // stored == size, so stored falls in the same tier band as size.
+        // internal_inv forward: ptr is in that tier's allocated_addrs.
+        // But our precondition says it's NOT. Contradiction.
+        assert(false);
+    }
+}
+
 } // impl Kheap
+
+/// When layout_to_allocator returns Err (size == 0 or size > 512),
+/// either ptr is not in alloc_map, or the stored value differs from size.
+proof fn lemma_dealloc_layout_to_allocator_err(kheap: &Kheap, ptr: usize, size: usize)
+    requires
+        kheap.inv(),
+        size == 0 || size > 512,
+    ensures
+        !kheap.alloc_map@.dom().contains(ptr as int)
+            || kheap.alloc_map@[ptr as int] != size as nat,
+{
+    if kheap.alloc_map@.dom().contains(ptr as int) {
+        assert(kheap.internal_inv());
+        let stored = kheap.alloc_map@[ptr as int];
+        assert(1 <= stored <= 512);
+        assert(stored != size as nat);
+    }
+}
 
 /// Proves all preconditions for pointer .add() calls in from_raw_parts.
 proof fn lemma_from_raw_parts_ptr_preconditions(addr: usize, size: usize, slab_size: usize, heap_start_addr: *mut u8)
