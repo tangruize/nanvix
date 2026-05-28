@@ -52,7 +52,7 @@ struct ArenaAllocator;
 
 #[verus_verify]
 #[derive(Copy, Clone)]
-pub enum SlabSize {
+pub(super) enum SlabSize {
     Slab8 = 8,
     Slab16 = 16,
     Slab32 = 32,
@@ -120,7 +120,7 @@ impl Kheap {
             match result {
                 Ok(kheap) => {
                     &&& kheap.inv()
-                    &&& kheap@ =~= KheapView::new()
+                    &&& kheap@ == KheapView::new()
                 },
                 Err(e) => e.code == ErrorCode::InvalidArgument,
             },
@@ -235,7 +235,7 @@ impl Kheap {
                     &&& ptr as usize != 0
                     &&& !old(self)@.allocations.dom().contains(ptr as int)
                     &&& final(self)@.allocations[ptr as int] == spec_layout_size(layout) as nat
-                    &&& final(self)@ =~= old(self)@.spec_allocate(
+                    &&& final(self)@ == old(self)@.spec_allocate(
                         ptr as int,
                         spec_layout_size(layout) as nat,
                     )
@@ -243,7 +243,7 @@ impl Kheap {
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& !(old(self)@.allocations =~= Map::<int, nat>::empty())
+                    &&& !(old(self)@.allocations == Map::<int, nat>::empty())
                         || spec_layout_align(layout) > spec_layout_size(layout)
                         || spec_layout_size(layout) > 512
                 },
@@ -305,7 +305,7 @@ impl Kheap {
             match result {
                 Ok(()) => {
                     &&& old(self)@.allocations.dom().contains(ptr as int)
-                    &&& final(self)@ =~= old(self)@.spec_deallocate(ptr as int)
+                    &&& final(self)@ == old(self)@.spec_deallocate(ptr as int)
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@

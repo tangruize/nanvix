@@ -27,7 +27,7 @@ impl View for Kheap {
 }
 
 /// Maps a SlabSize tier to its block size in bytes.
-pub closed spec fn spec_tier_size(tier: SlabSize) -> usize {
+closed spec fn spec_tier_size(tier: SlabSize) -> usize {
     match tier {
         SlabSize::Slab8 => 8,
         SlabSize::Slab16 => 16,
