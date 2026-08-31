@@ -203,8 +203,9 @@ where
             },
     )]
     fn env_interaction_clear_page_directory(&mut self) {
-        for pde in self.entries.iter_mut() {
-            *pde = 0;
+        let entries_len: usize = self.entries.len();
+        for i in 0..entries_len {
+            self.entries[i] = 0;
         }
     }
 

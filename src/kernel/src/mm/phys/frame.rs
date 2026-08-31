@@ -985,9 +985,14 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     // bitmap (for example to express firmware-reserved regions) does not silently end
     // up with `bitmap bit = 1, refcount = 0`, which would cause the first `free()` of
     // such a frame to be rejected as a spurious double-free.
-    for (i, slot) in refcount.iter_mut().enumerate().take(nframes) {
+    //
+    // An explicit index loop is used instead of `refcount.iter_mut().enumerate().take(nframes)`
+    // because Verus rejects `core::slice::iter::IterMut`; `clippy::needless_range_loop` would
+    // otherwise suggest exactly that unsupported iterator form.
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..nframes {
         if matches!(bitmap.test(i), Ok(true)) {
-            *slot = 1;
+            refcount[i] = 1;
         }
     }
 

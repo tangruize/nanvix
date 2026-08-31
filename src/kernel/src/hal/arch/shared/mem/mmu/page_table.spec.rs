@@ -207,8 +207,9 @@ where
             },
     )]
     fn env_interaction_clear_page_table(&mut self) {
-        for pte in self.entries.iter_mut() {
-            *pte = 0;
+        let entries_len: usize = self.entries.len();
+        for i in 0..entries_len {
+            self.entries[i] = 0;
         }
     }
 }
