@@ -118,7 +118,19 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
     if alignment == 0 {
         return None;
     }
-    value.div_ceil(alignment).checked_mul(alignment)
+
+    let quotient: usize = value / alignment;
+    let remainder: usize = value % alignment;
+    let units: usize = if remainder == 0 {
+        quotient
+    } else {
+        match quotient.checked_add(1) {
+            Some(units) => units,
+            None => return None,
+        }
+    };
+
+    units.checked_mul(alignment)
 }
 
 ///
