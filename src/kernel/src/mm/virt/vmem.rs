@@ -867,20 +867,23 @@ impl Vmem {
         }
 
         // Slow path: single-traversal search using a cursor, then move to front.
-        let removed_entry = {
+        let mut removed_entry = None;
+        {
             let mut cursor = self.user_page_tables.cursor_front_mut();
+            #[allow(clippy::while_let_loop)]
             loop {
                 match cursor.current() {
                     Some((addr, _pt)) => {
                         if addr.into_raw_value() == pt_vaddr.into_raw_value() {
-                            break cursor.remove_current();
+                            removed_entry = cursor.remove_current();
+                            break;
                         }
                     },
-                    None => break None,
+                    None => break,
                 }
                 cursor.move_next();
             }
-        };
+        }
 
         if let Some(entry) = removed_entry {
             self.user_page_tables.push_front(entry);
