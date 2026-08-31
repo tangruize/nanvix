@@ -60,9 +60,45 @@ where
     pub permissions: Tracked<Map<nat, NanvixPteToken>>,
 }
 
+struct PresentPageTableEntries<'a, T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
+{
+    page_table: &'a PageTable<T>,
+    next_idx: usize,
+    end_idx: usize,
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
+
+impl<T> Iterator for PresentPageTableEntries<'_, T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
+{
+    type Item = (usize, PageTableEntry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.next_idx < self.end_idx {
+            let idx: usize = self.next_idx;
+            self.next_idx += 1;
+
+            match PageTableEntry::from_raw_value(
+                self.page_table.env_interaction_read_page_table_entry(idx),
+            ) {
+                Some(pte) if pte.is_present() => return Some((idx, pte)),
+                _ => {},
+            }
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.end_idx - self.next_idx))
+    }
+}
 
 #[verus_verify]
 impl<T> PageTable<T>
@@ -707,14 +743,10 @@ where
     /// `pte` is the decoded [`PageTableEntry`].
     ///
     pub fn iter_present_ptes(&self) -> impl Iterator<Item = (usize, PageTableEntry)> + '_ {
-        (0..self.entries.len()).filter_map(
-            // |idx| match PageTableEntry::from_raw_value(self.entries[idx]) {
-            |idx| match PageTableEntry::from_raw_value(
-                self.env_interaction_read_page_table_entry(idx),
-            ) {
-                Some(pte) if pte.is_present() => Some((idx, pte)),
-                _ => None,
-            },
-        )
+        PresentPageTableEntries {
+            page_table: self,
+            next_idx: 0,
+            end_idx: self.entries.len(),
+        }
     }
 }
