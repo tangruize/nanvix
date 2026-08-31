@@ -204,7 +204,7 @@ fn out_of_memory() -> Error {
 /// Unlike [`Box::new`], this returns an [`ErrorCode::OutOfMemory`] error when the allocation fails
 /// instead of aborting, so callers can propagate the failure.
 pub fn try_box<T>(value: T) -> Result<Box<T>, Error> {
-    Box::try_new(value).map_err(|_| out_of_memory())
+    Box::try_new(value).map_err(|_allocation_error| out_of_memory())
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ pub fn try_box<T>(value: T) -> Result<Box<T>, Error> {
 pub fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
     let mut vec: Vec<T> = Vec::new();
     vec.try_reserve_exact(capacity)
-        .map_err(|_| out_of_memory())?;
+        .map_err(|_allocation_error| out_of_memory())?;
     Ok(vec)
 }
 
@@ -236,7 +236,7 @@ pub fn try_string_with_capacity(capacity: usize) -> Result<String, Error> {
     let mut string: String = String::new();
     string
         .try_reserve_exact(capacity)
-        .map_err(|_| out_of_memory())?;
+        .map_err(|_allocation_error| out_of_memory())?;
     Ok(string)
 }
 
