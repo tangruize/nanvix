@@ -242,12 +242,16 @@ impl PhysMemoryManager {
     ///
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
         let frame_addr: FrameAddress = frame::alloc()?;
-        KernelFrame::new(frame_addr).inspect_err(|e| {
-            warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
-            if let Err(free_err) = frame::free(frame_addr) {
-                warn!("failed to free frame after KernelFrame::new failure: {free_err:?}");
-            }
-        })
+        match KernelFrame::new(frame_addr) {
+            Ok(kframe) => Ok(kframe),
+            Err(e) => {
+                warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
+                if let Err(free_err) = frame::free(frame_addr) {
+                    warn!("failed to free frame after KernelFrame::new failure: {free_err:?}");
+                }
+                Err(e)
+            },
+        }
     }
 
     ///
@@ -291,7 +295,11 @@ impl PhysMemoryManager {
         let base_raw: usize = base_addr.into_raw_value();
         for i in 0..count {
             let raw_addr: usize = base_raw + i * mem::PAGE_SIZE;
-            match FrameAddress::from_raw_value(raw_addr).and_then(KernelFrame::new) {
+            let kframe: Result<KernelFrame, Error> = match FrameAddress::from_raw_value(raw_addr) {
+                Ok(frame_addr) => KernelFrame::new(frame_addr),
+                Err(e) => Err(e),
+            };
+            match kframe {
                 Ok(kf) => frames.push(kf),
                 Err(e) => {
                     // Drop already-wrapped frames (frees them via KernelFrame::Drop).
